@@ -6,17 +6,17 @@ echo -e "\e[1;32m            Bienvenido al instalador\e[0m"
 echo -e "\e[1;32m             Mccarthey V2.8 Oficial\e[0m"
 echo -e "\e[1;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
 
-# Actualiza VPS
-apt update -y &>/dev/null
-apt upgrade -y &>/dev/null
+# Actualiza VPS y instala paquetes básicos
+apt update -y && apt upgrade -y
+apt install net-tools curl wget zip unzip -y
+apt install python3 python3-pip -y
+apt install screen -y
 
 # Solicitar KEY
 read -p $'\e[1;37mIngrese su KEY de instalación: \e[0m' user_key
 
-# Aquí iría la verificación de la KEY
-# En este ejemplo, aceptamos solo una KEY fija
+# Verificación simple de la KEY
 valid_key="NewVPS-Kb3487s?@063a9e8K8888:98x64@x@s@x9?@"
-
 if [[ "$user_key" != "$valid_key" ]]; then
     echo -e "\e[1;31mClave inválida o expirada. Saliendo...\e[0m"
     exit 1
@@ -25,7 +25,7 @@ fi
 echo -e "\e[1;32mKEY verificada correctamente. Instalación en curso...\e[0m"
 sleep 2
 
-# Mostrar Menú
+# Menú básico de ejemplo
 while true; do
     clear
     echo -e "\e[1;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
