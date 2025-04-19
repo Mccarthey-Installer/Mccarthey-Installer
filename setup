@@ -1,0 +1,48 @@
+#!/bin/bash
+
+clear
+echo -e "\e[1;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+echo -e "\e[1;32m            Bienvenido al instalador\e[0m"
+echo -e "\e[1;32m             Mccarthey V2.8 Oficial\e[0m"
+echo -e "\e[1;33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+
+# Actualiza VPS
+apt update -y &>/dev/null
+apt upgrade -y &>/dev/null
+
+# Solicitar KEY
+read -p $'\e[1;37mIngrese su KEY de instalación: \e[0m' user_key
+
+# Aquí iría la verificación de la KEY
+# En este ejemplo, aceptamos solo una KEY fija
+valid_key="NewVPS-Kb3487s?@063a9e8K8888:98x64@x@s@x9?@"
+
+if [[ "$user_key" != "$valid_key" ]]; then
+    echo -e "\e[1;31mClave inválida o expirada. Saliendo...\e[0m"
+    exit 1
+fi
+
+echo -e "\e[1;32mKEY verificada correctamente. Instalación en curso...\e[0m"
+sleep 2
+
+# Mostrar Menú
+while true; do
+    clear
+    echo -e "\e[1;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    echo -e "\e[1;32m       Mccarthey-Panel | VPS Tool\e[0m"
+    echo -e "\e[1;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    echo -e "\e[1;37m[1] ➤ Instalar Servicios VPN"
+    echo -e "[2] ➤ Crear Usuario SSH"
+    echo -e "[3] ➤ Optimizar VPS"
+    echo -e "[0] ➤ Salir"
+    echo -e "\e[1;34m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    read -p "Opción: " opc
+
+    case $opc in
+        1) echo -e "\e[1;33mInstalando servicios VPN...\e[0m"; sleep 2 ;;
+        2) echo -e "\e[1;33mCreando usuario SSH...\e[0m"; sleep 2 ;;
+        3) echo -e "\e[1;33mOptimizando VPS...\e[0m"; sleep 2 ;;
+        0) echo -e "\e[1;31mSaliendo...\e[0m"; exit 0 ;;
+        *) echo -e "\e[1;31mOpción inválida\e[0m"; sleep 1 ;;
+    esac
+done
