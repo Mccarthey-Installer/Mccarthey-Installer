@@ -30,8 +30,20 @@ if [[ "$KEY" == "--mccpanel" ]]; then
 fi
 
 if [ -z "$KEY" ]; then
-    echo -e "\n\033[1;34m[ INFO ]\033[0m No se proporcionó una MCC-KEY."
-    read -p "Ingresa tu MCC-KEY: " KEY
+    clear
+    echo -e "\e[1;34m"
+    echo "============================================="
+    echo "           MCC-KEY NO PROPORCIONADA          "
+    echo "============================================="
+    echo -e "\e[0m"
+
+    echo -e "\e[1;36m"
+    echo "╔═══════════════════════════════════════════╗"
+    echo "║           INGRESA TU MCC-KEY              ║"
+    echo "╚═══════════════════════════════════════════╝"
+    echo -e "\e[0m"
+
+    read -p "> " KEY
 fi
 
 ENCODED_KEY=$(echo "$KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
