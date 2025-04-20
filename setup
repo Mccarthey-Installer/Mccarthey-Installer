@@ -20,11 +20,18 @@ ENCODED_KEY=$(echo "$KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
 # URL del validador en la VPS
 VALIDATOR_URL="http://172.235.128.99:9393/validate/$ENCODED_KEY"
 
-# Llamada a la API de validación
-echo -e "\n[ INFO ] Verificando KEY con el servidor..."
-RESPONSE=$(curl -s "$VALIDATOR_URL")
+# Banner profesional
+clear
+echo -e "\e[1;36m"
+echo "╔═══════════════════════════════════════╗"
+echo "║         McCarthey VPN Installer      ║"
+echo "║     © 2025 - All rights reserved     ║"
+echo "╚═══════════════════════════════════════╝"
+echo -e "\e[0m"
 
-# Revisamos si la key es válida
+# Validación
+echo -e "\n>> Validando clave de instalación..."
+RESPONSE=$(curl -s "$VALIDATOR_URL")
 VALIDO=$(echo "$RESPONSE" | grep -o '"valida":true')
 
 if [ -z "$VALIDO" ]; then
@@ -33,26 +40,53 @@ if [ -z "$VALIDO" ]; then
     exit 1
 fi
 
-echo -e "\n[ OK ] Key válida. Continuando con la instalación..."
-echo -e "\n[ INSTALADOR ] Ejecutando configuración McCarthey..."
+echo -e "\n[ OK ] Clave aceptada. Iniciando despliegue de servicios..."
 
-# Actualización inicial
+# ========================
+# Instalación de paquetes
+# ========================
+
 apt update -y && apt upgrade -y
-apt install -y curl unzip wget
 
-# Lista de paquetes a instalar
+# Función para instalar y mostrar estado
+instalar() {
+    apt install -y $1 &>/dev/null
+    if [ $? -eq 0 ]; then
+        echo -e "[ '05 ] INSTALACION CORRECTA ${1^^}"
+    else
+        echo -e "[ FAIL ] ERROR AL INSTALAR ${1^^}"
+    fi
+}
+
 PAQUETES=(
-  bsdmainutils screen nginx nload htop python python3 python3-pip
-  nodejs npm lsof psmisc socat bc netcat net-tools cowsay nmap jq iptables
+    bsdmainutils
+    usermod
+    screen
+    nginx
+    nload
+    htop
+    python
+    python3
+    python3-pip
+    nodejs
+    npm
+    lsof
+    psmisc
+    socat
+    bc
+    netcat
+    net-tools
+    cowsay
+    nmap
+    jq
+    iptables
 )
 
-# Instalación con mensaje formateado
-for paquete in "${PAQUETES[@]}"; do
-  if apt install -y "$paquete" >/dev/null 2>&1; then
-    echo -e "- [ '05 ] INSTALACION CORRECTA ${paquete^^}"
-  else
-    echo -e "- [ '05 ] ERROR AL INSTALAR ${paquete^^}"
-  fi
+for pkg in "${PAQUETES[@]}"; do
+    instalar "$pkg"
 done
 
-echo -e "\n[ LISTO ] Instalación completada con éxito."
+# Mensaje final bacano
+echo -e "\n\e[1;32m[ COMPLETADO ] ¡Tu VPS está lista para despegar!\e[0m"
+echo -e "\e[1;34mPuedes iniciar tu configuración SSH/VPN con estilo McCarthey.\e[0m"
+echo -e "\e[1;36m¡Gracias por confiar en nosotros!\e[0m"
