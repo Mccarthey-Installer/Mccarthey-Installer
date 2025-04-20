@@ -5,26 +5,20 @@
 # Validación de KEY remota
 # ========================
 
-# Obtenemos la key del argumento
+# Obtener MCC-KEY desde argumento o pedirla
 KEY="$1"
-
-# Si no se pasa una key, se solicita al usuario
 if [ -z "$KEY" ]; then
     echo -e "\n[ INFO ] No se proporcionó una MCC-KEY."
     read -p "Ingresa tu MCC-KEY: " KEY
 fi
 
-# Codificamos {} para la URL
+# Codificar {} en la URL
 ENCODED_KEY=$(echo "$KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
-
-# URL del validador en la VPS
 VALIDATOR_URL="http://172.235.128.99:9393/validate/$ENCODED_KEY"
 
-# Llamada a la API de validación
+# Verificar clave con API remota
 echo -e "\n[ INFO ] Verificando KEY con el servidor..."
 RESPONSE=$(curl -s "$VALIDATOR_URL")
-
-# Revisamos si la key es válida
 VALIDO=$(echo "$RESPONSE" | grep -o '"valida":true')
 
 if [ -z "$VALIDO" ]; then
@@ -34,67 +28,84 @@ if [ -z "$VALIDO" ]; then
 fi
 
 echo -e "\n[ OK ] Key válida. Continuando con la instalación..."
-
-# ========================
-# Instalación de paquetes
-# ========================
-
 echo -e "\n[ INSTALADOR ] Ejecutando configuración McCarthey..."
 
+# Actualizar sistema e instalar herramientas esenciales
 apt update -y && apt upgrade -y
+apt install -y curl unzip wget
+
+# Lista de paquetes a instalar
 PAQUETES=(
-    bsdmainutils usermod screen nginx nload htop python python3 python3-pip
-    nodejs npm lsof psmisc socat bc netcat net-tools cowsay nmap jq iptables
+  bsdmainutils usermod screen nginx nload htop python python3 python3-pip
+  nodejs npm lsof psmisc socat bc netcat net-tools cowsay nmap jq iptables
 )
 
-for pkg in "${PAQUETES[@]}"; do
-    apt install -y "$pkg" > /dev/null 2>&1
-    if dpkg -l | grep -qw "$pkg"; then
-        echo -e "[ '05 ] INSTALACION CORRECTA ${pkg^^}"
+for paquete in "${PAQUETES[@]}"; do
+    apt install -y "$paquete" &>/dev/null
+    if dpkg -s "$paquete" &>/dev/null; then
+        echo "[ '05 ] INSTALACION CORRECTA ${paquete^^}"
     else
-        echo -e "[ FAIL ] ERROR AL INSTALAR ${pkg^^}"
+        echo "[ FAIL ] ERROR AL INSTALAR ${paquete^^}"
     fi
 done
 
+# Crear script del panel
+cat << 'EOF' > /root/menu.sh
+#!/bin/bash
+clear
+
+echo -e "\e[1;32m
+╔══════════════════════════════════════╗
+║           PANEL McCARTHEY           ║
+╚══════════════════════════════════════╝\e[0m"
+
+FECHA=$(TZ=America/Guatemala date)
+IP=$(curl -s ifconfig.me)
+CPU=$(lscpu | grep "Model name" | awk -F ':' '{print $2}' | sed 's/^ *//')
+CPUS=$(nproc)
+SO=$(lsb_release -d | cut -f2)
+
+echo ""
+echo "FECHA        : $FECHA"
+echo "IP VPS       : $IP"
+echo "CPU's        : $CPUS"
+echo "TIPO DE CPU  : $CPU"
+echo "S.O          : $SO"
+echo ""
+echo "1) Crear nuevo usuario SSH"
+echo "2) Salir"
+echo ""
+read -p "Elige una opción: " OPC
+
+case $OPC in
+  1)
+    read -p "Nombre de usuario: " USUARIO
+    read -p "Contraseña: " PASSWORD
+    read -p "Días de validez: " DIAS
+    useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M "$USUARIO"
+    echo "$USUARIO:$PASSWORD" | chpasswd
+    echo ""
+    echo "Usuario creado con éxito:"
+    echo "Usuario: $USUARIO"
+    echo "Contraseña: $PASSWORD"
+    echo "Expira en: $DIAS días"
+    ;;
+  2)
+    echo "Saliendo del panel..."
+    exit 0
+    ;;
+  *)
+    echo "Opción no válida."
+    ;;
+esac
+EOF
+
+chmod +x /root/menu.sh
+
+# Crear alias permanente para acceder con /menu
+echo "alias /menu='bash /root/menu.sh'" >> /root/.bashrc
+
 echo -e "\n[ COMPLETADO ] ¡Tu VPS está lista para despegar!"
 echo "Puedes iniciar tu configuración SSH/VPN con estilo McCarthey."
+echo "Usa el comando: /menu"
 echo "¡Gracias por confiar en nosotros!"
-
-# ========================
-# Panel tipo menú
-# ========================
-sleep 2
-while true; do
-  clear
-  echo -e "\e[1;32m========== PANEL McCARTHEY ==========\e[0m"
-  echo "IP VPS       : $(curl -s ifconfig.me)"
-  echo "RAM DISPONIBLE: $(free -h | awk '/^Mem/ {print $7}')"
-  echo "TIPO DE CPU  : $(lscpu | grep 'Model name' | awk -F ':' '{print $2}' | xargs)"
-  echo ""
-  echo "1) Crear nuevo usuario SSH"
-  echo "2) Ver procesos activos"
-  echo "3) Salir"
-  echo ""
-  read -p "Elige una opción: " opcion
-  case $opcion in
-    1)
-      read -p "Nombre del nuevo usuario: " user
-      read -p "Contraseña del usuario: " pass
-      useradd -m "$user"
-      echo "$user:$pass" | chpasswd
-      echo -e "\nUsuario $user creado con éxito."
-      read -p "Presiona enter para continuar..."
-      ;;
-    2)
-      htop
-      ;;
-    3)
-      echo "Saliendo..."
-      break
-      ;;
-    *)
-      echo "Opción inválida."
-      sleep 1
-      ;;
-  esac
-done
