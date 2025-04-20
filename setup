@@ -12,11 +12,9 @@ if [ -z "$KEY" ]; then
     read -p "Ingresa tu MCC-KEY: " KEY
 fi
 
-# Codificar {} en la URL
 ENCODED_KEY=$(echo "$KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
 VALIDATOR_URL="http://172.235.128.99:9393/validate/$ENCODED_KEY"
 
-# Verificar clave con API remota
 echo -e "\n[ INFO ] Verificando KEY con el servidor..."
 RESPONSE=$(curl -s "$VALIDATOR_URL")
 VALIDO=$(echo "$RESPONSE" | grep -o '"valida":true')
@@ -49,7 +47,7 @@ for paquete in "${PAQUETES[@]}"; do
     fi
 done
 
-# Crear script del panel
+# Crear archivo del panel
 cat << 'EOF' > /root/menu.sh
 #!/bin/bash
 clear
@@ -59,7 +57,7 @@ echo -e "\e[1;32m
 ║           PANEL McCARTHEY           ║
 ╚══════════════════════════════════════╝\e[0m"
 
-FECHA=$(TZ=America/Guatemala date)
+FECHA=$(TZ=America/Guatemala date "+%Y-%m-%d %I:%M %p")
 IP=$(curl -s ifconfig.me)
 CPU=$(lscpu | grep "Model name" | awk -F ':' '{print $2}' | sed 's/^ *//')
 CPUS=$(nproc)
@@ -82,7 +80,7 @@ case $OPC in
     read -p "Nombre de usuario: " USUARIO
     read -p "Contraseña: " PASSWORD
     read -p "Días de validez: " DIAS
-    useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M "$USUARIO"
+    useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M $USUARIO
     echo "$USUARIO:$PASSWORD" | chpasswd
     echo ""
     echo "Usuario creado con éxito:"
@@ -102,8 +100,9 @@ EOF
 
 chmod +x /root/menu.sh
 
-# Crear alias permanente para acceder con /menu
-echo "alias /menu='bash /root/menu.sh'" >> /root/.bashrc
+# Crear comando /menu disponible globalmente
+echo 'bash /root/menu.sh' > /usr/bin/menu
+chmod +x /usr/bin/menu
 
 echo -e "\n[ COMPLETADO ] ¡Tu VPS está lista para despegar!"
 echo "Puedes iniciar tu configuración SSH/VPN con estilo McCarthey."
