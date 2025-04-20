@@ -8,11 +8,10 @@
 # Obtenemos la key del argumento
 KEY="$1"
 
-# Si no se pasa una key, se detiene
+# Si no se pasa una key, se solicita al usuario
 if [ -z "$KEY" ]; then
-    echo -e "\n[ ERROR ] No se proporcionó una MCC-KEY. Usa el comando así:"
-    echo -e "bash <(curl -sSL https://TU_REPO/setup) MCC-KEY{xxxx-xxxx-xxxx-xxxx}"
-    exit 1
+    echo -e "\n[ INFO ] No se proporcionó una MCC-KEY."
+    read -p "Ingresa tu MCC-KEY: " KEY
 fi
 
 # Codificamos {} para la URL
@@ -39,13 +38,11 @@ echo -e "\n[ OK ] Key válida. Continuando con la instalación..."
 # ========================
 # Aquí empieza tu instalación real
 # ========================
-
 echo -e "\n[ INSTALADOR ] Ejecutando configuración McCarthey..."
 
-# Ejemplo de comandos que podrías usar (rellena aquí lo tuyo)
 apt update -y && apt upgrade -y
 apt install -y curl unzip wget
 
-# Más comandos personalizados...
+# Aquí puedes seguir con más comandos
 
 echo -e "\n[ LISTO ] Instalación completada con éxito."
