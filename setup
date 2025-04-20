@@ -34,15 +34,25 @@ if [ -z "$VALIDO" ]; then
 fi
 
 echo -e "\n[ OK ] Key válida. Continuando con la instalación..."
-
-# ========================
-# Aquí empieza tu instalación real
-# ========================
 echo -e "\n[ INSTALADOR ] Ejecutando configuración McCarthey..."
 
+# Actualización inicial
 apt update -y && apt upgrade -y
 apt install -y curl unzip wget
 
-# Aquí puedes seguir con más comandos
+# Lista de paquetes a instalar
+PAQUETES=(
+  bsdmainutils screen nginx nload htop python python3 python3-pip
+  nodejs npm lsof psmisc socat bc netcat net-tools cowsay nmap jq iptables
+)
+
+# Instalación con mensaje formateado
+for paquete in "${PAQUETES[@]}"; do
+  if apt install -y "$paquete" >/dev/null 2>&1; then
+    echo -e "- [ '05 ] INSTALACION CORRECTA ${paquete^^}"
+  else
+    echo -e "- [ '05 ] ERROR AL INSTALAR ${paquete^^}"
+  fi
+done
 
 echo -e "\n[ LISTO ] Instalación completada con éxito."
