@@ -30,11 +30,11 @@ echo -e "\n[ INSTALADOR ] Ejecutando configuración McCarthey..."
 
 # Actualizar sistema e instalar herramientas esenciales
 apt update -y && apt upgrade -y
-apt install -y curl unzip wget
+apt install -y curl unzip wget needrestart
 
 # Lista de paquetes a instalar
 PAQUETES=(
-  bsdmainutils usermod screen nginx nload htop python python3 python3-pip
+  bsdmainutils screen nginx nload htop python3 python3-pip
   nodejs npm lsof psmisc socat bc netcat net-tools cowsay nmap jq iptables
 )
 
@@ -48,7 +48,7 @@ for paquete in "${PAQUETES[@]}"; do
 done
 
 # Crear archivo del panel
-cat << 'EOF' > /root/menu.sh
+cat << 'EOF' > /usr/bin/menu
 #!/bin/bash
 clear
 
@@ -57,7 +57,7 @@ echo -e "\e[1;32m
 ║           PANEL McCARTHEY           ║
 ╚══════════════════════════════════════╝\e[0m"
 
-FECHA=$(TZ=America/Guatemala date "+%Y-%m-%d %I:%M %p")
+FECHA=$(TZ=America/Guatemala date)
 IP=$(curl -s ifconfig.me)
 CPU=$(lscpu | grep "Model name" | awk -F ':' '{print $2}' | sed 's/^ *//')
 CPUS=$(nproc)
@@ -98,11 +98,11 @@ case $OPC in
 esac
 EOF
 
-chmod +x /root/menu.sh
-
-# Crear comando /menu disponible globalmente
-echo 'bash /root/menu.sh' > /usr/bin/menu
 chmod +x /usr/bin/menu
+
+# Ejecutar needrestart para reiniciar servicios automáticamente
+echo -e "\n[ INFO ] Reiniciando servicios necesarios..."
+needrestart -r a
 
 echo -e "\n[ COMPLETADO ] ¡Tu VPS está lista para despegar!"
 echo "Puedes iniciar tu configuración SSH/VPN con estilo McCarthey."
