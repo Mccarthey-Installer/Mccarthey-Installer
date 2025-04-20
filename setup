@@ -121,5 +121,5 @@ chmod +x /usr/bin/menu
 fi
 
 echo -e "\n[ COMPLETADO ] ¡Tu VPS está lista para despegar!"
-echo "Puedes acceder al panel usando: /menu"
+echo "Puedes acceder al panel usando: menu"
 echo "¡Gracias por usar McCarthey Installer!"
