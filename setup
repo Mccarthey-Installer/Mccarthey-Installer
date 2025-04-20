@@ -1,12 +1,24 @@
 #!/bin/bash
 
 # ========================
-# McCarthey Installer v1.0
-# Validación de KEY remota
+# McCarthey Installer v1.1
+# Validación de KEY remota y panel opcional
 # ========================
+
+# Argumento opcional --mccpanel
+ENABLE_PANEL=false
+for arg in "$@"; do
+    if [[ "$arg" == "--mccpanel" ]]; then
+        ENABLE_PANEL=true
+    fi
+done
 
 # Obtener MCC-KEY desde argumento o pedirla
 KEY="$1"
+if [[ "$KEY" == "--mccpanel" ]]; then
+    KEY=""
+fi
+
 if [ -z "$KEY" ]; then
     echo -e "\n[ INFO ] No se proporcionó una MCC-KEY."
     read -p "Ingresa tu MCC-KEY: " KEY
@@ -26,16 +38,21 @@ if [ -z "$VALIDO" ]; then
 fi
 
 echo -e "\n[ OK ] Key válida. Continuando con la instalación..."
-echo -e "\n[ INSTALADOR ] Ejecutando configuración McCarthey..."
 
-# Actualizar sistema e instalar herramientas esenciales
+# Actualización y paquetes
 apt update -y && apt upgrade -y
-apt install -y curl unzip wget needrestart
 
-# Lista de paquetes a instalar
+# Reiniciar procesos pendientes
+if command -v needrestart >/dev/null; then
+    needrestart -r a
+fi
+
+apt install -y curl unzip wget
+
 PAQUETES=(
   bsdmainutils screen nginx nload htop python3 python3-pip
-  nodejs npm lsof psmisc socat bc netcat net-tools cowsay nmap jq iptables
+  nodejs npm lsof psmisc socat bc netcat net-tools cowsay
+  nmap jq iptables
 )
 
 for paquete in "${PAQUETES[@]}"; do
@@ -47,11 +64,11 @@ for paquete in "${PAQUETES[@]}"; do
     fi
 done
 
-# Crear archivo del panel
-cat << 'EOF' > /usr/bin/menu
+# Crear panel si está activado
+if $ENABLE_PANEL; then
+cat << 'EOF' > /root/menu.sh
 #!/bin/bash
 clear
-
 echo -e "\e[1;32m
 ╔══════════════════════════════════════╗
 ║           PANEL McCARTHEY           ║
@@ -98,13 +115,11 @@ case $OPC in
 esac
 EOF
 
+chmod +x /root/menu.sh
+ln -sf /root/menu.sh /usr/bin/menu
 chmod +x /usr/bin/menu
-
-# Ejecutar needrestart para reiniciar servicios automáticamente
-echo -e "\n[ INFO ] Reiniciando servicios necesarios..."
-needrestart -r a
+fi
 
 echo -e "\n[ COMPLETADO ] ¡Tu VPS está lista para despegar!"
-echo "Puedes iniciar tu configuración SSH/VPN con estilo McCarthey."
-echo "Usa el comando: /menu"
-echo "¡Gracias por confiar en nosotros!"
+echo "Puedes acceder al panel usando: /menu"
+echo "¡Gracias por usar McCarthey Installer!"
