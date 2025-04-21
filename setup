@@ -171,11 +171,11 @@ while true; do
       read -p "Presiona enter para continuar..."
       ;;
     2)
-      echo "Saliendo del panel..."
-      exit 0
+      validar_key
       ;;
     3)
-      validar_key
+      echo "Saliendo del panel..."
+      exit 0
       ;;
     *)
       echo "Opción no válida."
@@ -191,7 +191,6 @@ chmod +x /usr/bin/menu
 
 echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
 echo "Ejecuta \033[1;33mmenu\033[0m para acceder."
-fi
 
 # FINAL
 echo -e "\n\033[1;32m==============================================\033[0m"
