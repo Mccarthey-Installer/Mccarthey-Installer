@@ -115,17 +115,25 @@ cpu_model=$(awk -F: '/model name/ {print $2; exit}' /proc/cpuinfo)
 cpus=$(nproc)
 so=$(lsb_release -d | cut -f2)
 
-# RAM en tiempo real (en formato legible)
+# RAM en tiempo real (en MB)
 read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
-ram_total=$(awk "BEGIN {printf \"%.1fG\", $total/1024}")
-ram_libre=$(awk "BEGIN {printf \"%.1fG\", $available/1024}")
-ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
-ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
-ram_porc=$(awk "BEGIN {printf \"%.2f%%\", ($used/$total)*100}")
 
 # Uso de CPU en tiempo real
 cpu_uso=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
 cpu_uso_fmt=$(awk "BEGIN {printf \"%.1f%%\", $cpu_uso}")
+ram_porc=$(awk "BEGIN {printf \"%.2f%%\", ($used/$total)*100}")
+
+# Mostrar en GB si total >= 1024, si no en MB
+if [ "$total" -ge 1024 ]; then
+  ram_total=$(awk "BEGIN {printf \"%.1fG\", $total/1024}")
+  ram_libre=$(awk "BEGIN {printf \"%.1fG\", $available/1024}")
+else
+  ram_total="${total}M"
+  ram_libre="${available}M"
+fi
+
+ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
+ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 
 # PANEL
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
