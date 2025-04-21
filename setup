@@ -92,6 +92,7 @@ done
 
 # PANEL
 if $ENABLE_PANEL; then
+
 cat << 'EOF' > /root/menu.sh
 #!/bin/bash
 clear
