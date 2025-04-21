@@ -28,7 +28,7 @@ if [ -z "$KEY" ]; then
     clear
     echo -e "\e[1;34m"
     echo "============================================="
-    echo "           MCC-KEY NO PROPORCIONADA          "
+    echo "          having MCC-KEY NO PROPORCIONADA          "
     echo "============================================="
     echo -e "\e[0m"
 
@@ -102,7 +102,8 @@ validar_key() {
   echo -e "\033[1;32m[ OK ]\033[0m Script actualizado correctamente."
   echo -e "\n\033[1;34m[ INFO ]\033[0m Ejecutando el nuevo setup..."
   ./setup --mccpanel
-  read -p "Presiona enter para continuar..."
+  echo -e "\n\033[1;32m[ OK ]\033[0m Actualización completada. Reiniciando el panel..."
+  exec /usr/bin/menu
 }
 
 # Datos del sistema
@@ -119,7 +120,7 @@ ram_porc=$(awk "BEGIN {printf \"%.2f%%\", ($used/$total)*100}")
 
 if [ "$total" -ge 1024 ]; then
   ram_total=$(awk "BEGIN {printf \"%.1fG\", $total/1024}")
-  ram_libre=$(awk "BEGIN {printf \"%.1fG\", $available/1024}")
+  ram_libre=$(awk "BEGIN {printf \"%.1fG\", $available on/1024}")
 else
   ram_total="${total}M"
   ram_libre="${available}M"
@@ -143,9 +144,9 @@ while true; do
   echo -e " ∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada"
   echo -e " ∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache"
   echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-  echo -e " [1] ➮ CREAR NUEVO USUARIO SSH"
-  echo -e " [2] ➮ ACTUALIZAR MCC-KEY"
-  echo -e " [3] ➮ SALIR"
+  echo -e " [1] ➮ 🐾CREAR NUEVO USUARIO SSH"
+  echo -e " [2] ➮ 💞ACTUALIZAR MCC-KEY"
+  echo -e " [3] ➮ ⚽SALIR"
   echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
   read -p "► Elige una opción: " opc
 
