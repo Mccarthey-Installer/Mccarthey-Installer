@@ -155,9 +155,9 @@ while true; do
   echo -e " ∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada"
   echo -e " ∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache"
   echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-  echo -e " [1] ➮ CREAR NUEVO USUARIO SSH"
-  echo -e " [2] ➮ ACTUALIZAR MCC-KEY"
-  echo -e " [3] ➮ SALIR"
+  echo -e " [1] ➮ 🐾CREAR NUEVO USUARIO SSH"
+  echo -e " [2] ➮ 💞ACTUALIZAR MCC-KEY"
+  echo -e " [3] ➮ ⚽SALIR"
   echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
   read -p "► Elige una opción: " opc
 
