@@ -161,7 +161,9 @@ while true; do
   echo ""
   echo "Usuario creado con éxito:"
   echo ""
-  printf "%-12s %-14s %-10s %-15s %-5s\n" "USUARIO" "CONTRASEÑA" "LIMITE" "CADUCA" "DIAS"
+  # Encabezado en rosado
+  echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
+  # Contenido normal
   printf "%-12s %-14s %-10s %-15s %-5s\n" "$USUARIO" "$PASSWORD" "1" "$FECHA_EXPIRACION" "$DIAS"
   echo ""
   read -p "Presiona enter para continuar..."
