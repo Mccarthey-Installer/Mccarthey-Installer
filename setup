@@ -115,13 +115,19 @@ cpu_model=$(awk -F: '/model name/ {print $2; exit}' /proc/cpuinfo)
 cpus=$(nproc)
 so=$(lsb_release -d | cut -f2)
 
-ram_total=$(free -h | awk '/Mem:/ {print $2}')
-ram_libre=$(free -h | awk '/Mem:/ {print $4}')
-ram_uso=$(free -h | awk '/Mem:/ {print $3}')
-ram_porc=$(free | awk '/Mem/ {printf("%.2f%%", $3/$2 * 100.0)}')
-cpu_uso=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8"%"}')
+# RAM en tiempo real (en formato legible)
+read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
+ram_total=$(awk "BEGIN {printf \"%.1fG\", $total/1024}")
+ram_libre=$(awk "BEGIN {printf \"%.1fG\", $available/1024}")
+ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
+ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
+ram_porc=$(awk "BEGIN {printf \"%.2f%%\", ($used/$total)*100}")
 
-# Panel
+# Uso de CPU en tiempo real
+cpu_uso=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
+cpu_uso_fmt=$(awk "BEGIN {printf \"%.1f%%\", $cpu_uso}")
+
+# PANEL
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
 echo -e "          \e[1mPANEL OFICIAL MCCARTHEY\e[0m"
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
@@ -131,9 +137,8 @@ echo -e " CPU's       : $cpus"
 echo -e " MODELO CPU  :$cpu_model"
 echo -e " S.O         : $so"
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-echo -e " RAM TOTAL   : $ram_total   | LIBRE: $ram_libre"
-echo -e " USO RAM     : $ram_uso     | % USO: $ram_porc"
-echo -e " USO CPU     : $cpu_uso"
+echo -e " ∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada"
+echo -e " ∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache"
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
 echo -e " [1] ➮ CREAR NUEVO USUARIO SSH"
 echo -e " [2] ➮ SALIR"
