@@ -152,18 +152,20 @@ while true; do
 
   case $opc in
     1)
-      read -p "Nombre de usuario: " USUARIO
-      read -p "Contraseña: " PASSWORD
-      read -p "Días de validez: " DIAS
-      useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M $USUARIO
-      echo "$USUARIO:$PASSWORD" | chpasswd
-      echo ""
-      echo "Usuario creado con éxito:"
-      echo "Usuario: $USUARIO"
-      echo "Contraseña: $PASSWORD"
-      echo "Expira en: $DIAS días"
-      read -p "Presiona enter para continuar..."
-      ;;
+  read -p "Nombre de usuario: " USUARIO
+  read -p "Contraseña: " PASSWORD
+  read -p "Días de validez: " DIAS
+  FECHA_EXPIRACION=$(date -d "$DIAS days" +"%d/ de %B")
+  useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M $USUARIO
+  echo "$USUARIO:$PASSWORD" | chpasswd
+  echo ""
+  echo "Usuario creado con éxito:"
+  echo ""
+  printf "%-12s %-14s %-10s %-20s\n" "USUARIO" "CONTRASEÑA" "LIMITE" "CADUCA"
+  printf "%-12s %-14s %-10s %-20s\n" "$USUARIO" "$PASSWORD" "1" "$FECHA_EXPIRACION"
+  echo ""
+  read -p "Presiona enter para continuar..."
+  ;;
     2)
       validar_key
       ;;
