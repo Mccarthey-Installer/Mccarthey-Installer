@@ -73,7 +73,7 @@ apt install -y curl unzip wget
 # INSTALACIÓN DE PAQUETES
 PAQUETES=(
   bsdmainutils screen nginx nload htop python3 python3-pip
-  nodejs npm lsof psmisc socat bc netcat-traditional net-tools cowsay
+  nodejs npm lsof psmisc socat bc net-tools cowsay
   nmap jq iptables
 )
 
