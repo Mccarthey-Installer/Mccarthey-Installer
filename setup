@@ -155,15 +155,23 @@ while true; do
   read -p "Nombre de usuario: " USUARIO
   read -p "Contraseña: " PASSWORD
   read -p "Días de validez: " DIAS
+
+  # Validar que no estén vacíos
+  if [[ -z "$USUARIO" || -z "$PASSWORD" || -z "$DIAS" ]]; then
+    echo ""
+    echo -e "\e[1;31mPor favor complete todos los datos.\e[0m"
+    echo ""
+    read -p "Presiona enter para volver al panel principal..."
+    continue
+  fi
+
   FECHA_EXPIRACION=$(date -d "$DIAS days" +"%d/ de %B")
   useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M $USUARIO
   echo "$USUARIO:$PASSWORD" | chpasswd
   echo ""
   echo "Usuario creado con éxito:"
   echo ""
-  # Encabezado en rosado
   echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
-  # Contenido normal
   printf "%-12s %-14s %-10s %-15s %-5s\n" "$USUARIO" "$PASSWORD" "1" "$FECHA_EXPIRACION" "$DIAS"
   echo ""
   read -p "Presiona enter para continuar..."
