@@ -102,16 +102,21 @@ validar_key() {
   ENCODED=$(echo "$NUEVA_KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
   URL="http://172.235.128.99:9393/validate/$ENCODED"
   RESPUESTA=$(curl -s "$URL")
+
   if [[ "$RESPUESTA" =~ "\"valida\":true" ]]; then
     USR=$(echo "$RESPUESTA" | grep -oP '"username":"\K[^"]+')
     echo -e "\n\033[1;32m[ OK ]\033[0m Nueva key verificada con éxito: ${USR}"
+    
+    echo -e "\n\033[1;34m[ INFO ]\033[0m Descargando la última versión del instalador..."
+    wget -q -O setup https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/setup
+    chmod +x setup
+    echo -e "\033[1;32m[ OK ]\033[0m Script actualizado correctamente."
   else
     ERROR=$(echo "$RESPUESTA" | grep -oP '"motivo":"\K[^"]+')
     echo -e "\n\033[1;31m[ ERROR ]\033[0m Key inválida: $ERROR"
   fi
   read -p "Presiona enter para continuar..."
 }
-
 # Datos del sistema
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
 ip=$(hostname -I | awk '{print $1}')
