@@ -135,6 +135,9 @@ fi
 ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
 ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 
+# Obtener frecuencia del CPU
+cpu_freq=$(awk -F: '/cpu MHz/ {print $2; exit}' /proc/cpuinfo | awk '{printf "%.0f MHz", $1}')
+
 # PANEL
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
 echo -e "          \e[1mPANEL OFICIAL MCCARTHEY\e[0m"
@@ -147,12 +150,12 @@ echo -e " S.O         : $so"
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
 echo -e " ∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada"
 echo -e " ∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache"
+echo -e " ∘ FRECUENCIA CPU: $cpu_freq"
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
 echo -e " [1] ➮ CREAR NUEVO USUARIO SSH"
 echo -e " [2] ➮ SALIR"
 echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
 read -p "► Elige una opción: " opc
-
 case $opc in
   1)
     read -p "Nombre de usuario: " USUARIO
