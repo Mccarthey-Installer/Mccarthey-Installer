@@ -111,6 +111,10 @@ validar_key() {
     wget -q -O setup https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/setup
     chmod +x setup
     echo -e "\033[1;32m[ OK ]\033[0m Script actualizado correctamente."
+
+    echo -e "\n\033[1;34m[ INFO ]\033[0m Ejecutando nuevo instalador con la nueva key..."
+    ./setup --mccpanel "$NUEVA_KEY"
+    exit 0
   else
     ERROR=$(echo "$RESPUESTA" | grep -oP '"motivo":"\K[^"]+')
     echo -e "\n\033[1;31m[ ERROR ]\033[0m Key inválida: $ERROR"
