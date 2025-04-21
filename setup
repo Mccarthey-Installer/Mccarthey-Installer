@@ -96,7 +96,7 @@ cat << 'EOF' > /root/menu.sh
 #!/bin/bash
 clear
 
-validar_key() {
+actualizar_key() {
   echo -ne "\nIntroduce nueva MCC-KEY: "
   read NUEVA_KEY
   ENCODED=$(echo "$NUEVA_KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
@@ -104,7 +104,14 @@ validar_key() {
   RESPUESTA=$(curl -s "$URL")
   if [[ "$RESPUESTA" =~ "\"valida\":true" ]]; then
     USR=$(echo "$RESPUESTA" | grep -oP '"username":"\K[^"]+')
-    echo -e "\n\033[1;32m[ OK ]\033[0m Nueva key verificada con éxito: ${USR}"
+    echo -e "\n\033[1;32m[ OK ]\033[0m Key válida. Bienvenido $USR"
+    echo -e "\n\033[1;36m[ ACTUALIZANDO PANEL... ]\033[0m"
+    wget -q -O /root/menu.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/menu.sh
+    chmod +x /root/menu.sh
+    ln -sf /root/menu.sh /usr/bin/menu
+    chmod +x /usr/bin/menu
+    echo -e "\n\033[1;32m[ HECHO ]\033[0m Panel actualizado con éxito. Reinicia con \033[1;33mmenu\033[0m."
+    exit
   else
     ERROR=$(echo "$RESPUESTA" | grep -oP '"motivo":"\K[^"]+')
     echo -e "\n\033[1;31m[ ERROR ]\033[0m Key inválida: $ERROR"
@@ -171,7 +178,7 @@ while true; do
       read -p "Presiona enter para continuar..."
       ;;
     2)
-      validar_key
+      actualizar_key
       ;;
     3)
       echo "Saliendo del panel..."
