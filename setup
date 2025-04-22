@@ -246,7 +246,7 @@ USUARIOS_FILE="/root/usuarios_registrados.txt"
 while true; do
   clear
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-  echo -e "          \e[1;33mPANEL OFICIAL MCCARTHEY\e[0m"
+  echo -e "          \e[1;33m🎁PANEL OFICIAL MCCARTHEY🎉\e[0m"
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
   echo -e " \e[1;35mFECHA       :\e[0m $fecha"
   echo -e " \e[1;35mIP VPS      :\e[0m $ip"
@@ -257,14 +257,14 @@ while true; do
   echo -e " \e[1;32m∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada\e[0m"
   echo -e " \e[1;32m∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache\e[0m"
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-  echo -e " \e[1;33m[1] ➮ CREAR NUEVO USUARIO SSH\e[0m "
-  echo -e " \e[1;33m[2] ➮ ACTUALIZAR MCC-KEY\e[0m "
-  echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m "
-  echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m "
-  echo -e " \e[1;33m[5] ➮ SALIR\e[0m "
-  echo -e " \e[1;33m[6] ➮ COLOCAR PUERTOS\e[0m "
+  echo -e " \e[1;33m[1] ➮🎉 CREAR NUEVO USUARIO SSH\e[0m "
+  echo -e " \e[1;33m[2] ➮♥️ ACTUALIZAR MCC-KEY\e[0m "
+  echo -e " \e[1;33m[3] ➮ 📚USUARIOS REGISTRADOS\e[0m "
+  echo -e " \e[1;33m[4] ➮ 🐾ELIMINAR USUARIOS\e[0m "
+  echo -e " \e[1;33m[5] ➮ 🍭SALIR\e[0m "
+  echo -e " \e[1;33m[6] ➮ 🍕COLOCAR PUERTOS\e[0m "
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-  echo -e -n "\e[1;33m► Elige una opción: \e[0m"
+  echo -e -n "\e[1;33m► 🦧Elige una opción: \e[0m"
   read opc
 
   case $opc in
