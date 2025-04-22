@@ -91,6 +91,45 @@ for paquete in "${PAQUETES[@]}"; do
 done
 
 # PANEL
+if $ENABLE_PANEL; then
+cat << 'EOF' > /root/menu.sh
+#!/bin/bash
+
+validar_key() {
+  echo -e "\n\033[1;34m[ INFO ]\033[0m Descargando la última versión del instalador..."
+  wget -q -O setup https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/setup
+  chmod +x setup
+  echo -e "\033[1;32m[ OK ]\033[0m Script actualizado correctamente."
+  echo -e "\n\033[1;34m[ INFO ]\033[0m Ejecutando el nuevo setup..."
+  ./setup --mccpanel
+  echo -e "\n\033[1;32m[ OK ]\033[0m Actualización completada. Reiniciando el panel..."
+  exec /usr/bin/menu
+}
+
+# Datos del sistema
+fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
+ip=$(hostname -I | awk '{print $1}')
+cpu_model=$(awk -F: '/model name/ {print $2; exit}' /proc/cpuinfo)
+cpus=$(nproc)
+so=$(lsb_release -d | cut -f2)
+
+read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
+cpu_uso=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
+cpu_uso_fmt=$(awk "BEGIN {printf \"%.1f%%\", $cpu_uso}")
+ram_porc=$(awk "BEGIN {printf \"%.2f%%\", ($used/$total)*100}")
+
+if [ "$total" -ge 1024 ]; then
+  ram_total=$(awk "BEGIN {printf \"%.1fG\", $total/1024}")
+  ram_libre=$(awk "BEGIN {printf \"%.1fG\", $available on/1024}")
+else
+  ram_total="${total}M"
+  ram_libre="${available}M"
+fi
+
+ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
+ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
+
+# PANEL
 while true; do
   clear
   echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
@@ -108,37 +147,35 @@ while true; do
   echo -e " [1] ➮ CREAR NUEVO USUARIO SSH"
   echo -e " [2] ➮ ACTUALIZAR MCC-KEY"
   echo -e " [3] ➮ SALIR"
-  echo -e " [4] ➮ USUARIOS REGISTRADOS"
-  echo -e " [5] ➮ ELIMINAR USUARIO(S)"
   echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
   read -p "► Elige una opción: " opc
 
   case $opc in
     1)
-      read -p "Nombre de usuario: " USUARIO
-      read -p "Contraseña: " PASSWORD
-      read -p "Días de validez: " DIAS
+  read -p "Nombre de usuario: " USUARIO
+  read -p "Contraseña: " PASSWORD
+  read -p "Días de validez: " DIAS
 
-      if [[ -z "$USUARIO" || -z "$PASSWORD" || -z "$DIAS" ]]; then
-        echo ""
-        echo -e "\e[1;31mPor favor complete todos los datos.\e[0m"
-        echo ""
-        read -p "Presiona enter para volver al panel principal..."
-        continue
-      fi
+  # Validar que no estén vacíos
+  if [[ -z "$USUARIO" || -z "$PASSWORD" || -z "$DIAS" ]]; then
+    echo ""
+    echo -e "\e[1;31mPor favor complete todos los datos.\e[0m"
+    echo ""
+    read -p "Presiona enter para volver al panel principal..."
+    continue
+  fi
 
-      FECHA_EXPIRACION=$(date -d "$DIAS days" +"%d/ de %B")
-      useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M $USUARIO
-      echo "$USUARIO:$PASSWORD" | chpasswd
-      echo "$USUARIO $PASSWORD $DIAS $FECHA_EXPIRACION" >> /root/.usuarios_mcc.txt
-      echo ""
-      echo "Usuario creado con éxito:"
-      echo ""
-      echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
-      printf "%-12s %-14s %-10s %-15s %-5s\n" "$USUARIO" "$PASSWORD" "1" "$FECHA_EXPIRACION" "$DIAS"
-      echo ""
-      read -p "Presiona enter para continuar..."
-      ;;
+  FECHA_EXPIRACION=$(date -d "$DIAS days" +"%d/ de %B")
+  useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M $USUARIO
+  echo "$USUARIO:$PASSWORD" | chpasswd
+  echo ""
+  echo "Usuario creado con éxito:"
+  echo ""
+  echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
+  printf "%-12s %-14s %-10s %-15s %-5s\n" "$USUARIO" "$PASSWORD" "1" "$FECHA_EXPIRACION" "$DIAS"
+  echo ""
+  read -p "Presiona enter para continuar..."
+  ;;
     2)
       validar_key
       ;;
@@ -146,74 +183,12 @@ while true; do
       echo "Saliendo del panel..."
       exit 0
       ;;
-    4)
-      clear
-      echo -e "\e[1;33mUSUARIOS REGISTRADOS:\e[0m"
-      if [[ ! -s /root/.usuarios_mcc.txt ]]; then
-        echo -e "\e[1;31mLista vacía.\e[0m"
-      else
-        echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
-        while read usr pass dias caduca; do
-          printf "%-12s %-14s %-10s %-15s %-5s\n" "$usr" "$pass" "1" "$caduca" "$dias"
-        done < /root/.usuarios_mcc.txt
-      fi
-      echo ""
-      read -p "Presiona enter para continuar..."
-      ;;
-    5)
-      clear
-      echo -e "\e[1;33mELIMINAR USUARIO(S)\e[0m"
-      echo ""
-      if [[ ! -s /root/.usuarios_mcc.txt ]]; then
-        echo -e "\e[1;31mNo hay usuarios registrados para eliminar.\e[0m"
-        read -p "Presiona enter para volver al panel..."
-        continue
-      fi
-
-      echo -e "[1] ➤ Eliminar UN usuario"
-      echo -e "[2] ➤ Eliminar TODOS los usuarios"
-      echo ""
-      read -p "Elige una opción: " delop
-
-      case $delop in
-        1)
-          echo ""
-          read -p "Nombre del usuario a eliminar: " USERDEL
-          if id "$USERDEL" &>/dev/null; then
-            userdel -f "$USERDEL"
-            sed -i "/^$USERDEL /d" /root/.usuarios_mcc.txt
-            echo -e "\e[1;32mUsuario '$USERDEL' eliminado correctamente.\e[0m"
-          else
-            echo -e "\e[1;31mEl usuario '$USERDEL' no existe.\e[0m"
-          fi
-          ;;
-        2)
-          read -p "¿Estás seguro de eliminar TODOS los usuarios? (s/n): " CONFIRMAR
-          if [[ "$CONFIRMAR" == "s" || "$CONFIRMAR" == "S" ]]; then
-            while read usr _; do
-              userdel -f "$usr" &>/dev/null
-            done < /root/.usuarios_mcc.txt
-            > /root/.usuarios_mcc.txt
-            echo -e "\e[1;32mTodos los usuarios han sido eliminados.\e[0m"
-          else
-            echo -e "\e[1;33mCancelado.\e[0m"
-          fi
-          ;;
-        *)
-          echo -e "\e[1;31mOpción inválida.\e[0m"
-          ;;
-      esac
-
-      echo ""
-      read -p "Presiona enter para volver al panel..."
-      ;;
     *)
       echo "Opción no válida."
       sleep 2
       ;;
   esac
 done
-
 EOF
 
 chmod +x /root/menu.sh
@@ -222,6 +197,7 @@ chmod +x /usr/bin/menu
 
 echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
 echo "Ejecuta \033[1;33mmenu\033[0m para acceder."
+fi
 
 # FINAL
 echo -e "\n\033[1;32m==============================================\033[0m"
