@@ -479,20 +479,32 @@ while true; do
                   echo -e -n "\e[1;33mPuerto a usar: \e[0m"
                   read selected_port
 
-                  # Validar puerto seleccionado
+                  # Validar que el puerto no esté vacío
+                  if [ -z "$selected_port" ]; then
+                    clear
+                    echo -e "\e[1;31mEl puerto no puede estar vacío. Por favor ingrese un puerto.\e[0m"
+                    read -p "Presiona enter para continuar..."
+                    continue
+                  fi
+
+                  # Validar puerto seleccionado (solo 90 o 444)
                   if [ "$selected_port" != "444" ] && [ "$selected_port" != "90" ]; then
                     clear
                     echo -e "\e[1;31mPor favor selecciona el puerto 444 o 90.\e[0m"
                     read -p "Presiona enter para continuar..."
-                  else
-                    # Verificar si el puerto seleccionado está disponible
-                    if ss -tuln | grep -q ":$selected_port "; then
-                      clear
-                      echo -e "\e[1;31mEl puerto $selected_port ya está en uso.\e[0m"
-                      read -p "Presiona enter para continuar..."
-                    else
-                      # Configurar Dropbear sobrescribiendo /etc/default/dropbear completamente
-                      cat << EOF > /etc/default/dropbear
+                    continue
+                  fi
+
+                  # Verificar si el puerto seleccionado está disponible
+                  if ss -tuln | grep -q ":$selected_port "; then
+                    clear
+                    echo -e "\e[1;31mEl puerto $selected_port ya está en uso.\e[0m"
+                    read -p "Presiona enter para continuar..."
+                    continue
+                  fi
+
+                  # Configurar Dropbear sobrescribiendo /etc/default/dropbear completamente
+                  cat << EOF > /etc/default/dropbear
 # Configuración para Dropbear
 NO_START=0
 DROPBEAR_PORT=$selected_port
@@ -501,25 +513,23 @@ DROPBEAR_BANNER=""
 DROPBEAR_RECEIVE_WINDOW=65536
 EOF
 
-                      # Habilitar y arrancar Dropbear
-                      systemctl enable dropbear &>/dev/null
-                      systemctl start dropbear &>/dev/null
+                  # Habilitar y arrancar Dropbear
+                  systemctl enable dropbear &>/dev/null
+                  systemctl start dropbear &>/dev/null
 
-                      # Verificar que Dropbear esté corriendo
-                      if systemctl is-active --quiet dropbear && ss -tuln | grep -q ":$selected_port "; then
-                        echo "$selected_port" > "$DROPBEAR_PORT_FILE"
-                        ufw allow "$selected_port" &>/dev/null
-                        clear
-                        echo -e "\e[1;32mDropbear activado en el puerto $selected_port.\e[0m"
-                      else
-                        clear
-                        echo -e "\e[1;31mError: No se pudo iniciar Dropbear en el puerto $selected_port.\e[0m"
-                        journalctl -u dropbear -n 10 --no-pager
-                      fi
-                      read -p "Presiona enter para continuar..."
-                      break
-                    fi
+                  # Verificar que Dropbear esté corriendo
+                  if systemctl is-active --quiet dropbear && ss -tuln | grep -q ":$selected_port "; then
+                    echo "$selected_port" > "$DROPBEAR_PORT_FILE"
+                    ufw allow "$selected_port" &>/dev/null
+                    clear
+                    echo -e "\e[1;32mDropbear activado en el puerto $selected_port.\e[0m"
+                  else
+                    clear
+                    echo -e "\e[1;31mError: No se pudo iniciar Dropbear en el puerto $selected_port.\e[0m"
+                    journalctl -u dropbear -n 10 --no-pager
                   fi
+                  read -p "Presiona enter para continuar..."
+                  break
                 elif [ "$dropbear_install_opc" == "2" ]; then
                   break
                 else
