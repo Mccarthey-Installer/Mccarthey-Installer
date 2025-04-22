@@ -241,7 +241,7 @@ USUARIOS_FILE="/root/usuarios_registrados.txt"
 while true; do
   clear
   echo -e "\e[1;36m---------------------------------------------------\e[0m"
-  echo -e "          \e[1;33m❤️PANEL OFICIAL MCCARTHEY🐾\e[0m"
+  echo -e "          \e[1;33m❤️PANE OFICIAL MCCARTHEY🐾\e[0m"
   echo -e "\e[1;36m---------------------------------------------------\e[0m"
   echo -e " \e[1;35mFECHA       :\e[0m $fecha"
   echo -e " \e[1;35mIP VPS      :\e[0m $ip"
