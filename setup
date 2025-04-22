@@ -10,29 +10,17 @@
 #       McCarthey Installer v1.2
 # ================================
 
-# Procesar argumentos
+# ARGUMENTOS
 ENABLE_PANEL=false
-ENABLE_PROXY=false
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    --mccpanel)
-      ENABLE_PANEL=true
-      shift
-      ;;
-    --proxy)
-      ENABLE_PROXY=true
-      shift
-      ;;
-    *)
-      echo -e "\e[1;31m[ ERROR ]\033[0m Argumento desconocido: $1"
-      exit 1
-      ;;
-  esac
+for arg in "$@"; do
+    if [[ "$arg" == "--mccpanel" ]]; then
+        ENABLE_PANEL=true
+    fi
 done
 
 # OBTENER MCC-KEY
 KEY="$1"
-if [[ "$KEY" == "--mccpanel" || "$KEY" == "--proxy" ]]; then
+if [[ "$KEY" == "--mccpanel" ]]; then
     KEY=""
 fi
 
@@ -80,13 +68,13 @@ if command -v needrestart >/dev/null; then
     needrestart -r a
 fi
 
-apt install -y curl unzip wget ufw certbot python3-certbot-nginx build-essential cmake pkg-config
+apt install -y curl unzip wget
 
 # INSTALACIÓN DE PAQUETES
 PAQUETES=(
   bsdmainutils screen nginx nload htop python3 python3-pip
   nodejs npm lsof psmisc socat bc net-tools cowsay
-  nmap jq iptables openssh-server dropbear
+  nmap jq iptables
 )
 
 echo -e "\n\033[1;33m==============================================\033[0m"
@@ -101,133 +89,6 @@ for paquete in "${PAQUETES[@]}"; do
         echo -e "\033[1;31m[ FAIL ]\033[0m Error al instalar: ${paquete^^}"
     fi
 done
-
-# Instalar badvpn-udpgw manualmente
-echo -e "\n\033[1;33m[ INFO ]\033[0m Instalando badvpn-udpgw..."
-if ! command -v badvpn-udpgw >/dev/null; then
-    wget -q https://github.com/ambrop72/badvpn/archive/refs/tags/1.999.130.tar.gz
-    tar -xzf 1.999.130.tar.gz
-    cd badvpn-1.999.130
-    mkdir build
-    cd build
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr
-    make
-    make install
-    cd ../..
-    rm -rf badvpn-1.999.130 1.999.130.tar.gz
-    if command -v badvpn-udpgw >/dev/null; then
-        echo -e "\033[1;32m[ OK ]\033[0m Instalación correcta: BADVPN-UDPGW"
-    else
-        echo -e "\033[1;31m[ FAIL ]\033[0m Error al instalar: BADVPN-UDPGW"
-    fi
-else
-    echo -e "\033[1;32m[ OK ]\033[0m BADVPN-UDPGW ya está instalado"
-fi
-
-# Configurar OpenSSH por defecto
-systemctl enable ssh
-systemctl start ssh
-ufw allow 22
-
-# Guardar el estado de ENABLE_PROXY
-echo "ENABLE_PROXY=$ENABLE_PROXY" > /root/proxy_config.txt
-
-# Crear el script proxy.py (solo si --proxy está habilitado)
-if $ENABLE_PROXY; then
-    # Instalar dependencias para proxy.py (websockets)
-    echo -e "\n\033[1;36m[ INFO ]\033[0m Instalando dependencias para el proxy..."
-    apt install -y python3 python3-pip
-    pip3 install websockets
-
-    # Crear el script proxy.py
-    echo -e "\n\033[1;36m[ INFO ]\033[0m Creando el script proxy.py..."
-    cat << 'EOT' > /root/proxy.py
-import asyncio
-import websockets
-import socket
-import threading
-import sys
-
-# Proxy HTTP básico
-def handle_http_client(client_socket, address):
-    try:
-        request = client_socket.recv(1024).decode()
-        print(f"[INFO] Conexión HTTP desde {address}: {request.splitlines()[0]}")
-        response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"
-        client_socket.send(response.encode())
-        print(f"[INFO] Conexión HTTP establecida con {address}")
-        while True:
-            data = client_socket.recv(1024)
-            if not data:
-                break
-            print(f"[INFO] Datos recibidos: {data}")
-            client_socket.send(data)
-    except Exception as e:
-        print(f"[ERROR] Error manejando cliente HTTP {address}: {e}")
-    finally:
-        client_socket.close()
-        print(f"[INFO] Conexión HTTP con {address} cerrada")
-
-# Proxy WebSocket
-async def handle_websocket(websocket, path):
-    print(f"[INFO] WebSocket conectado: {path}")
-    try:
-        async for message in websocket:
-            print(f"[INFO] Mensaje WebSocket recibido: {message}")
-            await websocket.send(message)
-    except Exception as e:
-        print(f"[ERROR] Error en WebSocket: {e}")
-    finally:
-        print(f"[INFO] WebSocket desconectado")
-
-def start_websocket_server(port):
-    try:
-        server = websockets.serve(handle_websocket, "0.0.0.0", port)
-        asyncio.get_event_loop().run_until_complete(server)
-        print(f"[INFO] Servidor WebSocket escuchando en puerto {port}...")
-        asyncio.get_event_loop().run_forever()
-    except Exception as e:
-        print(f"[ERROR] No se pudo iniciar el servidor WebSocket: {e}")
-        sys.exit(1)
-
-def start_http_server(port):
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    try:
-        server.bind(("0.0.0.0", port))
-        server.listen(5)
-        print(f"[INFO] Servidor HTTP escuchando en puerto {port}...")
-    except Exception as e:
-        print(f"[ERROR] No se pudo iniciar el servidor HTTP: {e}")
-        sys.exit(1)
-    while True:
-        try:
-            client_socket, address = server.accept()
-            client_thread = threading.Thread(target=handle_http_client, args=(client_socket, address))
-            client_thread.start()
-        except KeyboardInterrupt:
-            print("\n[INFO] Apagando el servidor HTTP...")
-            server.close()
-            break
-        except Exception as e:
-            print(f"[ERROR] Error aceptando conexión HTTP: {e}")
-
-def main():
-    if len(sys.argv) != 2:
-        print("Uso: python3 proxy.py <puerto>")
-        sys.exit(1)
-    port = int(sys.argv[1])
-    websocket_thread = threading.Thread(target=start_websocket_server, args=(port,))
-    websocket_thread.start()
-    start_http_server(port)
-
-if __name__ == "__main__":
-    main()
-EOT
-
-    chmod +x /root/proxy.py
-    echo -e "\033[1;32m[ OK ]\033[0m Script proxy.py creado correctamente."
-fi
 
 # PANEL
 if $ENABLE_PANEL; then
@@ -244,9 +105,6 @@ validar_key() {
   echo -e "\n\033[1;32m[ OK ]\033[0m Actualización completada. Reiniciando el panel..."
   exec /usr/bin/menu
 }
-
-# Cargar el estado de ENABLE_PROXY
-source /root/proxy_config.txt
 
 # Datos del sistema
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
@@ -274,57 +132,13 @@ ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 # Archivo para almacenar usuarios
 USUARIOS_FILE="/root/usuarios_registrados.txt"
 
-# Archivo para almacenar estado de puertos
-PUERTOS_FILE="/root/puertos_configurados.txt"
-
-# Verificar estado de servicios
-check_openssh() {
-  if systemctl is-active --quiet ssh; then
-    echo "✔"
-  else
-    echo "✘"
-  fi
-}
-
-check_dropbear() {
-  if systemctl is-active --quiet dropbear; then
-    echo "✔"
-  else
-    echo "✘"
-  fi
-}
-
-check_ssl() {
-  if [ -f "/etc/letsencrypt/live/$DOMINIO/fullchain.pem" ]; then
-    echo "✔"
-  else
-    echo "✘"
-  fi
-}
-
-check_socks() {
-  if systemctl is-active --quiet socks-python; then
-    echo "✔"
-  else
-    echo "✘"
-  fi
-}
-
-check_badvpn() {
-  if systemctl is-active --quiet badvpn-udpgw; then
-    echo "✔"
-  else
-    echo "✘"
-  fi
-}
-
 # PANEL
 while true; do
   clear
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
   echo -e "          \e[1;33mPANEL OFICIAL MCCARTHEY\e[0m"
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-  echo -e " \e[1;35mFECHA       :\e[0m $fecha"
+  echo -e " \e[1;35mFECHA       :\e[0m $  $fecha"
   echo -e " \e[1;35mIP VPS      :\e[0m $ip"
   echo -e " \e[1;35mCPU's       :\e[0m $cpus"
   echo -e " \e[1;35mMODELO CPU  :\e[0m $cpu_model"
@@ -338,7 +152,6 @@ while true; do
   echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m "
   echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m "
   echo -e " \e[1;33m[5] ➮ SALIR\e[0m "
-  echo -e " \e[1;33m[6] ➮ ACTIVANDO PUERTOS\e[0m "
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
   echo -e -n "\e[1;33m► Elige una opción: \e[0m"
   read opc
@@ -529,154 +342,6 @@ while true; do
       echo -e "\e[1;33mSaliendo del panel...\e[0m"
       exit 0
       ;;
-    6)
-      clear
-      echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-      echo -e "          \e[1;33mACTIVANDO PUERTOS\e[0m"
-      echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-      echo -e " \e[1;33m[1] OpenSSH (22) [$(check_openssh)]\e[0m"
-      echo -e " \e[1;33m[2] Dropbear [$(check_dropbear)]\e[0m"
-      echo -e " \e[1;33m[3] SSL/TLS [$(check_ssl)]\e[0m"
-      echo -e " \e[1;33m[4] Socks Python Directo (WS) [$(check_socks)]\e[0m"
-      echo -e " \e[1;33m[5] BadVPN [$(check_badvpn)]\e[0m"
-      echo -e " \e[1;33m[6] Volver al panel principal\e[0m"
-      echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-      echo -e -n "\e[1;33m► Elige una opción: \e[0m"
-      read port_opc
-
-      case $port_opc in
-        1)
-          echo -e "\e[1;33mOpenSSH está activo por defecto (puerto 22).\e[0m"
-          systemctl enable ssh
-          systemctl start ssh
-          ufw allow 22
-          echo -e "\e[1;32mOpenSSH verificado y activo.\e[0m"
-          read -p "Presiona enter para continuar..."
-          ;;
-        2)
-          read -p "Ingrese el puerto para Dropbear (ej. 443): " DROPBEAR_PORT
-          if ! [[ "$DROPBEAR_PORT" =~ ^[0-9]+$ ]] || [ "$DROPBEAR_PORT" -lt 1 ] || [ "$DROPBEAR_PORT" -gt 65535 ]; then
-            echo -e "\e[1;31mPuerto inválido. Debe ser un número entre 1 y 65535.\e[0m"
-            read -p "Presiona enter para continuar..."
-            continue
-          fi
-          # Configurar Dropbear
-          sed -i "s/PORT=.*$/PORT=$DROPBEAR_PORT/" /etc/default/dropbear
-          systemctl enable dropbear
-          systemctl start dropbear
-          ufw allow $DROPBEAR_PORT
-          echo "DROPBEAR_PORT=$DROPBEAR_PORT" > "$PUERTOS_FILE"
-          echo -e "\e[1;32mDropbear activado en el puerto $DROPBEAR_PORT.\e[0m"
-          read -p "Presiona enter para continuar..."
-          ;;
-        3)
-          read -p "Ingrese el dominio (ej. vpn.tudominio.com): " DOMINIO
-          read -p "Ingrese el puerto local (ej. 22): " LOCAL_PORT
-          read -p "Ingrese el puerto SSL (ej. 443): " SSL_PORT
-          if ! [[ "$LOCAL_PORT" =~ ^[0-9]+$ ]] || ! [[ "$SSL_PORT" =~ ^[0-9]+$ ]]; then
-            echo -e "\e[1;31mPuertos inválidos. Deben ser números.\e[0m"
-            read -p "Presiona enter para continuar..."
-            continue
-          fi
-          # Generar certificado SSL con certbot
-          certbot --nginx -d "$DOMINIO" --non-interactive --agree-tos --email admin@$DOMINIO
-          # Configurar stunnel o similar para SSL/TLS
-          cat << EOT > /etc/stunnel/stunnel.conf
-[ssh]
-accept = $SSL_PORT
-connect = 127.0.0.1:$LOCAL_PORT
-cert = /etc/letsencrypt/live/$DOMINIO/fullchain.pem
-key = /etc/letsencrypt/live/$DOMINIO/privkey.pem
-EOT
-          systemctl enable stunnel4
-          systemctl start stunnel4
-          ufw allow $SSL_PORT
-          echo "SSL_PORT=$SSL_PORT" >> "$PUERTOS_FILE"
-          echo -e "\e[1;32mSSL/TLS configurado para $DOMINIO en puerto $SSL_PORT.\e[0m"
-          read -p "Presiona enter para continuar..."
-          ;;
-        4)
-          if [ "$ENABLE_PROXY" != "true" ]; then
-            echo -e "\e[1;31m[ ERROR ] Proxy no habilitado. Usa './setup --mccpanel --proxy' para activarlo.\e[0m"
-            read -p "Presiona enter para continuar..."
-            continue
-          fi
-          if ! systemctl is-active --quiet dropbear; then
-            echo -e "\e[1;31mDropbear debe estar activo primero.\e[0m"
-            read -p "Presiona enter para continuar..."
-            continue
-          fi
-          DROPBEAR_PORT=$(grep "DROPBEAR_PORT" "$PUERTOS_FILE" | cut -d'=' -f2)
-          read -p "Ingrese el puerto adicional para Socks (ej. 101): " SOCKS_PORT
-          if ! [[ "$SOCKS_PORT" =~ ^[0-9]+$ ]] || [ "$SOCKS_PORT" -lt 1 ] || [ "$SOCKS_PORT" -gt 65535 ]; then
-            echo -e "\e[1;31mPuerto inválido. Debe ser un número entre 1 y 65535.\e[0m"
-            read -p "Presiona enter para continuar..."
-            continue
-          fi
-          # Configurar el proxy Socks Python
-          cat << EOT > /etc/systemd/system/socks-python.service
-[Unit]
-Description=Socks Python Proxy Service
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /root/proxy.py $SOCKS_PORT
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOT
-          systemctl daemon-reload
-          systemctl enable socks-python
-          systemctl start socks-python
-          ufw allow 80
-          ufw allow $DROPBEAR_PORT
-          ufw allow $SOCKS_PORT
-          echo "SOCKS_PORT=$SOCKS_PORT" >> "$PUERTOS_FILE"
-          echo -e "\e[1;32mSocks Python activado en puerto $SOCKS_PORT.\e[0m"
-          read -p "Presiona enter para continuar..."
-          ;;
-        5)
-          if ! command -v badvpn-udpgw >/dev/null; then
-            echo -e "\e[1;31mBadVPN no está instalado. Por favor, instálalo primero.\e[0m"
-            read -p "Presiona enter para continuar..."
-            continue
-          fi
-          read -p "Ingrese el puerto para BadVPN (ej. 7300): " BADVPN_PORT
-          if ! [[ "$BADVPN_PORT" =~ ^[0-9]+$ ]] || [ "$BADVPN_PORT" -lt 1 ] || [ "$BADVPN_PORT" -gt 65535 ]; then
-            echo -e "\e[1;31mPuerto inválido. Debe ser un número entre 1 y 65535.\e[0m"
-            read -p "Presiona enter para continuar..."
-            continue
-          fi
-          # Configurar BadVPN
-          cat << EOT > /etc/systemd/system/badvpn-udpgw.service
-[Unit]
-Description=BadVPN UDP Gateway
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:$BADVPN_PORT
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-EOT
-          systemctl enable badvpn-udpgw
-          systemctl start badvpn-udpgw
-          ufw allow $BADVPN_PORT
-          echo "BADVPN_PORT=$BADVPN_PORT" >> "$PUERTOS_FILE"
-          echo -e "\e[1;32mBadVPN activado en puerto $BADVPN_PORT.\e[0m"
-          read -p "Presiona enter para continuar..."
-          ;;
-        6)
-          continue
-          ;;
-        *)
-          echo -e "\e[1;31mOpción no válida.\e[0m"
-          read -p "Presiona enter para continuar..."
-          ;;
-      esac
-      ;;
     *)
       echo -e "\e[1;31mOpción no válida.\e[0m"
       sleep 2
@@ -685,17 +350,9 @@ EOT
 done
 EOF
 
-# Verificar que el archivo menu.sh se generó correctamente
-if [ -s /root/menu.sh ]; then
-    chmod +x /root/menu.sh
-    ln -sf /root/menu.sh /usr/bin/menu
-    chmod +x /usr/bin/menu
-    echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
-    echo "Ejecuta \033[1;33mmenu\033[0m para acceder."
-else
-    echo -e "\n\033[1;31m[ ERROR ]\033[0m Fallo al generar /root/menu.sh. Verifica el script."
-    exit 1
-fi
+chmod +x /root/menu.sh
+ln -sf /root/menu.sh /usr/bin/menu
+chmod +x /usr/bin/menu
 
 # Configurar inicio automático del panel al iniciar sesión
 echo -e "\n\033[1;36m[ CONFIG ]\033[0m Configurando inicio automático del panel..."
@@ -706,7 +363,9 @@ else
     echo -e "\033[1;33m[ INFO ]\033[0m Inicio automático ya estaba configurado."
 fi
 
-fi # Cierre del if $ENABLE_PANEL
+echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
+echo "Ejecuta \033[1;33mmenu\033[0m para acceder."
+fi
 
 # FINAL
 echo -e "\n\033[1;36m==============================================\033[0m"
