@@ -10,17 +10,29 @@
 #       McCarthey Installer v1.2
 # ================================
 
-# ARGUMENTOS
+# Procesar argumentos
 ENABLE_PANEL=false
-for arg in "$@"; do
-    if [[ "$arg" == "--mccpanel" ]]; then
-        ENABLE_PANEL=true
-    fi
+ENABLE_PROXY=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --mccpanel)
+      ENABLE_PANEL=true
+      shift
+      ;;
+    --proxy)
+      ENABLE_PROXY=true
+      shift
+      ;;
+    *)
+      echo -e "\e[1;31m[ ERROR ]\033[0m Argumento desconocido: $1"
+      exit 1
+      ;;
+  esac
 done
 
 # OBTENER MCC-KEY
 KEY="$1"
-if [[ "$KEY" == "--mccpanel" ]]; then
+if [[ "$KEY" == "--mccpanel" || "$KEY" == "--proxy" ]]; then
     KEY=""
 fi
 
@@ -117,6 +129,106 @@ systemctl enable ssh
 systemctl start ssh
 ufw allow 22
 
+# Guardar el estado de ENABLE_PROXY
+echo "ENABLE_PROXY=$ENABLE_PROXY" > /root/proxy_config.txt
+
+# Crear el script proxy.py (solo si --proxy está habilitado)
+if $ENABLE_PROXY; then
+    # Instalar dependencias para proxy.py (websockets)
+    echo -e "\n\033[1;36m[ INFO ]\033[0m Instalando dependencias para el proxy..."
+    apt install -y python3 python3-pip
+    pip3 install websockets
+
+    # Crear el script proxy.py
+    echo -e "\n\033[1;36m[ INFO ]\033[0m Creando el script proxy.py..."
+    cat << 'EOT' > /root/proxy.py
+import asyncio
+import websockets
+import socket
+import threading
+import sys
+
+# Proxy HTTP básico
+def handle_http_client(client_socket, address):
+    try:
+        request = client_socket.recv(1024).decode()
+        print(f"[INFO] Conexión HTTP desde {address}: {request.splitlines()[0]}")
+        response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"
+        client_socket.send(response.encode())
+        print(f"[INFO] Conexión HTTP establecida con {address}")
+        while True:
+            data = client_socket.recv(1024)
+            if not data:
+                break
+            print(f"[INFO] Datos recibidos: {data}")
+            client_socket.send(data)
+    except Exception as e:
+        print(f"[ERROR] Error manejando cliente HTTP {address}: {e}")
+    finally:
+        client_socket.close()
+        print(f"[INFO] Conexión HTTP con {address} cerrada")
+
+# Proxy WebSocket
+async def handle_websocket(websocket, path):
+    print(f"[INFO] WebSocket conectado: {path}")
+    try:
+        async for message in websocket:
+            print(f"[INFO] Mensaje WebSocket recibido: {message}")
+            await websocket.send(message)
+    except Exception as e:
+        print(f"[ERROR] Error en WebSocket: {e}")
+    finally:
+        print(f"[INFO] WebSocket desconectado")
+
+def start_websocket_server(port):
+    try:
+        server = websockets.serve(handle_websocket, "0.0.0.0", port)
+        asyncio.get_event_loop().run_until_complete(server)
+        print(f"[INFO] Servidor WebSocket escuchando en puerto {port}...")
+        asyncio.get_event_loop().run_forever()
+    except Exception as e:
+        print(f"[ERROR] No se pudo iniciar el servidor WebSocket: {e}")
+        sys.exit(1)
+
+def start_http_server(port):
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        server.bind(("0.0.0.0", port))
+        server.listen(5)
+        print(f"[INFO] Servidor HTTP escuchando en puerto {port}...")
+    except Exception as e:
+        print(f"[ERROR] No se pudo iniciar el servidor HTTP: {e}")
+        sys.exit(1)
+    while True:
+        try:
+            client_socket, address = server.accept()
+            client_thread = threading.Thread(target=handle_http_client, args=(client_socket, address))
+            client_thread.start()
+        except KeyboardInterrupt:
+            print("\n[INFO] Apagando el servidor HTTP...")
+            server.close()
+            break
+        except Exception as e:
+            print(f"[ERROR] Error aceptando conexión HTTP: {e}")
+
+def main():
+    if len(sys.argv) != 2:
+        print("Uso: python3 proxy.py <puerto>")
+        sys.exit(1)
+    port = int(sys.argv[1])
+    websocket_thread = threading.Thread(target=start_websocket_server, args=(port,))
+    websocket_thread.start()
+    start_http_server(port)
+
+if __name__ == "__main__":
+    main()
+EOT
+
+    chmod +x /root/proxy.py
+    echo -e "\033[1;32m[ OK ]\033[0m Script proxy.py creado correctamente."
+fi
+
 # PANEL
 if $ENABLE_PANEL; then
 cat << 'EOF' > /root/menu.sh
@@ -132,6 +244,9 @@ validar_key() {
   echo -e "\n\033[1;32m[ OK ]\033[0m Actualización completada. Reiniciando el panel..."
   exec /usr/bin/menu
 }
+
+# Cargar el estado de ENABLE_PROXY
+source /root/proxy_config.txt
 
 # Datos del sistema
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
@@ -481,6 +596,11 @@ EOT
           read -p "Presiona enter para continuar..."
           ;;
         4)
+          if [ "$ENABLE_PROXY" != "true" ]; then
+            echo -e "\e[1;31m[ ERROR ] Proxy no habilitado. Usa './setup --mccpanel --proxy' para activarlo.\e[0m"
+            read -p "Presiona enter para continuar..."
+            continue
+          fi
           if ! systemctl is-active --quiet dropbear; then
             echo -e "\e[1;31mDropbear debe estar activo primero.\e[0m"
             read -p "Presiona enter para continuar..."
@@ -493,13 +613,27 @@ EOT
             read -p "Presiona enter para continuar..."
             continue
           fi
-          # Configurar Socks Python (placeholder, necesita script real)
+          # Configurar el proxy Socks Python
+          cat << EOT > /etc/systemd/system/socks-python.service
+[Unit]
+Description=Socks Python Proxy Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /root/proxy.py $SOCKS_PORT
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOT
+          systemctl daemon-reload
+          systemctl enable socks-python
+          systemctl start socks-python
           ufw allow 80
           ufw allow $DROPBEAR_PORT
           ufw allow $SOCKS_PORT
-          # Placeholder para Socks Python
-          echo -e "\e[1;33m[ INFO ]\033[0m Socks Python requiere un script personalizado."
-          echo -e "\e[1;32mPuertos 80, $DROPBEAR_PORT y $SOCKS_PORT abiertos.\e[0m"
+          echo "SOCKS_PORT=$SOCKS_PORT" >> "$PUERTOS_FILE"
+          echo -e "\e[1;32mSocks Python activado en puerto $SOCKS_PORT.\e[0m"
           read -p "Presiona enter para continuar..."
           ;;
         5)
