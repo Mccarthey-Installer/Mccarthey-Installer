@@ -68,7 +68,7 @@ if command -v needrestart >/dev/null; then
     needrestart -r a
 fi
 
-apt install -y curl unzip wget ufw certbot python3-certbot-nginx build-essential cmake
+apt install -y curl unzip wget ufw certbot python3-certbot-nginx build-essential cmake pkg-config
 
 # INSTALACIÓN DE PAQUETES
 PAQUETES=(
@@ -571,6 +571,8 @@ if ! grep -q "/usr/bin/menu" /root/.bashrc; then
 else
     echo -e "\033[1;33m[ INFO ]\033[0m Inicio automático ya estaba configurado."
 fi
+
+fi # Cierre del if $ENABLE_PANEL
 
 # FINAL
 echo -e "\n\033[1;36m==============================================\033[0m"
