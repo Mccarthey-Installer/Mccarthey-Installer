@@ -159,12 +159,31 @@ while true; do
     1)
       read -p "Nombre de usuario: " USUARIO
       read -p "Contraseña: " PASSWORD
+      read -p "Límite de conexiones: " LIMITE
       read -p "Días de validez: " DIAS
 
       # Validar que no estén vacíos
-      if [[ -z "$USUARIO" || -z "$PASSWORD" || -z "$DIAS" ]]; then
+      if [[ -z "$USUARIO" || -z "$PASSWORD" || -z "$LIMITE" || -z "$DIAS" ]]; then
         echo ""
         echo -e "\e[1;31mPor favor complete todos los datos.\e[0m"
+        echo ""
+        read -p "Presiona enter para volver al panel principal..."
+        continue
+      fi
+
+      # Validar que el límite sea un número positivo
+      if ! [[ "$LIMITE" =~ ^[0-9]+$ ]] || [ "$LIMITE" -lt 1 ]; then
+        echo ""
+        echo -e "\e[1;31mEl límite de conexiones debe ser un número positivo.\e[0m"
+        echo ""
+        read -p "Presiona enter para volver al panel principal..."
+        continue
+      fi
+
+      # Validar que los días sean un número positivo
+      if ! [[ "$DIAS" =~ ^[0-9]+$ ]] || [ "$DIAS" -lt 1 ]; then
+        echo ""
+        echo -e "\e[1;31mLos días de validez deben ser un número positivo.\e[0m"
         echo ""
         read -p "Presiona enter para volver al panel principal..."
         continue
@@ -184,13 +203,13 @@ while true; do
       echo "$USUARIO:$PASSWORD" | chpasswd
 
       # Guardar usuario en el archivo
-      echo "$USUARIO:$PASSWORD:1:$FECHA_EXPIRACION:$DIAS" >> "$USUARIOS_FILE"
+      echo "$USUARIO:$PASSWORD:$LIMITE:$FECHA_EXPIRACION:$DIAS" >> "$USUARIOS_FILE"
 
       echo ""
       echo "Usuario creado con éxito:"
       echo ""
       echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
-      printf "%-12s %-14s %-10s %-15s %-5s\n" "$USUARIO" "$PASSWORD" "1" "$FECHA_EXPIRACION" "$DIAS"
+      printf "%-12s %-14s %-10s %-15s %-5s\n" "$USUARIO" "$PASSWORD" "$LIMITE" "$FECHA_EXPIRACION" "$DIAS"
       echo ""
       read -p "Presiona enter para continuar..."
       ;;
@@ -217,6 +236,16 @@ while true; do
       clear
       echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
       echo -e "          \e[1mELIMINAR USUARIOS\e[0m"
+      echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+      # Mostrar lista de usuarios registrados
+      if [[ -s "$USUARIOS_FILE" ]]; then
+        echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
+        while IFS=: read -r usuario password limite caduca dias; do
+          printf "%-12s %-14s %-10s %-15s %-5s\n" "$usuario" "$password" "$limite" "$caduca" "$dias"
+        done < "$USUARIOS_FILE"
+      else
+        echo -e "\e[1;31mLista vacía. No hay usuarios registrados.\e[0m"
+      fi
       echo -e "\e[1;32m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
       echo -e "[1] Eliminar un usuario específico"
       echo -e "[2] Eliminar todos los usuarios"
