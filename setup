@@ -153,7 +153,8 @@ while true; do
   echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m"
   echo -e " \e[1;33m[5] ➮ SALIR\e[0m"
   echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-  read -p "► \e[1;33mElige una opción: \e[0m" opc
+  echo -e -n "\e[1;33m► Elige una opción: \e[0m"
+  read opc
 
   case $opc in
     1)
@@ -273,14 +274,15 @@ while true; do
           echo -e "\e[1;31mLista vacía. No hay usuarios registrados.\e[0m"
         fi
       else
-        echo -e "\e[1;31mLista vacía. No hay usuarios registrados.\e[0m"
+        echo -e "\e[1;  Lista vacía. No hay usuarios registrados.\e[0m"
       fi
       echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
       echo -e "\e[1;33m[1] Eliminar un usuario específico\e[0m"
       echo -e "\e[1;33m[2] Eliminar todos los usuarios\e[0m"
       echo -e "\e[1;33m[3] Volver al panel principal\e[0m"
       echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-      read -p "► \e[1;33mElige una opción: \e[0m" del_opc
+      echo -e -n "\e[1;33m► Elige una opción: \e[0m"
+      read del_opc
 
       case $del_opc in
         1)
