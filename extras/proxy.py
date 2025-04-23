@@ -13,17 +13,9 @@ def cargar_puertos():
         with open('/etc/mccproxy_ports') as f:
             return [int(p.strip()) for p in f.read().replace(',', ' ').split()]
     except:
-        return [8080]  # Puerto por defecto cambiado a 8080 para evitar conflictos con nginx
-
-def cargar_puerto_response():
-    try:
-        with open('/etc/mccproxy_response') as f:
-            return int(f.read().strip())
-    except:
-        return 101  # Por defecto
+        return [8080]  # Puerto por defecto
 
 LISTEN_PORTS = cargar_puertos()
-RESPONSE_PORT = cargar_puerto_response()
 DESTINATION_HOST = '127.0.0.1'
 DESTINATION_PORT = 444  # Dropbear u otro
 
@@ -42,13 +34,11 @@ def handle_client(client_socket):
             client_socket.close()
             return
 
-        # Si es puerto response, responder handshake y cerrar
-        client_port = client_socket.getsockname()[1]
-        if client_port == RESPONSE_PORT:
-            logging.info(f"[HANDSHAKE] WebSocket response enviado en puerto {RESPONSE_PORT}")
+        # Detectar y responder handshake WebSocket sin cerrar conexión
+        if b'Upgrade: websocket' in request:
+            logging.info(f"[HANDSHAKE] WebSocket detectado")
             client_socket.sendall(WS_HANDSHAKE.encode())
-            client_socket.close()
-            return
+            # No se cierra el socket
 
         # Redirigir tráfico al destino (Dropbear)
         remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -88,5 +78,5 @@ def start_proxy(port):
         logging.error(f"Error al iniciar proxy en puerto {port}: {e}")
 
 if __name__ == '__main__':
-    for port in LISTEN_PORTS + [RESPONSE_PORT]:
+    for port in LISTEN_PORTS:
         threading.Thread(target=start_proxy, args=(port,)).start()
