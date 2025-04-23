@@ -51,8 +51,22 @@ fi
 ENCODED_KEY=$(echo "$KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
 VALIDATOR_URL="http://172.235.128.99:9393/validate/$ENCODED_KEY"
 
+# Mejorar validación con reintentos
 echo -e "\n\033[1;34m[ INFO ]\033[0m Verificando KEY con el servidor..."
-RESPONSE=$(curl -s "$VALIDATOR_URL")
+for attempt in {1..3}; do
+    RESPONSE=$(curl -s --connect-timeout 5 "$VALIDATOR_URL")
+    if [ $? -eq 0 ]; then
+        break
+    fi
+    echo -e "\033[1;33m[ WARN ]\033[0m Intento $attempt falló. Reintentando..."
+    sleep 2
+done
+
+if [ -z "$RESPONSE" ]; then
+    echo -e "\n\033[1;31m[ ERROR ]\033[0m No se pudo contactar al servidor de validación."
+    exit 1
+fi
+
 VALIDO=$(echo "$RESPONSE" | grep -o '"valida":true')
 
 if [ -z "$VALIDO" ]; then
@@ -81,7 +95,7 @@ apt install -y curl unzip wget
 PAQUETES=(
   bsdmainutils screen nload htop python3 python3-pip
   nodejs npm lsof psmisc socat bc net-tools cowsay
-  nmap jq iptables 
+  nmap jq iptables openssh-server dropbear
 )
 
 echo -e "\n\033[1;33m==============================================\033[0m"
@@ -89,11 +103,13 @@ echo -e "\033[1;33m          INSTALANDO PAQUETES NECESARIOS        \033[0m"
 echo -e "\033[1;33m==============================================\033[0m"
 
 for paquete in "${PAQUETES[@]}"; do
-    apt install -y "$paquete" &>/dev/null
-    if dpkg -s "$paquete" &>/dev/null; then
+    echo -e "\033[1;34m[ INFO ]\033[0m Instalando $paquete..."
+    if ! apt install -y "$paquete"; then
+        echo -e "\033[1;31m[ FAIL ]\033[0m Error al instalar: ${paquete^^}"
+    elif dpkg -s "$paquete" &>/dev/null; then
         echo -e "\033[1;32m[ OK ]\033[0m Instalación correcta: ${paquete^^}"
     else
-        echo -e "\033[1;31m[ FAIL ]\033[0m Error al instalar: ${paquete^^}"
+        echo -e "\033[1;31m[ FAIL ]\033[0m Error al verificar: ${paquete^^}"
     fi
 done
 
@@ -134,7 +150,7 @@ if $ENABLE_PROXY; then
     # Instalar Dropbear si no está instalado
     if ! dpkg -s dropbear &>/dev/null; then
         echo -e "\n[+] Instalando Dropbear..."
-        apt install dropbear -y > /dev/null 2>&1
+        apt install dropbear -y
         if dpkg -s dropbear &>/dev/null; then
             echo -e "\033[1;32m[ OK ]\033[0m Dropbear instalado correctamente."
         else
@@ -177,7 +193,7 @@ if $ENABLE_PROXY; then
 
     # Instalar screen si no está instalado
     if ! dpkg -s screen &>/dev/null; then
-        apt install screen -y > /dev/null 2>&1
+        apt install screen -y
         if dpkg -s screen &>/dev/null; then
             echo -e "\033[1;32m[ OK ] Screen instalado correctamente.\033[0m"
         else
@@ -193,8 +209,16 @@ if $ENABLE_PROXY; then
 
     # Verificar si el puerto del proxy está disponible
     if ss -tuln | grep -q ":$PROXY_PORT "; then
-        echo -e "\033[1;31m[ ERROR ] El puerto $PROXY_PORT ya está en uso. Por favor libera el puerto.\033[0m"
-        exit 1
+        echo -e "\033[1;31m[ ERROR ] El puerto $PROXY_PORT ya está en uso."
+        echo -e "\033[1;34m[ INFO ] Intentando liberar el puerto $PROXY_PORT...\033[0m"
+        fuser -k "$PROXY_PORT"/tcp &>/dev/null
+        sleep 2
+        if ! ss -tuln | grep -q ":$PROXY_PORT "; then
+            echo -e "\033[1;32m[ OK ] Puerto $PROXY_PORT liberado.\033[0m"
+        else
+            echo -e "\033[1;31m[ FAIL ] No se pudo liberar el puerto $PROXY_PORT.\033[0m"
+            exit 1
+        fi
     fi
 
     echo -e "\n[+] Iniciando Proxy en puerto $PROXY_PORT -> $TARGET_PORT (WS $RESPONSE)"
@@ -475,6 +499,8 @@ while true; do
       echo -e "\e[1;33m      Configura el proxy para redirigir al puerto Dropbear.\e[0m"
       echo -e "\e[1;32m[3] ➮ Verificar Estado de Puertos\e[0m"
       echo -e "\e[1;33m      Revisa si Dropbear y el proxy están activos.\e[0m"
+      echo -e "\e[1;32m[4] ➮ Detener Proxy WS/Directo\e[0m"
+      echo -e "\e[1;33m      Para el proxy si está corriendo.\e[0m"
       echo -e "\e[1;31m[0] ➮ Volver al Menú Principal\e[0m"
       echo -e "\e[1;36m----------------------------------------------\e[0m"
       echo -e -n "\e[1;35m🎯 Elige tu opción: \e[0m"
@@ -485,7 +511,7 @@ while true; do
           # Verificar si Dropbear ya está instalado
           if ! dpkg -s dropbear &>/dev/null; then
             echo -e "\n\e[1;34m🔧 Instalando Dropbear...\e[0m"
-            apt install dropbear -y > /dev/null 2>&1
+            apt install dropbear -y
             if dpkg -s dropbear &>/dev/null; then
               echo -e "\e[1;32m[✓] Dropbear instalado correctamente.\e[0m"
             else
@@ -512,6 +538,8 @@ while true; do
           else
             echo -e "\e[1;31m[✗] Error: No se pudo iniciar Dropbear en el puerto 444.\e[0m"
             journalctl -u dropbear -n 10 --no-pager
+            read -p "Presiona enter para continuar..."
+            continue
           fi
           read -p "Presiona enter para continuar..."
           continue
@@ -541,7 +569,7 @@ while true; do
 
           # Instalar screen si no está instalado
           if ! dpkg -s screen &>/dev/null; then
-            apt install screen -y > /dev/null 2>&1
+            apt install screen -y
             if dpkg -s screen &>/dev/null; then
               echo -e "\e[1;32m[✓] Screen instalado correctamente.\e[0m"
             else
@@ -553,7 +581,7 @@ while true; do
 
           # Solicitar puertos y respuesta
           echo -e "\e[1;33m⚙️ Configura tu Proxy WS/Directo:\e[0m"
-          read -p "Puerto del Proxy (Ej: 80): " proxy_port
+          read -p "Puerto del Proxy (Ej: 8080): " proxy_port
           read -p "Puerto destino (Dropbear, Ej: 444): " target_port
           read -p "Response (Ej: 101 para WS): " response
 
@@ -579,6 +607,8 @@ while true; do
             echo -e "\e[1;32m[✓] Proxy WS/Directo activo en puerto $proxy_port\e[0m"
           else
             echo -e "\e[1;31m[✗] Error: No se pudo iniciar el Proxy.\e[0m"
+            read -p "Presiona enter para continuar..."
+            continue
           fi
           read -p "Presiona enter para continuar..."
           continue
@@ -593,13 +623,25 @@ while true; do
           else
             echo -e "\e[1;31m[✗] No activo en puerto 444.\e[0m"
           fi
-          echo -e "\e[1;33m🌐 Estado de Proxy WS/Directo (Puerto 80):\e[0m"
-          if screen -list | grep -q "proxy" && ss -tuln | grep -q ":80 "; then
-            echo -e "\e[1;32m[✓] Activo y escuchando en puerto 80.\e[0m"
+          echo -e "\e[1;33m🌐 Estado de Proxy WS/Directo (Puerto 8080):\e[0m"
+          if screen -list | grep -q "proxy" && ss -tuln | grep -q ":8080 "; then
+            echo -e "\e[1;32m[✓] Activo y escuchando en puerto 8080.\e[0m"
           else
-            echo -e "\e[1;31m[✗] No activo en puerto 80.\e[0m"
+            echo -e "\e[1;31m[✗] No activo en puerto 8080.\e[0m"
           fi
           echo -e "\e[1;36m----------------------------------------------\e[0m"
+          read -p "Presiona enter para continuar..."
+          continue
+          ;;
+        4)
+          # Detener proxy
+          echo -e "\n\e[1;34m🔧 Deteniendo Proxy WS/Directo...\e[0m"
+          if screen -list | grep -q "proxy"; then
+            screen -X -S proxy quit &>/dev/null
+            echo -e "\e[1;32m[✓] Proxy detenido correctamente.\e[0m"
+          else
+            echo -e "\e[1;31m[✗] No hay proxy corriendo.\e[0m"
+          fi
           read -p "Presiona enter para continuar..."
           continue
           ;;
@@ -612,6 +654,14 @@ while true; do
           ;;
       esac
       ;;
+    *)
+      echo -e "\e[1;31mOpción no válida.\e[0m"
+      sleep 2
+      ;;
+  esac
+done
+EOF
+
 chmod +x /root/menu.sh
 ln -sf /root/menu.sh /usr/bin/menu
 chmod +x /usr/bin/menu
