@@ -1,152 +1,92 @@
-#!/usr/bin/env python3
-# proxy.py - Proxy TCP con soporte para WebSocket y handshake SSH seguro
-
 import socket
 import threading
-import sys
+import select
 import logging
-import signal
-import time
-from typing import Tuple, Optional
+import os
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("proxy.log")
-    ]
+# Configuración de logging
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
+
+# Cargar puertos desde archivos externos
+def cargar_puertos():
+    try:
+        with open('/etc/mccproxy_ports') as f:
+            return [int(p.strip()) for p in f.read().replace(',', ' ').split()]
+    except:
+        return [8080]  # Puerto por defecto cambiado a 8080 para evitar conflictos con nginx
+
+def cargar_puerto_response():
+    try:
+        with open('/etc/mccproxy_response') as f:
+            return int(f.read().strip())
+    except:
+        return 101  # Por defecto
+
+LISTEN_PORTS = cargar_puertos()
+RESPONSE_PORT = cargar_puerto_response()
+DESTINATION_HOST = '127.0.0.1'
+DESTINATION_PORT = 444  # Dropbear u otro
+
+# Encabezado WebSocket para handshake
+WS_HANDSHAKE = (
+    "HTTP/1.1 101 Switching Protocols\r\n"
+    "Upgrade: websocket\r\n"
+    "Connection: Upgrade\r\n"
+    "Sec-WebSocket-Accept: dummykey==\r\n\r\n"
 )
-logger = logging.getLogger(__name__)
 
-class ProxyConfig:
-    def __init__(self, listen_port: int, target_port: int, response_code: str):
-        self.listen_host = "0.0.0.0"
-        self.target_host = "127.0.0.1"
-        self.listen_port = listen_port
-        self.target_port = target_port
-        self.response_code = response_code
-        self.backlog = 100
-        self.buffer_size = 4096
-        self.timeout = 10
+def handle_client(client_socket):
+    try:
+        request = client_socket.recv(1024)
+        if not request:
+            client_socket.close()
+            return
 
-class ProxyServer:
-    def __init__(self, config: ProxyConfig):
-        self.config = config
-        self.server_socket: Optional[socket.socket] = None
-        self.running = False
+        # Si es puerto response, responder handshake y cerrar
+        client_port = client_socket.getsockname()[1]
+        if client_port == RESPONSE_PORT:
+            logging.info(f"[HANDSHAKE] WebSocket response enviado en puerto {RESPONSE_PORT}")
+            client_socket.sendall(WS_HANDSHAKE.encode())
+            client_socket.close()
+            return
 
-    def validate_config(self) -> None:
-        if not (1 <= self.config.listen_port <= 65535):
-            raise ValueError("Puerto de escucha inválido.")
-        if not (1 <= self.config.target_port <= 65535):
-            raise ValueError("Puerto destino inválido.")
-        if self.config.response_code not in ["101", "none"]:
-            raise ValueError("Código de respuesta inválido. Usa '101' o 'none'.")
+        # Redirigir tráfico al destino (Dropbear)
+        remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        remote_socket.connect((DESTINATION_HOST, DESTINATION_PORT))
 
-    def setup_socket(self) -> None:
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.settimeout(self.config.timeout)
-        self.server_socket.bind((self.config.listen_host, self.config.listen_port))
-        self.server_socket.listen(self.config.backlog)
-        logger.info(f"Proxy en {self.config.listen_host}:{self.config.listen_port} -> {self.config.target_host}:{self.config.target_port} (res: {self.config.response_code})")
-
-    def handle_client(self, client_sock: socket.socket, addr: Tuple[str, int]) -> None:
-        logger.info(f"Conexión entrante: {addr[0]}:{addr[1]}")
-        client_sock.settimeout(self.config.timeout)
-
-        try:
-            data = client_sock.recv(self.config.buffer_size)
-            if not data:
-                client_sock.close()
-                return
-
-            target_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            target_sock.settimeout(self.config.timeout)
-            target_sock.connect((self.config.target_host, self.config.target_port))
-
-            # Enviar respuesta WebSocket si se requiere
-            if self.config.response_code == "101":
-                response = (
-                    "HTTP/1.1 101 Switching Protocols\r\n"
-                    "Upgrade: websocket\r\n"
-                    "Connection: Upgrade\r\n"
-                    "\r\n"
-                )
-                client_sock.send(response.encode())
-                logger.debug("Enviada respuesta WebSocket")
-
-            # Esperar el banner del servidor SSH
-            ssh_banner = target_sock.recv(self.config.buffer_size)
-            client_sock.send(ssh_banner)
-
-            # Ahora enviar datos del cliente
-            target_sock.send(data)
-
-            threading.Thread(target=self.pipe, args=(client_sock, target_sock)).start()
-            threading.Thread(target=self.pipe, args=(target_sock, client_sock)).start()
-
-        except Exception as e:
-            logger.error(f"Error con {addr[0]}:{addr[1]}: {e}", exc_info=True)
-            client_sock.close()
-
-    def pipe(self, src: socket.socket, dst: socket.socket) -> None:
-        try:
-            while self.running:
-                data = src.recv(self.config.buffer_size)
+        sockets = [client_socket, remote_socket]
+        while True:
+            read_sockets, _, _ = select.select(sockets, [], [])
+            for sock in read_sockets:
+                data = sock.recv(4096)
                 if not data:
-                    break
-                dst.send(data)
+                    client_socket.close()
+                    remote_socket.close()
+                    return
+                if sock is client_socket:
+                    remote_socket.sendall(data)
+                else:
+                    client_socket.sendall(data)
+    except Exception as e:
+        logging.error(f"Error manejando cliente: {e}")
+        try:
+            client_socket.close()
         except:
             pass
-        finally:
-            src.close()
-            dst.close()
 
-    def start(self) -> None:
-        self.running = True
-        self.setup_socket()
-        try:
-            while self.running:
-                try:
-                    client_sock, addr = self.server_socket.accept()
-                    threading.Thread(target=self.handle_client, args=(client_sock, addr)).start()
-                except socket.timeout:
-                    continue
-        finally:
-            self.shutdown()
-
-    def shutdown(self) -> None:
-        self.running = False
-        if self.server_socket:
-            self.server_socket.close()
-            logger.info("Proxy detenido.")
-
-def parse_arguments() -> ProxyConfig:
-    if len(sys.argv) < 4:
-        print("Uso: python3 proxy.py <puerto_proxy> <puerto_destino> <response_code>")
-        sys.exit(1)
-    return ProxyConfig(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3])
-
-def main():
-    proxy = None
-    def signal_handler(sig, frame):
-        if proxy:
-            proxy.shutdown()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
+def start_proxy(port):
     try:
-        config = parse_arguments()
-        proxy = ProxyServer(config)
-        proxy.validate_config()
-        proxy.start()
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('0.0.0.0', port))
+        server.listen(100)
+        logging.info(f"[PROXY] Escuchando en puerto {port}")
+        while True:
+            client_socket, addr = server.accept()
+            threading.Thread(target=handle_client, args=(client_socket,)).start()
     except Exception as e:
-        logger.error(f"Fallo al iniciar el proxy: {e}", exc_info=True)
-        sys.exit(1)
+        logging.error(f"Error al iniciar proxy en puerto {port}: {e}")
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    for port in LISTEN_PORTS + [RESPONSE_PORT]:
+        threading.Thread(target=start_proxy, args=(port,)).start()
