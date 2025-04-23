@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ================================
-#      McCarthey Installer v1.4
+#      McCarthey Installer v1.5
 # ================================
 
 # ARGUMENTOS
@@ -83,6 +83,45 @@ for paquete in "${PAQUETES[@]}"; do
         echo -e "\033[1;31m[ FAIL ]\033[0m Error al instalar: ${paquete^^}"
     fi
 done
+
+# CONFIGURAR NGINX EN PUERTO 81
+echo -e "\n\033[1;33m==============================================\033[0m"
+echo -e "\033[1;33m          CONFIGURANDO NGINX (PUERTO 81)       \033[0m"
+echo -e "\033[1;33m==============================================\033[0m"
+
+# Asegurarse de que nginx no esté ocupando el puerto 80
+systemctl stop nginx &>/dev/null
+
+# Modificar la configuración de nginx para usar el puerto 81
+NGINX_CONF="/etc/nginx/sites-available/default"
+if [ -f "$NGINX_CONF" ]; then
+    sed -i 's/listen 80 default_server/listen 81 default_server/' "$NGINX_CONF"
+    sed -i 's/listen \[::\]:80 default_server/listen \[::\]:81 default_server/' "$NGINX_CONF"
+    echo -e "\033[1;32m[ OK ]\033[0m Configuración de nginx actualizada para el puerto 81."
+else
+    echo -e "\033[1;31m[ FAIL ]\033[0m No se encontró el archivo de configuración $NGINX_CONF."
+    exit 1
+fi
+
+# Reiniciar nginx
+systemctl enable nginx &>/dev/null
+systemctl restart nginx &>/dev/null
+
+if ss -tuln | grep -q ":81 "; then
+    echo -e "\033[1;32m[ OK ]\033[0m Nginx está activo en el puerto 81."
+else
+    echo -e "\033[1;31m[ FAIL ]\033[0m No se pudo iniciar nginx en el puerto 81."
+    journalctl -u nginx -n 10 --no-pager
+    exit 1
+fi
+
+# Asegurarse de que el puerto 80 esté libre
+if ss -tuln | grep -q ":80 "; then
+    echo -e "\033[1;31m[ WARNING ]\033[0m El puerto 80 sigue en uso. Verificando..."
+    lsof -i :80
+    echo -e "\033[1;33m[ SUGERENCIA ] Detén manualmente el proceso que usa el puerto 80 y vuelve a ejecutar el script.\033[0m"
+    exit 1
+fi
 
 # CONFIGURAR OPENSSH EN PUERTO 22
 echo -e "\n\033[1;33m==============================================\033[0m"
