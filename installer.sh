@@ -19,6 +19,17 @@ setup_menu_command
 # Función para validar la MCC-KEY y actualizar el repositorio
 validar_key() {
     echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando el repositorio actualizado..."
+    # Instalar git si no está presente
+    if ! command -v git >/dev/null 2>&1; then
+        echo -e "\033[1;36m[ INFO ] Instalando git...\033[0m"
+        apt update -y && apt install git -y >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo -e "\033[1;31m[ ERROR ] No se pudo instalar git.\033[0m"
+            read -p "Presiona enter para continuar..."
+            return 1
+        fi
+    fi
+
     # Crear un directorio temporal para el repositorio
     TEMP_DIR=$(mktemp -d)
     if ! git clone https://github.com/Mccarthey-Installer/Mccarthey-Installer.git "$TEMP_DIR"; then
@@ -33,6 +44,7 @@ validar_key() {
     if [ -f "$TEMP_DIR/installer.sh" ]; then
         cp "$TEMP_DIR/installer.sh" ./installer.sh
         chmod +x ./installer.sh
+        echo -e "\033[1;96m[ OK ] installer.sh actualizado.\033[0m"
     else
         echo -e "\033[1;31m[ ERROR ] installer.sh no encontrado en el repositorio.\033[0m"
         rm -rf "$TEMP_DIR"
@@ -45,6 +57,7 @@ validar_key() {
         chmod +x /root/menu.sh
         ln -sf /root/menu.sh /usr/bin/menu
         chmod +x /usr/bin/menu
+        echo -e "\033[1;96m[ OK ] menu.sh actualizado.\033[0m"
     else
         echo -e "\033[1;33m[ WARN ] menu.sh no encontrado en el repositorio. Manteniendo el actual.\033[0m"
     fi
@@ -53,13 +66,16 @@ validar_key() {
         mkdir -p /etc/mccproxy
         cp "$TEMP_DIR/etc/mccproxy/proxy.py" /etc/mccproxy/proxy.py
         chmod +x /etc/mccproxy/proxy.py
+        echo -e "\033[1;96m[ OK ] proxy.py actualizado.\033[0m"
     else
         echo -e "\033[1;33m[ WARN ] proxy.py no encontrado en el repositorio. Intentando descargar directamente...\033[0m"
+        mkdir -p /etc/mccproxy
         wget -q -O /etc/mccproxy/proxy.py https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/etc/mccproxy/proxy.py
         if [ $? -ne 0 ] || [ ! -s /etc/mccproxy/proxy.py ]; then
             echo -e "\033[1;31m[ ERROR ] No se pudo descargar proxy.py.\033[0m"
         else
             chmod +x /etc/mccproxy/proxy.py
+            echo -e "\033[1;96m[ OK ] proxy.py descargado directamente.\033[0m"
         fi
     fi
 
@@ -547,7 +563,7 @@ while true; do
                         fi
                     fi
                     echo -e "\e[1;33m⚙️ Configura tu Proxy WS/Directo:\e[0m"
-                    read -p "Puertos de escucha (ejemplo: 8080,443, separar con coma o espacio): " proxy_ports
+                    read -p "Puertos de escucha offices(ejemplo: 8080,443, separar con coma o espacio): " proxy_ports
                     if [[ -z "$proxy_ports" ]]; then
                         echo -e "\e[1;31m[✗] Debes especificar al menos un puerto.\e[0m"
                         read -p "Presiona enter para continuar..."
