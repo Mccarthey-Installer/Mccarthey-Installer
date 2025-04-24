@@ -1,29 +1,7 @@
 #!/bin/bash
 
-# ================================
-# ███╗   ███╗ ██████╗ ██████╗ ███████╗
-# ████╗ ████║██╔═══██╗██╔══██╗██╔════╝
-# ██╔████╔██║██║   ██║██████╔╝█████╗  
-# ██║╚██╔╝██║██║   ██║██╔═══╝ ██╔══╝  
-# ██║ ╚═╝ ██║╚██████╔╝██║     ███████╗
-# ╚═╝     ╚═╝ ╚═════╝ ╚═╝     ╚══════╝
-#       McCarthey Installer v1.4
-# ================================
-
-# [Sección del script sin cambios hasta el panel...]
-
-# PANEL
-if $ENABLE_PANEL; then
-    echo -e "\n\033[1;33m==============================================\033[0m"
-    echo -e "\033[1;33m      INSTALANDO PANEL MCCARTHEY               \033[0m"
-    echo -e "\033[1;33m==============================================\033[0m"
-
-    cat << 'EOF' > /root/menu.sh
-#!/bin/bash
-
 validar_key() {
     echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando la última versión del instalador..."
-    # Descargar el script principal (ajusta el nombre si es diferente)
     wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh
     if [ $? -ne 0 ]; then
         echo -e "\033[1;31m[ ERROR ] No se pudo descargar el script actualizado.\033[0m"
@@ -33,11 +11,9 @@ validar_key() {
     chmod +x installer.sh
     echo -e "\033[1;96m[ OK ] Script actualizado correctamente.\033[0m"
     
-    # Solicitar nueva MCC-KEY
     echo -e "\n\033[1;36m[ INFO ] Ingresa tu nueva MCC-KEY:\033[0m"
     read -p "> " NEW_KEY
     
-    # Ejecutar el script actualizado con la nueva MCC-KEY y los argumentos originales
     echo -e "\n\033[1;36m[ INFO ] Ejecutando el script actualizado...\033[0m"
     ./installer.sh --mccpanel --proxy "$NEW_KEY"
     if [ $? -ne 0 ]; then
@@ -50,60 +26,10 @@ validar_key() {
     exec /usr/bin/menu
 }
 
-# Función para formatear el tiempo en HH:MM:SS
-format_time() {
-    local seconds=$1
-    local hours=$((seconds / 3600))
-    local minutes=$(( (seconds % 3600) / 60 ))
-    local secs=$((seconds % 60))
-    printf "%02d:%02d:%02d" $hours $minutes $secs
-}
-
 # Datos del sistema
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
 ip=$(hostname -I | awk '{print $1}')
-cpus=$(nproc)
 so=$(lsb_release -d | cut -f2)
-
-# Determinar saludo según la hora
-hour=$(TZ=America/El_Salvador date +%H)
-if [ $hour -ge 0 -a $hour -lt 12 ]; then
-    saludo="Buenos días 🌞"
-elif [ $hour -ge 12 -a $hour -lt 19 ]; then
-    saludo="Buenas tardes ☀️"
-else
-    saludo="Buenas Noches 🌙"
-fi
-
-# Archivo para almacenar usuarios y logs
-USUARIOS_FILE="/root/usuarios_registrados.txt"
-MULTI_ONLINES_LOG="/root/multi_onlines.log"
-DEBUG_LOG="/root/debug_conexiones.log"
-
-# Crear el archivo de log si no existe
-touch "$MULTI_ONLINES_LOG"
-touch "$DEBUG_LOG"
-
-# Contar usuarios registrados
-if [[ -s "$USUARIOS_FILE" ]]; then
-    usuarios_registrados=$(grep -c "^[^:]*:" "$USUARIOS_FILE")
-else
-    usuarios_registrados=0
-fi
-
-# Contar dispositivos conectados SOLO de usuarios registrados
-devices_online=0
-if [[ -s "$USUARIOS_FILE" ]]; then
-    while IFS=: read -r usuario password limite caduca dias; do
-        if id "$usuario" >/dev/null 2>&1; then
-            # Contar conexiones usando ps para procesos de dropbear
-            conexiones=$(ps -u "$usuario" | grep -c "dropbear")
-            if [ "$conexiones" -gt 0 ]; then
-                devices_online=$((devices_online + conexiones))
-            fi
-        fi
-    done < "$USUARIOS_FILE"
-fi
 
 read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
 cpu_uso=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
@@ -121,31 +47,84 @@ fi
 ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
 ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 
+# Determinar saludo según la hora
+hora=$(date +%H)
+if [ "$hora" -ge 5 ] && [ "$hora" -lt 12 ]; then
+    saludo="Buenos días 🌞"
+elif [ "$hora" -ge 12 ] && [ "$hora" -lt 18 ]; then
+    saludo="Buenas tardes"
+else
+    saludo="Buenas noches 🌙"
+fi
+
+# Archivo para almacenar usuarios
+USUARIOS_FILE="/root/usuarios_registrados.txt"
+
+# Contar usuarios registrados
+if [[ -s "$USUARIOS_FILE" ]]; then
+    usuarios_registrados=$(wc -l < "$USUARIOS_FILE")
+else
+    usuarios_registrados=0
+fi
+
+# Función para contar dispositivos conectados
+contar_dispositivos() {
+    total_conexiones=0
+    while IFS=: read -r usuario _ limite _ _; do
+        conexiones=$(pgrep -u "$usuario" | wc -l)
+        ((total_conexiones += conexiones))
+    done < "$USUARIOS_FILE"
+    echo "$total_conexiones"
+}
+
+# Contar dispositivos conectados totales
+dispositivos_on=$(contar_dispositivos)
+
+# Archivo para log de conexiones múltiples
+MULTI_LOG="/root/multi_onlines.log"
+
+# Función para verificar y bloquear/desbloquear usuarios según límite
+verificar_limites() {
+    > "$MULTI_LOG"
+    while IFS=: read -r usuario _ limite _ _; do
+        conexiones=$(pgrep -u "$usuario" | wc -l)
+        if [ "$conexiones" -gt "$limite" ]; then
+            pkill -u "$usuario"
+            echo "$(date): Usuario $usuario bloqueado por exceder límite ($conexiones/$limite)" >> "$MULTI_LOG"
+        elif [ "$conexiones" -gt 0 ] && ! id -u "$usuario" >/dev/null 2>&1; then
+            useradd -M -s /bin/false "$usuario"
+            echo "$(date): Usuario $usuario desbloqueado (conexiones: $conexiones/$limite)" >> "$MULTI_LOG"
+        fi
+    done < "$USUARIOS_FILE"
+}
+
+# Ejecutar verificación de límites
+verificar_limites
+
 # PANEL
 while true; do
     clear
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e "          \e[1;33mPANEL 💗OFICIAL MCCARTHEY💕\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e "\e[1;35m$saludo\e[0m"
+    echo -e " \e[1;35m$saludo\e[0m"
     echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
     echo -e " \e[1;35mIP VPS      :\e[0m \e[1;93m$ip\e[0m"
-    echo -e " \e[1;35mCPU's       :\e[0m \e[1;93m$cpus\e[0m"
-    echo -e " \e[1;91mDISPOSITIVOS ON:\e[0m \e[1;91m$devices_online onlines.\e[0m"
-    echo -e " \e[1;35mS.O         :\e[0m \e[1;93m$so\e[0m"
+    echo -e " \e[1;35mDISPOSITIVOS ON:\e[0m \e[1;31m$dispositivos_on onlines\e[0m"
     echo -e " \e[1;35mUsuarios registrados:\e[0m \e[1;93m$usuarios_registrados\e[0m"
+    echo -e " \e[1;35mS.O         :\e[0m \e[1;93m$so\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e " \e[1;96m∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada\e[0m"
     echo -e " \e[1;96m∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e " \e[1;33m[1] ➮ CREAR NUEVO USUARIO SSH\e[0m"
-    echo -e " \e[1;33m[2] ➮ ACTUALIZAR MCC-KEY\e[0m"
-    echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m"
-    echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m"
-    echo -e " \e[1;33m[5] ➮ SALIR\e[0m"
-    echo -e " \e[1;33m[6] 💕 ➮ COLOCAR PUERTOS\e[0m"
-    echo -e " \e[1;33m[7] 💕 ➮ VER DISPOSITIVOS ONLINE\e[0m"
-    echo -e " \e[1;33m[8] 💕 ➮ VER MULTI ONLINES\e[0m"
+    echo -e " \e[1;33m[1] ➮ CREAR NUEVO USUARIO SSH\e[0m "
+    echo -e " \e[1;33m[2] ➮ ACTUALIZAR MCC-KEY\e[0m "
+    echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m "
+    echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m "
+    echo -e " \e[1;33m[5] ➮ SALIR\e[0m "
+    echo -e " \e[1;33m[6] 💕 ➮ COLOCAR PUERTOS\e[0m "
+    echo -e " \e[1;33m[7] 💕 ➮ VER DISPOSITIVOS ONLINE\e[0m "
+    echo -e " \e[1;33m[8] 💕 ➮ VER MULTI ONLINES\e[0m "
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e -n "\e[1;33m► 🌞Elige una opción: \e[0m"
     read opc
@@ -413,10 +392,8 @@ while true; do
                         continue
                     fi
 
-                    # Guardar configuración de puertos
                     echo "$proxy_ports" | tr ',' ' ' > /etc/mccproxy_ports
 
-                    # Verificar si los puertos están disponibles
                     for port in $(echo "$proxy_ports" | tr ',' ' '); do
                         if ss -tuln | grep -q ":$port "; then
                             echo -e "\e[1;31m[✗] El puerto $port ya está en uso.\e[0m"
@@ -521,72 +498,31 @@ while true; do
             echo -e "          \e[1;33mDISPOSITIVOS ONLINE\e[0m"
             echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
             if [[ -s "$USUARIOS_FILE" ]]; then
-                echo -e "\e[1;35m$(printf '%-5s %-12s %-14s %-12s' '' 'USUARIO' 'CONEXIONES' 'TIEMPO HH:MM:SS')\e[0m"
-                contador=0
-                current_time=$(date +%s)
-                # Debug: Guardar salida de who y ps para inspeccionar
-                echo "===== Debug $(date) =====" >> "$DEBUG_LOG"
-                who >> "$DEBUG_LOG"
-                echo "----- Procesos Dropbear -----" >> "$DEBUG_LOG"
-                ps -ef | grep dropbear >> "$DEBUG_LOG"
-                echo "-----------------------------" >> "$DEBUG_LOG"
-
-                while IFS=: read -r usuario password limite caduca dias; do
-                    if id "$usuario" >/dev/null 2>&1; then
-                        # Contar conexiones usando ps para procesos de dropbear
-                        conexiones=$(ps -u "$usuario" | grep -c "dropbear")
-                        # Si tiene conexiones, calcular el tiempo online
-                        if [ "$conexiones" -gt 0 ]; then
-                            ((contador++))
-                            # Obtener el proceso más antiguo de dropbear para calcular el tiempo online
-                            oldest_pid=$(ps -u "$usuario" -o pid,etime | grep "dropbear" | head -n 1 | awk '{print $1}')
-                            if [ -n "$oldest_pid" ]; then
-                                # Obtener el tiempo transcurrido del proceso (en formato [DD-]HH:MM:SS)
-                                etime=$(ps -p "$oldest_pid" -o etime | tail -n 1 | tr -d ' ')
-                                # Convertir etime a segundos
-                                if [[ "$etime" =~ ([0-9]+)-([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
-                                    days=${BASH_REMATCH[1]}
-                                    hours=${BASH_REMATCH[2]}
-                                    minutes=${BASH_REMATCH[3]}
-                                    seconds=${BASH_REMATCH[4]}
-                                    time_online=$(( (days * 86400) + (hours * 3600) + (minutes * 60) + seconds ))
-                                elif [[ "$etime" =~ ([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
-                                    hours=${BASH_REMATCH[1]}
-                                    minutes=${BASH_REMATCH[2]}
-                                    seconds=${BASH_REMATCH[3]}
-                                    time_online=$(( (hours * 3600) + (minutes * 60) + seconds ))
-                                elif [[ "$etime" =~ ([0-9]{2}):([0-9]{2}) ]]; then
-                                    minutes=${BASH_REMATCH[1]}
-                                    seconds=${BASH_REMATCH[2]}
-                                    time_online=$(( (minutes * 60) + seconds ))
-                                else
-                                    time_online=0
-                                fi
-                                time_formatted=$(format_time $time_online)
+                echo -e "\e[1;35m$(printf '%-12s %-14s %-15s' 'USUARIO' 'CONEXIONES' 'TIEMPO HH:MM:SS')\e[0m"
+                online_found=false
+                while IFS=: read -r usuario _ limite _ _; do
+                    conexiones=$(pgrep -u "$usuario" | wc -l)
+                    if [ "$conexiones" -gt 0 ]; then
+                        online_found=true
+                        # Obtener tiempo de la primera conexión activa
+                        pid=$(pgrep -u "$usuario" | head -n 1)
+                        if [ -n "$pid" ]; then
+                            start_time=$(ps -p "$pid" -o etime= | tr -d ' ')
+                            if [[ "$start_time" =~ ([0-9]+)-([0-9]{2}:[0-9]{2}:[0-9]{2}) ]]; then
+                                days=${BASH_REMATCH[1]}
+                                time=${BASH_REMATCH[2]}
+                                tiempo="$days-$time"
                             else
-                                time_formatted="00:00:00"
+                                tiempo="$start_time"
                             fi
-                            # Mostrar usuario con conexiones
-                            printf "[%-3s]%-12s [%s/%s]    %s\n" "$contador" "$usuario" "$conexiones" "$limite" "$time_formatted"
+                        else
+                            tiempo="00:00:00"
                         fi
-
-                        # Verificar si el usuario excede su límite
-                        if [ "$conexiones" -gt "$limite" ]; then
-                            # Bloquear usuario
-                            pkill -u "$usuario" 2>/dev/null
-                            passwd -l "$usuario" 2>/dev/null
-                            # Registrar en el log de multi onlines
-                            echo "[$contador]-$usuario [$conexiones/$limite] $fecha" >> "$MULTI_ONLINES_LOG"
-                        elif [ "$conexiones" -gt 0 ] && [ "$conexiones" -le "$limite" ]; then
-                            # Desbloquear usuario si está dentro del límite
-                            passwd -u "$usuario" 2>/dev/null
-                        fi
-                    else
-                        sed -i "/^$usuario:/d" "$USUARIOS_FILE"
+                        printf "[%-10s] [%-12s] %-15s\n" "$usuario" "$conexiones/$limite" "$tiempo"
                     fi
                 done < "$USUARIOS_FILE"
-                if [ "$contador" -eq 0 ]; then
-                    echo -e "\e[1;31mNo hay usuarios conectados en este momento.\e[0m"
+                if ! $online_found; then
+                    echo -e "\e[1;31mNo hay usuarios conectados.\e[0m"
                 fi
             else
                 echo -e "\e[1;31mNo hay usuarios registrados.\e[0m"
@@ -597,13 +533,12 @@ while true; do
         8)
             clear
             echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            echo -e "          \e[1;33mMULTI ONLINES (EXCESOS)\e[0m"
+            echo -e "          \e[1;33mREGISTRO DE MULTI ONLINES\e[0m"
             echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            if [[ -s "$MULTI_ONLINES_LOG" ]]; then
-                echo -e "\e[1;35m$(printf '%-5s %-12s %-14s %-30s' '' 'USUARIO' 'CONEXIONES' 'FECHA - HORA')\e[0m"
-                cat "$MULTI_ONLINES_LOG"
+            if [[ -s "$MULTI_LOG" ]]; then
+                cat "$MULTI_LOG"
             else
-                echo -e "\e[1;31mNo hay usuarios que hayan excedido su límite.\e[0m"
+                echo -e "\e[1;31mNo hay registros de conexiones múltiples.\e[0m"
             fi
             echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
             read -p "Presiona enter para volver al panel principal..."
@@ -614,28 +549,3 @@ while true; do
             ;;
     esac
 done
-EOF
-
-    chmod +x /root/menu.sh
-    ln -sf /root/menu.sh /usr/bin/menu
-    chmod +x /usr/bin/menu
-
-    # Configurar inicio automático del panel al iniciar sesión
-    echo -e "\n\033[1;36m[ CONFIG ]\033[0m Configurando inicio automático del panel..."
-    if ! grep -q "/usr/bin/menu" /root/.bashrc; then
-        echo "[ -f /usr/bin/menu ] && /usr/bin/menu" >> /root/.bashrc
-        echo -e "\033[1;96m[ OK ] Inicio automático configurado.\033[0m"
-    else
-        echo -e "\033[1;33m[ INFO ] Inicio automático ya estaba configurado.\033[0m"
-    fi
-
-    echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
-    echo -e "Ejecuta \033[1;33mmenu\033[0m para acceder."
-fi
-
-# FINAL
-echo -e "\n\033[1;36m==============================================\033[0m"
-echo -e "\033[1;33m      ¡TU VPS ESTÁ LISTA PARA DESPEGAR!         \033[0m"
-echo -e "\033[1;36m==============================================\033[0m"
-echo -e "Puedes acceder al panel usando: \033[1;33mmenu\033[0m"
-echo -e "¡Gracias por usar \033[1;35mMcCarthey Installer\033[0m!"
