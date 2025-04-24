@@ -12,7 +12,7 @@
 
 # ARGUMENTOS
 ENABLE_PANEL=false
-ENABLE_PROXY=true  # Por defecto, instalamos proxy.py para todos
+ENABLE_PROXY=true
 for arg in "$@"; do
     if [[ "$arg" == "--mccpanel" ]]; then
         ENABLE_PANEL=true
@@ -35,16 +35,14 @@ if [ -z "$KEY" ]; then
     clear
     echo -e "\e[1;34m"
     echo "============================================="
-    echo "          having MCC-KEY NO PROPORCIONADA          "
+    echo "          MCC-KEY NO PROPORCIONADA          "
     echo "============================================="
     echo -e "\e[0m"
-
     echo -e "\e[1;36m"
     echo "╔═══════════════════════════════════════════╗"
     echo "║           INGRESA TU MCC-KEY              ║"
     echo "╚═══════════════════════════════════════════╝"
     echo -e "\e[0m"
-
     read -p "> " KEY
 fi
 
@@ -68,7 +66,6 @@ if [ -z "$RESPONSE" ]; then
 fi
 
 VALIDO=$(echo "$RESPONSE" | grep -o '"valida":true')
-
 if [ -z "$VALIDO" ]; then
     MOTIVO=$(echo "$RESPONSE" | grep -oP '"motivo":"\K[^"]+')
     echo -e "\n\033[1;31m[ ERROR ]\033[0m Key inválida: $MOTIVO"
@@ -179,7 +176,7 @@ if $ENABLE_PROXY; then
     echo -e "\n[+] Configurando Proxy WS/Directo..."
     mkdir -p /etc/mccproxy
 
-    # Usar el proxy.py proporcionado por el usuario
+    # Usar el proxy.py proporcionado
     cat << 'PROXY_EOF' > /etc/mccproxy/proxy.py
 import socket
 import threading
@@ -187,22 +184,19 @@ import select
 import logging
 import os
 
-# Configuración de logging
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
 
-# Cargar puertos desde archivos externos
 def cargar_puertos():
     try:
         with open('/etc/mccproxy_ports') as f:
             return [int(p.strip()) for p in f.read().replace(',', ' ').split()]
     except:
-        return [8080]  # Puerto por defecto
+        return [8080]
 
 LISTEN_PORTS = cargar_puertos()
 DESTINATION_HOST = '127.0.0.1'
-DESTINATION_PORT = 444  # Dropbear u otro
+DESTINATION_PORT = 444
 
-# Encabezado WebSocket para handshake
 WS_HANDSHAKE = (
     "HTTP/1.1 101 Switching Protocols\r\n"
     "Upgrade: websocket\r\n"
@@ -216,17 +210,11 @@ def handle_client(client_socket):
         if not request:
             client_socket.close()
             return
-
-        # Detectar y responder handshake WebSocket sin cerrar conexión
         if b'Upgrade: websocket' in request:
             logging.info(f"[HANDSHAKE] WebSocket detectado")
             client_socket.sendall(WS_HANDSHAKE.encode())
-            # No se cierra el socket
-
-        # Redirigir tráfico al destino (Dropbear)
         remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         remote_socket.connect((DESTINATION_HOST, DESTINATION_PORT))
-
         sockets = [client_socket, remote_socket]
         while True:
             read_sockets, _, _ = select.select(sockets, [], [])
@@ -322,7 +310,6 @@ if $ENABLE_PANEL; then
 
 validar_key() {
     echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando la última versión del instalador..."
-    # Descargar el script principal (ajusta el nombre si es diferente)
     wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh
     if [ $? -ne 0 ]; then
         echo -e "\033[1;31m[ ERROR ] No se pudo descargar el script actualizado.\033[0m"
@@ -331,12 +318,8 @@ validar_key() {
     fi
     chmod +x installer.sh
     echo -e "\033[1;96m[ OK ] Script actualizado correctamente.\033[0m"
-    
-    # Solicitar nueva MCC-KEY
     echo -e "\n\033[1;36m[ INFO ] Ingresa tu nueva MCC-KEY:\033[0m"
     read -p "> " NEW_KEY
-    
-    # Ejecutar el script actualizado con la nueva MCC-KEY y los argumentos originales
     echo -e "\n\033[1;36m[ INFO ] Ejecutando el script actualizado...\033[0m"
     ./installer.sh --mccpanel --proxy "$NEW_KEY"
     if [ $? -ne 0 ]; then
@@ -344,12 +327,10 @@ validar_key() {
         read -p "Presiona enter para continuar..."
         return 1
     fi
-    
     echo -e "\n\033[1;96m[ OK ] Actualización completada. Reiniciando el panel...\033[0m"
     exec /usr/bin/menu
 }
 
-# Función para formatear el tiempo en HH:MM:SS
 format_time() {
     local seconds=$1
     local hours=$((seconds / 3600))
@@ -358,13 +339,11 @@ format_time() {
     printf "%02d:%02d:%02d" $hours $minutes $secs
 }
 
-# Datos del sistema
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
 ip=$(hostname -I | awk '{print $1}')
 cpus=$(nproc)
 so=$(lsb_release -d | cut -f2)
 
-# Determinar saludo según la hora
 hour=$(TZ=America/El_Salvador date +%H)
 if [ $hour -ge 0 -a $hour -lt 12 ]; then
     saludo="Buenos días 🌞"
@@ -374,23 +353,19 @@ else
     saludo="Buenas Noches 🌙"
 fi
 
-# Archivo para almacenar usuarios y logs
 USUARIOS_FILE="/root/usuarios_registrados.txt"
 MULTI_ONLINES_LOG="/root/multi_onlines.log"
 DEBUG_LOG="/root/debug_conexiones.log"
 
-# Crear el archivo de log si no existe
 touch "$MULTI_ONLINES_LOG"
 touch "$DEBUG_LOG"
 
-# Contar usuarios registrados
 if [[ -s "$USUARIOS_FILE" ]]; then
     usuarios_registrados=$(grep -c "^[^:]*:" "$USUARIOS_FILE")
 else
     usuarios_registrados=0
 fi
 
-# Contar dispositivos conectados (solo conexiones externas a los puertos proxy)
 devices_online=$(ss -tnp | grep ESTAB | grep -v 127.0.0.1 | grep -E "$(paste -sd'|' /etc/mccproxy_ports)" | wc -l)
 
 read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
@@ -409,7 +384,6 @@ fi
 ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
 ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 
-# PANEL
 while true; do
     clear
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
@@ -486,9 +460,7 @@ while true; do
             FECHA_EXPIRACION=$(date -d "$DIAS days" +"%d/ de %B")
             useradd -e $(date -d "$DIAS days" +%Y-%m-%d) -s /bin/false -M "$USUARIO"
             echo "$USUARIO:$PASSWORD" | chpasswd
-
             echo "$USUARIO:$PASSWORD:$LIMITE:$FECHA_EXPIRACION:$DIAS" >> "$USUARIOS_FILE"
-
             echo ""
             echo -e "\e[1;96mUsuario creado con éxito:\e[0m"
             echo ""
@@ -559,14 +531,12 @@ while true; do
                         read -p "Presiona enter para continuar..."
                         continue
                     fi
-
                     if ! id "$USUARIO_DEL" >/dev/null 2>&1; then
                         echo -e "\e[1;31mEl usuario $USUARIO_DEL no existe.\e[0m"
                         sed -i "/^$USUARIO_DEL:/d" "$USUARIOS_FILE" 2>/dev/null
                         read -p "Presiona enter para continuar..."
                         continue
                     fi
-
                     echo -e "\e[1;33m¿Estás seguro de eliminar al usuario $USUARIO_DEL? (s/n)\e[0m"
                     read -p "Confirma: " confirm
                     if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
@@ -634,23 +604,23 @@ while true; do
             case $option in
                 1)
                     if ! dpkg -s dropbear &>/dev/null; then
-                        echo -e "\n\e[1;34m🔧 Instalando Drop            echo -e "\e[1;96m[✓] Dropbear instalado correctamente.\e[0m"
+                        echo -e "\n\e[1;34m🔧 Instalando Dropbear...\e[0m"
+                        apt install dropbear -y
+                        if dpkg -s dropbear &>/dev/null; then
+                            echo -e "\e[1;96m[✓] Dropbear instalado correctamente.\e[0m"
                         else
                             echo -e "\e[1;31m[✗] Error al instalar Dropbear.\e[0m"
                             read -p "Presiona enter para continuar..."
                             continue
                         fi
                     fi
-
                     echo -e "\n\e[1;34m🔧 Configurando Dropbear en puerto 444...\e[0m"
                     echo "/bin/false" >> /etc/shells
                     echo "/usr/sbin/nologin" >> /etc/shells
                     sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear
                     sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear
                     echo 'DROPBEAR_EXTRA_ARGS="-p 444"' >> /etc/default/dropbear
-
                     systemctl restart dropbear &>/dev/null || service dropbear restart &>/dev/null
-
                     if pgrep dropbear > /dev/null && ss -tuln | grep -q ":444 "; then
                         echo -e "\e[1;96m[✓] Dropbear activado en puerto 444.\e[0m"
                     else
@@ -668,16 +638,13 @@ while true; do
                         read -p "Presiona enter para continuar..."
                         continue
                     fi
-
                     echo -e "\n\e[1;34m🔧 Configurando Proxy WS/Directo...\e[0m"
                     mkdir -p /etc/mccproxy
-
                     if [ ! -f /etc/mccproxy/proxy.py ]; then
                         echo -e "\e[1;31m[✗] Script proxy.py no encontrado. Por favor, configúralo primero.\e[0m"
                         read -p "Presiona enter para continuar..."
                         continue
                     fi
-
                     if ! dpkg -s screen &>/dev/null; then
                         apt install screen -y
                         if dpkg -s screen &>/dev/null; then
@@ -688,20 +655,14 @@ while true; do
                             continue
                         fi
                     fi
-
                     echo -e "\e[1;33m⚙️ Configura tu Proxy WS/Directo:\e[0m"
-                    read -p "Puertos de escucha (Ej: 8080,443, separador coma o espacio): " proxy_ports
-
+                    read -p "Puertos de escucha (ejemplo: 8080,443, separar con coma o espacio): " proxy_ports
                     if [[ -z "$proxy_ports" ]]; then
                         echo -e "\e[1;31m[✗] Debes especificar al menos un puerto.\e[0m"
                         read -p "Presiona enter para continuar..."
                         continue
                     fi
-
-                    # Guardar configuración de puertos
                     echo "$proxy_ports" | tr ',' ' ' > /etc/mccproxy_ports
-
-                    # Verificar si los puertos están disponibles
                     for port in $(echo "$proxy_ports" | tr ',' ' '); do
                         if ss -tuln | grep -q ":$port "; then
                             echo -e "\e[1;31m[✗] El puerto $port ya está en uso.\e[0m"
@@ -709,11 +670,9 @@ while true; do
                             continue 2
                         fi
                     done
-
                     echo -e "\n\e[1;34m🔧 Iniciando Proxy en puertos $proxy_ports\e[0m"
                     screen -dmS proxy python3 /etc/mccproxy/proxy.py
                     sleep 2
-
                     if screen -list | grep -q "proxy"; then
                         echo -e "\e[1;96m[✓] Proxy WS/Directo activo en puertos $proxy_ports\e[0m"
                     else
@@ -760,13 +719,11 @@ while true; do
                 5)
                     echo -e "\n\e[1;34m🔧 Editando configuración de puertos...\e[0m"
                     echo -e "\e[1;33m⚙️ Puertos de escucha actuales: $(cat /etc/mccproxy_ports 2>/dev/null || echo '8080')\e[0m"
-                    read -p "Nuevos puertos de escucha (Ej: 8080,443, separador coma o espacio): " new_proxy_ports
-
+                    read -p "Nuevos puertos de escucha (ejemplo: 8080,443, separar con coma o espacio): " new_proxy_ports
                     if [[ -n "$new_proxy_ports" ]]; then
                         echo "$new_proxy_ports" | tr ',' ' ' > /etc/mccproxy_ports
                         echo -e "\e[1;96m[✓] Puertos de escucha actualizados: $new_proxy_ports\e[0m"
                     fi
-
                     echo -e "\n\e[1;33m¿Deseas reiniciar el proxy con la nueva configuración? (s/n)\e[0m"
                     read -p "Confirma: " confirm
                     if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
@@ -846,23 +803,18 @@ chmod +x /root/menu.sh
 ln -sf /root/menu.sh /usr/bin/menu
 chmod +x /usr/bin/menu
 
-# Eliminar alias incorrecto si existe
-sed -i '/alias menu=/d' /root/.bashrc
-
-# Configurar inicio automático del panel al iniciar sesión
 echo -e "\n\033[1;36m[ CONFIG ]\033[0m Configurando inicio automático del panel..."
 if ! grep -q "/usr/bin/menu" /root/.bashrc; then
     echo "[ -f /usr/bin/menu ] && /usr/bin/menu" >> /root/.bashrc
-    echo -e "\033[1;96m[ OK ] Inicio automático configurado.\033[0m"
+    echo -e "\033[1;36m[ OK ] Inicio automático configurado.\033[0m"
 else
     echo -e "\033[1;33m[ INFO ] Inicio automático ya estaba configurado.\033[0m"
 fi
 
-    echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
-    echo -e "Ejecuta \033[1;33mmenu\033[0m para acceder."
+echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
+echo -e "Ejecuta \033[1;33mmenu\033[0m para acceder."
 fi
 
-# FINAL
 echo -e "\n\033[1;36m==============================================\033[0m"
 echo -e "\033[1;33m      ¡TU VPS ESTÁ LISTA PARA DESPEGAR!         \033[0m"
 echo -e "\033[1;36m==============================================\033[0m"
