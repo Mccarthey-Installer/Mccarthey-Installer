@@ -322,12 +322,30 @@ if $ENABLE_PANEL; then
 
 validar_key() {
     echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando la última versión del instalador..."
-    wget -q -O setup https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/setup
-    chmod +x setup
-    echo -e "\033[1;32m[ OK ]\033[0m Script actualizado correctamente."
-    echo -e "\n\033[1;36m[ INFO ]\033[0m Ejecutando el nuevo setup..."
-    ./setup --mccpanel
-    echo -e "\n\033[1;32m[ OK ]\033[0m Actualización completada. Reiniciando el panel..."
+    # Descargar el script principal (ajusta el nombre si es diferente)
+    wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh
+    if [ $? -ne 0 ]; then
+        echo -e "\033[1;31m[ ERROR ] No se pudo descargar el script actualizado.\033[0m"
+        read -p "Presiona enter para continuar..."
+        return 1
+    fi
+    chmod +x installer.sh
+    echo -e "\033[1;96m[ OK ] Script actualizado correctamente.\033[0m"
+    
+    # Solicitar nueva MCC-KEY
+    echo -e "\n\033[1;36m[ INFO ] Ingresa tu nueva MCC-KEY:\033[0m"
+    read -p "> " NEW_KEY
+    
+    # Ejecutar el script actualizado con la nueva MCC-KEY y los argumentos originales
+    echo -e "\n\033[1;36m[ INFO ] Ejecutando el script actualizado...\033[0m"
+    ./installer.sh --mccpanel --proxy "$NEW_KEY"
+    if [ $? -ne 0 ]; then
+        echo -e "\033[1;31m[ ERROR ] Error al ejecutar el script actualizado.\033[0m"
+        read -p "Presiona enter para continuar..."
+        return 1
+    fi
+    
+    echo -e "\n\033[1;96m[ OK ] Actualización completada. Reiniciando el panel...\033[0m"
     exec /usr/bin/menu
 }
 
@@ -363,14 +381,14 @@ while true; do
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e "          \e[1;33mPANEL OFICIAL MCCARTHEY\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e " \e[1;35mFECHA       :\e[0m $fecha"
-    echo -e " \e[1;35mIP VPS      :\e[0m $ip"
-    echo -e " \e[1;35mCPU's       :\e[0m $cpus"
-    echo -e " \e[1;35mMODELO CPU  :\e[0m $cpu_model"
-    echo -e " \e[1;35mS.O         :\e[0m $so"
+    echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
+    echo -e " \e[1;35mIP VPS      :\e[0m \e[1;93m$ip\e[0m"
+    echo -e " \e[1;35mCPU's       :\e[0m \e[1;93m$cpus\e[0m"
+    echo -e " \e[1;35mMODELO CPU  :\e[0m \e[1;93m$cpu_model\e[0m"
+    echo -e " \e[1;35mS.O         :\e[0m \e[1;93m$so\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e " \e[1;32m∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada\e[0m"
-    echo -e " \e[1;32m∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache\e[0m"
+    echo -e " \e[1;96m∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada\e[0m"
+    echo -e " \e[1;96m∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e " \e[1;33m[1] ➮ CREAR NUEVO USUARIO SSH\e[0m "
     echo -e " \e[1;33m[2] ➮ ACTUALIZAR MCC-KEY\e[0m "
@@ -384,7 +402,7 @@ while true; do
 
     case $opc in
         1)
-            read -p "Nombre de usuario: " USUARIO
+            read -p $'\e[1;95mNombre de usuario: \e[0m' USUARIO
             if id "$USUARIO" >/dev/null 2>&1; then
                 echo ""
                 echo -e "\e[1;31mEl usuario $USUARIO ya existe en el sistema.\e[0m"
@@ -399,9 +417,9 @@ while true; do
                 read -p "Presiona enter para volver al panel principal..."
                 continue
             fi
-            read -p "Contraseña: " PASSWORD
-            read -p "Límite de conexiones: " LIMITE
-            read -p "Días de validez: " DIAS
+            read -p $'\e[1;95mContraseña: \e[0m' PASSWORD
+            read -p $'\e[1;95mLímite de conexiones: \e[0m' LIMITE
+            read -p $'\e[1;95mDías de validez: \e[0m' DIAS
 
             if [[ -z "$USUARIO" || -z "$PASSWORD" || -z "$LIMITE" || -z "$DIAS" ]]; then
                 echo ""
@@ -434,7 +452,7 @@ while true; do
             echo "$USUARIO:$PASSWORD:$LIMITE:$FECHA_EXPIRACION:$DIAS" >> "$USUARIOS_FILE"
 
             echo ""
-            echo -e "\e[1;32mUsuario creado con éxito:\e[0m"
+            echo -e "\e[1;96mUsuario creado con éxito:\e[0m"
             echo ""
             echo -e "\e[1;35m$(printf '%-12s %-14s %-10s %-15s %-5s' 'USUARIO' 'CONTRASEÑA' 'LIMITE' 'CADUCA' 'DIAS')\e[0m"
             printf "%-12s %-14s %-10s %-15s %-5s\n" "$USUARIO" "$PASSWORD" "$LIMITE" "$FECHA_EXPIRACION" "$DIAS"
@@ -516,7 +534,7 @@ while true; do
                     if [[ "$confirm" == "s" || "$confirm" == "S" ]]; then
                         userdel -r "$USUARIO_DEL" 2>/dev/null
                         sed -i "/^$USUARIO_DEL:/d" "$USUARIOS_FILE"
-                        echo -e "\e[1;32mUsuario $USUARIO_DEL eliminado con éxito.\e[0m"
+                        echo -e "\e[1;96mUsuario $USUARIO_DEL eliminado con éxito.\e[0m"
                     else
                         echo -e "\e[1;31mEliminación cancelada.\e[0m"
                     fi
@@ -531,7 +549,7 @@ while true; do
                                 userdel -r "$usuario" 2>/dev/null
                             done < "$USUARIOS_FILE"
                             > "$USUARIOS_FILE"
-                            echo -e "\e[1;32mTodos los usuarios han sido eliminados.\e[0m"
+                            echo -e "\e[1;96mTodos los usuarios han sido eliminados.\e[0m"
                         else
                             echo -e "\e[1;31mNo hay usuarios para eliminar.\e[0m"
                         fi
@@ -560,15 +578,15 @@ while true; do
             echo -e "\e[1;36m╚══════════════════════════════════════════════╝\e[0m"
             echo -e "\e[1;35mPotencia tu VPS con estilo 🌐\e[0m"
             echo -e "\e[1;36m----------------------------------------------\e[0m"
-            echo -e "\e[1;32m[1] ➮ Configurar Dropbear (Puerto 444)\e[0m"
+            echo -e "\e[1;96m[1] ➮ Configurar Dropbear (Puerto 444)\e[0m"
             echo -e "\e[1;33m      Instala Dropbear para conexiones SSH seguras.\e[0m"
-            echo -e "\e[1;32m[2] ➮ Iniciar Proxy WS/Directo\e[0m"
+            echo -e "\e[1;96m[2] ➮ Iniciar Proxy WS/Directo\e[0m"
             echo -e "\e[1;33m      Configura el proxy para redirigir al puerto Dropbear.\e[0m"
-            echo -e "\e[1;32m[3] ➮ Verificar Estado de Puertos\e[0m"
+            echo -e "\e[1;96m[3] ➮ Verificar Estado de Puertos\e[0m"
             echo -e "\e[1;33m      Revisa si Dropbear y el proxy están activos.\e[0m"
-            echo -e "\e[1;32m[4] ➮ Detener Proxy WS/Directo\e[0m"
+            echo -e "\e[1;96m[4] ➮ Detener Proxy WS/Directo\e[0m"
             echo -e "\e[1;33m      Para el proxy si está corriendo.\e[0m"
-            echo -e "\e[1;32m[5] ➮ Editar Configuración de Puertos\e[0m"
+            echo -e "\e[1;96m[5] ➮ Editar Configuración de Puertos\e[0m"
             echo -e "\e[1;33m      Modifica los puertos de escucha del proxy.\e[0m"
             echo -e "\e[1;31m[0] ➮ Volver al Menú Principal\e[0m"
             echo -e "\e[1;36m----------------------------------------------\e[0m"
@@ -581,7 +599,7 @@ while true; do
                         echo -e "\n\e[1;34m🔧 Instalando Dropbear...\e[0m"
                         apt install dropbear -y
                         if dpkg -s dropbear &>/dev/null; then
-                            echo -e "\e[1;32m[✓] Dropbear instalado correctamente.\e[0m"
+                            echo -e "\e[1;96m[✓] Dropbear instalado correctamente.\e[0m"
                         else
                             echo -e "\e[1;31m[✗] Error al instalar Dropbear.\e[0m"
                             read -p "Presiona enter para continuar..."
@@ -599,7 +617,7 @@ while true; do
                     systemctl restart dropbear &>/dev/null || service dropbear restart &>/dev/null
 
                     if pgrep dropbear > /dev/null && ss -tuln | grep -q ":444 "; then
-                        echo -e "\e[1;32m[✓] Dropbear activado en puerto 444.\e[0m"
+                        echo -e "\e[1;96m[✓] Dropbear activado en puerto 444.\e[0m"
                     else
                         echo -e "\e[1;31m[✗] Error: No se pudo iniciar Dropbear en el puerto 444.\e[0m"
                         journalctl -u dropbear -n 10 --no-pager
@@ -628,7 +646,7 @@ while true; do
                     if ! dpkg -s screen &>/dev/null; then
                         apt install screen -y
                         if dpkg -s screen &>/dev/null; then
-                            echo -e "\e[1;32m[✓] Screen instalado correctamente.\e[0m"
+                            echo -e "\e[1;96m[✓] Screen instalado correctamente.\e[0m"
                         else
                             echo -e "\e[1;31m[✗] Error al instalar screen.\e[0m"
                             read -p "Presiona enter para continuar..."
@@ -662,7 +680,7 @@ while true; do
                     sleep 2
 
                     if screen -list | grep -q "proxy"; then
-                        echo -e "\e[1;32m[✓] Proxy WS/Directo activo en puertos $proxy_ports\e[0m"
+                        echo -e "\e[1;96m[✓] Proxy WS/Directo activo en puertos $proxy_ports\e[0m"
                     else
                         echo -e "\e[1;31m[✗] Error: No se pudo iniciar el Proxy.\e[0m"
                         read -p "Presiona enter para continuar..."
@@ -676,7 +694,7 @@ while true; do
                     echo -e "\e[1;36m----------------------------------------------\e[0m"
                     echo -e "\e[1;33m🌐 Estado de Dropbear (Puerto 444):\e[0m"
                     if pgrep dropbear > /dev/null && ss -tuln | grep -q ":444 "; then
-                        echo -e "\e[1;32m[✓] Activo y escuchando en puerto 444.\e[0m"
+                        echo -e "\e[1;96m[✓] Activo y escuchando en puerto 444.\e[0m"
                     else
                         echo -e "\e[1;31m[✗] No activo en puerto 444.\e[0m"
                     fi
@@ -684,7 +702,7 @@ while true; do
                     proxy_ports=$(cat /etc/mccproxy_ports 2>/dev/null || echo "8080")
                     for port in $proxy_ports; do
                         if ss -tuln | grep -q ":$port "; then
-                            echo -e "\e[1;32m[✓] Activo y escuchando en puerto $port.\e[0m"
+                            echo -e "\e[1;96m[✓] Activo y escuchando en puerto $port.\e[0m"
                         else
                             echo -e "\e[1;31m[✗] No activo en puerto $port.\e[0m"
                         fi
@@ -697,7 +715,7 @@ while true; do
                     echo -e "\n\e[1;34m🔧 Deteniendo Proxy WS/Directo...\e[0m"
                     if screen -list | grep -q "proxy"; then
                         screen -X -S proxy quit &>/dev/null
-                        echo -e "\e[1;32m[✓] Proxy detenido correctamente.\e[0m"
+                        echo -e "\e[1;96m[✓] Proxy detenido correctamente.\e[0m"
                     else
                         echo -e "\e[1;31m[✗] No hay proxy corriendo.\e[0m"
                     fi
@@ -711,7 +729,7 @@ while true; do
 
                     if [[ -n "$new_proxy_ports" ]]; then
                         echo "$new_proxy_ports" | tr ',' ' ' > /etc/mccproxy_ports
-                        echo -e "\e[1;32m[✓] Puertos de escucha actualizados: $new_proxy_ports\e[0m"
+                        echo -e "\e[1;96m[✓] Puertos de escucha actualizados: $new_proxy_ports\e[0m"
                     fi
 
                     echo -e "\n\e[1;33m¿Deseas reiniciar el proxy con la nueva configuración? (s/n)\e[0m"
@@ -730,7 +748,7 @@ while true; do
                         screen -dmS proxy python3 /etc/mccproxy/proxy.py
                         sleep 2
                         if screen -list | grep -q "proxy"; then
-                            echo -e "\e[1;32m[✓] Proxy reiniciado con nueva configuración.\e[0m"
+                            echo -e "\e[1;96m[✓] Proxy reiniciado con nueva configuración.\e[0m"
                         else
                             echo -e "\e[1;31m[✗] Error: No se pudo reiniciar el Proxy.\e[0m"
                         fi
@@ -763,9 +781,9 @@ EOF
     echo -e "\n\033[1;36m[ CONFIG ]\033[0m Configurando inicio automático del panel..."
     if ! grep -q "/usr/bin/menu" /root/.bashrc; then
         echo "[ -f /usr/bin/menu ] && /usr/bin/menu" >> /root/.bashrc
-        echo -e "\033[1;32m[ OK ]\033[0m Inicio automático configurado."
+        echo -e "\033[1;96m[ OK ] Inicio automático configurado.\033[0m"
     else
-        echo -e "\033[1;33m[ INFO ]\033[0m Inicio automático ya estaba configurado."
+        echo -e "\033[1;33m[ INFO ] Inicio automático ya estaba configurado.\033[0m"
     fi
 
     echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
