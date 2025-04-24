@@ -217,7 +217,7 @@ while true; do
     clear
     devices_online=$(get_total_connections)
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e "          \e[1;33mPANEL 🥲🥲OFICIAL MCCARTHEY💕\e[0m"
+    echo -e "          \e[1;33mPANEL OFICIAL MCCARTHEY💕\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e "\e[1;35m$saludo\e[0m"
     echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
