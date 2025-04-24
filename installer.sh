@@ -34,7 +34,6 @@ install_dependencies() {
     if [ $? -ne 0 ]; then
         error "No se pudieron instalar las dependencias."
     fi
-    # Instalar Flask para la API
     pip3 install flask >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         error "No se pudo instalar Flask."
@@ -74,14 +73,9 @@ validate_key() {
 
 # Función para configurar el panel
 setup_panel() {
-    # Descargar menu.sh
     download_file "$MENU_URL" "$MENU_PATH"
-
-    # Descargar proxy.py
     mkdir -p /etc/mccproxy
     download_file "$PROXY_URL" "$PROXY_PATH"
-
-    # Crear enlace simbólico para el comando menu
     msg "Configurando el comando menu..."
     ln -sf "$MENU_PATH" /usr/bin/menu
     chmod +x /usr/bin/menu
@@ -89,8 +83,6 @@ setup_panel() {
         error "No se pudo crear el enlace simbólico /usr/bin/menu."
     fi
     msg "Comando menu configurado correctamente." "${GREEN}"
-
-    # Configurar persistencia en .bashrc
     msg "Configurando persistencia del panel..."
     if ! grep -q "exec /usr/bin/menu" /root/.bashrc; then
         echo "[ -t 1 ] && exec /usr/bin/menu" >> /root/.bashrc
@@ -103,9 +95,8 @@ start_api() {
     msg "Verificando estado de la API Flask..."
     if ! pgrep -f "flask run.*40412" >/dev/null; then
         msg "Iniciando API Flask en puerto 40412..."
-        # Asumiendo que el script Flask está en /root/telegram-bot/api.py
-        if [ -f /root/telegram-bot/api.py ]; then
-            screen -dmS flask_api bash -c "cd /root/telegram-bot && python3 api.py"
+        if [ -f /root/telegram-bot/validator.py ]; then
+            screen -dmS flask_api bash -c "cd /root/telegram-bot && python3 validator.py"
             sleep 2
             if pgrep -f "flask run.*40412" >/dev/null; then
                 msg "API Flask iniciada correctamente." "${GREEN}"
@@ -113,7 +104,7 @@ start_api() {
                 error "No se pudo iniciar la API Flask."
             fi
         else
-            error "Script de API Flask no encontrado en /root/telegram-bot/api.py."
+            error "Script de API Flask no encontrado en /root/telegram-bot/validator.py."
         fi
     else
         msg "API Flask ya está corriendo." "${GREEN}"
@@ -122,7 +113,6 @@ start_api() {
 
 # Función principal
 main() {
-    # Verificar si se ejecuta con parámetros
     if [ $# -eq 0 ]; then
         error "Uso: $0 <MCC-KEY> [--mccpanel] [--proxy <KEY>]"
     fi
@@ -131,7 +121,6 @@ main() {
     local mccpanel=false
     local proxy_key=""
 
-    # Parsear argumentos
     while [ $# -gt 0 ]; do
         case "$1" in
             --mccpanel)
@@ -149,24 +138,16 @@ main() {
         esac
     done
 
-    # Iniciar API Flask
     start_api
-
-    # Validar MCC-KEY
     validate_key "$mcc_key"
 
-    # Si se pasa --proxy, validar la clave proxy
     if [ -n "$proxy_key" ]; then
         validate_key "$proxy_key"
     fi
 
-    # Instalar dependencias
     install_dependencies
-
-    # Configurar el panel
     setup_panel
 
-    # Si se pasa --mccpanel, lanzar el panel
     if [ "$mccpanel" = true ]; then
         msg "Lanzando el McCarthey Panel..."
         exec /usr/bin/menu
@@ -175,5 +156,4 @@ main() {
     fi
 }
 
-# Ejecutar la función principal
 main "$@"
