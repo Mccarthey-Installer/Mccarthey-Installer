@@ -18,6 +18,99 @@ if $ENABLE_PANEL; then
     echo -e "\033[1;33m      INSTALANDO PANEL MCCARTHEY               \033[0m"
     echo -e "\033[1;33m==============================================\033[0m"
 
+    # Crear el directorio para proxy.py si no existe
+    mkdir -p /etc/mccproxy
+
+    # Escribir el contenido de proxy.py directamente en /etc/mccproxy/proxy.py
+    cat << 'EOF' > /etc/mccproxy/proxy.py
+import socket
+import threading
+import select
+import logging
+import os
+
+# Configuración de logging
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
+
+# Cargar puertos desde archivos externos
+def cargar_puertos():
+    try:
+        with open('/etc/mccproxy_ports') as f:
+            return [int(p.strip()) for p in f.read().replace(',', ' ').split()]
+    except:
+        return [8080]  # Puerto por defecto
+
+LISTEN_PORTS = cargar_puertos()
+DESTINATION_HOST = '127.0.0.1'
+DESTINATION_PORT = 444  # Dropbear u otro
+
+# Encabezado WebSocket para handshake
+WS_HANDSHAKE = (
+    "HTTP/1.1 101 Switching Protocols\r\n"
+    "Upgrade: websocket\r\n"
+    "Connection: Upgrade\r\n"
+    "Sec-WebSocket-Accept: dummykey==\r\n\r\n"
+)
+
+def handle_client(client_socket):
+    try:
+        request = client_socket.recv(1024)
+        if not request:
+            client_socket.close()
+            return
+
+        # Detectar y responder handshake WebSocket sin cerrar conexión
+        if b'Upgrade: websocket' in request:
+            logging.info(f"[HANDSHAKE] WebSocket detectado")
+            client_socket.sendall(WS_HANDSHAKE.encode())
+            # No se cierra el socket
+
+        # Redirigir tráfico al destino (Dropbear)
+        remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        remote_socket.connect((DESTINATION_HOST, DESTINATION_PORT))
+
+        sockets = [client_socket, remote_socket]
+        while True:
+            read_sockets, _, _ = select.select(sockets, [], [])
+            for sock in read_sockets:
+                data = sock.recv(4096)
+                if not data:
+                    client_socket.close()
+                    remote_socket.close()
+                    return
+                if sock is client_socket:
+                    remote_socket.sendall(data)
+                else:
+                    client_socket.sendall(data)
+    except Exception as e:
+        logging.error(f"Error manejando cliente: {e}")
+        try:
+            client_socket.close()
+        except:
+            pass
+
+def start_proxy(port):
+    try:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('0.0.0.0', port))
+        server.listen(100)
+        logging.info(f"[PROXY] Escuchando en puerto {port}")
+        while True:
+            client_socket, addr = server.accept()
+            threading.Thread(target=handle_client, args=(client_socket,)).start()
+    except Exception as e:
+        logging.error(f"Error al iniciar proxy en puerto {port}: {e}")
+
+if __name__ == '__main__':
+    for port in LISTEN_PORTS:
+        threading.Thread(target=start_proxy, args=(port,)).start()
+EOF
+
+    # Asegurarse de que proxy.py tenga permisos correctos
+    chmod 644 /etc/mccproxy/proxy.py
+
+    # Crear el script del panel
     cat << 'EOF' > /root/menu.sh
 #!/bin/bash
 
@@ -332,7 +425,7 @@ while true; do
             echo -e "\e[1;33m      Instala Dropbear para conexiones SSH seguras.\e[0m"
             echo -e "\e[1;96m[2] ➮ Iniciar Proxy WS/Directo\e[0m"
             echo -e "\e[1;33m      Configura el proxy para redirigir al puerto Dropbear.\e[0m"
-            echo -e "\e[1;96m[3] ➮ Verificar Estado de Puertos\e[0m"
+            echo -e "\e`[1;96m[3] ➮ Verificar Estado de Puertos\e[0m"
             echo -e "\e[1;33m      Revisa si Dropbear y el proxy están activos.\e[0m"
             echo -e "\e[1;96m[4] ➮ Detener Proxy WS/Directo\e[0m"
             echo -e "\e[1;33m      Para el proxy si está corriendo.\e[0m"
@@ -387,21 +480,35 @@ while true; do
                     echo -e "\n\e[1;34m🔧 Configurando Proxy WS/Directo...\e[0m"
                     mkdir -p /etc/mccproxy
 
-                    if [ ! -f /etc/mccproxy/proxy.py ]; then
-                        echo -e "\e[1;31m[✗] Script proxy.py no encontrado. Por favor, configúralo primero.\e[0m"
-                        read -p "Presiona enter para continuar..."
-                        continue
+                    if ! command -v python3 &>/dev/null; then
+                        echo -e "\n\e[1;34m🔧 Instalando Python3...\e[0m"
+                        apt install python3 -y
+                        if command -v python3 &>/dev/null; then
+                            echo -e "\e[1;96m[✓] Python3 instalado correctamente.\e[0m"
+                        else
+                            echo -e "\e[1;31m[✗] Error al instalar Python3.\e[0m"
+                            read -p "Presiona enter para continuar..."
+                            continue
+                        fi
                     fi
 
                     if ! dpkg -s screen &>/dev/null; then
+                        echo -e "\n\e[1;34m🔧 Instalando Screen...\e[0m"
                         apt install screen -y
                         if dpkg -s screen &>/dev/null; then
                             echo -e "\e[1;96m[✓] Screen instalado correctamente.\e[0m"
                         else
-                            echo -e "\e[1;31m[✗] Error al instalar screen.\e[0m"
+                            echo -e "\e[1;31m[✗] Error al instalar Screen.\e[0m"
                             read -p "Presiona enter para continuar..."
                             continue
                         fi
+                    fi
+
+                    # Verificar si proxy.py existe (debería existir porque lo creamos antes)
+                    if [ ! -f /etc/mccproxy/proxy.py ]; then
+                        echo -e "\e[1;31m[✗] Script proxy.py no encontrado. Por favor, contacta al soporte.\e[0m"
+                        read -p "Presiona enter para continuar..."
+                        continue
                     fi
 
                     echo -e "\e[1;33m⚙️ Configura tu Proxy WS/Directo:\e[0m"
@@ -432,7 +539,7 @@ while true; do
                     if screen -list | grep -q "proxy"; then
                         echo -e "\e[1;96m[✓] Proxy WS/Directo activo en puertos $proxy_ports\e[0m"
                     else
-                        echo -e "\e[1;31m[✗] Error: No se pudo iniciar el Proxy.\e[0m"
+                        echo -e "\e[1;31m[✗] Error: No se pudo iniciar el Proxy. Revisa los logs en /etc/mccproxy/proxy.py.\e[0m"
                         read -p "Presiona enter para continuar..."
                         continue
                     fi
@@ -500,7 +607,7 @@ while true; do
                         if screen -list | grep -q "proxy"; then
                             echo -e "\e[1;96m[✓] Proxy reiniciado con nueva configuración.\e[0m"
                         else
-                            echo -e "\e[1;31m[✗] Error: No se pudo reiniciar el Proxy.\e[0m"
+                            echo -e "\e[1;31m[✗] Error: No se pudo reiniciar el Proxy. Revisa los logs en /etc/mccproxy/proxy.py.\e[0m"
                         fi
                     fi
                     read -p "Presiona enter para continuar..."
