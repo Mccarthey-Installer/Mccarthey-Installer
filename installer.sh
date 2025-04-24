@@ -390,19 +390,8 @@ else
     usuarios_registrados=0
 fi
 
-# Contar dispositivos conectados SOLO de usuarios registrados
-devices_online=0
-if [[ -s "$USUARIOS_FILE" ]]; then
-    while IFS=: read -r usuario password limite caduca dias; do
-        if id "$usuario" >/dev/null 2>&1; then
-            # Contar conexiones usando ps para procesos de dropbear
-            conexiones=$(ps -u "$usuario" | grep -c "dropbear")
-            if [ "$conexiones" -gt 0 ]; then
-                devices_online=$((devices_online + conexiones))
-            fi
-        fi
-    done < "$USUARIOS_FILE"
-fi
+# Contar dispositivos conectados (solo conexiones externas a los puertos proxy)
+devices_online=$(ss -tnp | grep ESTAB | grep -v 127.0.0.1 | grep -E "$(paste -sd'|' /etc/mccproxy_ports)" | wc -l)
 
 read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
 cpu_uso=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
@@ -645,10 +634,7 @@ while true; do
             case $option in
                 1)
                     if ! dpkg -s dropbear &>/dev/null; then
-                        echo -e "\n\e[1;34m🔧 Instalando Dropbear...\e[0m"
-                        apt install dropbear -y
-                        if dpkg -s dropbear &>/dev/null; then
-                            echo -e "\e[1;96m[✓] Dropbear instalado correctamente.\e[0m"
+                        echo -e "\n\e[1;34m🔧 Instalando Drop            echo -e "\e[1;96m[✓] Dropbear instalado correctamente.\e[0m"
                         else
                             echo -e "\e[1;31m[✗] Error al instalar Dropbear.\e[0m"
                             read -p "Presiona enter para continuar..."
@@ -819,76 +805,18 @@ while true; do
             echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
             echo -e "          \e[1;33mDISPOSITIVOS ONLINE\e[0m"
             echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            if [[ -s "$USUARIOS_FILE" ]]; then
-                echo -e "\e[1;35m$(printf '%-5s %-12s %-14s %-12s' '' 'USUARIO' 'CONEXIONES' 'TIEMPO HH:MM:SS')\e[0m"
-                contador=0
-                current_time=$(date +%s)
-                # Debug: Guardar salida de who y ps para inspeccionar
-                echo "===== Debug $(date) =====" >> "$DEBUG_LOG"
-                who >> "$DEBUG_LOG"
-                echo "----- Procesos Dropbear -----" >> "$DEBUG_LOG"
-                ps -ef | grep dropbear >> "$DEBUG_LOG"
-                echo "-----------------------------" >> "$DEBUG_LOG"
-
-                while IFS=: read -r usuario password limite caduca dias; do
-                    if id "$usuario" >/dev/null 2>&1; then
-                        # Contar conexiones usando ps para procesos de dropbear
-                        conexiones=$(ps -u "$usuario" | grep -c "dropbear")
-                        # Si tiene conexiones, calcular el tiempo online
-                        if [ "$conexiones" -gt 0 ]; then
-                            ((contador++))
-                            # Obtener el proceso más antiguo de dropbear para calcular el tiempo online
-                            oldest_pid=$(ps -u "$usuario" -o pid,etime | grep "dropbear" | head -n 1 | awk '{print $1}')
-                            if [ -n "$oldest_pid" ]; then
-                                # Obtener el tiempo transcurrido del proceso (en formato [DD-]HH:MM:SS)
-                                etime=$(ps -p "$oldest_pid" -o etime | tail -n 1 | tr -d ' ')
-                                # Convertir etime a segundos
-                                if [[ "$etime" =~ ([0-9]+)-([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
-                                    days=${BASH_REMATCH[1]}
-                                    hours=${BASH_REMATCH[2]}
-                                    minutes=${BASH_REMATCH[3]}
-                                    seconds=${BASH_REMATCH[4]}
-                                    time_online=$(( (days * 86400) + (hours * 3600) + (minutes * 60) + seconds ))
-                                elif [[ "$etime" =~ ([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
-                                    hours=${BASH_REMATCH[1]}
-                                    minutes=${BASH_REMATCH[2]}
-                                    seconds=${BASH_REMATCH[3]}
-                                    time_online=$(( (hours * 3600) + (minutes * 60) + seconds ))
-                                elif [[ "$etime" =~ ([0-9]{2}):([0-9]{2}) ]]; then
-                                    minutes=${BASH_REMATCH[1]}
-                                    seconds=${BASH_REMATCH[2]}
-                                    time_online=$(( (minutes * 60) + seconds ))
-                                else
-                                    time_online=0
-                                fi
-                                time_formatted=$(format_time $time_online)
-                            else
-                                time_formatted="00:00:00"
-                            fi
-                            # Mostrar usuario con conexiones
-                            printf "[%-3s]%-12s [%s/%s]    %s\n" "$contador" "$usuario" "$conexiones" "$limite" "$time_formatted"
-                        fi
-
-                        # Verificar si el usuario excede su límite
-                        if [ "$conexiones" -gt "$limite" ]; then
-                            # Bloquear usuario
-                            pkill -u "$usuario" 2>/dev/null
-                            passwd -l "$usuario" 2>/dev/null
-                            # Registrar en el log de multi onlines
-                            echo "[$contador]-$usuario [$conexiones/$limite] $fecha" >> "$MULTI_ONLINES_LOG"
-                        elif [ "$conexiones" -gt 0 ] && [ "$conexiones" -le "$limite" ]; then
-                            # Desbloquear usuario si está dentro del límite
-                            passwd -u "$usuario" 2>/dev/null
-                        fi
-                    else
-                        sed -i "/^$usuario:/d" "$USUARIOS_FILE"
-                    fi
-                done < "$USUARIOS_FILE"
-                if [ "$contador" -eq 0 ]; then
-                    echo -e "\e[1;31mNo hay usuarios conectados en este momento.\e[0m"
-                fi
+            echo -e "\e[1;35m$(printf '%-20s %-10s %-15s' 'IP CLIENTE' 'PUERTO' 'PROCESO')\e[0m"
+            connections=$(ss -tnp | grep ESTAB | grep -v 127.0.0.1 | grep -E "$(paste -sd'|' /etc/mccproxy_ports)" | awk '{print $5, $6, $7}' | sed 's/.*://' | sed 's/,//' | sed 's/.*users:(\([^)]*\)).*/\1/')
+            if [ -n "$connections" ]; then
+                echo "$connections" | while IFS= read -r line; do
+                    ip_port=$(echo "$line" | awk '{print $1}')
+                    ip=$(echo "$ip_port" | cut -d':' -f1)
+                    port=$(echo "$ip_port" | cut -d':' -f2)
+                    process=$(echo "$line" | awk '{print $3}')
+                    printf "%-20s %-10s %-15s\n" "$ip" "$port" "$process"
+                done
             else
-                echo -e "\e[1;31mNo hay usuarios registrados.\e[0m"
+                echo -e "\e[1;31mNo hay dispositivos conectados.\e[0m"
             fi
             echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
             read -p "Presiona enter para volver al panel principal..."
