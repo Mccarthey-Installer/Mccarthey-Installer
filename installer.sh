@@ -3,7 +3,7 @@
 # Función para validar la MCC-KEY
 validar_key() {
     echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando la última versión del instalador..."
-    https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/etc/mccproxy/proxy.py
+    wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/etc/mccproxy/proxy.py
     if [ $? -ne 0 ]; then
         echo -e "\033[1;31m[ ERROR ] No se pudo descargar el script actualizado.\033[0m"
         read -p "Presiona enter para continuar..."
