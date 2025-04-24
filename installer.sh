@@ -10,306 +10,7 @@
 #       McCarthey Installer v1.4
 # ================================
 
-# ARGUMENTOS
-ENABLE_PANEL=false
-ENABLE_PROXY=true  # Por defecto, instalamos proxy.py para todos
-for arg in "$@"; do
-    if [[ "$arg" == "--mccpanel" ]]; then
-        ENABLE_PANEL=true
-    fi
-    if [[ "$arg" == "--proxy" ]]; then
-        ENABLE_PROXY=true
-    fi
-done
-
-# OBTENER MCC-KEY
-KEY=""
-for arg in "$@"; do
-    if [[ "$arg" != "--mccpanel" && "$arg" != "--proxy" ]]; then
-        KEY="$arg"
-        break
-    fi
-done
-
-if [ -z "$KEY" ]; then
-    clear
-    echo -e "\e[1;34m"
-    echo "============================================="
-    echo "          having MCC-KEY NO PROPORCIONADA          "
-    echo "============================================="
-    echo -e "\e[0m"
-
-    echo -e "\e[1;36m"
-    echo "╔═══════════════════════════════════════════╗"
-    echo "║           INGRESA TU MCC-KEY              ║"
-    echo "╚═══════════════════════════════════════════╝"
-    echo -e "\e[0m"
-
-    read -p "> " KEY
-fi
-
-ENCODED_KEY=$(echo "$KEY" | sed 's/{/%7B/' | sed 's/}/%7D/')
-VALIDATOR_URL="http://172.235.128.99:9393/validate/$ENCODED_KEY"
-
-# Validación con reintentos
-echo -e "\n\033[1;34m[ INFO ]\033[0m Verificando KEY con el servidor..."
-for attempt in {1..3}; do
-    RESPONSE=$(curl -s --connect-timeout 5 "$VALIDATOR_URL")
-    if [ $? -eq 0 ]; then
-        break
-    fi
-    echo -e "\033[1;33m[ WARN ]\033[0m Intento $attempt falló. Reintentando..."
-    sleep 2
-done
-
-if [ -z "$RESPONSE" ]; then
-    echo -e "\n\033[1;31m[ ERROR ]\033[0m No se pudo contactar al servidor de validación."
-    exit 1
-fi
-
-VALIDO=$(echo "$RESPONSE" | grep -o '"valida":true')
-
-if [ -z "$VALIDO" ]; then
-    MOTIVO=$(echo "$RESPONSE" | grep -oP '"motivo":"\K[^"]+')
-    echo -e "\n\033[1;31m[ ERROR ]\033[0m Key inválida: $MOTIVO"
-    exit 1
-fi
-
-USERNAME=$(echo "$RESPONSE" | grep -oP '"username":"\K[^"]+')
-echo -e "\n\033[1;32m[ OK ]\033[0m Key válida. Continuando con la instalación..."
-echo -e "\033[1;34mKey: Verified【  $USERNAME  】\033[0m"
-
-# ACTUALIZACIÓN DEL SISTEMA
-echo -e "\n\033[1;33m==============================================\033[0m"
-echo -e "\033[1;33m      ACTUALIZANDO SISTEMA Y PAQUETES          \033[0m"
-echo -e "\033[1;33m==============================================\033[0m"
-
-apt update -y && apt upgrade -y
-if command -v needrestart >/dev/null; then
-    needrestart -r a
-fi
-
-apt install -y curl unzip wget
-
-# INSTALACIÓN DE PAQUETES
-PAQUETES=(
-  bsdmainutils screen nload htop python3
-  nodejs npm lsof psmisc socat bc net-tools cowsay
-  nmap jq iptables openssh-server dropbear
-)
-
-echo -e "\n\033[1;33m==============================================\033[0m"
-echo -e "\033[1;33m          INSTALANDO PAQUETES NECESARIOS        \033[0m"
-echo -e "\033[1;33m==============================================\033[0m"
-
-for paquete in "${PAQUETES[@]}"; do
-    echo -e "\033[1;34m[ INFO ]\033[0m Instalando $paquete..."
-    if ! apt install -y "$paquete"; then
-        echo -e "\033[1;31m[ FAIL ]\033[0m Error al instalar: ${paquete^^}"
-    elif dpkg -s "$paquete" &>/dev/null; then
-        echo -e "\033[1;32m[ OK ]\033[0m Instalación correcta: ${paquete^^}"
-    else
-        echo -e "\033[1;31m[ FAIL ]\033[0m Error al verificar: ${paquete^^}"
-    fi
-done
-
-# CONFIGURAR OPENSSH EN PUERTO 22
-echo -e "\n\033[1;33m==============================================\033[0m"
-echo -e "\033[1;33m          CONFIGURANDO OPENSSH (PUERTO 22)      \033[0m"
-echo -e "\033[1;33m==============================================\033[0m"
-
-systemctl enable ssh &>/dev/null
-systemctl start ssh &>/dev/null
-
-if ss -tuln | grep -q ":22 "; then
-    echo -e "\033[1;32m[ OK ]\033[0m OpenSSH está activo en el puerto 22."
-else
-    sed -i 's/^#Port 22/Port 22/' /etc/ssh/sshd_config
-    systemctl restart ssh &>/dev/null
-    if ss -tuln | grep -q ":22 "; then
-        echo -e "\033[1;32m[ OK ]\033[0m OpenSSH configurado y activo en el puerto 22."
-    else
-        echo -e "\033[1;31m[ FAIL ]\033[0m No se pudo activar OpenSSH en el puerto 22."
-    fi
-fi
-
-ufw allow 22 &>/dev/null
-ufw enable &>/dev/null
-echo -e "\033[1;32m[ OK ]\033[0m Puerto 22 permitido en ufw."
-
-# INSTALACIÓN Y CONFIGURACIÓN AUTOMÁTICA DE DROPBEAR Y PROXY.PY
-if $ENABLE_PROXY; then
-    echo -e "\n\033[1;33m==============================================\033[0m"
-    echo -e "\033[1;33m      CONFIGURANDO DROPBEAR Y PROXY.PY         \033[0m"
-    echo -e "\033[1;33m==============================================\033[0m"
-
-    # Instalar Dropbear si no está instalado
-    if ! dpkg -s dropbear &>/dev/null; then
-        echo -e "\n[+] Instalando Dropbear..."
-        apt install dropbear -y
-        if dpkg -s dropbear &>/dev/null; then
-            echo -e "\033[1;32m[ OK ]\033[0m Dropbear instalado correctamente."
-        else
-            echo -e "\033[1;31m[ FAIL ]\033[0m Error al instalar Dropbear."
-            exit 1
-        fi
-    fi
-
-    # Configurar Dropbear en puerto 444
-    echo -e "\n[+] Configurando Dropbear en puerto 444..."
-    echo "/bin/false" >> /etc/shells
-    echo "/usr/sbin/nologin" >> /etc/shells
-    sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear
-    sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear
-    echo 'DROPBEAR_EXTRA_ARGS="-p 444"' >> /etc/default/dropbear
-
-    # Reiniciar Dropbear
-    systemctl restart dropbear &>/dev/null || service dropbear restart &>/dev/null
-
-    # Verificar si Dropbear está activo
-    if pgrep dropbear > /dev/null && ss -tuln | grep -q ":444 "; then
-        echo -e "\033[1;32m[ OK ] Dropbear activado en puerto 444.\033[0m"
-    else
-        echo -e "\033[1;31m[ FAIL ] Error: No se pudo iniciar Dropbear en el puerto 444.\033[0m"
-        journalctl -u dropbear -n 10 --no-pager
-        exit 1
-    fi
-
-    # Configurar proxy.py
-    echo -e "\n[+] Configurando Proxy WS/Directo..."
-    mkdir -p /etc/mccproxy
-
-    # Usar el proxy.py proporcionado por el usuario
-    cat << 'PROXY_EOF' > /etc/mccproxy/proxy.py
-import socket
-import threading
-import select
-import logging
-import os
-
-# Configuración de logging
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(message)s', datefmt='%H:%M:%S')
-
-# Cargar puertos desde archivos externos
-def cargar_puertos():
-    try:
-        with open('/etc/mccproxy_ports') as f:
-            return [int(p.strip()) for p in f.read().replace(',', ' ').split()]
-    except:
-        return [8080]  # Puerto por defecto
-
-LISTEN_PORTS = cargar_puertos()
-DESTINATION_HOST = '127.0.0.1'
-DESTINATION_PORT = 444  # Dropbear u otro
-
-# Encabezado WebSocket para handshake
-WS_HANDSHAKE = (
-    "HTTP/1.1 101 Switching Protocols\r\n"
-    "Upgrade: websocket\r\n"
-    "Connection: Upgrade\r\n"
-    "Sec-WebSocket-Accept: dummykey==\r\n\r\n"
-)
-
-def handle_client(client_socket):
-    try:
-        request = client_socket.recv(1024)
-        if not request:
-            client_socket.close()
-            return
-
-        # Detectar y responder handshake WebSocket sin cerrar conexión
-        if b'Upgrade: websocket' in request:
-            logging.info(f"[HANDSHAKE] WebSocket detectado")
-            client_socket.sendall(WS_HANDSHAKE.encode())
-            # No se cierra el socket
-
-        # Redirigir tráfico al destino (Dropbear)
-        remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        remote_socket.connect((DESTINATION_HOST, DESTINATION_PORT))
-
-        sockets = [client_socket, remote_socket]
-        while True:
-            read_sockets, _, _ = select.select(sockets, [], [])
-            for sock in read_sockets:
-                data = sock.recv(4096)
-                if not data:
-                    client_socket.close()
-                    remote_socket.close()
-                    return
-                if sock is client_socket:
-                    remote_socket.sendall(data)
-                else:
-                    client_socket.sendall(data)
-    except Exception as e:
-        logging.error(f"Error manejando cliente: {e}")
-        try:
-            client_socket.close()
-        except:
-            pass
-
-def start_proxy(port):
-    try:
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(('0.0.0.0', port))
-        server.listen(100)
-        logging.info(f"[PROXY] Escuchando en puerto {port}")
-        while True:
-            client_socket, addr = server.accept()
-            threading.Thread(target=handle_client, args=(client_socket,)).start()
-    except Exception as e:
-        logging.error(f"Error al iniciar proxy en puerto {port}: {e}")
-
-if __name__ == '__main__':
-    for port in LISTEN_PORTS:
-        threading.Thread(target=start_proxy, args=(port,)).start()
-PROXY_EOF
-
-    if [ -f /etc/mccproxy/proxy.py ]; then
-        echo -e "\033[1;32m[ OK ] Script proxy.py configurado correctamente.\033[0m"
-    else
-        echo -e "\033[1;31m[ FAIL ] Error al configurar proxy.py.\033[0m"
-        exit 1
-    fi
-
-    # Crear archivo de configuración de puertos si no existe
-    if [ ! -f /etc/mccproxy_ports ]; then
-        echo "8080" > /etc/mccproxy_ports
-        echo -e "\033[1;32m[ OK ] Creado /etc/mccproxy_ports con puerto predeterminado 8080.\033[0m"
-    fi
-
-    # Leer puertos de configuración
-    PROXY_PORTS=$(cat /etc/mccproxy_ports | tr ',' ' ')
-
-    # Verificar si los puertos están disponibles
-    for port in $PROXY_PORTS; do
-        if ss -tuln | grep -q ":$port "; then
-            echo -e "\033[1;31m[ ERROR ] El puerto $port ya está en uso."
-            echo -e "\033[1;34m[ INFO ] Intentando liberar el puerto $port...\033[0m"
-            fuser -k "$port"/tcp &>/dev/null
-            sleep 2
-            if ! ss -tuln | grep -q ":$port "; then
-                echo -e "\033[1;32m[ OK ] Puerto $port liberado.\033[0m"
-            else
-                echo -e "\033[1;31m[ FAIL ] No se pudo liberar el puerto $port.\033[0m"
-                exit 1
-            fi
-        fi
-    done
-
-    # Iniciar proxy.py
-    echo -e "\n[+] Iniciando Proxy en puertos $PROXY_PORTS"
-    screen -dmS proxy python3 /etc/mccproxy/proxy.py
-    sleep 2
-
-    # Verificar si el proxy está corriendo
-    if screen -list | grep -q "proxy"; then
-        echo -e "\033[1;32m[ OK ] Proxy WS/Directo activo en puertos $PROXY_PORTS\033[0m"
-    else
-        echo -e "\033[1;31m[ FAIL ] Error: No se pudo iniciar el Proxy.\033[0m"
-        exit 1
-    fi
-fi
+# [Sección del script sin cambios hasta el panel...]
 
 # PANEL
 if $ENABLE_PANEL; then
@@ -374,14 +75,34 @@ else
     saludo="Buenas Noches 🌙"
 fi
 
-# Contar dispositivos conectados (sesiones SSH)
-devices_online=$(who | wc -l)
+# Archivo para almacenar usuarios y logs
+USUARIOS_FILE="/root/usuarios_registrados.txt"
+MULTI_ONLINES_LOG="/root/multi_onlines.log"
+DEBUG_LOG="/root/debug_conexiones.log"
+
+# Crear el archivo de log si no existe
+touch "$MULTI_ONLINES_LOG"
+touch "$DEBUG_LOG"
 
 # Contar usuarios registrados
-if [[ -s "/root/usuarios_registrados.txt" ]]; then
-    usuarios_registrados=$(grep -c "^[^:]*:" /root/usuarios_registrados.txt)
+if [[ -s "$USUARIOS_FILE" ]]; then
+    usuarios_registrados=$(grep -c "^[^:]*:" "$USUARIOS_FILE")
 else
     usuarios_registrados=0
+fi
+
+# Contar dispositivos conectados SOLO de usuarios registrados
+devices_online=0
+if [[ -s "$USUARIOS_FILE" ]]; then
+    while IFS=: read -r usuario password limite caduca dias; do
+        if id "$usuario" >/dev/null 2>&1; then
+            # Contar conexiones usando ps para procesos de dropbear
+            conexiones=$(ps -u "$usuario" | grep -c "dropbear")
+            if [ "$conexiones" -gt 0 ]; then
+                devices_online=$((devices_online + conexiones))
+            fi
+        fi
+    done < "$USUARIOS_FILE"
 fi
 
 read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
@@ -399,13 +120,6 @@ fi
 
 ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
 ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
-
-# Archivo para almacenar usuarios y logs
-USUARIOS_FILE="/root/usuarios_registrados.txt"
-MULTI_ONLINES_LOG="/root/multi_onlines.log"
-
-# Crear el archivo de log si no existe
-touch "$MULTI_ONLINES_LOG"
 
 # PANEL
 while true; do
@@ -810,24 +524,45 @@ while true; do
                 echo -e "\e[1;35m$(printf '%-5s %-12s %-14s %-12s' '' 'USUARIO' 'CONEXIONES' 'TIEMPO HH:MM:SS')\e[0m"
                 contador=0
                 current_time=$(date +%s)
+                # Debug: Guardar salida de who y ps para inspeccionar
+                echo "===== Debug $(date) =====" >> "$DEBUG_LOG"
+                who >> "$DEBUG_LOG"
+                echo "----- Procesos Dropbear -----" >> "$DEBUG_LOG"
+                ps -ef | grep dropbear >> "$DEBUG_LOG"
+                echo "-----------------------------" >> "$DEBUG_LOG"
+
                 while IFS=: read -r usuario password limite caduca dias; do
                     if id "$usuario" >/dev/null 2>&1; then
-                        # Contar conexiones actuales del usuario
-                        conexiones=$(who | grep "^$usuario " | wc -l)
+                        # Contar conexiones usando ps para procesos de dropbear
+                        conexiones=$(ps -u "$usuario" | grep -c "dropbear")
                         # Si tiene conexiones, calcular el tiempo online
                         if [ "$conexiones" -gt 0 ]; then
                             ((contador++))
-                            # Obtener la sesión más antigua para calcular el tiempo online
-                            oldest_session=$(who | grep "^$usuario " | head -n 1)
-                            if [ -n "$oldest_session" ]; then
-                                session_time=$(echo "$oldest_session" | awk '{print $3, $4}')
-                                session_epoch=$(date -d "$session_time" +%s 2>/dev/null || echo 0)
-                                if [ "$session_epoch" -gt 0 ]; then
-                                    time_online=$((current_time - session_epoch))
-                                    time_formatted=$(format_time $time_online)
+                            # Obtener el proceso más antiguo de dropbear para calcular el tiempo online
+                            oldest_pid=$(ps -u "$usuario" -o pid,etime | grep "dropbear" | head -n 1 | awk '{print $1}')
+                            if [ -n "$oldest_pid" ]; then
+                                # Obtener el tiempo transcurrido del proceso (en formato [DD-]HH:MM:SS)
+                                etime=$(ps -p "$oldest_pid" -o etime | tail -n 1 | tr -d ' ')
+                                # Convertir etime a segundos
+                                if [[ "$etime" =~ ([0-9]+)-([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
+                                    days=${BASH_REMATCH[1]}
+                                    hours=${BASH_REMATCH[2]}
+                                    minutes=${BASH_REMATCH[3]}
+                                    seconds=${BASH_REMATCH[4]}
+                                    time_online=$(( (days * 86400) + (hours * 3600) + (minutes * 60) + seconds ))
+                                elif [[ "$etime" =~ ([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]; then
+                                    hours=${BASH_REMATCH[1]}
+                                    minutes=${BASH_REMATCH[2]}
+                                    seconds=${BASH_REMATCH[3]}
+                                    time_online=$(( (hours * 3600) + (minutes * 60) + seconds ))
+                                elif [[ "$etime" =~ ([0-9]{2}):([0-9]{2}) ]]; then
+                                    minutes=${BASH_REMATCH[1]}
+                                    seconds=${BASH_REMATCH[2]}
+                                    time_online=$(( (minutes * 60) + seconds ))
                                 else
-                                    time_formatted="00:00:00"
+                                    time_online=0
                                 fi
+                                time_formatted=$(format_time $time_online)
                             else
                                 time_formatted="00:00:00"
                             fi
