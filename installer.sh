@@ -1,18 +1,77 @@
 #!/bin/bash
 
-# Función para validar la MCC-KEY
+# Asegurar que el enlace simbólico /usr/bin/menu exista
+setup_menu_command() {
+    if [ ! -f /root/menu.sh ]; then
+        echo -e "\e[1;31m[ ERROR ] /root/menu.sh no encontrado. Reinstala el panel.\e[0m"
+        exit 1
+    fi
+    chmod +x /root/menu.sh
+    if [ ! -L /usr/bin/menu ] || [ "$(readlink /usr/bin/menu)" != "/root/menu.sh" ]; then
+        ln -sf /root/menu.sh /usr/bin/menu
+        chmod +x /usr/bin/menu
+    fi
+}
+
+# Ejecutar configuración inicial
+setup_menu_command
+
+# Función para validar la MCC-KEY y actualizar el repositorio
 validar_key() {
-    echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando la última versión del instalador..."
-    wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh
-    if [ $? -ne 0 ]; then
-        echo -e "\033[1;31m[ ERROR ] No se pudo descargar el script actualizado.\033[0m"
+    echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando el repositorio actualizado..."
+    # Crear un directorio temporal para el repositorio
+    TEMP_DIR=$(mktemp -d)
+    if ! git clone https://github.com/Mccarthey-Installer/Mccarthey-Installer.git "$TEMP_DIR"; then
+        echo -e "\033[1;31m[ ERROR ] No se pudo clonar el repositorio. Verifica tu conexión o el repositorio.\033[0m"
+        rm -rf "$TEMP_DIR"
         read -p "Presiona enter para continuar..."
         return 1
     fi
-    chmod +x installer.sh
-    echo -e "\033[1;96m[ OK ] Script actualizado correctamente.\033[0m"
+
+    # Actualizar archivos clave
+    echo -e "\033[1;36m[ INFO ] Actualizando archivos del panel...\033[0m"
+    if [ -f "$TEMP_DIR/installer.sh" ]; then
+        cp "$TEMP_DIR/installer.sh" ./installer.sh
+        chmod +x ./installer.sh
+    else
+        echo -e "\033[1;31m[ ERROR ] installer.sh no encontrado en el repositorio.\033[0m"
+        rm -rf "$TEMP_DIR"
+        read -p "Presiona enter para continuar..."
+        return 1
+    fi
+
+    if [ -f "$TEMP_DIR/menu.sh" ]; then
+        cp "$TEMP_DIR/menu.sh" /root/menu.sh
+        chmod +x /root/menu.sh
+        ln -sf /root/menu.sh /usr/bin/menu
+        chmod +x /usr/bin/menu
+    else
+        echo -e "\033[1;33m[ WARN ] menu.sh no encontrado en el repositorio. Manteniendo el actual.\033[0m"
+    fi
+
+    if [ -f "$TEMP_DIR/etc/mccproxy/proxy.py" ]; then
+        mkdir -p /etc/mccproxy
+        cp "$TEMP_DIR/etc/mccproxy/proxy.py" /etc/mccproxy/proxy.py
+        chmod +x /etc/mccproxy/proxy.py
+    else
+        echo -e "\033[1;33m[ WARN ] proxy.py no encontrado en el repositorio. Intentando descargar directamente...\033[0m"
+        wget -q -O /etc/mccproxy/proxy.py https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/etc/mccproxy/proxy.py
+        if [ $? -ne 0 ] || [ ! -s /etc/mccproxy/proxy.py ]; then
+            echo -e "\033[1;31m[ ERROR ] No se pudo descargar proxy.py.\033[0m"
+        else
+            chmod +x /etc/mccproxy/proxy.py
+        fi
+    fi
+
+    # Limpiar directorio temporal
+    rm -rf "$TEMP_DIR"
+    echo -e "\033[1;96m[ OK ] Repositorio actualizado correctamente.\033[0m"
+
+    # Solicitar nueva MCC-KEY
     echo -e "\n\033[1;36m[ INFO ] Ingresa tu nueva MCC-KEY:\033[0m"
     read -p "> " NEW_KEY
+
+    # Ejecutar installer.sh con la nueva key
     echo -e "\n\033[1;36m[ INFO ] Ejecutando el script actualizado...\033[0m"
     ./installer.sh --mccpanel --proxy "$NEW_KEY"
     if [ $? -ne 0 ]; then
@@ -20,6 +79,7 @@ validar_key() {
         read -p "Presiona enter para continuar..."
         return 1
     fi
+
     echo -e "\n\033[1;96m[ OK ] Actualización completada. Reiniciando el panel...\033[0m"
     exec /usr/bin/menu
 }
@@ -36,10 +96,8 @@ format_time() {
 get_user_connection_time() {
     local usuario=$1
     local times=()
-    # Obtener tiempos de ejecución de procesos Dropbear para el usuario
     while IFS= read -r etime; do
         if [[ -n "$etime" ]]; then
-            # Convertir formato de ps -o etime (ej: 1-02:03:04 o 00:42) a segundos
             if [[ "$etime" =~ ([0-9]+)-([0-9]{2}:[0-9]{2}:[0-9]{2}) ]]; then
                 days=${BASH_REMATCH[1]}
                 time=${BASH_REMATCH[2]}
@@ -61,7 +119,6 @@ get_user_connection_time() {
         return
     fi
     
-    # Calcular promedio
     local total=0
     for t in "${times[@]}"; do
         total=$((total + t))
@@ -94,19 +151,16 @@ check_user_limits() {
         local conexiones=$(get_user_connections "$usuario")
         local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
         
-        # Verificar si el usuario está bloqueado
         local is_locked=$(grep "^$usuario$" "$locked_file")
         
         if [ "$conexiones" -gt "$limite" ]; then
             if [ -z "$is_locked" ]; then
-                # Bloquear usuario
                 usermod -L "$usuario" 2>/dev/null
                 echo "$usuario" >> "$locked_file"
                 printf "%-5s %-12s %-14s %-30s\n" "" "$usuario" "$conexiones/$limite" "$timestamp" >> "$multi_log"
                 echo -e "\033[1;31m[ WARN ] Usuario $usuario bloqueado: $conexiones conexiones exceden límite de $limite.\033[0m" >&2
             fi
         elif [ "$conexiones" -le "$limite" ] && [ -n "$is_locked" ]; then
-            # Desbloquear usuario
             usermod -U "$usuario" 2>/dev/null
             sed -i "/^$usuario$/d" "$locked_file"
             echo -e "\033[1;32m[ INFO ] Usuario $usuario desbloqueado: $conexiones conexiones dentro del límite de $limite.\033[0m" >&2
@@ -211,7 +265,6 @@ ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
 ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 
 while true; do
-    # Verificar límites de conexiones al inicio de cada ciclo
     check_user_limits
     
     clear
