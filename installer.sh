@@ -914,19 +914,21 @@ while true; do
     esac
 done
 EOF
+chmod +x /root/menu.sh
+ln -sf /root/menu.sh /usr/bin/menu
+chmod +x /usr/bin/menu
 
-    chmod +x /root/menu.sh
-    ln -sf /root/menu.sh /usr/bin/menu
-    chmod +x /usr/bin/menu
+# Eliminar alias incorrecto si existe
+sed -i '/alias menu=/d' /root/.bashrc
 
-    # Configurar inicio automático del panel al iniciar sesión
-    echo -e "\n\033[1;36m[ CONFIG ]\033[0m Configurando inicio automático del panel..."
-    if ! grep -q "/usr/bin/menu" /root/.bashrc; then
-        echo "[ -f /usr/bin/menu ] && /usr/bin/menu" >> /root/.bashrc
-        echo -e "\033[1;96m[ OK ] Inicio automático configurado.\033[0m"
-    else
-        echo -e "\033[1;33m[ INFO ] Inicio automático ya estaba configurado.\033[0m"
-    fi
+# Configurar inicio automático del panel al iniciar sesión
+echo -e "\n\033[1;36m[ CONFIG ]\033[0m Configurando inicio automático del panel..."
+if ! grep -q "/usr/bin/menu" /root/.bashrc; then
+    echo "[ -f /usr/bin/menu ] && /usr/bin/menu" >> /root/.bashrc
+    echo -e "\033[1;96m[ OK ] Inicio automático configurado.\033[0m"
+else
+    echo -e "\033[1;33m[ INFO ] Inicio automático ya estaba configurado.\033[0m"
+fi
 
     echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
     echo -e "Ejecuta \033[1;33mmenu\033[0m para acceder."
