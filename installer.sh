@@ -424,7 +424,7 @@ ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 while true; do
     clear
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e "          \e[1;33mPANEL 💗OFICIAL MCCARTHEY💕\e[0m"
+    echo -e "          \e[1;33mPANEL 🥲🥲OFICIAL MCCARTHEY💕\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e "\e[1;35m$saludo\e[0m"
     echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
