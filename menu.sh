@@ -32,6 +32,13 @@ validar_key() {
     echo -e "\n\033[1;36m[ INFO ] Ingresa tu nueva MCC-KEY:\033[0m"
     read -p "> " NEW_KEY
 
+    # Validar formato MCC-KEY
+    if [[ ! $NEW_KEY =~ ^MCC-KEY\{[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}\}$ ]]; then
+        echo -e "\033[1;31m[ ERROR ] MCC-KEY inválida. Formato esperado: MCC-KEY{XXXX-XXXX-XXXX-XXXX}\033[0m"
+        read -p "Presiona enter para continuar..."
+        return 1
+    fi
+
     # Ejecutar installer.sh con la nueva key
     echo -e "\n\033[1;36m[ INFO ] Ejecutando el script actualizado...\033[0m"
     ./installer.sh --mccpanel --proxy "$NEW_KEY"
