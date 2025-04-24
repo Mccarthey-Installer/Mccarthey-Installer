@@ -349,12 +349,40 @@ validar_key() {
     exec /usr/bin/menu
 }
 
+# Función para formatear el tiempo en HH:MM:SS
+format_time() {
+    local seconds=$1
+    local hours=$((seconds / 3600))
+    local minutes=$(( (seconds % 3600) / 60 ))
+    local secs=$((seconds % 60))
+    printf "%02d:%02d:%02d" $hours $minutes $secs
+}
+
 # Datos del sistema
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
 ip=$(hostname -I | awk '{print $1}')
-cpu_model=$(awk -F: '/model name/ {print $2; exit}' /proc/cpuinfo)
 cpus=$(nproc)
 so=$(lsb_release -d | cut -f2)
+
+# Determinar saludo según la hora
+hour=$(TZ=America/El_Salvador date +%H)
+if [ $hour -ge 0 -a $hour -lt 12 ]; then
+    saludo="Buenos días 🌞"
+elif [ $hour -ge 12 -a $hour -lt 19 ]; then
+    saludo="Buenas tardes ☀️"
+else
+    saludo="Buenas Noches 🌙"
+fi
+
+# Contar dispositivos conectados (sesiones SSH)
+devices_online=$(who | wc -l)
+
+# Contar usuarios registrados
+if [[ -s "/root/usuarios_registrados.txt" ]]; then
+    usuarios_registrados=$(grep -c "^[^:]*:" /root/usuarios_registrados.txt)
+else
+    usuarios_registrados=0
+fi
 
 read total used free shared buff_cache available <<< $(free -m | awk '/^Mem:/ {print $2, $3, $4, $5, $6, $7}')
 cpu_uso=$(top -bn1 | grep "Cpu(s)" | awk '{print 100 - $8}')
@@ -372,8 +400,12 @@ fi
 ram_usada=$(awk "BEGIN {printf \"%.0fM\", $used}")
 ram_cache=$(awk "BEGIN {printf \"%.0fM\", $buff_cache}")
 
-# Archivo para almacenar usuarios
+# Archivo para almacenar usuarios y logs
 USUARIOS_FILE="/root/usuarios_registrados.txt"
+MULTI_ONLINES_LOG="/root/multi_onlines.log"
+
+# Crear el archivo de log si no existe
+touch "$MULTI_ONLINES_LOG"
 
 # PANEL
 while true; do
@@ -381,21 +413,25 @@ while true; do
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e "          \e[1;33mPANEL 💗OFICIAL MCCARTHEY💕\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    echo -e "\e[1;35m$saludo\e[0m"
     echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
     echo -e " \e[1;35mIP VPS      :\e[0m \e[1;93m$ip\e[0m"
     echo -e " \e[1;35mCPU's       :\e[0m \e[1;93m$cpus\e[0m"
-    echo -e " \e[1;35mMODELO CPU  :\e[0m \e[1;93m$cpu_model\e[0m"
+    echo -e " \e[1;91mDISPOSITIVOS ON:\e[0m \e[1;91m$devices_online onlines.\e[0m"
     echo -e " \e[1;35mS.O         :\e[0m \e[1;93m$so\e[0m"
+    echo -e " \e[1;35mUsuarios registrados:\e[0m \e[1;93m$usuarios_registrados\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e " \e[1;96m∘ TOTAL: $ram_total  ∘ LIBRE: $ram_libre  ∘ EN USO: $ram_usada\e[0m"
     echo -e " \e[1;96m∘ U/RAM: $ram_porc   ∘ U/CPU: $cpu_uso_fmt  ∘ BUFFER: $ram_cache\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e " \e[1;33m[1] ➮ CREAR NUEVO USUARIO SSH\e[0m "
-    echo -e " \e[1;33m[2] ➮ ACTUALIZAR MCC-KEY\e[0m "
-    echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m "
-    echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m "
-    echo -e " \e[1;33m[5] ➮ SALIR\e[0m "
-    echo -e " \e[1;33m[6] 💕 ➮ COLOCAR PUERTOS\e[0m "
+    echo -e " \e[1;33m[1] ➮ CREAR NUEVO USUARIO SSH\e[0m"
+    echo -e " \e[1;33m[2] ➮ ACTUALIZAR MCC-KEY\e[0m"
+    echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m"
+    echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m"
+    echo -e " \e[1;33m[5] ➮ SALIR\e[0m"
+    echo -e " \e[1;33m[6] 💕 ➮ COLOCAR PUERTOS\e[0m"
+    echo -e " \e[1;33m[7] 💕 ➮ VER DISPOSITIVOS ONLINE\e[0m"
+    echo -e " \e[1;33m[8] 💕 ➮ VER MULTI ONLINES\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e -n "\e[1;33m► 🌞Elige una opción: \e[0m"
     read opc
@@ -764,6 +800,78 @@ while true; do
                     read -p "Presiona enter para continuar..."
                     ;;
             esac
+            ;;
+        7)
+            clear
+            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+            echo -e "          \e[1;33mDISPOSITIVOS ONLINE\e[0m"
+            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+            if [[ -s "$USUARIOS_FILE" ]]; then
+                echo -e "\e[1;35m$(printf '%-5s %-12s %-14s %-12s' '' 'USUARIO' 'CONEXIONES' 'TIEMPO HH:MM:SS')\e[0m"
+                contador=0
+                current_time=$(date +%s)
+                while IFS=: read -r usuario password limite caduca dias; do
+                    if id "$usuario" >/dev/null 2>&1; then
+                        # Contar conexiones actuales del usuario
+                        conexiones=$(who | grep "^$usuario " | wc -l)
+                        # Si tiene conexiones, calcular el tiempo online
+                        if [ "$conexiones" -gt 0 ]; then
+                            ((contador++))
+                            # Obtener la sesión más antigua para calcular el tiempo online
+                            oldest_session=$(who | grep "^$usuario " | head -n 1)
+                            if [ -n "$oldest_session" ]; then
+                                session_time=$(echo "$oldest_session" | awk '{print $3, $4}')
+                                session_epoch=$(date -d "$session_time" +%s 2>/dev/null || echo 0)
+                                if [ "$session_epoch" -gt 0 ]; then
+                                    time_online=$((current_time - session_epoch))
+                                    time_formatted=$(format_time $time_online)
+                                else
+                                    time_formatted="00:00:00"
+                                fi
+                            else
+                                time_formatted="00:00:00"
+                            fi
+                            # Mostrar usuario con conexiones
+                            printf "[%-3s]%-12s [%s/%s]    %s\n" "$contador" "$usuario" "$conexiones" "$limite" "$time_formatted"
+                        fi
+
+                        # Verificar si el usuario excede su límite
+                        if [ "$conexiones" -gt "$limite" ]; then
+                            # Bloquear usuario
+                            pkill -u "$usuario" 2>/dev/null
+                            passwd -l "$usuario" 2>/dev/null
+                            # Registrar en el log de multi onlines
+                            echo "[$contador]-$usuario [$conexiones/$limite] $fecha" >> "$MULTI_ONLINES_LOG"
+                        elif [ "$conexiones" -gt 0 ] && [ "$conexiones" -le "$limite" ]; then
+                            # Desbloquear usuario si está dentro del límite
+                            passwd -u "$usuario" 2>/dev/null
+                        fi
+                    else
+                        sed -i "/^$usuario:/d" "$USUARIOS_FILE"
+                    fi
+                done < "$USUARIOS_FILE"
+                if [ "$contador" -eq 0 ]; then
+                    echo -e "\e[1;31mNo hay usuarios conectados en este momento.\e[0m"
+                fi
+            else
+                echo -e "\e[1;31mNo hay usuarios registrados.\e[0m"
+            fi
+            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+            read -p "Presiona enter para volver al panel principal..."
+            ;;
+        8)
+            clear
+            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+            echo -e "          \e[1;33mMULTI ONLINES (EXCESOS)\e[0m"
+            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+            if [[ -s "$MULTI_ONLINES_LOG" ]]; then
+                echo -e "\e[1;35m$(printf '%-5s %-12s %-14s %-30s' '' 'USUARIO' 'CONEXIONES' 'FECHA - HORA')\e[0m"
+                cat "$MULTI_ONLINES_LOG"
+            else
+                echo -e "\e[1;31mNo hay usuarios que hayan excedido su límite.\e[0m"
+            fi
+            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+            read -p "Presiona enter para volver al panel principal..."
             ;;
         *)
             echo -e "\e[1;31mOpción no válida.\e[0m"
