@@ -395,7 +395,7 @@ while true; do
     echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m "
     echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m "
     echo -e " \e[1;33m[5] ➮ SALIR\e[0m "
-    echo -e " \e[1;33m[6] ➮⚡ COLOCAR PUERTOS\e[0m "
+    echo -e " \e[1;33m[6] 💕 ➮ COLOCAR PUERTOS\e[0m "
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e -n "\e[1;33m► 🌞Elige una opción: \e[0m"
     read opc
