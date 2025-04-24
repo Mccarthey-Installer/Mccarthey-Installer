@@ -217,7 +217,7 @@ while true; do
     clear
     devices_online=$(get_total_connections)
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e "          \e[1;33mPANEL 🤡OFICIAL MCCARTHEY💕\e[0m"
+    echo -e "          \e[1;33mPANEL OFICIAL MCCARTHEY💕\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e "\e[1;35m$saludo\e[0m"
     echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
@@ -618,10 +618,3 @@ while true; do
             ;;
     esac
 done
-
-# Crear alias permanente para volver al panel con 'menu'
-if ! grep -q "alias menu=" ~/.bashrc; then
-  echo "alias menu='bash /root/installer.sh --mccpanel'" >> ~/.bashrc
-  echo -e "\n\033[1;32m[ OK ] Comando 'menu' creado. Usa 'menu' para volver al panel en cualquier momento.\033[0m"
-fi
-source ~/.bashrc
