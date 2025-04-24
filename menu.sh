@@ -18,8 +18,13 @@ setup_menu_command
 
 # Función para validar la MCC-KEY y actualizar el repositorio
 validar_key() {
-    echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando el instalador actualizado..."
-    wget -q -O ./installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh
+    local REPO_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main"
+    local API_URL="http://localhost:40412/validate"
+
+    echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando archivos actualizados desde GitHub..."
+
+    # Descargar installer.sh
+    wget -q -O ./installer.sh "$REPO_URL/installer.sh"
     if [ $? -ne 0 ] || [ ! -s ./installer.sh ]; then
         echo -e "\033[1;31m[ ERROR ] No se pudo descargar installer.sh. Verifica tu conexión.\033[0m"
         read -p "Presiona enter para continuar..."
@@ -28,20 +33,51 @@ validar_key() {
     chmod +x ./installer.sh
     echo -e "\033[1;96m[ OK ] installer.sh actualizado.\033[0m"
 
+    # Descargar menu.sh
+    wget -q -O /root/menu.sh "$REPO_URL/menu.sh"
+    if [ $? -ne 0 ] || [ ! -s /root/menu.sh ]; then
+        echo -e "\033[1;31m[ ERROR ] No se pudo descargar menu.sh. Verifica tu conexión.\033[0m"
+        read -p "Presiona enter para continuar..."
+        return 1
+    fi
+    chmod +x /root/menu.sh
+    echo -e "\033[1;96m[ OK ] menu.sh actualizado.\033[0m"
+
+    # Descargar proxy.py
+    mkdir -p /etc/mccproxy
+    wget -q -O /etc/mccproxy/proxy.py "$REPO_URL/etc/mccproxy/proxy.py"
+    if [ $? -ne 0 ] || [ ! -s /etc/mccproxy/proxy.py ]; then
+        echo -e "\033[1;31m[ ERROR ] No se pudo descargar proxy.py. Verifica tu conexión.\033[0m"
+        read -p "Presiona enter para continuar..."
+        return 1
+    fi
+    chmod +x /etc/mccproxy/proxy.py
+    echo -e "\033[1;96m[ OK ] proxy.py actualizado.\033[0m"
+
     # Solicitar nueva MCC-KEY
     echo -e "\n\033[1;36m[ INFO ] Ingresa tu nueva MCC-KEY:\033[0m"
     read -p "> " NEW_KEY
 
-    # Validar formato MCC-KEY
-    if [[ ! $NEW_KEY =~ ^MCC-KEY\{[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}\}$ ]]; then
-        echo -e "\033[1;31m[ ERROR ] MCC-KEY inválida. Formato esperado: MCC-KEY{XXXX-XXXX-XXXX-XXXX}\033[0m"
+    # Validar MCC-KEY con la API
+    echo -e "\n\033[1;36m[ INFO ] Validando MCC-KEY: $NEW_KEY...\033[0m"
+    response=$(curl -s "$API_URL/$NEW_KEY")
+    if [ $? -ne 0 ]; then
+        echo -e "\033[1;31m[ ERROR ] No se pudo conectar con la API de validación.\033[0m"
         read -p "Presiona enter para continuar..."
         return 1
     fi
+    valida=$(echo "$response" | grep -o '"valida": *true' | wc -l)
+    motivo=$(echo "$response" | grep -o '"motivo": *"[^"]*"' | cut -d'"' -f4)
+    if [ "$valida" -ne 1 ]; then
+        echo -e "\033[1;31m[ ERROR ] MCC-KEY inválida. Motivo: $motivo\033[0m"
+        read -p "Presiona enter para continuar..."
+        return 1
+    fi
+    echo -e "\033[1;96m[ OK ] MCC-KEY válida: $NEW_KEY\033[0m"
 
     # Ejecutar installer.sh con la nueva key
     echo -e "\n\033[1;36m[ INFO ] Ejecutando el script actualizado...\033[0m"
-    ./installer.sh --mccpanel --proxy "$NEW_KEY"
+    ./installer.sh "$NEW_KEY" --mccpanel --proxy "$NEW_KEY"
     if [ $? -ne 0 ]; then
         echo -e "\033[1;31m[ ERROR ] Error al ejecutar el script actualizado.\033[0m"
         read -p "Presiona enter para continuar..."
@@ -52,7 +88,9 @@ validar_key() {
     exec /usr/bin/menu
 }
 
-# Función para formatear tiempo en hh:mm
+# Resto del código de menu.sh (sin cambios)
+# ... (Incluye el resto del código de menu.sh que proporcionaste, desde format_time hasta el final del while true)
+
 format_time() {
     local seconds=$1
     local hours=$((seconds / 3600))
@@ -60,7 +98,6 @@ format_time() {
     printf "%02dh %02dm" $hours $minutes
 }
 
-# Función para obtener tiempo conectado promedio de un usuario
 get_user_connection_time() {
     local usuario=$1
     local times=()
@@ -95,13 +132,11 @@ get_user_connection_time() {
     format_time "$avg"
 }
 
-# Función para contar conexiones por usuario
 get_user_connections() {
     local usuario=$1
     who | grep "^$usuario " | wc -l
 }
 
-# Función para verificar y gestionar límites de conexiones
 check_user_limits() {
     local usuarios_file="/root/usuarios_registrados.txt"
     local multi_log="/root/multi_onlines.log"
@@ -136,7 +171,6 @@ check_user_limits() {
     done < "$usuarios_file"
 }
 
-# Función para mostrar dispositivos online
 show_online_devices() {
     clear
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
@@ -169,7 +203,6 @@ show_online_devices() {
     read -p "Presiona enter para volver al panel principal..."
 }
 
-# Variables generales
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
 ip=$(hostname -I | awk '{print $1}')
 cpus=$(nproc)
@@ -199,7 +232,6 @@ else
     usuarios_registrados=0
 fi
 
-# Calcular total de conexiones de usuarios registrados
 get_total_connections() {
     local total=0
     if [[ -s "$USUARIOS_FILE" ]]; then
@@ -238,7 +270,7 @@ while true; do
     clear
     devices_online=$(get_total_connections)
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e "          \e[1;33mPANEL😀🤩 OFICIAL MCCARTHEY💕\e[0m"
+    echo -e "          \e[1;33mPANEL OFICIAL MCCARTHEY💕\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e "\e[1;35m$saludo\e[0m"
     echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
