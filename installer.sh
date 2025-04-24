@@ -13,6 +13,7 @@ MENU_URL="$REPO_URL/menu.sh"
 PROXY_URL="$REPO_URL/etc/mccproxy/proxy.py"
 MENU_PATH="/root/menu.sh"
 PROXY_PATH="/etc/mccproxy/proxy.py"
+API_URL="http://localhost:40412/validate"
 
 # Función para mostrar mensajes
 msg() {
@@ -29,9 +30,14 @@ error() {
 install_dependencies() {
     msg "Actualizando paquetes e instalando dependencias..."
     apt update -y >/dev/null 2>&1 && apt upgrade -y >/dev/null 2>&1
-    apt install -y git wget curl dropbear screen python3 lsb-release >/dev/null 2>&1
+    apt install -y git wget curl dropbear screen python3 python3-pip lsb-release sqlite3 >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         error "No se pudieron instalar las dependencias."
+    fi
+    # Instalar Flask para la API
+    pip3 install flask >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        error "No se pudo instalar Flask."
     fi
     msg "Dependencias instaladas correctamente." "${GREEN}"
 }
@@ -47,6 +53,23 @@ download_file() {
     fi
     chmod +x "$dest"
     msg "$dest descargado correctamente." "${GREEN}"
+}
+
+# Función para validar MCC-KEY contra la API
+validate_key() {
+    local key=$1
+    msg "Validando MCC-KEY: $key..."
+    response=$(curl -s "$API_URL/$key")
+    if [ $? -ne 0 ]; then
+        error "No se pudo conectar con la API de validación."
+    fi
+    valida=$(echo "$response" | grep -o '"valida": *true' | wc -l)
+    motivo=$(echo "$response" | grep -o '"motivo": *"[^"]*"' | cut -d'"' -f4)
+    if [ "$valida" -eq 1 ]; then
+        msg "MCC-KEY válida: $key" "${GREEN}"
+    else
+        error "MCC-KEY inválida. Motivo: $motivo"
+    fi
 }
 
 # Función para configurar el panel
@@ -66,16 +89,35 @@ setup_panel() {
         error "No se pudo crear el enlace simbólico /usr/bin/menu."
     fi
     msg "Comando menu configurado correctamente." "${GREEN}"
+
+    # Configurar persistencia en .bashrc
+    msg "Configurando persistencia del panel..."
+    if ! grep -q "exec /usr/bin/menu" /root/.bashrc; then
+        echo "[ -t 1 ] && exec /usr/bin/menu" >> /root/.bashrc
+    fi
+    msg "Persistencia configurada en .bashrc." "${GREEN}"
 }
 
-# Función para validar MCC-KEY (simulada)
-validate_key() {
-    local key=$1
-    # Aquí va tu lógica de validación de MCC-KEY (ejemplo simulado)
-    if [[ ! "$key" =~ ^MCC-KEY\{[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}\}$ ]]; then
-        error "MCC-KEY inválida. Formato esperado: MCC-KEY{XXXX-XXXX-XXXX-XXXX}"
+# Función para iniciar la API Flask si no está corriendo
+start_api() {
+    msg "Verificando estado de la API Flask..."
+    if ! pgrep -f "flask run.*40412" >/dev/null; then
+        msg "Iniciando API Flask en puerto 40412..."
+        # Asumiendo que el script Flask está en /root/telegram-bot/api.py
+        if [ -f /root/telegram-bot/api.py ]; then
+            screen -dmS flask_api bash -c "cd /root/telegram-bot && python3 api.py"
+            sleep 2
+            if pgrep -f "flask run.*40412" >/dev/null; then
+                msg "API Flask iniciada correctamente." "${GREEN}"
+            else
+                error "No se pudo iniciar la API Flask."
+            fi
+        else
+            error "Script de API Flask no encontrado en /root/telegram-bot/api.py."
+        fi
+    else
+        msg "API Flask ya está corriendo." "${GREEN}"
     fi
-    msg "MCC-KEY válida: $key" "${GREEN}"
 }
 
 # Función principal
@@ -106,6 +148,9 @@ main() {
                 ;;
         esac
     done
+
+    # Iniciar API Flask
+    start_api
 
     # Validar MCC-KEY
     validate_key "$mcc_key"
