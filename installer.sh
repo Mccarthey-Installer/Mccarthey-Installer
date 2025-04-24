@@ -1,27 +1,5 @@
 #!/bin/bash
 
-# ================================
-# ███╗   ███╗ ██████╗ ██████╗ ███████╗
-# ████╗ ████║██╔═══██╗██╔══██╗██╔════╝
-# ██╔████╔██║██║   ██║██████╔╝█████╗  
-# ██║╚██╔╝██║██║   ██║██╔═══╝ ██╔══╝  
-# ██║ ╚═╝ ██║╚██████╔╝██║     ███████╗
-# ╚═╝     ╚═╝ ╚═════╝ ╚═╝     ╚══════╝
-#       McCarthey Installer v1.4
-# ================================
-
-# [CÓDIGO DE INSTALACIÓN SIN CAMBIOS - SE OMITE POR BREVEDAD]
-# ... (Desde el inicio hasta la sección del panel)
-
-# PANEL
-if $ENABLE_PANEL; then
-    echo -e "\n\033[1;33m==============================================\033[0m"
-    echo -e "\033[1;33m      INSTALANDO PANEL MCCARTHEY               \033[0m"
-    echo -e "\033[1;33m==============================================\033[0m"
-
-    cat << 'EOF' > /root/menu.sh
-#!/bin/bash
-
 # Función para validar la MCC-KEY
 validar_key() {
     echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando la última versión del instalador..."
@@ -136,6 +114,39 @@ check_user_limits() {
     done < "$usuarios_file"
 }
 
+# Función para mostrar dispositivos online
+show_online_devices() {
+    clear
+    echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    echo -e "          \e[1;33mDISPOSITIVOS ONLINE - MCCARTHEY PANEL\e[0m"
+    echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    echo -e "\e[1;35m$(printf '%-14s %-14s %-15s' 'USUARIO' 'CONEXIONES' 'TIEMPO CONECTADO')\e[0m"
+    echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    local total_conexiones=0
+    local USUARIOS_FILE="/root/usuarios_registrados.txt"
+    
+    if [[ -s "$USUARIOS_FILE" ]]; then
+        while IFS=: read -r usuario _ limite _ _; do
+            if id "$usuario" >/dev/null 2>&1; then
+                local conexiones
+                conexiones=$(get_user_connections "$usuario")
+                local tiempo
+                tiempo=$(get_user_connection_time "$usuario")
+                printf "%-14s %-14s %-15s\n" "$usuario" "$conexiones/$limite" "$tiempo"
+                total_conexiones=$((total_conexiones + conexiones))
+            fi
+        done < "$USUARIOS_FILE"
+    fi
+    
+    if [ "$total_conexiones" -eq 0 ]; then
+        echo -e "\e[1;31mNo hay dispositivos conectados.\e[0m"
+    fi
+    echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    echo -e "\e[1;91mTOTAL DISPOSITIVOS ONLINE: $total_conexiones\e[0m"
+    echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+    read -p "Presiona enter para volver al panel principal..."
+}
+
 # Variables generales
 fecha=$(TZ=America/El_Salvador date +"%a %d/%m/%Y - %I:%M:%S %p %Z")
 ip=$(hostname -I | awk '{print $1}')
@@ -172,7 +183,8 @@ get_total_connections() {
     if [[ -s "$USUARIOS_FILE" ]]; then
         while IFS=: read -r usuario _ _ _ _; do
             if id "$usuario" >/dev/null 2>&1; then
-                local conexiones=$(get_user_connections "$usuario")
+                local conexiones
+                conexiones=$(get_user_connections "$usuario")
                 total=$((total + conexiones))
             fi
         done < "$USUARIOS_FILE"
@@ -425,7 +437,7 @@ while true; do
                 1)
                     if ! dpkg -s dropbear &>/dev/null; then
                         echo -e "\n\e[1;34m🔧 Instalando Dropbear...\e[0m"
-                        apt install dropbear -y
+                        apt install dropbear -y >/dev/null 2>&1
                         if dpkg -s dropbear &>/dev/null; then
                             echo -e "\e[1;96m[✓] Dropbear instalado correctamente.\e[0m"
                         else
@@ -435,12 +447,12 @@ while true; do
                         fi
                     fi
                     echo -e "\n\e[1;34m🔧 Configurando Dropbear en puerto 444...\e[0m"
-                    echo "/bin/false" >> /etc/shells
-                    echo "/usr/sbin/nologin" >> /etc/shells
-                    sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear
-                    sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear
-                    echo 'DROPBEAR_EXTRA_ARGS="-p 444"' >> /etc/default/dropbear
-                    systemctl restart dropbear &>/dev/null || service dropbear restart &>/dev/null
+                    echo "/bin/false" >> /etc/shells 2>/dev/null
+                    echo "/usr/sbin/nologin" >> /etc/shells 2>/dev/null
+                    sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear 2>/dev/null
+                    sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear 2>/dev/null
+                    echo 'DROPBEAR_EXTRA_ARGS="-p 444"' >> /etc/default/dropbear 2>/dev/null
+                    systemctl restart dropbear >/dev/null 2>&1 || service dropbear restart >/dev/null 2>&1
                     if pgrep dropbear > /dev/null && ss -tuln | grep -q ":444 "; then
                         echo -e "\e[1;96m[✓] Dropbear activado en puerto 444.\e[0m"
                     else
@@ -466,7 +478,7 @@ while true; do
                         continue
                     fi
                     if ! dpkg -s screen &>/dev/null; then
-                        apt install screen -y
+                        apt install screen -y >/dev/null 2>&1
                         if dpkg -s screen &>/dev/null; then
                             echo -e "\e[1;96m[✓] Screen instalado correctamente.\e[0m"
                         else
@@ -578,30 +590,7 @@ while true; do
             esac
             ;;
         7)
-            clear
-            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            echo -e "          \e[1;33mDISPOSITIVOS ONLINE - MCCARTHEY PANEL\e[0m"
-            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            echo -e "\e[1;35m$(printf '%-14s %-14s %-15s' 'USUARIO' 'CONEXIONES' 'TIEMPO CONECTADO')\e[0m"
-            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            local total_conexiones=0
-            if [[ -s "$USUARIOS_FILE" ]]; then
-                while IFS=: read -r usuario _ limite _ _; do
-                    if id "$usuario" >/dev/null 2>&1; then
-                        local conexiones=$(get_user_connections "$usuario")
-                        local tiempo=$(get_user_connection_time "$usuario")
-                        printf "%-14s %-14s %-15s\n" "$usuario" "$conexiones/$limite" "$tiempo"
-                        total_conexiones=$((total_conexiones + conexiones))
-                    fi
-                done < "$USUARIOS_FILE"
-            fi
-            if [ "$total_conexiones" -eq 0 ]; then
-                echo -e "\e[1;31mNo hay dispositivos conectados.\e[0m"
-            fi
-            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            echo -e "\e[1;91mTOTAL DISPOSITIVOS ONLINE: $total_conexiones\e[0m"
-            echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-            read -p "Presiona enter para volver al panel principal..."
+            show_online_devices
             ;;
         8)
             clear
@@ -623,25 +612,3 @@ while true; do
             ;;
     esac
 done
-EOF
-chmod +x /root/menu.sh
-ln -sf /root/menu.sh /usr/bin/menu
-chmod +x /usr/bin/menu
-
-echo -e "\n\033[1;36m[ CONFIG ]\033[0m Configurando inicio automático del panel..."
-if ! grep -q "/usr/bin/menu" /root/.bashrc; then
-    echo "[ -f /usr/bin/menu ] && /usr/bin/menu" >> /root/.bashrc
-    echo -e "\033[1;36m[ OK ] Inicio automático configurado.\033[0m"
-else
-    echo -e "\033[1;33m[ INFO ] Inicio automático ya estaba configurado.\033[0m"
-fi
-
-echo -e "\n\033[1;36m[ PANEL ]\033[0m Panel McCarthey instalado y listo para usar."
-echo -e "Ejecuta \033[1;33mmenu\033[0m para acceder."
-fi
-
-echo -e "\n\033[1;36m==============================================\033[0m"
-echo -e "\033[1;33m      ¡TU VPS ESTÁ LISTA PARA DESPEGAR!         \033[0m"
-echo -e "\033[1;36m==============================================\033[0m"
-echo -e "Puedes acceder al panel usando: \033[1;33mmenu\033[0m"
-echo -e "¡Gracias por usar \033[1;35mMcCarthey Installer\033[0m!"
