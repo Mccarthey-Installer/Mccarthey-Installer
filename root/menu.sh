@@ -3,7 +3,7 @@
 # Función para validar la MCC-KEY
 validar_key() {
     echo -e "\n\033[1;36m[ INFO ]\033[0m Descargando la última versión del instalador..."
-    wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/etc/mccproxy/proxy.py
+    wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh
     if [ $? -ne 0 ]; then
         echo -e "\033[1;31m[ ERROR ] No se pudo descargar el script actualizado.\033[0m"
         read -p "Presiona enter para continuar..."
@@ -473,9 +473,15 @@ while true; do
                     echo -e "\n\e[1;34m🔧 Configurando Proxy WS/Directo...\e[0m"
                     mkdir -p /etc/mccproxy
                     if [ ! -f /etc/mccproxy/proxy.py ]; then
-                        echo -e "\e[1;31m[✗] Script proxy.py no encontrado. Por favor, configúralo primero.\e[0m"
-                        read -p "Presiona enter para continuar..."
-                        continue
+                        echo -e "\e[1;34m🔧 Descargando proxy.py...\e[0m"
+                        wget -q -O /etc/mccproxy/proxy.py https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/etc/mccproxy/proxy.py
+                        if [ $? -ne 0 ] || [ ! -s /etc/mccproxy/proxy.py ]; then
+                            echo -e "\e[1;31m[✗] Error al descargar proxy.py. Verifica tu conexión o la URL.\e[0m"
+                            read -p "Presiona enter para continuar..."
+                            continue
+                        fi
+                        chmod +x /etc/mccproxy/proxy.py
+                        echo -e "\e[1;96m[✓] proxy.py descargado correctamente.\e[0m"
                     fi
                     if ! dpkg -s screen &>/dev/null; then
                         apt install screen -y >/dev/null 2>&1
