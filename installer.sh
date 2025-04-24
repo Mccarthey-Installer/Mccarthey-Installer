@@ -379,7 +379,7 @@ USUARIOS_FILE="/root/usuarios_registrados.txt"
 while true; do
     clear
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e "          \e[1;33mPANEL 💗OFICIAL MCCARTHEY\e[0m"
+    echo -e "          \e[1;33mPANEL 💗OFICIAL MCCARTHEY💕\e[0m"
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
     echo -e " \e[1;35mFECHA       :\e[0m \e[1;93m$fecha\e[0m"
     echo -e " \e[1;35mIP VPS      :\e[0m \e[1;93m$ip\e[0m"
@@ -395,9 +395,9 @@ while true; do
     echo -e " \e[1;33m[3] ➮ USUARIOS REGISTRADOS\e[0m "
     echo -e " \e[1;33m[4] ➮ ELIMINAR USUARIOS\e[0m "
     echo -e " \e[1;33m[5] ➮ SALIR\e[0m "
-    echo -e " \e[1;33m[6] ➮ COLOCAR PUERTOS\e[0m "
+    echo -e " \e[1;33m[6] ➮⚡ COLOCAR PUERTOS\e[0m "
     echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
-    echo -e -n "\e[1;33m► Elige una opción: \e[0m"
+    echo -e -n "\e[1;33m► 🌞Elige una opción: \e[0m"
     read opc
 
     case $opc in
@@ -576,7 +576,7 @@ while true; do
             echo -e "\e[1;36m╔══════════════════════════════════════════════╗\e[0m"
             echo -e "\e[1;33m     ⚡ CONFIGURACIÓN DE PUERTOS PRO ⚡     \e[0m"
             echo -e "\e[1;36m╚══════════════════════════════════════════════╝\e[0m"
-            echo -e "\e[1;35mPotencia tu VPS con estilo 🌐\e[0m"
+            echo -e "\e[1;35m⚡Potencia tu VPS con estilo 🌐\e[0m"
             echo -e "\e[1;36m----------------------------------------------\e[0m"
             echo -e "\e[1;96m[1] ➮ Configurar Dropbear (Puerto 444)\e[0m"
             echo -e "\e[1;33m      Instala Dropbear para conexiones SSH seguras.\e[0m"
