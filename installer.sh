@@ -618,3 +618,10 @@ while true; do
             ;;
     esac
 done
+
+# Crear alias permanente para volver al panel con 'menu'
+if ! grep -q "alias menu=" ~/.bashrc; then
+  echo "alias menu='bash /root/installer.sh --mccpanel'" >> ~/.bashrc
+  echo -e "\n\033[1;32m[ OK ] Comando 'menu' creado. Usa 'menu' para volver al panel en cualquier momento.\033[0m"
+fi
+source ~/.bashrc
