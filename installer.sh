@@ -15,7 +15,8 @@ if [[ -z "$KEY" || "$ARG" != "--mccpanel" ]]; then
 fi
 
 # Instalar jq para manejar JSON
-apt install -y jq > /dev/null 2>&1
+apt update -y && apt install -y jq
+command -v jq >/dev/null 2>&1 || { echo >&2 "jq no está instalado correctamente. Abortando..."; exit 1; }
 
 # Validar la key vía API
 RESPUESTA=$(curl -s "$API/$(echo $KEY | jq -s -R -r @uri)")
