@@ -1,61 +1,77 @@
 #!/bin/bash
 
-KEY="$1"
-ARG="$2"
-IP_API="172.233.189.223"
-PORT_API="40412"
-ENCODED_KEY=$(echo "$KEY" | sed 's/{/%7B/;s/}/%7D/')
-VALIDADOR_URL="http://$IP_API:$PORT_API/validate/$ENCODED_KEY"
+# Colores
+red='\e[1;91m'
+green='\e[1;92m'
+reset='\e[0m'
 
-function instalar_dependencias() {
-    echo "[ INFO ] Actualizando paquetes e instalando dependencias..."
-    apt update -y &>/dev/null
-    apt install -y curl net-tools &>/dev/null
-    echo "[ INFO ] Dependencias instaladas correctamente."
-}
+API="http://45.33.63.196:7555/validate"
+KEY=""
+PANEL=false
 
-function validar_key() {
-    echo "[ INFO ] Validando KEY con API remota..."
-    response=$(curl -s "$VALIDADOR_URL")
-    echo "$response" | grep -q '"valida":true' && {
-        echo "[ INFO ] KEY válida: $(echo "$response" | grep motivo)"
-        return 0
-    }
-    echo "[ ERROR ] $(echo "$response" | grep motivo)"
-    exit 1
-}
+# Leer argumentos
+for arg in "$@"; do
+    if [[ $arg == MCC-KEY* ]]; then
+        KEY="$arg"
+    elif [[ $arg == "--mccpanel" ]]; then
+        PANEL=true
+    fi
+done
 
-function mostrar_panel() {
-    while true; do
-        clear
-        echo "=== PANEL MCCARTHEY ==="
-        echo "[1] Mostrar IP"
-        echo "[2] Ver CPU y RAM"
-        echo "[3] Crear usuario SSH"
-        echo "[0] Salir"
-        read -p "> " opt
+# Si no se pasó la key, pedirla
+if [[ -z "$KEY" ]]; then
+    echo -e "${green}>> Bienvenido al instalador McCarthey${reset}"
+    read -p "Ingresa tu MCC-KEY: " KEY
+fi
 
-        case $opt in
-            1) echo -n "Tu IP pública: "; curl -s ifconfig.me ;;
-            2) echo -e "\nCPU:"; lscpu | grep -E 'Model name|CPUs' ; echo -e "\nRAM:"; free -h ;;
-            3) read -p "Nombre de usuario: " user
-               read -p "Contraseña: " pass
-               useradd -m -s /bin/bash "$user"
-               echo "$user:$pass" | chpasswd
-               echo "[ OK ] Usuario $user creado." ;;
-            0) echo "Saliendo..."; exit ;;
-            *) echo "Opción inválida." ;;
-        esac
-        read -p "Presiona ENTER para continuar..." dummy
-    done
-}
+# Validar la KEY
+RESPUESTA=$(curl -s "$API/$(echo $KEY | jq -s -R -r @uri)")
+VALIDA=$(echo "$RESPUESTA" | grep -o '"valida":true')
 
-### FLUJO PRINCIPAL ###
-[[ -z "$KEY" || "$ARG" != "--mccpanel" ]] && {
-    echo "Uso correcto: ./installer.sh MCC-KEY{xxxx-xxxx-xxxx-xxxx} --mccpanel"
-    exit 1
-}
+if [ -z "$VALIDA" ]; then
+  echo -e "${red}KEY inválida: $(echo $RESPUESTA | jq -r .motivo)${reset}"
+  exit 1
+fi
 
-instalar_dependencias
-validar_key
-mostrar_panel
+echo -e "${green}KEY válida. Instalando entorno...${reset}"
+
+# Actualizar sistema
+apt update -y && apt upgrade -y
+
+# Instalar dependencias
+apt install -y python3 python3-pip screen sqlite3 wget curl jq
+
+# Crear archivos necesarios
+mkdir -p /etc/mccproxy
+echo "80 443 8080" > /etc/mccproxy_ports
+
+# Descargar proxy.py
+wget -q https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/mccproxy/proxy.py -O /etc/mccproxy/proxy.py
+chmod +x /etc/mccproxy/proxy.py
+
+# Crear servicio systemd
+cat <<EOF > /etc/systemd/system/mccproxy.service
+[Unit]
+Description=McCarthey Proxy
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /etc/mccproxy/proxy.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reexec
+systemctl daemon-reload
+systemctl enable mccproxy
+systemctl restart mccproxy
+
+# Si se especificó el panel
+if $PANEL; then
+  echo -e "${green}Descargando y activando el panel...${reset}"
+  wget -q https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/menu.sh -O /usr/local/bin/menu
+  chmod +x /usr/local/bin/menu
+  echo -e "${green}Panel instalado. Usa el comando: menu${reset}"
+fi
