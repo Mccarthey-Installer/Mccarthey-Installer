@@ -8,7 +8,6 @@ NC='\033[0m' # Sin color
 # Ruta del script proxy (se descargará más adelante)
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/mccproxy/proxy.py"
 API="http://127.0.0.1:7555/validate"
-
 # Leer argumentos
 KEY="$1"
 ARG="$2"
