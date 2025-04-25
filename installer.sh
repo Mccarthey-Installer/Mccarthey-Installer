@@ -7,7 +7,7 @@ NC='\033[0m' # Sin color
 
 # Ruta del script proxy (se descargará más adelante)
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/mccproxy/proxy.py"
-API="http://45.33.63.196:7555/validate"
+API="http://127.0.0.1:7555/validate"
 
 # Leer argumentos
 KEY="$1"
@@ -24,7 +24,8 @@ apt update -y && apt install -y jq
 command -v jq >/dev/null 2>&1 || { echo -e "${RED}jq no está instalado correctamente. Abortando...${NC}"; exit 1; }
 
 # Validar la key vía API
-RESPUESTA=$(curl -s "$API/$(echo $KEY | jq -s -R -r @uri)")
+ENCODED_KEY=$(echo "$KEY" | jq -s -R -r @uri)
+RESPUESTA=$(curl -s "$API/$ENCODED_KEY")
 VALIDA=$(echo "$RESPUESTA" | grep -o '"valida":true')
 
 if [[ -z "$VALIDA" ]]; then
