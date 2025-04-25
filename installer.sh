@@ -1,58 +1,51 @@
 #!/bin/bash
 
-# Colores
-red='\e[1;91m'
-green='\e[1;92m'
-reset='\e[0m'
-
+# Ruta del script proxy (se descargará más adelante)
+PROXY_SCRIPT_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/mccproxy/proxy.py"
 API="http://45.33.63.196:7555/validate"
-KEY=""
-PANEL=false
 
 # Leer argumentos
-for arg in "$@"; do
-    if [[ $arg == MCC-KEY* ]]; then
-        KEY="$arg"
-    elif [[ $arg == "--mccpanel" ]]; then
-        PANEL=true
-    fi
-done
+KEY="$1"
+ARG="$2"
 
-# Si no se pasó la key, pedirla
-if [[ -z "$KEY" ]]; then
-    echo -e "${green}>> Bienvenido al instalador McCarthey${reset}"
-    read -p "Ingresa tu MCC-KEY: " KEY
+# Verificar si se proporcionó la key y el argumento correcto
+if [[ -z "$KEY" || "$ARG" != "--mccpanel" ]]; then
+    echo "Uso: ./installer.sh MCC-KEY{xxxx-xxxx-xxxx-xxxx} --mccpanel"
+    exit 1
 fi
 
-# Validar la KEY
+# Instalar jq para manejar JSON
+apt install -y jq > /dev/null 2>&1
+
+# Validar la key vía API
 RESPUESTA=$(curl -s "$API/$(echo $KEY | jq -s -R -r @uri)")
 VALIDA=$(echo "$RESPUESTA" | grep -o '"valida":true')
 
-if [ -z "$VALIDA" ]; then
-  echo -e "${red}KEY inválida: $(echo $RESPUESTA | jq -r .motivo)${reset}"
-  exit 1
+if [[ -z "$VALIDA" ]]; then
+    echo -e "KEY inválida:"
+    echo "$RESPUESTA"
+    exit 1
 fi
 
-echo -e "${green}KEY válida. Instalando entorno...${reset}"
-
-# Actualizar sistema
-apt update -y && apt upgrade -y
+echo "KEY válida. Continuando instalación..."
 
 # Instalar dependencias
-apt install -y python3 python3-pip screen sqlite3 wget curl jq
+apt update -y && apt install -y python3 python3-pip wget curl dropbear
 
-# Crear archivos necesarios
+# Crear directorio para proxy y descargarlo
 mkdir -p /etc/mccproxy
-echo "80 443 8080" > /etc/mccproxy_ports
-
-# Descargar proxy.py
-wget -q https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/mccproxy/proxy.py -O /etc/mccproxy/proxy.py
+wget -q -O /etc/mccproxy/proxy.py "$PROXY_SCRIPT_URL"
 chmod +x /etc/mccproxy/proxy.py
 
-# Crear servicio systemd
+# Crear archivo de puertos si no existe
+if [[ ! -f /etc/mccproxy_ports ]]; then
+    echo "80 443 8080" > /etc/mccproxy_ports
+fi
+
+# Crear servicio systemd para el proxy
 cat <<EOF > /etc/systemd/system/mccproxy.service
 [Unit]
-Description=McCarthey Proxy
+Description=McCarthey Proxy TCP
 After=network.target
 
 [Service]
@@ -63,15 +56,21 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
+# Recargar y activar el servicio
 systemctl daemon-reexec
 systemctl daemon-reload
 systemctl enable mccproxy
-systemctl restart mccproxy
+systemctl start mccproxy
 
-# Si se especificó el panel
-if $PANEL; then
-  echo -e "${green}Descargando y activando el panel...${reset}"
-  wget -q https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/menu.sh -O /usr/local/bin/menu
-  chmod +x /usr/local/bin/menu
-  echo -e "${green}Panel instalado. Usa el comando: menu${reset}"
-fi
+# Mostrar información del VPS (fecha CA, IP, CPU, SO)
+clear
+echo "======================================"
+echo "         McCarthey PANEL SSH"
+echo "======================================"
+echo "Fecha y hora (CA): $(TZ=America/Guatemala date)"
+echo "IP pública: $(curl -s ifconfig.me)"
+echo "CPUs: $(nproc)"
+echo "Sistema: $(lsb_release -d | cut -f2)"
+echo "--------------------------------------"
+echo "Usa 'systemctl restart mccproxy' para reiniciar el proxy"
+echo "Archivos: /etc/mccproxy/proxy.py y /etc/mccproxy_ports"
