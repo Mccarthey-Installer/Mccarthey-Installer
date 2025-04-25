@@ -1,23 +1,36 @@
 #!/bin/bash
 KEY=$1
-API_URL="http://172.233.189.223:9090/validate?key=$KEY"
+DB_PATH="/root/telegram_bot/keys.db"
 
-# Validar la key vía API remota
-RESPONSE=$(curl -s "$API_URL")
+# Verifica si sqlite3 está instalado
+if ! command -v sqlite3 &> /dev/null; then
+    apt update -y && apt install -y sqlite3
+fi
 
-if [[ "$RESPONSE" == "VALID" ]]; then
-    echo "Key válida, procediendo con la instalación..."
-elif [[ "$RESPONSE" == "USED" ]]; then
-    echo "Key ya usada"
-    exit 1
-elif [[ "$RESPONSE" == "EXPIRED" ]]; then
-    echo "Key expirada"
-    exit 1
-else
+# Consulta la base de datos
+VALID=$(sqlite3 "$DB_PATH" "SELECT used, created_at FROM keys WHERE key='$KEY'")
+if [ -z "$VALID" ]; then
     echo "Key no encontrada"
     exit 1
 fi
 
-# Aquí comienza el resto de tu instalación personalizada...
-# Por ejemplo:
-# apt install -y dropbear screen python3 ...
+USED=$(echo $VALID | cut -d'|' -f1)
+CREATED_AT=$(echo $VALID | cut -d'|' -f2)
+CURRENT_TIME=$(date +%s)
+
+if [ "$USED" -eq 1 ]; then
+    echo "Key ya usada"
+    exit 1
+fi
+
+if [ $(( CURRENT_TIME - CREATED_AT )) -gt 10800 ]; then
+    echo "Key expirada"
+    sqlite3 "$DB_PATH" "DELETE FROM keys WHERE key='$KEY'"
+    exit 1
+fi
+
+# Marca la key como usada
+sqlite3 "$DB_PATH" "UPDATE keys SET used=1 WHERE key='$KEY'"
+echo "Key válida, procediendo con la instalación..."
+
+# Agrega aquí el resto de tu script de instalación
