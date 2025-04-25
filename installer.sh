@@ -11,8 +11,11 @@ NC='\033[0m'
 REPO_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main"
 MENU_URL="$REPO_URL/menu.sh"
 PROXY_URL="$REPO_URL/etc/mccproxy/proxy.py"
+API_SCRIPT_URL="$REPO_URL/api.py"
 MENU_PATH="/root/menu.sh"
 PROXY_PATH="/etc/mccproxy/proxy.py"
+API_PATH="/root/telegram-bot/api.py"
+DB_PATH="/root/telegram-bot/keys.db"
 API_URL="http://localhost:40412/validate"
 
 # Función para mostrar mensajes
@@ -34,7 +37,7 @@ install_dependencies() {
     if [ $? -ne 0 ]; then
         error "No se pudieron instalar las dependencias."
     fi
-    # Instalar Flask para la API
+    # Instalar Flask
     pip3 install flask >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         error "No se pudo instalar Flask."
@@ -51,7 +54,7 @@ download_file() {
     if [ $? -ne 0 ] || [ ! -s "$dest" ]; then
         error "No se pudo descargar $dest."
     fi
-    chmod +x "$dest"
+    chmod +x "$dest" 2>/dev/null
     msg "$dest descargado correctamente." "${GREEN}"
 }
 
@@ -69,6 +72,72 @@ validate_key() {
         msg "MCC-KEY válida: $key" "${GREEN}"
     else
         error "MCC-KEY inválida. Motivo: $motivo"
+    fi
+}
+
+# Función para inicializar la base de datos SQLite
+setup_db() {
+    msg "Configurando base de datos SQLite..."
+    if [ ! -f "$DB_PATH" ]; then
+        sqlite3 "$DB_PATH" <<EOF
+CREATE TABLE keys (
+    key TEXT PRIMARY KEY,
+    fecha_creacion TEXT,
+    usado INTEGER,
+    expirado INTEGER
+);
+EOF
+        if [ $? -eq 0 ]; then
+            msg "Base de datos creada correctamente." "${GREEN}"
+        else
+            error "No se pudo crear la base de datos SQLite."
+        fi
+    else
+        msg "Base de datos ya existe." "${GREEN}"
+    fi
+}
+
+# Función para instalar y descargar la API Flask
+setup_api() {
+    msg "Configurando API Flask..."
+    mkdir -p /root/telegram-bot
+    if [ ! -f "$API_PATH" ]; then
+        download_file "$API_SCRIPT_URL" "$API_PATH"
+    else
+        msg "$API_PATH ya existe." "${GREEN}"
+    fi
+    setup_db
+}
+
+# Función para iniciar la API Flask si no está corriendo
+start_api() {
+    msg "Verificando estado de la API Flask..."
+    if ! ss -tuln | grep -q ":40412 "; then
+        msg "Iniciando API Flask en puerto 40412..."
+        # Verificar si el puerto está en uso
+        if ss -tuln | grep -q ":40412 "; then
+            msg "Puerto 40412 en uso, intentando liberar..." "${YELLOW}"
+            fuser -k 40412/tcp >/dev/null 2>&1
+            sleep 1
+        fi
+        if [ -f "$API_PATH" ]; then
+            # Probar ejecución para capturar error
+            error_log=$(mktemp)
+            screen -dmS flask_api bash -c "cd /root/telegram-bot && python3 api.py 2>$error_log"
+            sleep 3
+            if ss -tuln | grep -q ":40412 "; then
+                msg "API Flask iniciada correctamente." "${GREEN}"
+                rm -f "$error_log"
+            else
+                error_msg=$(cat "$error_log")
+                rm -f "$error_log"
+                error "No se pudo iniciar la API Flask. Error: $error_msg"
+            fi
+        else
+            error "Script de API Flask no encontrado en $API_PATH."
+        fi
+    else
+        msg "API Flask ya está corriendo." "${GREEN}"
     fi
 }
 
@@ -96,28 +165,6 @@ setup_panel() {
         echo "[ -t 1 ] && exec /usr/bin/menu" >> /root/.bashrc
     fi
     msg "Persistencia configurada en .bashrc." "${GREEN}"
-}
-
-# Función para iniciar la API Flask si no está corriendo
-start_api() {
-    msg "Verificando estado de la API Flask..."
-    if ! pgrep -f "flask run.*40412" >/dev/null; then
-        msg "Iniciando API Flask en puerto 40412..."
-        # Asumiendo que el script Flask está en /root/telegram-bot/api.py
-        if [ -f /root/telegram-bot/api.py ]; then
-            screen -dmS flask_api bash -c "cd /root/telegram-bot && python3 api.py"
-            sleep 2
-            if pgrep -f "flask run.*40412" >/dev/null; then
-                msg "API Flask iniciada correctamente." "${GREEN}"
-            else
-                error "No se pudo iniciar la API Flask."
-            fi
-        else
-            error "Script de API Flask no encontrado en /root/telegram-bot/api.py."
-        fi
-    else
-        msg "API Flask ya está corriendo." "${GREEN}"
-    fi
 }
 
 # Función principal
@@ -149,7 +196,11 @@ main() {
         esac
     done
 
-    # Iniciar API Flask
+    # Instalar dependencias
+    install_dependencies
+
+    # Configurar e iniciar API Flask
+    setup_api
     start_api
 
     # Validar MCC-KEY
@@ -159,9 +210,6 @@ main() {
     if [ -n "$proxy_key" ]; then
         validate_key "$proxy_key"
     fi
-
-    # Instalar dependencias
-    install_dependencies
 
     # Configurar el panel
     setup_panel
