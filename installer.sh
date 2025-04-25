@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Colores
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m' # Sin color
+
 # Ruta del script proxy (se descargará más adelante)
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/mccproxy/proxy.py"
 API="http://45.33.63.196:7555/validate"
@@ -10,25 +15,25 @@ ARG="$2"
 
 # Verificar si se proporcionó la key y el argumento correcto
 if [[ -z "$KEY" || "$ARG" != "--mccpanel" ]]; then
-    echo "Uso: ./installer.sh MCC-KEY{xxxx-xxxx-xxxx-xxxx} --mccpanel"
+    echo -e "${RED}Uso: ./installer.sh MCC-KEY{xxxx-xxxx-xxxx-xxxx} --mccpanel${NC}"
     exit 1
 fi
 
 # Instalar jq para manejar JSON
 apt update -y && apt install -y jq
-command -v jq >/dev/null 2>&1 || { echo >&2 "jq no está instalado correctamente. Abortando..."; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo -e "${RED}jq no está instalado correctamente. Abortando...${NC}"; exit 1; }
 
 # Validar la key vía API
 RESPUESTA=$(curl -s "$API/$(echo $KEY | jq -s -R -r @uri)")
 VALIDA=$(echo "$RESPUESTA" | grep -o '"valida":true')
 
 if [[ -z "$VALIDA" ]]; then
-    echo -e "KEY inválida:"
+    echo -e "${RED}KEY inválida:${NC}"
     echo "$RESPUESTA"
     exit 1
 fi
 
-echo "KEY válida. Continuando instalación..."
+echo -e "${GREEN}KEY válida. Continuando instalación...${NC}"
 
 # Instalar dependencias
 apt update -y && apt install -y python3 python3-pip wget curl dropbear
