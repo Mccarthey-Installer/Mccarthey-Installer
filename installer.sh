@@ -5,7 +5,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m' # Sin color
 
-# Ruta del script proxy
+# Ruta del script proxy (se descargará más adelante)
 PROXY_SCRIPT_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/mccproxy/proxy.py"
 API="http://127.0.0.1:7555/validate"
 
@@ -23,9 +23,11 @@ fi
 apt update -y && apt install -y jq
 command -v jq >/dev/null 2>&1 || { echo -e "${RED}jq no está instalado correctamente. Abortando...${NC}"; exit 1; }
 
+# Codificar la key para la URL
+KEY_URLENCODED=$(echo "$KEY" | jq -s -R -r @uri)
+
 # Validar la key vía API
-KEY_CLEAN=$(echo "$KEY" | sed 's/[{}]//g')
-RESPUESTA=$(curl -s "$API/MCC-KEY%7B$KEY_CLEAN%7D")
+RESPUESTA=$(curl -s "$API/$KEY_URLENCODED")
 VALIDA=$(echo "$RESPUESTA" | grep -o '"valida":true')
 
 if [[ -z "$VALIDA" ]]; then
@@ -69,7 +71,7 @@ systemctl daemon-reload
 systemctl enable mccproxy
 systemctl start mccproxy
 
-# Mostrar información del VPS
+# Mostrar información del VPS (fecha CA, IP, CPU, SO)
 clear
 echo "======================================"
 echo "         McCarthey PANEL SSH"
