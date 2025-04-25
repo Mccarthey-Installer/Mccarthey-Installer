@@ -1,54 +1,63 @@
 #!/bin/bash
 
-# Colores
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m' # Sin color
-
-# Verificar si se pasó una key
-if [[ -z "$1" ]]; then
-    echo -e "${RED}Uso correcto:${NC} ./installer.sh MCC-KEY{xxxx-xxxx-xxxx-xxxx} [--mccpanel]"
-    exit 1
-fi
+# ==========================
+# McCarthey Installer Script
+# ==========================
 
 KEY="$1"
 ARG="$2"
 API="http://127.0.0.1:7555/validate"
 
-# Actualizar sistema y dependencias
-apt update -y && apt upgrade -y
-apt install -y jq wget curl
-
-# Codificar la key para la URL
-KEY_URLENCODED=$(echo "$KEY" | jq -s -R -r @uri)
-
-# Validar la key con el API
-VALIDATION_URL="${API}/${KEY_URLENCODED}"
-RESPUESTA=$(curl -s "$VALIDATION_URL")
-
-# Verificar si es válida
-VALIDA=$(echo "$RESPUESTA" | grep -o '"valida":true')
-
-if [[ -z "$VALIDA" ]]; then
-    echo -e "${RED}KEY inválida:${NC}"
-    echo "$RESPUESTA"
-    exit 1
+# Verificar si se pasó una key
+if [[ -z "$KEY" ]]; then
+  echo "Uso: ./installer.sh MCC-KEY{xxxx-xxxx-xxxx-xxxx} --mccpanel"
+  exit 1
 fi
 
-echo -e "${GREEN}KEY válida. Continuando con la instalación...${NC}"
+# Codificar la key para URL
+KEY_URLENCODED=$(echo "$KEY" | jq -s -R -r @uri)
 
-# Crear directorios necesarios
-mkdir -p /etc/mccproxy
+# Verificar si jq está instalado
+if ! command -v jq &> /dev/null; then
+  echo "Instalando dependencia: jq"
+  apt update -y && apt install jq -y
+fi
 
-# Descargar el script menu.sh desde tu repo
-wget -q -O /usr/bin/menu.sh "https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/menu.sh"
-chmod +x /usr/bin/menu.sh
+# Validar la key vía API
+VALIDATION_URL="${API}/${KEY_URLENCODED}"
+RESPUESTA=$(curl -s "$VALIDATION_URL")
+VALIDEZ=$(echo "$RESPUESTA" | jq -r '.valida')
+MOTIVO=$(echo "$RESPUESTA" | jq -r '.motivo')
 
-# Copiar archivos adicionales si los hubiera
-# cp proxy.py /etc/mccproxy/
+if [[ "$VALIDEZ" != "true" ]]; then
+  echo "KEY inválida: $MOTIVO"
+  exit 1
+else
+  echo "KEY válida: $MOTIVO"
+fi
 
-# Ejecutar el panel si se pasó el flag --mccpanel
+# Continuar con instalación
+echo "Instalando paquetes necesarios..."
+apt update -y && apt upgrade -y
+apt install -y net-tools curl wget jq
+
+# Crear estructura de carpetas
+mkdir -p /etc/mccproxy/
+cd /etc/mccproxy/
+
+# Descargar el menú
+wget -q https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/menu.sh -O /usr/bin/menu
+chmod +x /usr/bin/menu
+
+# Descargar el proxy
+wget -q https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/etc/mccproxy/proxy.py -O /etc/mccproxy/proxy.py
+chmod +x /etc/mccproxy/proxy.py
+
+# Mostrar mensaje final
+echo -e "\nInstalación completa."
+echo "Usa el comando: menu"
+
+# Lanzar menú si se pasó --mccpanel
 if [[ "$ARG" == "--mccpanel" ]]; then
-    clear
-    bash /usr/bin/menu.sh
+  /usr/bin/menu
 fi
