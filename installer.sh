@@ -1,36 +1,23 @@
 #!/bin/bash
-KEY=$1
-DB_PATH="/root/telegram_bot/keys.db"
 
-# Verifica si sqlite3 está instalado
-if ! command -v sqlite3 &> /dev/null; then
-    apt update -y && apt install -y sqlite3
-fi
+# Leer KEY desde argumentos
+KEY="$1"
 
-# Consulta la base de datos
-VALID=$(sqlite3 "$DB_PATH" "SELECT used, created_at FROM keys WHERE key='$KEY'")
-if [ -z "$VALID" ]; then
-    echo "Key no encontrada"
+# Validar que se envió una key
+if [ -z "$KEY" ]; then
+    echo "ERROR: No se proporcionó una key."
     exit 1
 fi
 
-USED=$(echo $VALID | cut -d'|' -f1)
-CREATED_AT=$(echo $VALID | cut -d'|' -f2)
-CURRENT_TIME=$(date +%s)
+# Validar la key con tu API
+RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/installer.sh "http://45.33.63.196:5000/validate?key=$KEY")
 
-if [ "$USED" -eq 1 ]; then
-    echo "Key ya usada"
+# Revisar si fue exitosa
+if [ "$RESPONSE" != "200" ]; then
+    echo "ERROR: Key inválida, expirada o ya utilizada."
     exit 1
 fi
 
-if [ $(( CURRENT_TIME - CREATED_AT )) -gt 10800 ]; then
-    echo "Key expirada"
-    sqlite3 "$DB_PATH" "DELETE FROM keys WHERE key='$KEY'"
-    exit 1
-fi
-
-# Marca la key como usada
-sqlite3 "$DB_PATH" "UPDATE keys SET used=1 WHERE key='$KEY'"
-echo "Key válida, procediendo con la instalación..."
-
-# Agrega aquí el resto de tu script de instalación
+# Ejecutar el script descargado desde el API
+chmod +x /tmp/installer.sh
+bash /tmp/installer.sh
