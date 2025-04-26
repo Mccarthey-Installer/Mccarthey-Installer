@@ -1,7 +1,7 @@
 #!/bin/bash
 
 API_URL="http://45.33.63.196:3000"
-PORT=2222  # Puerto inicial para SSH
+PORT=22
 
 # Función para verificar la clave
 check_key() {
@@ -15,15 +15,15 @@ check_key() {
                 echo "Clave válida. Instalando..."
                 return 0
             else
-                echo "Error: Clave ya usada. Genera una nueva con el bot."
+                echo "Error: Clave ya usada."
                 exit 1
             fi
         else
-            echo "Error: Clave expirada. Genera una nueva con el bot."
+            echo "Error: Clave expirada."
             exit 1
         fi
     else
-        echo "Error: Clave no encontrada. Genera una nueva con el bot."
+        echo "Error: Clave no encontrada."
         exit 1
     fi
 }
@@ -31,12 +31,12 @@ check_key() {
 # Función para marcar la clave como usada
 mark_key_used() {
     KEY=$1
-    curl -s -X POST "$API_URL/keys/$KEY/use"
+    curl -s -X POST "$API_URL/keys/$KEY/use" >/dev/null
 }
 
 # Verificar argumentos
-if [ $# -lt 1 ]; then
-    echo "Uso: ./installer.sh <clave> --mccpanel"
+if [ $# -lt 2 ]; then
+    echo "Uso: bash installer.sh <KEY> --mccpanel"
     exit 1
 fi
 
@@ -45,69 +45,99 @@ OPTION=$2
 
 if [ "$OPTION" == "--mccpanel" ]; then
     check_key $KEY
+    echo "Actualizando VPS..."
+    apt update -y && apt upgrade -y
 
-    # Seleccionar puerto único
-    while netstat -tuln | grep -q ":$PORT"; do
-        PORT=$((PORT + 1))
-    done
+    echo "Instalando paquetes base..."
+    apt install -y wget curl net-tools bc screen nmap unzip
 
-    echo "Instalando servidor SSH en el puerto $PORT..."
-    apt update -y
+    echo "Instalando OpenSSH..."
     apt install -y openssh-server
+    systemctl enable ssh
+    systemctl restart ssh
 
-    sed -i "s/#Port 22/Port $PORT/" /etc/ssh/sshd_config
-    systemctl restart sshd
+    echo "Instalando Dropbear..."
+    apt install -y dropbear
+    sed -i 's/NO_START=1/NO_START=0/' /etc/default/dropbear
+    sed -i 's/DROPBEAR_PORT=22/DROPBEAR_PORT=90/' /etc/default/dropbear
+    systemctl enable dropbear
+    systemctl restart dropbear
 
-    echo "Instalando panel web (Cockpit)..."
-    apt install -y cockpit
-    systemctl enable --now cockpit.socket
-
-    # Crear script de usuarios SSH
-    cat << 'EOF' > /root/crear-usuario-ssh.sh
-#!/bin/bash
-
-clear
-echo "======== CREAR USUARIO SSH PARA VPN/PAYLOAD ========"
-
-read -p "Nombre del usuario: " username
-read -p "Duración en días (ej: 30): " dias
-read -p "¿Deseas una contraseña personalizada? (s/n): " custom_pass
-
-if [ "$custom_pass" == "s" ]; then
-    read -p "Introduce la contraseña: " password
-else
-    password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
-fi
-
-exp_date=$(date -d "+$dias days" +"%Y-%m-%d")
-useradd -e $exp_date -s /bin/false -M $username
-echo "$username:$password" | chpasswd
-
-ip=$(hostname -I | awk '{print $1}')
-
-echo ""
-echo "========= DATOS DEL USUARIO ========="
-echo "Host/IP: $ip"
-echo "Puerto SSH: $PORT"
-echo "Usuario: $username"
-echo "Contraseña: $password"
-echo "Expira el: $exp_date"
-echo "======================================"
+    echo "Instalando SSLH (multiplexor 443)..."
+    apt install -y sslh
+    cat > /etc/default/sslh << EOF
+RUN=yes
+DAEMON=/usr/sbin/sslh
+DAEMON_OPTS="--user sslh --listen 0.0.0.0:443 --ssh 127.0.0.1:22 --openvpn 127.0.0.1:1194 --http 127.0.0.1:80 --ssl 127.0.0.1:443 --pidfile /var/run/sslh/sslh.pid"
 EOF
+    systemctl enable sslh
+    systemctl restart sslh
 
-    chmod +x /root/crear-usuario-ssh.sh
+    echo "Instalando BadVPN..."
+    wget -O /usr/bin/badvpn-udpgw https://raw.githubusercontent.com/McClaneBVPN/McClane-Installer/main/badvpn-udpgw
+    chmod +x /usr/bin/badvpn-udpgw
+    screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200
+    screen -dmS badvpn2 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300
+
+    echo "Instalando Nginx..."
+    apt install -y nginx
+    systemctl enable nginx
+    systemctl restart nginx
+
+    # Crear comando 'menu'
+    cat > /usr/bin/menu << 'EOF'
+#!/bin/bash
+clear
+IP=$(wget -qO- ipv4.icanhazip.com)
+RAM_TOTAL=$(free -m | awk '/Mem:/ { print $2 }')
+RAM_USO=$(free -m | awk '/Mem:/ { print $3 }')
+RAM_LIBRE=$(free -m | awk '/Mem:/ { print $4 }')
+CPU_USO=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
+BUFFER=$(free -m | awk '/Mem:/ {print $6}')
+
+echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+echo -e " ∘ ONLINES: 0 ∘ EXP: 0 ∘ KILL: 0 ∘ TOTAL: 0"
+echo -e " ∘ S.O: UBUNTU 22.04.5 ∘ Base:x86_64 ∘ CPU's:1"
+echo -e " ∘ IP: $IP ∘ FECHA: $(date +%d/%m/%Y-%H:%M)"
+echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+echo -e " Key: Verified【  📚Mccarthey🐾 © 】 (V2.8)"
+echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+echo -e " ∘ SSH: 22            ∘ System-DNS: 53"
+echo -e " ∘ SOCKS/PYTHON: 80   ∘ WEB-NGinx: 81"
+echo -e " ∘ DROPBEAR: 90       ∘ SSL: 443"
+echo -e " ∘ BadVPN: 7200       ∘ BadVPN: 7300"
+echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+echo -e " ∘ TOTAL: $(bc <<< "scale=1; $RAM_TOTAL/1024")G ∘ M|LIBRE: $(bc <<< "scale=1; $RAM_LIBRE/1024")G ∘ EN USO: ${RAM_USO}M"
+echo -e " ∘ U/RAM: $(bc <<< "scale=2; $RAM_USO*100/$RAM_TOTAL")% ∘ U/CPU: ${CPU_USO}% ∘ BUFFER: ${BUFFER}M"
+echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+echo -e " [01] ➮ CONTROL USUARIOS (SSH/SSL/VMESS)"
+echo -e " [02] ➮ [!] OPTIMIZAR VPS  [OFF]"
+echo -e " [03] ➮ CONTADOR ONLINE USERS [ON]"
+echo -e " [04] ➮ AUTOINICIAR SCRIPT  [ON]"
+echo -e " [05] ➮ INSTALADOR DE PROTOCOLOS"
+echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+echo -e " [06] ➮ [!] UPDATE / REMOVE  |  [0] ⇦ [ SALIR ]"
+echo -e "\e[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\e[0m"
+read -p " ► Opcion : " opc
+EOF
+    chmod +x /usr/bin/menu
+
+    # Crear comando 'update'
+    cat > /usr/bin/update << 'EOF'
+#!/bin/bash
+cd $HOME
+wget -q -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh
+bash installer.sh update
+EOF
+    chmod +x /usr/bin/update
 
     mark_key_used $KEY
-
-    IP=$(hostname -I | awk '{print $1}')
     echo ""
-    echo "====== INSTALACIÓN COMPLETA ======"
-    echo "Accede al Panel Web: http://$IP:9090"
-    echo "SSH disponible en puerto: $PORT"
-    echo ""
-    echo "Script para crear usuarios SSH: /root/crear-usuario-ssh.sh"
-    echo "================================="
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo " PANEL SSH instalado exitosamente."
+    echo " Escribe \e[1;32mmenu\e[0m para abrir el panel."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 else
-    echo "Opción inválida. Usa --mccpanel."
+    echo "Opción inválida. Usa --mccpanel"
     exit 1
 fi
