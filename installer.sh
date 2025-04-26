@@ -45,23 +45,68 @@ OPTION=$2
 
 if [ "$OPTION" == "--mccpanel" ]; then
     check_key $KEY
+
     # Seleccionar puerto único
     while netstat -tuln | grep -q ":$PORT"; do
         PORT=$((PORT + 1))
     done
-    echo "Instalando panel SSH en el puerto $PORT..."
-    # Configurar SSH
+
+    echo "Instalando servidor SSH en el puerto $PORT..."
     apt update -y
     apt install -y openssh-server
+
     sed -i "s/#Port 22/Port $PORT/" /etc/ssh/sshd_config
     systemctl restart sshd
-    # Instalar panel SSH (Cockpit como ejemplo)
+
+    echo "Instalando panel web (Cockpit)..."
     apt install -y cockpit
     systemctl enable --now cockpit.socket
-    # Marcar clave como usada
+
+    # Crear script de usuarios SSH
+    cat << 'EOF' > /root/crear-usuario-ssh.sh
+#!/bin/bash
+
+clear
+echo "======== CREAR USUARIO SSH PARA VPN/PAYLOAD ========"
+
+read -p "Nombre del usuario: " username
+read -p "Duración en días (ej: 30): " dias
+read -p "¿Deseas una contraseña personalizada? (s/n): " custom_pass
+
+if [ "$custom_pass" == "s" ]; then
+    read -p "Introduce la contraseña: " password
+else
+    password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
+fi
+
+exp_date=$(date -d "+$dias days" +"%Y-%m-%d")
+useradd -e $exp_date -s /bin/false -M $username
+echo "$username:$password" | chpasswd
+
+ip=$(hostname -I | awk '{print $1}')
+
+echo ""
+echo "========= DATOS DEL USUARIO ========="
+echo "Host/IP: $ip"
+echo "Puerto SSH: $PORT"
+echo "Usuario: $username"
+echo "Contraseña: $password"
+echo "Expira el: $exp_date"
+echo "======================================"
+EOF
+
+    chmod +x /root/crear-usuario-ssh.sh
+
     mark_key_used $KEY
-    echo "Panel SSH instalado. Accede en: http://$(hostname -I | awk '{print $1}'):9090"
-    echo "También puedes usar SSH en el puerto $PORT con: ssh root@$(hostname -I | awk '{print $1}')"
+
+    IP=$(hostname -I | awk '{print $1}')
+    echo ""
+    echo "====== INSTALACIÓN COMPLETA ======"
+    echo "Accede al Panel Web: http://$IP:9090"
+    echo "SSH disponible en puerto: $PORT"
+    echo ""
+    echo "Script para crear usuarios SSH: /root/crear-usuario-ssh.sh"
+    echo "================================="
 else
     echo "Opción inválida. Usa --mccpanel."
     exit 1
