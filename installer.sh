@@ -1,23 +1,26 @@
 #!/bin/bash
 
-# Leer KEY desde argumentos
+# Verificar que se haya proporcionado una KEY
 KEY="$1"
-
-# Validar que se envió una key
 if [ -z "$KEY" ]; then
-    echo "ERROR: No se proporcionó una key."
+    echo -e "\n\033[1;31m[ERROR]\033[0m No se proporcionó una KEY válida."
+    echo "Uso correcto: bash installer.sh <KEY>"
     exit 1
 fi
 
-# Validar la key con tu API
-RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/installer.sh "http://45.33.63.196:5000/validate?key=$KEY")
+# Validar la KEY contra tu API
+echo -e "\n\033[1;34m[INFO]\033[0m Validando KEY en el servidor..."
+RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/real_installer.sh "http://45.33.63.196:5000/validate?key=$KEY")
 
 # Revisar si fue exitosa
 if [ "$RESPONSE" != "200" ]; then
-    echo "ERROR: Key inválida, expirada o ya utilizada."
+    echo -e "\n\033[1;31m[ERROR]\033[0m KEY inválida, expirada o ya utilizada."
     exit 1
 fi
 
-# Ejecutar el script descargado desde el API
-chmod +x /tmp/installer.sh
-bash /tmp/installer.sh
+# Permitir ejecución del script descargado
+chmod +x /tmp/real_installer.sh
+
+# Ejecutar el script descargado
+echo -e "\n\033[1;32m[OK]\033[0m Ejecutando instalador principal..."
+bash /tmp/real_installer.sh
