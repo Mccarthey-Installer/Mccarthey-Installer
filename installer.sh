@@ -6,23 +6,23 @@ PORT=2222
 check_key() {
     KEY=$1
     RESPONSE=$(curl -s "$API_URL/keys/$KEY")
-    if [[ $RESPONSE == *"expiration"* ]]; then
-        EXPIRATION=$(echo $RESPONSE | grep -oP '"expiration":\K[^,]+')
-        CURRENT_TIME=$(date +%s)
-        if (( $(echo "$EXPIRATION > $CURRENT_TIME" | bc -l) )); then
-            if [[ $RESPONSE == *"used\":false"* ]]; then
-                echo "Clave válida. Instalando..."
-                return 0
-            else
-                echo "Error: Clave ya usada. Genera una nueva con el bot."
-                exit 1
-            fi
+    if echo "$RESPONSE" | jq -e '.error' >/dev/null; then
+        echo "Error: $(echo "$RESPONSE" | jq -r '.error')"
+        exit 1
+    fi
+    EXPIRATION=$(echo "$RESPONSE" | jq -r '.expiration')
+    USED=$(echo "$RESPONSE" | jq -r '.used')
+    CURRENT_TIME=$(date +%s)
+    if (( $(echo "$EXPIRATION > $CURRENT_TIME" | bc -l) )); then
+        if [ "$USED" = "false" ]; then
+            echo "Clave válida. Instalando..."
+            return 0
         else
-            echo "Error: Clave expirada. Genera una nueva con el bot."
+            echo "Error: Clave ya usada. Genera una nueva con el bot."
             exit 1
         fi
     else
-        echo "Error: Clave no encontrada. Genera una nueva con el bot."
+        echo "Error: Clave expirada. Genera una nueva con el bot."
         exit 1
     fi
 }
