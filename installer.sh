@@ -3,6 +3,13 @@
 API_URL="http://102.129.137.174:3000"
 PORT=2222
 
+# Instalar jq si no está presente
+if ! command -v jq &> /dev/null; then
+    echo "Instalando jq..."
+    apt update -y
+    apt install -y jq
+fi
+
 check_key() {
     KEY=$1
     RESPONSE=$(curl -s "$API_URL/keys/$KEY")
