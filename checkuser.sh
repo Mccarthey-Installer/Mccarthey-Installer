@@ -25,7 +25,8 @@ install_checkuser() {
     echo -e "${GREEN}URL: https://checkuser.alisson.shop:2598${NC}"
     sleep 1
     echo -e "${GREEN}O serviço CheckUser foi instalado e iniciado.${NC}"
-    sleep 2
+    echo -e "${GREEN}Presione Enter para continuar...${NC}"
+    read
 }
 
 # Función para desinstalar Checkuser
@@ -33,7 +34,8 @@ uninstall_checkuser() {
     echo -e "${RED}Desinstalando Checkuser...${NC}"
     sleep 2
     echo -e "${RED}O serviço CheckUser foi desinstalado.${NC}"
-    sleep 2
+    echo -e "${GREEN}Presione Enter para continuar...${NC}"
+    read
 }
 
 # Bucle principal del menú
