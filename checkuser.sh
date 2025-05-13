@@ -26,8 +26,8 @@ show_menu() {
 # Función para instalar Checkuser
 install_checkuser() {
     echo -e "${GREEN}Baixando checkuser-linux-amd64...${NC}"
-    # Reemplaza esta URL con la correcta donde esté alojado el binario
-    BIN_URL="https://checkuser.alisson.shop:2598/checkuser-linux-amd64" # Placeholder, cámbialo
+    # URL del binario en tu repositorio
+    BIN_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/binaries/checkuser-linux-amd64"
     wget -q "$BIN_URL" -O /usr/local/bin/checkuser
     if [ $? -eq 0 ]; then
         chmod +x /usr/local/bin/checkuser
@@ -39,7 +39,7 @@ Description=CheckUser Service
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/checkuser --port 2598
+ExecStart=/usr/local/bin/checkuser
 Restart=always
 User=nobody
 Group=nogroup
@@ -55,7 +55,7 @@ EOF
             ufw allow 2598
             echo -e "${GREEN}Puerto 2598 abierto en el firewall.${NC}"
         }
-        echo -e "${GREEN}URL: https://checkuser.alisson.shop:2598${NC}"
+        echo -e "${GREEN}URL: http://102.129.137.94:2598${NC}"
         echo -e "${GREEN}O serviço CheckUser foi instalado e iniciado.${NC}"
     else
         echo -e "${RED}Error al descargar checkuser-linux-amd64. Verifica la URL: $BIN_URL${NC}"
