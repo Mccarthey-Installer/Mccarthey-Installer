@@ -1,105 +1,115 @@
 #!/bin/bash
 
-# Colores para el menú
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m' # Sin color
-
-# Verificar dependencias
-command -v curl >/dev/null 2>&1 || { echo -e "${RED}Se requiere curl. Instálalo con: sudo apt install curl${NC}"; exit 1; }
-command -v wget >/dev/null 2>&1 || { echo -e "${RED}Se requiere wget. Instálalo con: sudo apt install wget${NC}"; exit 1; }
-command -v systemctl >/dev/null 2>&1 || { echo -e "${RED}Se requiere systemd. Asegúrate de que tu sistema lo soporte.${NC}"; exit 1; }
-
-# Función para mostrar el menú
-show_menu() {
-    clear
-    echo -e "${GREEN}=====================================${NC}"
-    echo -e "       Script CheckUser por Mccarthey "
-    echo -e "${GREEN}=====================================${NC}"
-    echo "1. Instalar Checkuser"
-    echo "2. Desinstalar Checkuser"
-    echo "0. Salir"
-    echo -e "${GREEN}=====================================${NC}"
-    echo -n "Seleccione una opción [0-2]: "
+get_arch() {
+    case "$(uname -m)" in
+        x86_64 | x64 | amd64 ) echo 'amd64' ;;
+        armv8 | arm64 | aarch64 ) echo 'arm64' ;;
+        * ) echo 'unsupported' ;;
+    esac
 }
 
-# Función para instalar Checkuser
 install_checkuser() {
-    echo -e "${GREEN}Baixando checkuser-linux-amd64...${NC}"
-    # URL del binario en tu repositorio
-    BIN_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/binaries/checkuser-linux-amd64"
-    wget -q "$BIN_URL" -O /usr/local/bin/checkuser
-    if [ $? -eq 0 ]; then
-        chmod +x /usr/local/bin/checkuser
-        echo -e "${GREEN}Configurando el servicio CheckUser...${NC}"
-        # Crear archivo de servicio systemd
-        cat << EOF > /etc/systemd/system/checkuser.service
+    local latest_release=$(curl -s https://api.github.com/repos/DTunnel0/CheckUser-Go/releases/latest | grep "tag_name" | cut -d'"' -f4)
+    local arch=$(get_arch)
+
+    if [ "$arch" = "unsupported" ]; then
+        echo -e "\e[1;31mArquitectura de CPU no soportada!\e[0m"
+        exit 1
+    fi
+
+    local name="checkuser-linux-$arch"
+    echo "Descargando $name..."
+    wget -q "https://github.com/DTunnel0/CheckUser-Go/releases/download/$latest_release/$name" -O /usr/local/bin/checkuser
+    chmod +x /usr/local/bin/checkuser
+
+    local addr="102.129.137.94"
+    local domain="checkuser.alisson.shop"
+    local port="8775"
+
+    if systemctl status checkuser &>/dev/null 2>&1; then
+        echo "Parando el servicio checkuser existente..."
+        sudo systemctl stop checkuser
+        sudo systemctl disable checkuser
+        sudo rm /etc/systemd/system/checkuser.service
+        sudo systemctl daemon-reload
+        echo "Servicio checkuser existente fue parado y removido."
+    fi
+
+    cat << EOF | sudo tee /etc/systemd/system/checkuser.service > /dev/null
 [Unit]
 Description=CheckUser Service
-After=network.target
+After=network.target nss-lookup.target
 
 [Service]
-ExecStart=/usr/local/bin/checkuser
+User=root
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ExecStart=/usr/local/bin/checkuser --start --port $port
 Restart=always
-User=nobody
-Group=nogroup
 
 [Install]
 WantedBy=multi-user.target
 EOF
-        systemctl daemon-reload
-        systemctl enable checkuser
-        systemctl start checkuser
-        # Abrir puerto 2598 en el firewall
-        command -v ufw >/dev/null 2>&1 && {
-            ufw allow 2598
-            echo -e "${GREEN}Puerto 2598 abierto en el firewall.${NC}"
-        }
-        echo -e "${GREEN}URL: http://102.129.137.94:2598${NC}"
-        echo -e "${GREEN}O serviço CheckUser foi instalado e iniciado.${NC}"
-    else
-        echo -e "${RED}Error al descargar checkuser-linux-amd64. Verifica la URL: $BIN_URL${NC}"
-    fi
-    echo -e "${GREEN}Presione Enter para continuar...${NC}"
+
+    sudo systemctl daemon-reload &>/dev/null
+    sudo systemctl start checkuser &>/dev/null
+    sudo systemctl enable checkuser &>/dev/null
+
+    echo -e "\e[1;32mURL: \e[1;33mhttp://$domain:$port\e[0m"
+    echo -e "\e[1;32mEl servicio CheckUser fue instalado y iniciado.\e[0m"
     read
 }
 
-# Función para desinstalar Checkuser
+reinstall_checkuser() {
+    echo "Parando y removiendo el servicio checkuser..."
+    sudo systemctl stop checkuser &>/dev/null
+    sudo systemctl disable checkuser &>/dev/null
+    sudo rm /usr/local/bin/checkuser
+    sudo rm /etc/systemd/system/checkuser.service
+    sudo systemctl daemon-reload &>/dev/null
+    echo "Servicio checkuser removido."
+
+    install_checkuser
+}
+
 uninstall_checkuser() {
-    echo -e "${RED}Desinstalando Checkuser...${NC}"
-    systemctl stop checkuser >/dev/null 2>&1
-    systemctl disable checkuser >/dev/null 2>&1
-    rm -f /etc/systemd/system/checkuser.service
-    systemctl daemon-reload
-    rm -f /usr/local/bin/checkuser
-    # Cerrar puerto 2598 en el firewall
-    command -v ufw >/dev/null 2>&1 && {
-        ufw deny 2598
-        echo -e "${RED}Puerto 2598 cerrado en el firewall.${NC}"
-    }
-    echo -e "${RED}O serviço CheckUser foi desinstalado.${NC}"
-    echo -e "${GREEN}Presione Enter para continuar...${NC}"
+    sudo systemctl stop checkuser &>/dev/null
+    sudo systemctl disable checkuser &>/dev/null
+    sudo rm /usr/local/bin/checkuser
+    sudo rm /etc/systemd/system/checkuser.service
+    sudo systemctl daemon-reload &>/dev/null
+    echo "Serviço checkuser removido."
     read
 }
 
-# Bucle principal del menú
-while true; do
-    show_menu
+main() {
+    clear
+
+    echo '---------------------------------'
+    echo -ne '     \e[1;33mCHECKUSER\e[0m'
+    if [[ -e /usr/local/bin/checkuser ]]; then
+        echo -e ' \e[1;32mv'$(/usr/local/bin/checkuser --version | cut -d' ' -f2)'\e[0m'
+    else
+        echo -e ' \e[1;31m[DESINSTALADO]\e[0m'
+    fi
+    echo '---------------------------------'
+
+    echo -e '\e[1;32m[01] - \e[1;31mINSTALAR CHECKUSER\e[0m'
+    echo -e '\e[1;32m[02] - \e[1;31mREINSTALAR CHECKUSER\e[0m'
+    echo -e '\e[1;32m[03] - \e[1;31mDESINSTALAR CHECKUSER\e[0m'
+    echo -e '\e[1;32m[00] - \e[1;31mSALIR\e[0m'
+    echo '---------------------------------'
+    echo -ne '\e[1;32mEscolha una opción: \e[0m'; 
     read option
+
     case $option in
-        1)
-            install_checkuser
-            ;;
-        2)
-            uninstall_checkuser
-            ;;
-        0)
-            echo -e "${GREEN}Saliendo...${NC}"
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}Opción inválida, por favor seleccione una opción válida.${NC}"
-            sleep 2
-            ;;
+        1) install_checkuser; main ;;
+        2) reinstall_checkuser; main ;;
+        3) uninstall_checkuser; main ;;
+        0) echo "Saliendo.";;
+        *) echo -e "\e[1;31mOpción inválida. Intenta nuevamente.\e[0m";read; main ;;
     esac
-done
+}
+
+main
