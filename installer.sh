@@ -1,65 +1,43 @@
 #!/bin/bash
 
-REGISTROS="registros.txt"
+# Uso: ./crear_usuario_temporal.sh nombre_usuario contraseña dias_validez
 
-function crear_usuario() {
-  clear
-  echo "===== CREAR USUARIO SSH ====="
-  read -p "Nombre del usuario: " USUARIO
-  read -p "Contraseña: " CLAVE
-  read -p "Días de validez: " DIAS
+USUARIO=$1
+CLAVE=$2
+DIAS=$3
 
-  # Verificar si ya existe
-  if id "$USUARIO" &>/dev/null; then
-    echo "El usuario '$USUARIO' ya existe. No se puede crear."
-    read -p "Presiona Enter para continuar..."
-    return
-  fi
+# Verifica si se proporcionaron los 3 argumentos
+if [ $# -ne 3 ]; then
+  echo "Uso: $0 nombre_usuario contraseña dias_validez"
+  exit 1
+fi
 
-  # Crear usuario real
-  useradd -m -s /bin/bash "$USUARIO"
-  echo "$USUARIO:$CLAVE" | chpasswd
-  EXPIRA=$(date -d "+$DIAS days" +%Y-%m-%d)
-  chage -E "$EXPIRA" "$USUARIO"
+# Verifica si el usuario ya existe
+if id "$USUARIO" &>/dev/null; then
+  echo "El usuario '$USUARIO' ya existe. No se puede crear."
+  exit 1
+fi
 
-  # Guardar registro
-  echo -e "$USUARIO\t$CLAVE\t$EXPIRA\t${DIAS} días" >> "$REGISTROS"
+# Crear el usuario con shell bash y directorio home
+useradd -m -s /bin/bash $USUARIO
 
-  echo
-  echo "Usuario creado exitosamente:"
-  echo "Usuario: $USUARIO"
-  echo "Clave: $CLAVE"
-  echo "Expira: $EXPIRA"
-  read -p "Presiona Enter para continuar..."
-}
+# Asignar contraseña
+echo "$USUARIO:$CLAVE" | chpasswd
 
-function ver_registros() {
-  clear
-  echo "===== REGISTROS ====="
-  if [[ -f $REGISTROS ]]; then
-    echo -e "Usuario\tClave\tExpira\t\tDuración"
-    echo "---------------------------------------------"
-    cat "$REGISTROS"
-  else
-    echo "No hay registros aún."
-  fi
-  echo "======================"
-  read -p "Presiona Enter para continuar..."
-}
+# Calcular la fecha exacta de expiración
+EXPIRA=$(date -d "+$DIAS days" +%Y-%m-%d)
 
-while true; do
-  clear
-  echo "====== PANEL DE USUARIOS VPN/SSH ======"
-  echo "1. Crear usuario"
-  echo "2. Ver registros"
-  echo "0. Salir"
-  echo "======================================="
-  read -p "Seleccione una opción: " opcion
+# Establecer la expiración
+chage -E $EXPIRA $USUARIO
 
-  case $opcion in
-    1) crear_usuario ;;
-    2) ver_registros ;;
-    0) break ;;
-    *) echo "Opción inválida"; sleep 1 ;;
-  esac
-done
+# Formatear fecha bonita
+FECHA_FORMATO=$(date -d "$EXPIRA" +"%d de %B de %Y")
+
+# Confirmación clara
+echo ""
+echo "===== USUARIO CREADO EXITOSAMENTE ====="
+echo "Usuario: $USUARIO"
+echo "Contraseña: $CLAVE"
+echo "Duración: $DIAS días"
+echo "Último día válido: $FECHA_FORMATO (vence a las 23:59)"
+echo "======================================="
