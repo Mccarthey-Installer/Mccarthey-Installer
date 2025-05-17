@@ -29,40 +29,27 @@ crear_usuario() {
     echo ""
     read -p "Ingrese días de validez: " DIAS
 
-    # Verifica si se proporcionaron los datos
     if [ -z "$USUARIO" ] || [ -z "$CLAVE" ] || [ -z "$DIAS" ]; then
         echo -e "${RED}Error: Todos los campos son requeridos${NC}"
         return 1
     fi
 
-    # Verifica si el usuario ya existe
     if id "$USUARIO" &>/dev/null; then
-        echo -e "${RED}El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
+        echo -e "${RED}El usuario '$USUARIO' ya existe.${NC}"
         return 1
     fi
 
-    # Crear el usuario con shell bash y directorio home
     useradd -m -s /bin/bash "$USUARIO"
-
-    # Asignar contraseña
     echo "$USUARIO:$CLAVE" | chpasswd
-
-    # Calcular la fecha exacta de expiración
     EXPIRA=$(date -d "+$DIAS days" +%Y-%m-%d)
-
-    # Establecer la expiración
     chage -E "$EXPIRA" "$USUARIO"
-
-    # Formatear fecha bonita
     FECHA_FORMATO=$(date -d "$EXPIRA" +"%d de %B de %Y")
 
-    # Confirmación clara
-    echo -e "\n${GREEN}===== USUARIO CREADO EXITOSAMENTE =====${NC}"
+    echo -e "\n${GREEN}===== USUARIO CREADO =====${NC}"
     echo -e "${CYAN}Usuario: ${YELLOW}$USUARIO${NC}"
-    echo -e "${CYAN}Contraseña: ${YELLOW}$CLAVE${NC}"
     echo -e "${CYAN}Duración: ${YELLOW}$DIAS días${NC}"
-    echo -e "${CYAN}Último día válido: ${YELLOW}$FECHA_FORMATO (vence a las 23:59)${NC}"
-    echo -e "${GREEN}=======================================${NC}"
+    echo -e "${CYAN}Vence: ${YELLOW}$FECHA_FORMATO${NC}"
+    echo -e "${GREEN}==========================${NC}"
 }
 
 # Función para ver registro de usuarios
@@ -70,14 +57,15 @@ ver_registro() {
     echo -e "\n${CYAN}===== REGISTRO DE USUARIOS =====${NC}"
     i=1
     found=0
-    while IFS=: read -r username _ _ _ _ _ home _; do
-        if echo "$home" | grep -q '^/home/'; then
+    # Usar getent para obtener usuarios con directorios en /home
+    while IFS=: read -r username _ _ _ _ _ home shell; do
+        if [ -d "$home" ] && [[ "$home" =~ ^/home/ ]] && [[ "$shell" =~ /bash$ ]]; then
             expiry=$(chage -l "$username" 2>/dev/null | grep "Account expires" | awk -F": " '{print $2}' || echo "No especificada")
             echo -e "${YELLOW}$i. ${CYAN}Usuario: ${GREEN}$username ${CYAN}Expiración: ${GREEN}$expiry${NC}"
             ((i++))
             found=1
         fi
-    done < /etc/passwd
+    done < <(getent passwd)
     if [ $found -eq 0 ]; then
         echo -e "${YELLOW}No se encontraron usuarios con directorios en /home/*${NC}"
     fi
@@ -88,7 +76,6 @@ ver_registro() {
 eliminar_usuario() {
     echo -e "\n${CYAN}===== ELIMINAR USUARIO =====${NC}"
     ver_registro
-    # Check if any users were found by looking at the value of 'i' from ver_registro
     if [ $i -eq 1 ]; then
         echo -e "${YELLOW}No hay usuarios para eliminar${NC}"
         return 1
@@ -96,18 +83,17 @@ eliminar_usuario() {
     echo -e -n "${BLUE}Ingrese el número del usuario a eliminar: ${NC}"
     read numero
 
-    # Obtener el nombre del usuario según el número
     i=1
     usuario_seleccionado=""
-    while IFS=: read -r username _ _ _ _ _ home _; do
-        if echo "$home" | grep -q '^/home/'; then
+    while IFS=: read -r username _ _ _ _ _ home shell; do
+        if [ -d "$home" ] && [[ "$home" =~ ^/home/ ]] && [[ "$shell" =~ /bash$ ]]; then
             if [ "$i" -eq "$numero" ]; then
                 usuario_seleccionado="$username"
                 break
             fi
             ((i++))
         fi
-    done < /etc/passwd
+    done < <(getent passwd)
 
     if [ -z "$usuario_seleccionado" ]; then
         echo -e "${RED}Número de usuario inválido${NC}"
@@ -115,14 +101,14 @@ eliminar_usuario() {
     fi
 
     echo -e "${YELLOW}Usuario seleccionado: ${GREEN}$usuario_seleccionado${NC}"
-    echo -e -n "${BLUE}¿Confirma la eliminación? (Presione Enter para confirmar, cualquier otra tecla para cancelar): ${NC}"
+    echo -e -n "${BLUE}¿Confirma la eliminación? (Enter para confirmar, otra tecla para cancelar): ${NC}"
     read -s -n 1 confirmacion
     echo ""
 
     if [ -z "$confirmacion" ]; then
         userdel -r "$usuario_seleccionado" 2>/dev/null
         if [ $? -eq 0 ]; then
-            echo -e "${GREEN}Usuario $usuario_seleccionado eliminado exitosamente${NC}"
+            echo -e "${GREEN}Usuario $usuario_seleccionado eliminado${NC}"
         else
             echo -e "${RED}Error al eliminar el usuario${NC}"
         fi
