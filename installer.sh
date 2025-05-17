@@ -1,37 +1,34 @@
 #!/bin/bash
 
-archivo="usuarios.txt"
+DB="usuarios.db"
 
 crear_usuario() {
   clear
-  echo "====== CREAR NUEVO USUARIO ======"
-  read -p "Ingrese el nombre del usuario: " usuario
-  read -p "Ingrese la contraseña: " clave
-  read -p "Ingrese los días de duración: " dias
+  echo "===== CREAR USUARIO ====="
+  read -p "Digite el nombre de usuario: " usuario
+  read -p "Digite la clave: " clave
+  read -p "Días de duración: " dias
 
-  # Fecha de vencimiento
   fecha_vencimiento=$(date -d "+$dias days" +"%d-%m-%Y")
 
-  # Guardar en archivo
-  echo "$usuario $clave $fecha_vencimiento $dias" >> $archivo
-
-  echo "Usuario creado exitosamente."
+  echo "$usuario;$clave;$fecha_vencimiento;$dias" >> $DB
+  echo "Usuario $usuario creado con éxito."
   read -p "Presione ENTER para continuar..."
 }
 
 ver_registros() {
   clear
-  echo "====== REGISTRO DE USUARIOS ======"
-  if [[ ! -f $archivo || ! -s $archivo ]]; then
-    echo "No hay registros disponibles."
-  else
-    printf "%-15s %-10s %-15s %-10s\n" "Usuario" "Clave" "Vencimiento" "Días"
-    echo "----------------------------------------------------------"
-    while read -r usuario clave vencimiento dias; do
+  echo "===== REGISTROS DE USUARIOS ====="
+  printf "%-15s %-10s %-15s %-10s\n" "Usuario" "Clave" "Vencimiento" "Duración"
+  echo "----------------------------------------------------------"
+  if [[ -f "$DB" ]]; then
+    while IFS=";" read -r usuario clave vencimiento dias; do
       printf "%-15s %-10s %-15s %-10s\n" "$usuario" "$clave" "$vencimiento" "$dias"
-    done < $archivo
+    done < "$DB"
+  else
+    echo "No hay registros todavía."
   fi
-  echo ""
+  echo "----------------------------------------------------------"
   read -p "Presione ENTER para continuar..."
 }
 
@@ -47,7 +44,7 @@ while true; do
   case $opcion in
     1) crear_usuario ;;
     2) ver_registros ;;
-    0) exit ;;
-    *) echo "Opción inválida. Presione ENTER para continuar..."; read ;;
+    0) echo "Saliendo..."; exit ;;
+    *) echo "Opción inválida"; sleep 1 ;;
   esac
 done
