@@ -69,13 +69,18 @@ crear_usuario() {
 ver_registro() {
     echo -e "\n${CYAN}===== REGISTRO DE USUARIOS =====${NC}"
     i=1
+    found=0
     while IFS=: read -r username _ _ _ _ _ home _; do
-        if [[ "$home" == /home/* ]]; then
-            expiry=$(chage -l "$username" | grep "Account expires" | awk -F": " '{print $2}' || echo "No especificada")
+        if echo "$home" | grep -q '^/home/'; then
+            expiry=$(chage -l "$username" 2>/dev/null | grep "Account expires" | awk -F": " '{print $2}' || echo "No especificada")
             echo -e "${YELLOW}$i. ${CYAN}Usuario: ${GREEN}$username ${CYAN}Expiración: ${GREEN}$expiry${NC}"
             ((i++))
+            found=1
         fi
     done < /etc/passwd
+    if [ $found -eq 0 ]; then
+        echo -e "${YELLOW}No se encontraron usuarios con directorios en /home/*${NC}"
+    fi
     echo -e "${CYAN}===============================${NC}"
 }
 
@@ -83,6 +88,11 @@ ver_registro() {
 eliminar_usuario() {
     echo -e "\n${CYAN}===== ELIMINAR USUARIO =====${NC}"
     ver_registro
+    # Check if any users were found by looking at the value of 'i' from ver_registro
+    if [ $i -eq 1 ]; then
+        echo -e "${YELLOW}No hay usuarios para eliminar${NC}"
+        return 1
+    fi
     echo -e -n "${BLUE}Ingrese el número del usuario a eliminar: ${NC}"
     read numero
 
@@ -90,7 +100,7 @@ eliminar_usuario() {
     i=1
     usuario_seleccionado=""
     while IFS=: read -r username _ _ _ _ _ home _; do
-        if [[ "$home" == /home/* ]]; then
+        if echo "$home" | grep -q '^/home/'; then
             if [ "$i" -eq "$numero" ]; then
                 usuario_seleccionado="$username"
                 break
