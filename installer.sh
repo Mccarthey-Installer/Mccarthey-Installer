@@ -1,52 +1,53 @@
 #!/bin/bash
 
-REGISTRO="usuarios.txt"
-IP_VPS="102.129.137.94"
+archivo="usuarios.txt"
 
 crear_usuario() {
-  read -p "Ingrese el nombre de usuario: " usuario
-  read -p "Ingrese la contraseña: " contrasena
-  echo ""
-  echo "Presione ENTER para confirmar..."
-  read
+  clear
+  echo "====== CREAR NUEVO USUARIO ======"
+  read -p "Ingrese el nombre del usuario: " usuario
+  read -p "Ingrese la contraseña: " clave
+  read -p "Ingrese los días de duración: " dias
 
-  # Crear usuario con expiración de 7 días
-  useradd -e $(date -d "+7 days" +"%Y-%m-%d") -M -s /bin/false "$usuario"
-  echo "$usuario:$contrasena" | chpasswd
+  # Fecha de vencimiento
+  fecha_vencimiento=$(date -d "+$dias days" +"%d-%m-%Y")
 
-  fecha_exp=$(chage -l "$usuario" | grep "Account expires" | cut -d: -f2 | sed 's/^[ \t]*//')
-  
-  echo "$usuario | $contrasena | $fecha_exp" >> "$REGISTRO"
-  echo "Usuario creado correctamente en $IP_VPS"
+  # Guardar en archivo
+  echo "$usuario $clave $fecha_vencimiento $dias" >> $archivo
+
+  echo "Usuario creado exitosamente."
+  read -p "Presione ENTER para continuar..."
 }
 
 ver_registros() {
-  if [[ -f "$REGISTRO" ]]; then
-    echo "===== REGISTROS ====="
-    cat "$REGISTRO"
-    echo "======================"
+  clear
+  echo "====== REGISTRO DE USUARIOS ======"
+  if [[ ! -f $archivo || ! -s $archivo ]]; then
+    echo "No hay registros disponibles."
   else
-    echo "No hay registros aún."
+    printf "%-15s %-10s %-15s %-10s\n" "Usuario" "Clave" "Vencimiento" "Días"
+    echo "----------------------------------------------------------"
+    while read -r usuario clave vencimiento dias; do
+      printf "%-15s %-10s %-15s %-10s\n" "$usuario" "$clave" "$vencimiento" "$dias"
+    done < $archivo
   fi
+  echo ""
+  read -p "Presione ENTER para continuar..."
 }
 
-menu() {
-  while true; do
-    clear
-    echo "====== PANEL DE USUARIOS ======"
-    echo "1. Crear usuario"
-    echo "2. Ver registros"
-    echo "0. Salir"
-    echo "================================"
-    read -p "Seleccione una opción: " opcion
+while true; do
+  clear
+  echo "====== PANEL DE USUARIOS ======"
+  echo "1. Crear usuario"
+  echo "2. Ver registros"
+  echo "0. Salir"
+  echo "================================"
+  read -p "Seleccione una opción: " opcion
 
-    case $opcion in
-      1) crear_usuario ;;
-      2) ver_registros ;;
-      0) exit ;;
-      *) echo "Opción inválida." ; sleep 1 ;;
-    esac
-  done
-}
-
-menu
+  case $opcion in
+    1) crear_usuario ;;
+    2) ver_registros ;;
+    0) exit ;;
+    *) echo "Opción inválida. Presione ENTER para continuar..."; read ;;
+  esac
+done
