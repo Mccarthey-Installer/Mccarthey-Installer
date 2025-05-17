@@ -107,12 +107,47 @@ function eliminar_usuario() {
   read -p "$(echo -e ${BLUE}"Presiona Enter para continuar..."${NC})"
 }
 
+function verificar_online() {
+  clear
+  echo -e "${CYAN}===== USUARIOS ONLINE =====${NC}"
+  if [[ ! -f $REGISTROS ]]; then
+    echo -e "${RED}No hay registros de usuarios.${NC}"
+    read -p "$(echo -e ${BLUE}"Presiona Enter para continuar..."${NC})"
+    return
+  fi
+
+  echo -e "${YELLOW}Usuario\tEstado\tDetalles${NC}"
+  echo -e "${BLUE}---------------------------------------------${NC}"
+  while IFS=$'\t' read -r USUARIO CLAVE EXPIRA DURACION; do
+    DETALLES=""
+    # Verificar logs en tiempo real (últimos 5 minutos) en todos los logs posibles
+    if find /var/log -type f -mmin -5 2>/dev/null | xargs grep -i -E "auth.*$USUARIO|login.*$USUARIO|accepted.*$USUARIO" 2>/dev/null | grep -q -v "failed"; then
+      DETALLES="Autenticación reciente en logs (últimos 5 min)"
+      echo -e "${YELLOW}$USUARIO\t${GREEN}Conectado\t${BLUE}$DETALLES${NC}"
+    # Verificar conexiones en puertos WebSocket (80, 443, o cualquier puerto)
+    elif ss -tunap 2>/dev/null | grep -w dropbear | grep -E ':80|:443' | grep ESTABLISHED > /dev/null; then
+      DETALLES="Conexión activa en puerto 80/443 (Dropbear)"
+      echo -e "${YELLOW}$USUARIO\t${GREEN}Conectado\t${BLUE}$DETALLES${NC}"
+    # Verificar procesos Dropbear relacionados con el usuario
+    elif ps aux | grep -w dropbear | grep -i "$USUARIO" > /dev/null; then
+      DETALLES="Proceso Dropbear relacionado con el usuario"
+      echo -e "${YELLOW}$USUARIO\t${GREEN}Conectado\t${BLUE}$DETALLES${NC}"
+    else
+      DETALLES="Sin autenticaciones, conexiones ni procesos recientes"
+      echo -e "${YELLOW}$USUARIO\t${RED}Desconectado\t${BLUE}$DETALLES${NC}"
+    fi
+  done < "$REGISTROS"
+  echo -e "${CYAN}===========================${NC}"
+  read -p "$(echo -e ${BLUE}"Presiona Enter para continuar..."${NC})"
+}
+
 while true; do
   clear
   echo -e "${CYAN}====== PANEL DE USUARIOS VPN/SSH ======${NC}"
   echo -e "${GREEN}1. Crear usuario${NC}"
   echo -e "${YELLOW}2. Ver registros${NC}"
   echo -e "${RED}3. Eliminar usuario${NC}"
+  echo -e "${BLUE}4. Online${NC}"
   echo -e "${BLUE}0. Salir${NC}"
   echo -e "${CYAN}=======================================${NC}"
   read -p "$(echo -e ${YELLOW}"Seleccione una opción: "${NC})" opcion
@@ -121,6 +156,7 @@ while true; do
     1) crear_usuario ;;
     2) ver_registros ;;
     3) eliminar_usuario ;;
+    4) verificar_online ;;
     0) echo -e "${BLUE}Saliendo...${NC}"; break ;;
     *) echo -e "${RED}Opción inválida${NC}"; sleep 1 ;;
   esac
