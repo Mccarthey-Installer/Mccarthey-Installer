@@ -162,7 +162,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>Acceso con McCarthey</h1>
+    <h1>Acceso  mamicon McCarthey</h1>
     <p>Planes disponibles:</p>
     <div class="plan-section">
       <h2>7 días</h2>
