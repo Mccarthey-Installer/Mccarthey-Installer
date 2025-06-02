@@ -1,10 +1,16 @@
+#!/bin/bash
+# Directorio del sitio web
+WEB_DIR="/var/www/ventas.alisson.shop"
+
+# Escribir el contenido HTML en index.html
+cat << 'EOF' > $WEB_DIR/index.html
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Acceso de Compra</title>
-  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     * {
       margin: 0;
@@ -26,7 +32,7 @@
       width: 100%;
       max-width: 550px;
       border-radius: 25px;
-      padding: 30px 20px; /* Reduced padding to make card shorter */
+      padding: 30px 20px;
       text-align: center;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
       position: relative;
@@ -49,7 +55,7 @@
       font-size: 34px;
       color: #ff1493;
       text-transform: uppercase;
-      margin-bottom: 20px; /* Reduced margin */
+      margin-bottom: 20px;
       letter-spacing: 3px;
       text-shadow: 0 0 10px #ff69b4;
       animation: flicker 3s infinite ease-in-out;
@@ -58,11 +64,11 @@
     .card p {
       font-size: 18px;
       color: #1e1e1e;
-      margin: 8px 0; /* Reduced margin for tighter spacing */
+      margin: 8px 0;
       font-weight: 600;
       transition: transform 0.3s ease, color 0.3s ease;
       background: rgba(0, 247, 255, 0.1);
-      padding: 8px; /* Reduced padding */
+      padding: 8px;
       border-radius: 10px;
     }
     .card a {
@@ -77,7 +83,7 @@
       font-size: 14px;
       color: #ff0000;
       font-style: italic;
-      margin-top: 15px; /* Reduced margin */
+      margin-top: 15px;
       font-weight: 500;
       text-shadow: 0 0 5px #ff0000;
     }
@@ -134,7 +140,7 @@
       align-items: center;
       justify-content: center;
       gap: 15px;
-      margin: 15px 0; /* Reduced margin */
+      margin: 15px 0;
     }
     .logo-contenedor img, .acciones-contenedor img {
       width: 65px;
@@ -149,12 +155,12 @@
       border-color: #00f7ff;
     }
     .plan-section {
-      margin: 10px 0; /* Reduced margin for tighter spacing */
+      margin: 10px 0;
     }
     .plan-section h2 {
-      font-size: 20px; /* Smaller font size */
+      font-size: 20px;
       color: #ff1493;
-      margin-bottom: 8px; /* Reduced margin */
+      margin-bottom: 8px;
       font-weight: 600;
       text-shadow: 0 0 5px #ff69b4;
     }
@@ -162,7 +168,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>Acceso  mamicon McCarthey</h1>
+    <h1>Acceso con McCarthey</h1>
     <p>Planes disponibles:</p>
     <div class="plan-section">
       <h2>7 días</h2>
@@ -206,3 +212,10 @@
   </div>
 </body>
 </html>
+EOF
+
+# Asegurar permisos correctos
+sudo chown -R www-data:www-data $WEB_DIR
+sudo chmod -R 755 $WEB_DIR
+# Reiniciar Nginx para reflejar los cambios
+sudo systemctl restart nginx
