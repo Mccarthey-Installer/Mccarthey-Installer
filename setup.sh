@@ -35,7 +35,7 @@ ss -tulnp | grep :444 || echo "⚠️ Dropbear no está escuchando en el puerto 
 
 # Descargar el instalador desde GitHub y darle permisos
 echo -e "\nDescargando instalador desde GitHub..."
-wget -O /root/setup https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/setup
+wget -O /root/setup https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/setup.sh
 chmod +x /root/setup
 
 # Ejecutar el instalador con parámetro --mccpanel
