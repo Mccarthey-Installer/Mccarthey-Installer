@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Colores para mensajes
-verde="\e[32m"
-rojo="\e[31m"
-normal="\e[0m"
+verde="\033[0;32m"
+rojo="\033[0;31m"
+normal="\033[0m"
 
 echo -e "${verde}➤ Actualizando paquetes...${normal}"
 apt update -y && apt upgrade -y
@@ -23,9 +23,9 @@ bsdmainutils screen nginx nload htop python3 python3-pip \
 nodejs npm lsof psmisc socat bc net-tools cowsay \
 nmap jq iptables openssh-server dropbear
 
-# Asegurar rutas de shells
-echo "/bin/bash" > /etc/shells
-echo "/usr/sbin/dropbear" >> /etc/shells
+# Asegurar rutas de shells solo si no existen
+grep -qxF '/bin/bash' /etc/shells || echo '/bin/bash' >> /etc/shells
+grep -qxF '/usr/sbin/dropbear' /etc/shells || echo '/usr/sbin/dropbear' >> /etc/shells
 
 echo -e "${verde}➤ Configurando Dropbear en el puerto 444...${normal}"
 sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear
