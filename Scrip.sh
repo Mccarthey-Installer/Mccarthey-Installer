@@ -12,7 +12,9 @@ ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
 NC='\033[0m'
 
-function configurar_autoejecucion() {
+
+    # Verifiacar sin entrar a la terminal sin comando
+    function configurar_autoejecucion() {
     BASHRC="/root/.bashrc"
     AUTOEXEC_BLOCK='
 if [[ -t 0 && -z "$IN_PANEL" ]]; then
@@ -21,7 +23,6 @@ if [[ -t 0 && -z "$IN_PANEL" ]]; then
     unset IN_PANEL
 fi'
 
-    # Verificar si ya está el bloque
     if ! grep -q 'bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer' "$BASHRC"; then
         echo "$AUTOEXEC_BLOCK" >> "$BASHRC"
         echo -e "${VERDE}✔ Autoejecución agregada a .bashrc${NC}"
