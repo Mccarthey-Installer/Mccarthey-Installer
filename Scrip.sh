@@ -12,6 +12,15 @@ ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
 NC='\033[0m'
 
+# Función para configurar la autoejecución en ~/.bashrc
+function configurar_autoejecucion() {
+    BASHRC="/root/.bashrc"
+    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
+    export IN_PANEL=1
+    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/29323a08120eb4c6d3973f51ca6fb578321bba3e/Scrip.sh)
+    unset IN_PANEL
+fi'
+
 # Función para monitoreo en tiempo real
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
