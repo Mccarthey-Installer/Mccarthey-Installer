@@ -29,15 +29,6 @@ fi'
     fi
 }
 
-# Ejecutar la configuración de autoejecución
-configurar_autoejecucion
-
-# Resto del script (sin cambios)
-function monitorear_conexiones() {
-    # ... (tu código original, sin cambios)
-}
-
-# ... (resto del script: barra_sistema, crear_usuario, etc., sin cambios)
 # Función para monitoreo en tiempo real
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
