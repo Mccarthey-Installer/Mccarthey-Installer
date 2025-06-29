@@ -22,15 +22,12 @@ function configurar_autoejecucion() {
     unset IN_PANEL
 fi'
 
-    # Verificar si el bloque ya existe en ~/.bashrc
     if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
-        # Agregar el bloque al final de ~/.bashrc
         echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
         echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
 }
 
-# Ejecutar la configuración de autoejecución
 configurar_autoejecucion
 
 # Función para monitoreo en tiempo real
@@ -38,11 +35,11 @@ function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
 
-    # Archivo temporal para almacenar el estado anterior de conexiones
     TEMP_FILE="/tmp/conexiones_anteriores.txt"
     touch "$TEMP_FILE"
+    chmod 600 "$TEMP_FILE"
+    chown root:root "$TEMP_FILE"
 
-    # Crear archivo de notificaciones si no existe
     touch "$NOTIFICACIONES"
     chmod 600 "$NOTIFICACIONES"
     chown root:root "$NOTIFICACIONES"
@@ -54,25 +51,23 @@ function monitorear_conexiones() {
             continue
         fi
 
-        # Crear un archivo temporal para el estado actual
         TEMP_CURRENT="/tmp/conexiones_actuales.txt"
         : > "$TEMP_CURRENT"
+        chmod 600 "$TEMP_CURRENT"
+        chown root:root "$TEMP_CURRENT"
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                # Extraer el número de móviles permitidos
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
-
-                # Contar procesos sshd del usuario
+                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-
-                # Guardar el estado actual
                 echo "$USUARIO:$CONEXIONES" >> "$TEMP_CURRENT"
 
-                # Obtener conexiones anteriores
-                CONEXIONES_ANT=$(grep "^$USUARIO:" "$TEMP_FILE" | cut -d: -f2 || echo "0")
+                # Obtener conexiones anteriores, asegurando que sea numérico
+                CONEXIONES_ANT=$(grep "^$USUARIO:" "$TEMP_FILE" | cut -d: -f2)
+                if [[ -z "$CONEXIONES_ANT" || ! "$CONEXIONES_ANT" =~ ^[0-9]+$ ]]; then
+                    CONEXIONES_ANT=0
+                fi
 
-                # Registrar PRIMER_LOGIN si pasa de 0 a 1 o más conexiones
                 if [[ $CONEXIONES_ANT -eq 0 && $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
                     TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
                     sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
@@ -82,7 +77,6 @@ function monitorear_conexiones() {
                     echo "🟢 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO se conectó" >> "$NOTIFICACIONES"
                 fi
 
-                # Limpiar PRIMER_LOGIN si no hay conexiones
                 if [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
                     sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
@@ -91,16 +85,13 @@ function monitorear_conexiones() {
                     echo "🔴 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO se desconectó" >> "$NOTIFICACIONES"
                 fi
 
-                # Verificar si el usuario está bloqueado
                 if grep -q "^$USUARIO:!" /etc/shadow; then
-                    # Desbloquear solo si no es bloqueo manual y las conexiones están dentro del límite
                     if [[ "$BLOQUEO_MANUAL" != "SÍ" && $CONEXIONES -le $MOVILES_NUM ]]; then
                         usermod -U "$USUARIO" 2>/dev/null
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente (conexiones: $CONEXIONES, límite: $MOVILES_NUM)." >> "$LOG"
                         echo "🔓 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO desbloqueado automáticamente" >> "$NOTIFICACIONES"
                     fi
                 else
-                    # Bloquear si se supera el límite
                     if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                         usermod -L "$USUARIO" 2>/dev/null
                         pkill -u "$USUARIO" sshd 2>/dev/null
@@ -111,20 +102,18 @@ function monitorear_conexiones() {
             fi
         done < "$REGISTROS"
 
-        # Actualizar el archivo de conexiones anteriores
         mv "$TEMP_CURRENT" "$TEMP_FILE"
         sleep "$INTERVALO"
     done
 }
 
-# Iniciar monitoreo en segundo plano
 monitorear_conexiones &
 
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
-    MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}') # Usamos la columna "available"
+    MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
     MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")
 
     function human() {
@@ -157,7 +146,6 @@ function barra_sistema() {
 
     FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
 
-    # Contar conexiones activas de todos los usuarios en REGISTROS
     TOTAL_CONEXIONES=0
     if [[ -f $REGISTROS ]]; then
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
@@ -175,7 +163,6 @@ function barra_sistema() {
     echo -e " 🌐 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 📅 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e " 😇 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}      ${CIAN}ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"
 
-    # Mostrar últimas 5 notificaciones en el menú principal
     if [[ -f "$NOTIFICACIONES" ]]; then
         echo -e "${CIAN}━━━━━━━━━━━━━━━━━ 🔔 Últimas Notificaciones ━━━━━━━━━━━━━━━━${NC}"
         tail -n 5 "$NOTIFICACIONES" | while IFS= read -r LINEA; do
@@ -214,7 +201,6 @@ function crear_usuario() {
     EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
     usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
-    # Agregar PRIMER_LOGIN como vacío inicialmente
     echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
     echo
 
@@ -298,7 +284,6 @@ function crear_multiples_usuarios() {
         EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
         usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
-        # Agregar PRIMER_LOGIN como vacío inicialmente
         echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
         echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
     done
@@ -539,20 +524,16 @@ function verificar_online() {
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${ROJO}"
 
-            # Extraer el número de móviles permitidos
-            MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
+            MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
 
-            # Verificar si el usuario está bloqueado
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
             else
-                # Contar solo procesos sshd ejecutados como el usuario
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
 
-                    # Usar PRIMER_LOGIN existente para calcular el tiempo conectado
                     if [[ -n "$PRIMER_LOGIN" ]]; then
                         START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
                         if [[ $? -eq 0 && -n "$START" ]]; then
@@ -568,7 +549,6 @@ function verificar_online() {
                             fi
                         else
                             DETALLES="⏰ Tiempo no disponible (PRIMER_LOGIN inválido)"
-                            # Limpiar PRIMER_LOGIN si es inválido
                             sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
                                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN inválido para $USUARIO" >> /var/log/panel_errors.log
                             }
@@ -577,7 +557,6 @@ function verificar_online() {
                         DETALLES="⏰ Tiempo no disponible (PRIMER_LOGIN no establecido)"
                     fi
                 else
-                    # Mostrar última conexión conocida desde auth.log si no está conectado
                     LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null; } | tail -1)
                     if [[ -n "$LOGIN_LINE" ]]; then
                         MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
@@ -691,7 +670,7 @@ function mini_registro() {
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
             DIAS=$(echo "$DURACION" | grep -oE '[0-9]+')
-            MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
+            MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES_NUM"
         fi
     done < "$REGISTROS"
