@@ -12,22 +12,24 @@ ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
 NC='\033[0m'
 
-# Función para configurar la autoejecución en ~/.bashrc
 function configurar_autoejecucion() {
     BASHRC="/root/.bashrc"
     AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
     export IN_PANEL=1
-    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/29323a08120eb4c6d3973f51ca6fb578321bba3e/Scrip.sh)
+    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/scrip.sh)
     unset IN_PANEL
 fi'
 
-    # Verificar si el bloque ya existe en ~/.bashrc
     if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
-        # Agregar el bloque al final de ~/.bashrc
         echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
-        echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
+        echo -e "${VERDE}✔ Autoejecución agregada a $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
+    else
+        echo -e "${AMARILLO}⚠ Ya existe la autoejecución en $BASHRC.${NC}"
     fi
 }
+
+# 👇 LLAMADA REAL para que funcione
+configurar_autoejecucion
 
 # Función para monitoreo en tiempo real
 function monitorear_conexiones() {
