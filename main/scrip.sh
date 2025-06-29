@@ -666,28 +666,31 @@ function mini_registro() {
 }
 
 while true; do
+    clear
     barra_sistema
-    echo -e "${AMARILLO}1) Crear usuario SSH"
-    echo -e "${AMARILLO}2) Crear múltiples usuarios"
-    echo -e "${AMARILLO}3) Ver registros"
-    echo -e "${AMARILLO}4) Eliminar usuario"
-    echo -e "${AMARILLO}5) Eliminar todos los usuarios"
-    echo -e "${AMARILLO}6) Ver usuarios online"
-    echo -e "${AMARILLO}7) Bloquear/desbloquear usuario"
-    echo -e "${AMARILLO}8) Mini registro"
-    echo -e "${AMARILLO}0) Salir"
-    read -p "$(echo -e ${AZUL}Seleccione una opción: ${NC})" OPCION
+    echo
+    echo -e "${VIOLETA}====== PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VERDE}1. Crear usuario${NC}"
+    echo -e "${VERDE}2. Ver registros${NC}"
+    echo -e "${VERDE}3. Eliminar usuario${NC}"
+    echo -e "${VERDE}4. Eliminar TODOS los usuarios${NC}"
+    echo -e "${VERDE}5. Verificar usuarios online${NC}"
+    echo -e "${VERDE}6. Bloquear/Desbloquear usuario${NC}"
+    echo -e "${VERDE}7. Crear múltiples usuarios${NC}"
+    echo -e "${VERDE}8. Mini registro${NC}"
+    echo -e "${VERDE}9. Salir${NC}"
+    PROMPT=$(echo -e "${AMARILLO}Selecciona una opción: ${NC}")
+    read -p "$PROMPT" OPCION
     case $OPCION in
         1) crear_usuario ;;
-        2) crear_multiples_usuarios ;;
-        3) ver_registros ;;
-        4) eliminar_usuario ;;
-        5) eliminar_todos_usuarios ;;
-        6) verificar_online ;;
-        7) bloquear_desbloquear_usuario ;;
+        2) ver_registros ;;
+        3) eliminar_usuario ;;
+        4) eliminar_todos_usuarios ;;
+        5) verificar_online ;;
+        6) bloquear_desbloquear_usuario ;;
+        7) crear_multiples_usuarios ;;
         8) mini_registro ;;
-        0) exit ;;
-        *) echo -e "${ROJO}Opción inválida.${NC}"; sleep 1 ;;
+        9) echo -e "${AZUL}Saliendo...${NC}"; exit 0 ;;
+        *) echo -e "${ROJO}¡Opción inválida!${NC}"; read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" ;;
     esac
 done
-
