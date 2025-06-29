@@ -165,7 +165,7 @@ function crear_usuario() {
     echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
     echo
 
-    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%d de %B %H:%M")
+    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y-%m-%d %I:%M %p")
     echo -e "${VERDE}Usuario creado exitosamente:${NC}"
     echo -e "${AZUL}Usuario: ${AMARILLO}$USUARIO${NC}"
     echo -e "${AZUL}Clave: ${AMARILLO}$CLAVE${NC}"
@@ -293,14 +293,14 @@ function ver_registros() {
                         DIAS_RESTANTES="0"
                         COLOR_DIAS="${ROJO}"
                     fi
-                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" "+%-d de %b %H:%M")
+                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%Y-%m-%d %I:%M %p")
                 else
                     DIAS_RESTANTES="Inválido"
                     FORMATO_EXPIRA="Desconocido"
                     COLOR_DIAS="${ROJO}"
                 fi
 
-                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" "+%-d de %b %H:%M"; else echo "No registrado"; fi)
+                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%Y-%m-%d %I:%M %p"; else echo "No registrado"; fi)
                 printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$(center_value "$DIAS_RESTANTES" 10)" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
                 NUM=$((NUM+1))
@@ -333,7 +333,7 @@ function eliminar_usuario() {
     declare -A USUARIOS_EXISTENTES
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
-            PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" "+%-d de %b %H:%M"; else echo "No registrado"; fi)
+            PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%Y-%m-%d %I:%M %p"; else echo "No registrado"; fi)
             echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$PRIMER_LOGIN_FORMAT${NC}"
             USUARIOS_EXISTENTES[$NUM]="$USUARIO"
             NUM=$((NUM+1))
@@ -535,8 +535,8 @@ function verificar_online() {
                         HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
                         MES_ES=${month_map["$MES"]}
                         if [ -z "$MES_ES" ]; then MES_ES="$MES"; fi
-                        HORA_SIMPLE=$(echo "$HORA" | cut -d: -f1,2)
-                        DETALLES="Última: $DIA de $MES_ES hora $HORA_SIMPLE"
+                        HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                        DETALLES="Última: $DIA de $MES_ES $HORA_SIMPLE"
                     fi
                 fi
             fi
@@ -558,7 +558,7 @@ function bloquear_desbloquear_usuario() {
     fi
 
     echo -e "${CIAN}===== USUARIOS REGISTRADOS =====${NC}"
-    printf "${AMARILLO}%-5s %-15s %-15s %-20s %-15s %-15s${NC}\n" "Nº" "Usuario" "Clave" "Expira" "Duración" "Estado"
+    printf "${AMARILLO}%-5s %-15s %-15s %-22s %-15s %-15s${NC}\n" "Nº" "Usuario" "Clave" "Expira" "Duración" "Estado"
     echo -e "${CIAN}--------------------------------------------------------------------------${NC}"
     mapfile -t LINEAS < "$REGISTROS"
     INDEX=1
@@ -572,8 +572,8 @@ function bloquear_desbloquear_usuario() {
                 ESTADO="ACTIVO"
                 COLOR_ESTADO="${VERDE}"
             fi
-            FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%d de %B %H:%M" 2>/dev/null || echo "$EXPIRA_DATETIME")
-            printf "${AMARILLO}%-5s %-15s %-15s %-20s %-15s ${COLOR_ESTADO}%-15s${NC}\n" \
+            FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y-%m-%d %I:%M %p" 2>/dev/null || echo "$EXPIRA_DATETIME")
+            printf "${AMARILLO}%-5s %-15s %-15s %-22s %-15s ${COLOR_ESTADO}%-15s${NC}\n" \
                 "$INDEX" "$USUARIO" "$CLAVE" "$FECHA_FORMAT" "$DURACION" "$ESTADO"
         fi
         ((INDEX++))
