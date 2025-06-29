@@ -290,7 +290,7 @@ function ver_registros() {
                         DIAS_RESTANTES=$(( ( ($FECHA_EXPIRA - $FECHA_ACTUAL - 1 ) / 86400 ) + 1 ))
                         COLOR_DIAS="${NC}"
                     else
-                        DIAS_RESTANTES="Expirado"
+                        DIAS_RESTANTES="0"
                         COLOR_DIAS="${ROJO}"
                     fi
                     FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" "+%-d de %b %H:%M")
