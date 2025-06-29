@@ -3,7 +3,6 @@ export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
 
 REGISTROS="registros.txt"
-NOTIFICACIONES="/root/notificaciones.txt"
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -29,85 +28,6 @@ fi'
 }
 
 configurar_autoejecucion
-
-# Función para monitoreo en tiempo real
-function monitorear_conexiones() {
-    LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=10
-
-    TEMP_FILE="/tmp/conexiones_anteriores.txt"
-    touch "$TEMP_FILE"
-    chmod 600 "$TEMP_FILE"
-    chown root:root "$TEMP_FILE"
-
-    touch "$NOTIFICACIONES"
-    chmod 600 "$NOTIFICACIONES"
-    chown root:root "$NOTIFICACIONES"
-
-    while true; do
-        if [[ ! -f $REGISTROS ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
-            sleep "$INTERVALO"
-            continue
-        fi
-
-        TEMP_CURRENT="/tmp/conexiones_actuales.txt"
-        : > "$TEMP_CURRENT"
-        chmod 600 "$TEMP_CURRENT"
-        chown root:root "$TEMP_CURRENT"
-
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-                CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-                echo "$USUARIO:$CONEXIONES" >> "$TEMP_CURRENT"
-
-                # Obtener conexiones anteriores, asegurando que sea numérico
-                CONEXIONES_ANT=$(grep "^$USUARIO:" "$TEMP_FILE" | cut -d: -f2)
-                if [[ -z "$CONEXIONES_ANT" || ! "$CONEXIONES_ANT" =~ ^[0-9]+$ ]]; then
-                    CONEXIONES_ANT=0
-                fi
-
-                if [[ $CONEXIONES_ANT -eq 0 && $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
-                    TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO. PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
-                    echo "🟢 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO se conectó" >> "$NOTIFICACIONES"
-                fi
-
-                if [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
-                    echo "🔴 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO se desconectó" >> "$NOTIFICACIONES"
-                fi
-
-                if grep -q "^$USUARIO:!" /etc/shadow; then
-                    if [[ "$BLOQUEO_MANUAL" != "SÍ" && $CONEXIONES -le $MOVILES_NUM ]]; then
-                        usermod -U "$USUARIO" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente (conexiones: $CONEXIONES, límite: $MOVILES_NUM)." >> "$LOG"
-                        echo "🔓 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO desbloqueado automáticamente" >> "$NOTIFICACIONES"
-                    fi
-                else
-                    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-                        usermod -L "$USUARIO" 2>/dev/null
-                        pkill -u "$USUARIO" sshd 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite (conexiones: $CONEXIONES, límite: $MOVILES_NUM)." >> "$LOG"
-                        echo "🔒 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO bloqueado por exceso de conexiones" >> "$NOTIFICACIONES"
-                    fi
-                fi
-            fi
-        done < "$REGISTROS"
-
-        mv "$TEMP_CURRENT" "$TEMP_FILE"
-        sleep "$INTERVALO"
-    done
-}
-
-monitorear_conexiones &
 
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
@@ -148,7 +68,7 @@ function barra_sistema() {
 
     TOTAL_CONEXIONES=0
     if [[ -f $REGISTROS ]]; then
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
             if id "$USUARIO" &>/dev/null; then
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
@@ -162,14 +82,7 @@ function barra_sistema() {
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e " 🌐 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 📅 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e " 😇 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}      ${CIAN}ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"
-
-    if [[ -f "$NOTIFICACIONES" ]]; then
-        echo -e "${CIAN}━━━━━━━━━━━━━━━━━ 🔔 Últimas Notificaciones ━━━━━━━━━━━━━━━━${NC}"
-        tail -n 5 "$NOTIFICACIONES" | while IFS= read -r LINEA; do
-            echo -e "${AZUL}${LINEA}${NC}"
-        done
-        echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    fi
+    echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
 function crear_usuario() {
@@ -201,7 +114,7 @@ function crear_usuario() {
     EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
     usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
-    echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
+    echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO" >> "$REGISTROS"
     echo
 
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y-%m-%d %I:%M %p")
@@ -284,7 +197,7 @@ function crear_multiples_usuarios() {
         EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
         usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
-        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
+        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO" >> "$REGISTROS"
         echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
     done
 
@@ -313,12 +226,12 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        printf "${AMARILLO}%-3s %-12s %-12s %-22s %10s %-12s %-22s${NC}\n" \
-            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_text '⏳ Días' 10)" "📱 Móviles" "⏰ Primer Login"
+        printf "${AMARILLO}%-3s %-12s %-12s %-22s %10s %-12s %-15s${NC}\n" \
+            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_text '⏳ Días' 10)" "📱 Móviles" "🔐 Estado"
         echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
 
         NUM=1
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
             if id "$USUARIO" &>/dev/null; then
                 FECHA_ACTUAL=$(date +%s)
                 FECHA_EXPIRA=$(date -d "$EXPIRA_DATETIME" +%s 2>/dev/null)
@@ -338,9 +251,16 @@ function ver_registros() {
                     COLOR_DIAS="${ROJO}"
                 fi
 
-                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%Y-%m-%d %I:%M %p"; else echo "No registrado"; fi)
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$(center_value "$DIAS_RESTANTES" 10)" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
+                if grep -q "^$USUARIO:!" /etc/shadow; then
+                    ESTADO="🔒 BLOQUEADO"
+                    COLOR_ESTADO="${ROJO}"
+                else
+                    ESTADO="🟢 ACTIVO"
+                    COLOR_ESTADO="${VERDE}"
+                fi
+
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%10s${NC} ${AMARILLO}%-12s ${COLOR_ESTADO}%-15s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$(center_value "$DIAS_RESTANTES" 10)" "$MOVILES" "$ESTADO"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
@@ -365,14 +285,18 @@ function eliminar_usuario() {
         return
     fi
 
-    echo -e "${AMARILLO}Nº\t👤 Usuario\t🔑 Clave\t📅 Expira\t\t⏳ Duración\t📱 Móviles\t⏰ Primer Login${NC}"
+    echo -e "${AMARILLO}Nº\t👤 Usuario\t🔑 Clave\t📅 Expira\t\t⏳ Duración\t📱 Móviles\t🔐 Estado${NC}"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
     NUM=1
     declare -A USUARIOS_EXISTENTES
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
         if id "$USUARIO" &>/dev/null; then
-            PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%Y-%m-%d %I:%M %p"; else echo "No registrado"; fi)
-            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$PRIMER_LOGIN_FORMAT${NC}"
+            if grep -q "^$USUARIO:!" /etc/shadow; then
+                ESTADO="🔒 BLOQUEADO"
+            else
+                ESTADO="🟢 ACTIVO"
+            fi
+            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$ESTADO${NC}"
             USUARIOS_EXISTENTES[$NUM]="$USUARIO"
             NUM=$((NUM+1))
         fi
@@ -433,7 +357,6 @@ function eliminar_usuario() {
         if userdel -r "$USUARIO" 2>/dev/null; then
             sed -i "/^$USUARIO\t/d" "$REGISTROS"
             echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
-            echo "🗑️ $(date +'%Y-%m-%d %I:%M %p'): $USUARIO eliminado" >> "$NOTIFICACIONES"
         else
             echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
         fi
@@ -453,7 +376,7 @@ function eliminar_todos_usuarios() {
     fi
 
     declare -a USUARIOS_EXISTENTES
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
         if id "$USUARIO" &>/dev/null; then
             USUARIOS_EXISTENTES+=("$USUARIO")
         fi
@@ -489,7 +412,6 @@ function eliminar_todos_usuarios() {
         if userdel -r "$USUARIO" 2>/dev/null; then
             sed -i "/^$USUARIO\t/d" "$REGISTROS"
             echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
-            echo "🗑️ $(date +'%Y-%m-%d %I:%M %p'): $USUARIO eliminado" >> "$NOTIFICACIONES"
         else
             echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
         fi
@@ -516,9 +438,9 @@ function verificar_online() {
         return
     fi
 
-    printf "${AMARILLO}%-15s %-15s %-25s %-15s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "⏰ TIEMPO CONECTADO" "📱 MÓVILES"
+    printf "${AMARILLO}%-15s %-15s %-25s %-15s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📅 ÚLTIMA CONEXIÓN" "📱 MÓVILES"
     echo -e "${CIAN}------------------------------------------------------------${NC}"
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
         if id "$USUARIO" &>/dev/null; then
             ESTADO="0"
             DETALLES="Nunca conectado"
@@ -533,29 +455,7 @@ function verificar_online() {
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
-
-                    if [[ -n "$PRIMER_LOGIN" ]]; then
-                        START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
-                        if [[ $? -eq 0 && -n "$START" ]]; then
-                            CURRENT=$(date +%s)
-                            ELAPSED_SEC=$((CURRENT - START))
-                            D=$((ELAPSED_SEC / 86400))
-                            H=$(( (ELAPSED_SEC % 86400) / 3600 ))
-                            M=$(( (ELAPSED_SEC % 3600) / 60 ))
-                            S=$((ELAPSED_SEC % 60 ))
-                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
-                            if [[ $D -gt 0 ]]; then
-                                DETALLES="$D-$DETALLES"
-                            fi
-                        else
-                            DETALLES="⏰ Tiempo no disponible (PRIMER_LOGIN inválido)"
-                            sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN inválido para $USUARIO" >> /var/log/panel_errors.log
-                            }
-                        fi
-                    else
-                        DETALLES="⏰ Tiempo no disponible (PRIMER_LOGIN no establecido)"
-                    fi
+                    DETALLES="⏰ Conectado ahora"
                 else
                     LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null; } | tail -1)
                     if [[ -n "$LOGIN_LINE" ]]; then
@@ -592,7 +492,7 @@ function bloquear_desbloquear_usuario() {
     mapfile -t LINEAS < "$REGISTROS"
     INDEX=1
     for LINEA in "${LINEAS[@]}"; do
-        IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN <<< "$LINEA"
+        IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL <<< "$LINEA"
         if id "$USUARIO" &>/dev/null; then
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 ESTADO="🔒 BLOQUEADO"
@@ -612,7 +512,7 @@ function bloquear_desbloquear_usuario() {
 
     read -p "$(echo -e ${AMARILLO}👤 Digite el número del usuario: ${NC})" NUM
     USUARIO_LINEA="${LINEAS[$((NUM-1))]}"
-    IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN <<< "$USUARIO_LINEA"
+    IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL <<< "$USUARIO_LINEA"
 
     if [[ -z "$USUARIO" || ! $(id -u "$USUARIO" 2>/dev/null) ]]; then
         echo -e "${ROJO}❌ Número inválido o el usuario ya no existe en el sistema.${NC}"
@@ -642,14 +542,12 @@ function bloquear_desbloquear_usuario() {
     if [[ $ACCION == "bloquear" ]]; then
         usermod -L "$USUARIO"
         pkill -u "$USUARIO" sshd
-        sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tSÍ\t$PRIMER_LOGIN/" "$REGISTROS"
+        sed -i "/^$USUARIO\t/ s/\t[^\t]*$/\tSÍ/" "$REGISTROS"
         echo -e "${VERDE}🔒 Usuario '$USUARIO' bloqueado exitosamente y sesiones SSH terminadas.${NC}"
-        echo "🔒 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO bloqueado manualmente" >> "$NOTIFICACIONES"
     else
         usermod -U "$USUARIO"
-        sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tNO\t$PRIMER_LOGIN/" "$REGISTROS"
+        sed -i "/^$USUARIO\t/ s/\t[^\t]*$/\tNO/" "$REGISTROS"
         echo -e "${VERDE}🔓 Usuario '$USUARIO' desbloqueado exitosamente.${NC}"
-        echo "🔓 $(date +'%Y-%m-%d %I:%M %p'): $USUARIO desbloqueado manualmente" >> "$NOTIFICACIONES"
     fi
 
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
@@ -667,7 +565,7 @@ function mini_registro() {
 
     printf "${AMARILLO}%-15s %-15s %-10s %-15s${NC}\n" "👤 Nombre" "🔑 Contraseña" "⏳ Días" "📱 Móviles"
     echo -e "${CIAN}--------------------------------------------${NC}"
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
         if id "$USUARIO" &>/dev/null; then
             DIAS=$(echo "$DURACION" | grep -oE '[0-9]+')
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
