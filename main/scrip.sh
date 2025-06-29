@@ -130,7 +130,7 @@ function barra_sistema() {
     echo -e " ∘ U/RAM: ${AMARILLO}${MEM_PORC}%${NC}  ∘ U/CPU: ${AMARILLO}${CPU_PORC}%${NC}  ∘ CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e " ∘ IP: ${AMARILLO}${IP_PUBLICA}${NC}  ∘ FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e " ${ROJO}Mccarthey 🤩    ${AMARILLO}ONLINE: ${TOTAL_CONEXIONES}${NC}"
+    echo -e " ${ROJO}Mccarthey 😶‍🌫️   ${AMARILLO}ONLINE: ${TOTAL_CONEXIONES}${NC}"
 }
 
 function crear_usuario() {
