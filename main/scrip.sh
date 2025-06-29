@@ -12,23 +12,26 @@ ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
 NC='\033[0m'
 
+# Función para configurar la autoejecución en ~/.bashrc
 function configurar_autoejecucion() {
     BASHRC="/root/.bashrc"
-    AUTOEXEC_LINE='bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh)'
-
-    if ! grep -q 'Mccarthey-Installer/main/main/scrip.sh' "$BASHRC"; then
-        echo '
-if [[ -t 0 && -z "$IN_PANEL" ]]; then
+    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
     export IN_PANEL=1
-    '"$AUTOEXEC_LINE"'
+    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh)
     unset IN_PANEL
-fi' >> "$BASHRC"
+fi'
 
-        echo -e "${VERDE}✔ Autoejecución agregada a .bashrc. El menú se cargará automáticamente en la próxima sesión.${NC}"
-    else
-        echo -e "${AMARILLO}⚠ Ya existe la autoejecución en .bashrc${NC}"
+    # Verificar si el bloque ya existe en ~/.bashrc
+    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
+        # Agregar el bloque al final de ~/.bashrc
+        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
+        echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
 }
+
+# Ejecutar la configuración de autoejecución
+configurar_autoejecucion
+
 
 # Función para monitoreo en tiempo real
 function monitorear_conexiones() {
