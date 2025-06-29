@@ -497,22 +497,12 @@ function verificar_online() {
                     ESTADO="$CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
 
-                    # Obtener el tiempo de inicio del proceso sshd más antiguo
-                    SSHD_PID=$(ps -u "$USUARIO" -o pid,comm | grep "sshd$" | awk '{print $1}' | head -n 1)
-                    if [[ -n "$SSHD_PID" ]]; then
-                        START_TIME=$(stat -c %Y "/proc/$SSHD_PID/stat" 2>/dev/null)
-                        if [[ $? -eq 0 && -n "$START_TIME" ]]; then
-                            # Actualizar PRIMER_LOGIN con el tiempo de inicio de la sesión actual
-                            PRIMER_LOGIN=$(date -d "@$START_TIME" +"%Y-%m-%d %H:%M:%S")
-                            sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$PRIMER_LOGIN/" "$REGISTROS" || {
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> /var/log/panel_errors.log
-                            }
-                        else
-                            PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                            sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$PRIMER_LOGIN/" "$REGISTROS" || {
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> /var/log/panel_errors.log
-                            }
-                        fi
+                    # Si PRIMER_LOGIN está vacío, establecerlo con la hora actual
+                    if [[ -z "$PRIMER_LOGIN" ]]; then
+                        PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                        sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$PRIMER_LOGIN/" "$REGISTROS" || {
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> /var/log/panel_errors.log
+                        }
                     fi
 
                     # Calcular el tiempo conectado desde PRIMER_LOGIN
