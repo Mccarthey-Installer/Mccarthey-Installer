@@ -14,22 +14,21 @@ NC='\033[0m'
 
 function configurar_autoejecucion() {
     BASHRC="/root/.bashrc"
-    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
-    export IN_PANEL=1
-    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/scrip.sh)
-    unset IN_PANEL
-fi'
+    AUTOEXEC_LINE='bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh)'
 
-    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
-        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
-        echo -e "${VERDE}✔ Autoejecución agregada a $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
+    if ! grep -q 'Mccarthey-Installer/main/main/scrip.sh' "$BASHRC"; then
+        echo '
+if [[ -t 0 && -z "$IN_PANEL" ]]; then
+    export IN_PANEL=1
+    '"$AUTOEXEC_LINE"'
+    unset IN_PANEL
+fi' >> "$BASHRC"
+
+        echo -e "${VERDE}✔ Autoejecución agregada a .bashrc. El menú se cargará automáticamente en la próxima sesión.${NC}"
     else
-        echo -e "${AMARILLO}⚠ Ya existe la autoejecución en $BASHRC.${NC}"
+        echo -e "${AMARILLO}⚠ Ya existe la autoejecución en .bashrc${NC}"
     fi
 }
-
-# 👇 LLAMADA REAL para que funcione
-configurar_autoejecucion
 
 # Función para monitoreo en tiempo real
 function monitorear_conexiones() {
@@ -663,32 +662,5 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-while true; do
-    clear
-    barra_sistema
-    echo
-    echo -e "${VIOLETA}====== PANEL DE USUARIOS VPN/SSH ======${NC}"
-    echo -e "${VERDE}1. Crear usuario${NC}"
-    echo -e "${VERDE}2. Ver registros${NC}"
-    echo -e "${VERDE}3. Eliminar usuario${NC}"
-    echo -e "${VERDE}4. Eliminar TODOS los usuarios${NC}"
-    echo -e "${VERDE}5. Verificar usuarios online${NC}"
-    echo -e "${VERDE}6. Bloquear/Desbloquear usuario${NC}"
-    echo -e "${VERDE}7. Crear múltiples usuarios${NC}"
-    echo -e "${VERDE}8. Mini registro${NC}"
-    echo -e "${VERDE}9. Salir${NC}"
-    PROMPT=$(echo -e "${AMARILLO}Selecciona una opción: ${NC}")
-    read -p "$PROMPT" OPCION
-    case $OPCION in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_usuario ;;
-        4) eliminar_todos_usuarios ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) echo -e "${AZUL}Saliendo...${NC}"; exit 0 ;;
-        *) echo -e "${ROJO}¡Opción inválida!${NC}"; read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" ;;
-    esac
-done
+# Ejecutar función de autoejecución
+configurar_autoejecucion
