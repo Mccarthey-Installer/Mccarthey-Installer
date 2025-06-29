@@ -444,7 +444,6 @@ function eliminar_todos_usuarios() {
     echo -e "${VERDE}✅ Todos los usuarios existentes han sido eliminados del sistema y del archivo de registros.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
@@ -482,7 +481,7 @@ function verificar_online() {
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
-                    (( TOTAL_CONEXIONES++ ))
+                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
                     if [[ -n "$PRIMER_LOGIN" ]]; then
                         START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
@@ -528,6 +527,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function bloquear_desbloquear_usuario() {
     clear
