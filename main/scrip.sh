@@ -111,7 +111,7 @@ function barra_sistema() {
         IP_PUBLICA="No disponible"
     fi
 
-    FECHA_ACTUAL=$(date +"%Y-%m-%d %H:%M:%S")
+    FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
 
     # Contar conexiones activas de todos los usuarios en REGISTROS
     TOTAL_CONEXIONES=0
