@@ -390,60 +390,7 @@ function eliminar_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-function eliminar_todos_usuarios() {
-    clear
-    echo -e "${VIOLETA}===== 🗑️ ELIMINAR TODOS LOS USUARIOS =====${NC}"
-    if [[ ! -f $REGISTROS ]]; then
-        echo -e "${ROJO}❌ No hay usuarios registrados para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
 
-    declare -a USUARIOS_EXISTENTES
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-        if id "$USUARIO" &>/dev/null; then
-            USUARIOS_EXISTENTES+=("$USUARIO")
-        fi
-    done < "$REGISTROS"
-
-    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    echo -e "${AMARILLO}🗑️ Se eliminarán TODOS los usuarios existentes a continuación:${NC}"
-    echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    for USUARIO in "${USUARIOS_EXISTENTES[@]}"; do
-        echo -e "${VERDE}$USUARIO${NC}"
-    done
-    echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    echo -e "${ROJO}⚠️ ¿Estás seguro de que quieres eliminar TODOS estos usuarios? (s/n)${NC}"
-    read -p "" CONFIRMAR
-    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    for USUARIO in "${USUARIOS_EXISTENTES[@]}"; do
-        PIDS=$(pgrep -u "$USUARIO")
-        if [[ -n $PIDS ]]; then
-            echo -e "${ROJO}⚠️ Procesos activos detectados para $USUARIO. Cerrándolos...${NC}"
-            kill -9 $PIDS 2>/dev/null
-            sleep 1
-        fi
-        if userdel -r "$USUARIO" 2>/dev/null; then
-            sed -i "/^$USUARIO\t/d" "$REGISTROS"
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
-        else
-            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
-        fi
-    done
-
-    echo -e "${VERDE}✅ Todos los usuarios existentes han sido eliminados del sistema y del archivo de registros.${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
 function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
@@ -637,7 +584,6 @@ while true; do
     echo -e "${VERDE}1. 🆕 Crear usuario${NC}"
     echo -e "${VERDE}2. 📋 Ver registros${NC}"
     echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"
-    echo -e "${VERDE}4. 🗑️ Eliminar TODOS los usuarios${NC}"
     echo -e "${VERDE}5. 🟢 Verificar usuarios online${NC}"
     echo -e "${VERDE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
     echo -e "${VERDE}7. 🆕 Crear múltiples usuarios${NC}"
@@ -649,7 +595,6 @@ while true; do
         1) crear_usuario ;;
         2) ver_registros ;;
         3) eliminar_usuario ;;
-        4) eliminar_todos_usuarios ;;
         5) verificar_online ;;
         6) bloquear_desbloquear_usuario ;;
         7) crear_multiples_usuarios ;;
