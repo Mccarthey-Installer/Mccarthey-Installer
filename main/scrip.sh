@@ -665,5 +665,29 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-# Ejecutar función de autoejecución
-configurar_autoejecucion
+while true; do
+    barra_sistema
+    echo -e "${AMARILLO}1) Crear usuario SSH"
+    echo -e "${AMARILLO}2) Crear múltiples usuarios"
+    echo -e "${AMARILLO}3) Ver registros"
+    echo -e "${AMARILLO}4) Eliminar usuario"
+    echo -e "${AMARILLO}5) Eliminar todos los usuarios"
+    echo -e "${AMARILLO}6) Ver usuarios online"
+    echo -e "${AMARILLO}7) Bloquear/desbloquear usuario"
+    echo -e "${AMARILLO}8) Mini registro"
+    echo -e "${AMARILLO}0) Salir"
+    read -p "$(echo -e ${AZUL}Seleccione una opción: ${NC})" OPCION
+    case $OPCION in
+        1) crear_usuario ;;
+        2) crear_multiples_usuarios ;;
+        3) ver_registros ;;
+        4) eliminar_usuario ;;
+        5) eliminar_todos_usuarios ;;
+        6) verificar_online ;;
+        7) bloquear_desbloquear_usuario ;;
+        8) mini_registro ;;
+        0) exit ;;
+        *) echo -e "${ROJO}Opción inválida.${NC}"; sleep 1 ;;
+    esac
+done
+
