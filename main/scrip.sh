@@ -12,25 +12,26 @@ ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
 NC='\033[0m'
 
-# Función para actualizar el script
-actualizar_script() {
-    TEMP_SCRIPT=$(mktemp)
-    if wget -qO "$TEMP_SCRIPT" https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh; then
-        if ! cmp -s "$TEMP_SCRIPT" /usr/local/bin/panel.sh; then
-            mv "$TEMP_SCRIPT" /usr/local/bin/panel.sh
-            chmod +x /usr/local/bin/panel.sh
-            echo -e "${VERDE}Script actualizado a la última versión.${NC}"
-            sleep 2
-        else
-            rm "$TEMP_SCRIPT"
-        fi
-    else
-        rm "$TEMP_SCRIPT"
-        echo -e "${ROJO}No se pudo verificar actualizaciones. Usando versión local.${NC}"
-        sleep 2
+# Función para configurar la autoejecución en ~/.bashrc
+function configurar_autoejecucion() {
+    BASHRC="/root/.bashrc"
+    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
+    export IN_PANEL=1
+    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh)
+    unset IN_PANEL
+fi'
+
+    # Verificar si el bloque ya existe en ~/.bashrc
+    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
+        # Agregar el bloque al final de ~/.bashrc
+        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
+        echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
 }
-actualizar_script
+
+# Ejecutar la configuración de autoejecución
+configurar_autoejecucion
+
 
 # Función para monitoreo en tiempo real
 function monitorear_conexiones() {
@@ -46,15 +47,21 @@ function monitorear_conexiones() {
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
             if id "$USUARIO" &>/dev/null; then
+                # Extraer el número de móviles permitidos
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
+
+                # Contar procesos sshd del usuario
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
 
+                # Verificar si el usuario está bloqueado
                 if grep -q "^$USUARIO:!" /etc/shadow; then
+                    # Desbloquear solo si no es bloqueo manual y las conexiones están dentro del límite
                     if [[ "$BLOQUEO_MANUAL" != "SÍ" && $CONEXIONES -le $MOVILES_NUM ]]; then
                         usermod -U "$USUARIO" 2>/dev/null
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente (conexiones: $CONEXIONES, límite: $MOVILES_NUM)." >> "$LOG"
                     fi
                 else
+                    # Bloquear si se supera el límite
                     if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                         usermod -L "$USUARIO" 2>/dev/null
                         pkill -u "$USUARIO" sshd 2>/dev/null
@@ -74,7 +81,7 @@ function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
-    MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
+    MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}') # Usamos la columna "available"
     MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")
 
     function human() {
@@ -107,6 +114,7 @@ function barra_sistema() {
 
     FECHA_ACTUAL=$(date +"%Y-%m-%d %H:%M:%S")
 
+    # Contar conexiones activas de todos los usuarios en REGISTROS
     TOTAL_CONEXIONES=0
     if [[ -f $REGISTROS ]]; then
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
@@ -118,11 +126,11 @@ function barra_sistema() {
     fi
 
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ∘ TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ M|DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
-    echo -e " ∘ U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e " ∘ TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘  M|DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC}  ∘  EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
+    echo -e " ∘ U/RAM: ${AMARILLO}${MEM_PORC}%${NC}  ∘ U/CPU: ${AMARILLO}${CPU_PORC}%${NC}  ∘ CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ∘ IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e " ${ROJO}Mccarthey 🤩 ${AMARILLO}ONLINE: ${TOTAL_CONEXIONES}${NC}"
+    echo -e " ∘ IP: ${AMARILLO}${IP_PUBLICA}${NC}  ∘ FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e " ${ROJO}Mccarthey 🤩    ${AMARILLO}ONLINE: ${TOTAL_CONEXIONES}${NC}"
 }
 
 function crear_usuario() {
@@ -150,10 +158,13 @@ function crear_usuario() {
     useradd -m -s /bin/bash "$USUARIO"
     echo "$USUARIO:$CLAVE" | chpasswd
 
+    # Calcular fecha y hora de expiración para mostrar en REGISTROS
     EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
+    # Calcular fecha de expiración real para usermod (un día adicional)
     EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
     usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
+    # Agregar BLOQUEO_MANUAL como "NO"
     echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO" >> "$REGISTROS"
     echo
 
@@ -237,6 +248,7 @@ function crear_multiples_usuarios() {
         EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
         usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
+        # Agregar BLOQUEO_MANUAL como "NO"
         echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO" >> "$REGISTROS"
         echo -e "${VERDE}Usuario $USUARIO creado exitosamente.${NC}"
     done
@@ -473,17 +485,22 @@ function verificar_online() {
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${ROJO}"
 
+            # Extraer el número de móviles permitidos
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
 
+            # Verificar si el usuario está bloqueado
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="Usuario bloqueado"
             else
+                # Contar solo procesos sshd ejecutados como el usuario
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="$CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
+                    # Obtener el PID de la primera conexión sshd activa desde ps
                     PID=$(ps -u "$USUARIO" -o pid=,comm= | grep "[[:space:]]sshd$" | awk '{print $1}' | head -1)
                     if [[ -n "$PID" && $PID =~ ^[0-9]+$ ]]; then
+                        # Intentar con stat primero
                         START=$(stat -c %Y /proc/$PID/stat 2>/dev/null)
                         if [[ -n "$START" && $START =~ ^[0-9]+$ ]]; then
                             CURRENT=$(date +%s)
@@ -497,6 +514,7 @@ function verificar_online() {
                                 DETALLES="$D-$DETALLES"
                             fi
                         else
+                            # Respaldo con /proc/$PID/stat
                             if [[ -f /proc/$PID/stat ]]; then
                                 START=$(awk '{print $22}' /proc/$PID/stat 2>/dev/null)
                                 if [[ -n "$START" && $START =~ ^[0-9]+$ ]]; then
@@ -523,7 +541,9 @@ function verificar_online() {
                         fi
                     else
                         DETALLES="Tiempo no disponible (PID inválido)"
-                    fi Facil de mantener
+                    fi
+                else
+                    # Intentar con /var/log/auth.log, /var/log/secure o /var/log/messages
                     LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null; } | tail -1)
                     if [[ -n "$LOGIN_LINE" ]]; then
                         MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
@@ -634,7 +654,9 @@ function mini_registro() {
     echo -e "${CIAN}--------------------------------------------${NC}"
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
         if id "$USUARIO" &>/dev/null; then
+            # Extraer el número de días de DURACION
             DIAS=$(echo "$DURACION" | grep -oE '[0-9]+')
+            # Extraer el número de móviles de MOVILES
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
             printf "${VERDE}%-15s %-15s %-10s %-10s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES_NUM"
         fi
@@ -668,7 +690,7 @@ while true; do
         6) bloquear_desbloquear_usuario ;;
         7) crear_multiples_usuarios ;;
         8) mini_registro ;;
-        9) echo -e "${AZUL}Saliendo...${NC}"; exec /bin/bash ;;
-        *) echo -e "${ROJO}¡Opción inválida!${NC}"; read -p "$(echo -e ${AZUL}Presiona Enter para continuar Ang continuar...${NC})" ;;
+        9) echo -e "${AZUL}Saliendo...${NC}"; exit 0 ;;
+        *) echo -e "${ROJO}¡Opción inválida!${NC}"; read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" ;;
     esac
 done
