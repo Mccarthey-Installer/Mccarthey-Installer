@@ -412,9 +412,12 @@ function verificar_online() {
     echo -e "${CIAN}------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
+    TOTAL_USUARIOS=0
+    INACTIVOS=0
 
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
+            ((TOTAL_USUARIOS++))
             ESTADO="0"
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${ROJO}"
@@ -423,6 +426,7 @@ function verificar_online() {
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
+                ((INACTIVOS++))
             else
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 if [[ $CONEXIONES -gt 0 ]]; then
@@ -463,6 +467,7 @@ function verificar_online() {
                         HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
                         DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                     fi
+                    ((INACTIVOS++))
                 fi
             fi
             printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AZUL}%-25s ${AMARILLO}%-15s${NC}\n" "$USUARIO" "$ESTADO" "$DETALLES" "$MOVILES_NUM"
@@ -470,7 +475,7 @@ function verificar_online() {
     done < "$REGISTROS"
 
     echo
-    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
