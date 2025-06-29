@@ -464,6 +464,9 @@ function verificar_online() {
 
     printf "${AMARILLO}%-15s %-15s %-25s %-15s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "⏰ TIEMPO CONECTADO" "📱 MÓVILES"
     echo -e "${CIAN}------------------------------------------------------------${NC}"
+
+    TOTAL_CONEXIONES=0
+
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
             ESTADO="0"
@@ -479,6 +482,7 @@ function verificar_online() {
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
+                    (( TOTAL_CONEXIONES++ ))
 
                     if [[ -n "$PRIMER_LOGIN" ]]; then
                         START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
@@ -518,6 +522,9 @@ function verificar_online() {
             printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AZUL}%-25s ${AMARILLO}%-15s${NC}\n" "$USUARIO" "$ESTADO" "$DETALLES" "$MOVILES_NUM"
         fi
     done < "$REGISTROS"
+
+    echo
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
