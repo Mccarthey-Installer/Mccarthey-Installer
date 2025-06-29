@@ -37,12 +37,20 @@ function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
 
+    # Archivo temporal para almacenar el estado anterior de conexiones
+    TEMP_FILE="/tmp/conexiones_anteriores.txt"
+    touch "$TEMP_FILE"
+
     while true; do
         if [[ ! -f $REGISTROS ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
             continue
         fi
+
+        # Crear un archivo temporal para el estado actual
+        TEMP_CURRENT="/tmp/conexiones_actuales.txt"
+        : > "$TEMP_CURRENT"
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
@@ -51,6 +59,29 @@ function monitorear_conexiones() {
 
                 # Contar procesos sshd del usuario
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+
+                # Guardar el estado actual
+                echo "$USUARIO:$CONEXIONES" >> "$TEMP_CURRENT"
+
+                # Obtener conexiones anteriores
+                CONEXIONES_ANT=$(grep "^$USUARIO:" "$TEMP_FILE" | cut -d: -f2 || echo "0")
+
+                # Registrar PRIMER_LOGIN si pasa de 0 a 1 o más conexiones
+                if [[ $CONEXIONES_ANT -eq 0 && $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
+                    TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
+                    }
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO. PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
+                fi
+
+                # Limpiar PRIMER_LOGIN si no hay conexiones
+                if [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
+                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
+                    }
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
+                fi
 
                 # Verificar si el usuario está bloqueado
                 if grep -q "^$USUARIO:!" /etc/shadow; then
@@ -69,6 +100,9 @@ function monitorear_conexiones() {
                 fi
             fi
         done < "$REGISTROS"
+
+        # Actualizar el archivo de conexiones anteriores
+        mv "$TEMP_CURRENT" "$TEMP_FILE"
         sleep "$INTERVALO"
     done
 }
@@ -497,15 +531,7 @@ function verificar_online() {
                     ESTADO="$CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
 
-                    # Si PRIMER_LOGIN está vacío, establecerlo con la hora actual
-                    if [[ -z "$PRIMER_LOGIN" ]]; then
-                        PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                        sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$PRIMER_LOGIN/" "$REGISTROS" || {
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> /var/log/panel_errors.log
-                        }
-                    fi
-
-                    # Calcular el tiempo conectado desde PRIMER_LOGIN
+                    # Usar PRIMER_LOGIN existente para calcular el tiempo conectado
                     if [[ -n "$PRIMER_LOGIN" ]]; then
                         START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
                         if [[ $? -eq 0 && -n "$START" ]]; then
@@ -521,17 +547,15 @@ function verificar_online() {
                             fi
                         else
                             DETALLES="Tiempo no disponible (PRIMER_LOGIN inválido)"
+                            # Limpiar PRIMER_LOGIN si es inválido
+                            sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN inválido para $USUARIO" >> /var/log/panel_errors.log
+                            }
                         fi
                     else
                         DETALLES="Tiempo no disponible (PRIMER_LOGIN no establecido)"
                     fi
                 else
-                    # Si no hay conexiones, limpiar PRIMER_LOGIN
-                    if [[ -n "$PRIMER_LOGIN" ]]; then
-                        sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> /var/log/panel_errors.log
-                        }
-                    fi
                     # Mostrar última conexión conocida desde auth.log si no está conectado
                     LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null; } | tail -1)
                     if [[ -n "$LOGIN_LINE" ]]; then
