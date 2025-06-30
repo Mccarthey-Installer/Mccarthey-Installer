@@ -466,8 +466,8 @@ function verificar_online() {
         return
     fi
 
-    # Alineación a la derecha para la columna de móviles
-    printf "${AMARILLO}%-15s %-15s %15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    # NUEVO ORDEN DE COLUMNAS
+    printf "${AMARILLO}%-15s %-15s %-15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
@@ -531,7 +531,7 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            # Alineación a la derecha para la columna de móviles (%15s en lugar de %-15s)
+            # NUEVO ORDEN DE COLUMNAS EN PRINTF
             printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-15s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
@@ -541,6 +541,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
