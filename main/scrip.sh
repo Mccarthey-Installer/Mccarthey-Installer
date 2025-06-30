@@ -464,8 +464,14 @@ function verificar_online() {
 
     printf "${AMARILLO}%-15s %-15s %-25s %-15s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "⏰ TIEMPO CONECTADO" "📱 MÓVILES"
     echo -e "${CIAN}------------------------------------------------------------${NC}"
+
+    TOTAL_CONEXIONES=0
+    TOTAL_USUARIOS=0
+    INACTIVOS=0
+
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
+            ((TOTAL_USUARIOS++))
             ESTADO="0"
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${ROJO}"
@@ -474,11 +480,13 @@ function verificar_online() {
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
+                ((INACTIVOS++))
             else
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
+                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
                     if [[ -n "$PRIMER_LOGIN" ]]; then
                         START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
@@ -513,11 +521,15 @@ function verificar_online() {
                         HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
                         DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                     fi
+                    ((INACTIVOS++))
                 fi
             fi
             printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AZUL}%-25s ${AMARILLO}%-15s${NC}\n" "$USUARIO" "$ESTADO" "$DETALLES" "$MOVILES_NUM"
         fi
     done < "$REGISTROS"
+
+    echo
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  ${CIAN}Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
