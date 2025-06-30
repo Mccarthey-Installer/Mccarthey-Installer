@@ -448,6 +448,7 @@ function eliminar_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
 function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
@@ -466,7 +467,7 @@ function verificar_online() {
     fi
 
     # Alineación a la derecha para la columna de móviles
-    printf "${AMARILLO}%-15s %-15s %9s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    printf "${AMARILLO}%-15s %-15s %15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
