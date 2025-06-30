@@ -4,6 +4,7 @@ export LANG=es_ES.UTF-8
 
 REGISTROS="/root/registros.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
+TEMP_SCRIPT="/tmp/scrip.sh"
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -72,9 +73,17 @@ function monitorear_conexiones() {
     done
 }
 
+# Guardar el script en /tmp para nohup
+if [[ ! -f "$TEMP_SCRIPT" ]] || ! cmp -s "$0" "$TEMP_SCRIPT"; then
+    cp "$0" "$TEMP_SCRIPT" 2>/dev/null || {
+        wget -qO "$TEMP_SCRIPT" https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh
+        chmod +x "$TEMP_SCRIPT"
+    }
+fi
+
 # Iniciar monitoreo con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
-    nohup bash "$0" --monitorear >/var/log/monitoreo_conexiones.log 2>&1 &
+    nohup bash "$TEMP_SCRIPT" --monitorear >/var/log/monitoreo_conexiones.log 2>&1 &
     echo -e "${VERDE}🚀 Monitoreo iniciado en segundo plano (PID: $!).${NC}"
 else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
