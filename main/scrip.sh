@@ -43,31 +43,45 @@ function monitorear_conexiones() {
     echo $$ > "$PIDFILE"
 
     while true; do
-        if [[ ! -f $REGISTROS ]]; then
+        if [[ ! -f "$REGISTROS" ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
             continue
         fi
+
+        # Crear un archivo temporal para las modificaciones
+        TEMP_FILE=$(mktemp)
+        cp "$REGISTROS" "$TEMP_FILE"
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+
                 if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
-                    TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
+                    # Actualizar PRIMER_LOGIN solo si no está establecido
+                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$TEMP_FILE"
+                    if [[ $? -eq 0 ]]; then
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
+                    else
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
+                    fi
                 elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
+                    # Limpiar PRIMER_LOGIN si no hay conexiones
+                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$TEMP_FILE"
+                    if [[ $? -eq 0 ]]; then
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
+                    else
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
+                    fi
                 fi
             fi
         done < "$REGISTROS"
+
+        # Reemplazar el archivo original solo si las modificaciones fueron exitosas
+        mv "$TEMP_FILE" "$REGISTROS"
         sleep "$INTERVALO"
     done
 }
@@ -467,13 +481,20 @@ function verificar_online() {
                                 DETALLES="$D días $DETALLES"
                             fi
                         else
-                            DETALLES="⏰ Tiempo no disponible"
-                            sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN inválido para $USUARIO" >> /var/log/panel_errors.log
+                            DETALLES="⏰ Tiempo no disponible (formato inválido)"
+                            # Intentar corregir PRIMER_LOGIN inválido
+                            TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+                            sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error corrigiendo PRIMER_LOGIN inválido para $USUARIO" >> /var/log/panel_errors.log
                             }
                         fi
                     else
-                        DETALLES="⏰ Tiempo no disponible"
+                        DETALLES="⏰ Tiempo no disponible (sin registro)"
+                        # Establecer PRIMER_LOGIN si el usuario está conectado
+                        TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+                        sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error estableciendo PRIMER_LOGIN para $USUARIO" >> /var/log/panel_errors.log
+                        }
                     fi
                 else
                     LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null || grep -E "login by user $USUARIO|exit before auth|exit after auth" /var/log/dropbear.log 2>/dev/null; } | tail -1)
