@@ -2,7 +2,8 @@
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
 
-REGISTROS="registros.txt"
+REGISTROS="/root/registros.txt"
+PIDFILE="/var/run/monitorear_conexiones.pid"
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -34,6 +35,13 @@ function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
 
+    # Evitar múltiples instancias
+    if [[ -f "$PIDFILE" ]] && ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso de monitoreo ya está corriendo (PID: $(cat "$PIDFILE"))." >> "$LOG"
+        return
+    fi
+    echo $$ > "$PIDFILE"
+
     while true; do
         if [[ ! -f $REGISTROS ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
@@ -43,13 +51,15 @@ function monitorear_conexiones() {
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
                     TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
                     sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
                     }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO. PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
                 elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
                     sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
@@ -62,7 +72,13 @@ function monitorear_conexiones() {
     done
 }
 
-monitorear_conexiones &
+# Iniciar monitoreo con nohup si no está corriendo
+if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
+    nohup bash -c "monitorear_conexiones" >/var/log/monitoreo_conexiones.log 2>&1 &
+    echo -e "${VERDE}🚀 Monitoreo iniciado en segundo plano (PID: $!).${NC}"
+else
+    echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
+fi
 
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
@@ -105,7 +121,9 @@ function barra_sistema() {
     if [[ -f $REGISTROS ]]; then
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
             fi
         done < "$REGISTROS"
@@ -152,7 +170,7 @@ function crear_usuario() {
     echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
     echo
 
-    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y-%m-%d %I:%M %p")
+    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO${NC}"
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$CLAVE${NC}"
@@ -279,7 +297,6 @@ function ver_registros() {
                         DIAS_RESTANTES="0"
                         COLOR_DIAS="${ROJO}"
                     fi
-                    # Formato de fecha para Expira: YYYY/mes/DD
                     FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
                 else
                     DIAS_RESTANTES="Inválido"
@@ -287,7 +304,6 @@ function ver_registros() {
                     COLOR_DIAS="${ROJO}"
                 fi
 
-                # Formato de Primer Login: solo hora (HH:MM AM/PM)
                 PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%I:%M %p"; else echo "No registrado"; fi)
                 printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%-10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_RESTANTES" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
@@ -392,8 +408,6 @@ function eliminar_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
-
 function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
@@ -431,7 +445,9 @@ function verificar_online() {
                 DETALLES="🔒 Usuario bloqueado"
                 ((INACTIVOS++))
             else
-                CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
@@ -460,7 +476,7 @@ function verificar_online() {
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null; } | tail -1)
+                    LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null || grep -E "login by user $USUARIO|exit before auth|exit after auth" /var/log/dropbear.log 2>/dev/null; } | tail -1)
                     if [[ -n "$LOGIN_LINE" ]]; then
                         MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
                         DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
@@ -549,8 +565,9 @@ function bloquear_desbloquear_usuario() {
     if [[ $ACCION == "bloquear" ]]; then
         usermod -L "$USUARIO"
         pkill -u "$USUARIO" sshd
+        pkill -u "$USUARIO" dropbear
         sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tSÍ\t$PRIMER_LOGIN/" "$REGISTROS"
-        echo -e "${VERDE}🔒 Usuario '$USUARIO' bloqueado exitosamente y sesiones SSH terminadas.${NC}"
+        echo -e "${VERDE}🔒 Usuario '$USUARIO' bloqueado exitosamente y sesiones SSH/Dropbear terminadas.${NC}"
     else
         usermod -U "$USUARIO"
         sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tNO\t$PRIMER_LOGIN/" "$REGISTROS"
@@ -590,7 +607,7 @@ while true; do
     echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${VERDE}1. 🆕 Crear usuario${NC}"
     echo -e "${VERDE}2. 📋 Ver registros${NC}"
-    echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"    
+    echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"
     echo -e "${VERDE}5. 🟢 Verificar usuarios online${NC}"
     echo -e "${VERDE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
     echo -e "${VERDE}7. 🆕 Crear múltiples usuarios${NC}"
