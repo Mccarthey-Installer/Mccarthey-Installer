@@ -163,8 +163,9 @@ function crear_usuario() {
     useradd -m -s /bin/bash "$USUARIO"
     echo "$USUARIO:$CLAVE" | chpasswd
 
-    EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
-    EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
+    # Fecha de expiración ajustada (00:00 del día siguiente al último día)
+    EXPIRA_FECHA=$(date -d "$((DIAS + 1)) days 00:00" +"%Y-%m-%d")
+    EXPIRA_DATETIME="${EXPIRA_FECHA} 00:00:00"
     usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
     echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
@@ -246,8 +247,9 @@ function crear_multiples_usuarios() {
         useradd -m -s /bin/bash "$USUARIO"
         echo "$USUARIO:$CLAVE" | chpasswd
 
-        EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
-        EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
+        # Fecha de expiración ajustada (00:00 del día siguiente al último día)
+        EXPIRA_FECHA=$(date -d "$((DIAS + 1)) days 00:00" +"%Y-%m-%d")
+        EXPIRA_DATETIME="${EXPIRA_FECHA} 00:00:00"
         usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
         echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
@@ -290,13 +292,19 @@ function ver_registros() {
                 FECHA_EXPIRA=$(date -d "$EXPIRA_DATETIME" +%s 2>/dev/null)
 
                 if [[ $? -eq 0 && -n $FECHA_EXPIRA ]]; then
-                    if (( FECHA_EXPIRA > FECHA_ACTUAL )); then
-                        DIAS_RESTANTES=$(( ( ($FECHA_EXPIRA - $FECHA_ACTUAL - 1 ) / 86400 ) + 1 ))
-                        COLOR_DIAS="${NC}"
-                    else
-                        DIAS_RESTANTES="0"
+                    # Cálculo ajustado de días restantes
+                    FECHA_HOY=$(date -d "$(date +%Y-%m-%d)" +%s)
+                    DIAS_RESTANTES=$(( (FECHA_EXPIRA - FECHA_HOY) / 86400 - 1 ))
+                    
+                    if (( DIAS_RESTANTES < 0 )); then
+                        DIAS_RESTANTES=0
                         COLOR_DIAS="${ROJO}"
+                    elif (( DIAS_RESTANTES == 0 )); then
+                        COLOR_DIAS="${AMARILLO}"
+                    else
+                        COLOR_DIAS="${VERDE}"
                     fi
+                    
                     FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
                 else
                     DIAS_RESTANTES="Inválido"
@@ -321,6 +329,7 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function eliminar_usuario() {
     clear
