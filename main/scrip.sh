@@ -450,7 +450,7 @@ function eliminar_usuario() {
 
 
 
- function verificar_online() {
+function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
 
@@ -532,8 +532,8 @@ function eliminar_usuario() {
                     ((INACTIVOS++))
                 fi
             fi
-            # NUEVO ORDEN DE COLUMNAS EN PRINTF
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-15s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            # NUEVO ORDEN DE COLUMNAS EN PRINTF (ajuste para centrar móviles)
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%15s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
