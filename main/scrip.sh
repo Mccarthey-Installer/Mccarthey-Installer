@@ -390,6 +390,60 @@ function eliminar_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+function eliminar_todos_usuarios() {
+    clear
+    echo -e "${VIOLETA}===== 🗑️ ELIMINAR TODOS LOS USUARIOS =====${NC}"
+    if [[ ! -f $REGISTROS ]]; then
+        echo -e "${ROJO}❌ No hay usuarios registrados para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    declare -a USUARIOS_EXISTENTES
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        if id "$USUARIO" &>/dev/null; then
+            USUARIOS_EXISTENTES+=("$USUARIO")
+        fi
+    done < "$REGISTROS"
+
+    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    echo -e "${AMARILLO}🗑️ Se eliminarán TODOS los usuarios existentes a continuación:${NC}"
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    for USUARIO in "${USUARIOS_EXISTENTES[@]}"; do
+        echo -e "${VERDE}$USUARIO${NC}"
+    done
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    echo -e "${ROJO}⚠️ ¿Estás seguro de que quieres eliminar TODOS estos usuarios? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    for USUARIO in "${USUARIOS_EXISTENTES[@]}"; do
+        PIDS=$(pgrep -u "$USUARIO")
+        if [[ -n $PIDS ]]; then
+            echo -e "${ROJO}⚠️ Procesos activos detectados para $USUARIO. Cerrándolos...${NC}"
+            kill -9 $PIDS 2>/dev/null
+            sleep 1
+        fi
+        if userdel -r "$USUARIO" 2>/dev/null; then
+            sed -i "/^$USUARIO\t/d" "$REGISTROS"
+            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
+        else
+            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
+        fi
+    done
+
+    echo -e "${VERDE}✅ Todos los usuarios existentes han sido eliminados del sistema y del archivo de registros.${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
 
 function verificar_online() {
     clear
@@ -410,14 +464,8 @@ function verificar_online() {
 
     printf "${AMARILLO}%-15s %-15s %-25s %-15s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "⏰ TIEMPO CONECTADO" "📱 MÓVILES"
     echo -e "${CIAN}------------------------------------------------------------${NC}"
-
-    TOTAL_CONEXIONES=0
-    TOTAL_USUARIOS=0
-    INACTIVOS=0
-
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
-            ((TOTAL_USUARIOS++))
             ESTADO="0"
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${ROJO}"
@@ -426,13 +474,11 @@ function verificar_online() {
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
-                ((INACTIVOS++))
             else
                 CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
-                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
                     if [[ -n "$PRIMER_LOGIN" ]]; then
                         START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
@@ -467,15 +513,11 @@ function verificar_online() {
                         HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
                         DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                     fi
-                    ((INACTIVOS++))
                 fi
             fi
             printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AZUL}%-25s ${AMARILLO}%-15s${NC}\n" "$USUARIO" "$ESTADO" "$DETALLES" "$MOVILES_NUM"
         fi
     done < "$REGISTROS"
-
-    echo
-    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  ${CIAN}Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
@@ -588,6 +630,7 @@ while true; do
     echo -e "${VERDE}1. 🆕 Crear usuario${NC}"
     echo -e "${VERDE}2. 📋 Ver registros${NC}"
     echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"
+    echo -e "${VERDE}4. 🗑️ Eliminar TODOS los usuarios${NC}"
     echo -e "${VERDE}5. 🟢 Verificar usuarios online${NC}"
     echo -e "${VERDE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
     echo -e "${VERDE}7. 🆕 Crear múltiples usuarios${NC}"
@@ -599,6 +642,7 @@ while true; do
         1) crear_usuario ;;
         2) ver_registros ;;
         3) eliminar_usuario ;;
+        4) eliminar_todos_usuarios ;;
         5) verificar_online ;;
         6) bloquear_desbloquear_usuario ;;
         7) crear_multiples_usuarios ;;
