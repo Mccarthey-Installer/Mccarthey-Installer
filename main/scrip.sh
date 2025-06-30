@@ -191,6 +191,72 @@ function crear_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+function ver_registros() {
+    clear
+    echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
+
+    center_text() {
+        local text="$1"
+        local width="$2"
+        local len=${#text}
+        local padding=$(( (width - len) / 2 ))
+        printf "%*s%s%*s" "$padding" "" "$text" "$((width - len - padding))" ""
+    }
+
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding=$(( (width - len) / 2 ))
+        printf "%*s%s%*s" "$padding" "" "$value" "$((width - len - padding))" ""
+    }
+
+    if [[ -f $REGISTROS ]]; then
+        printf "${AMARILLO}%-3s %-12s %-12s %-22s %10s %-12s %-22s${NC}\n" \
+            "Nº" "👤 Usuario" "🔑 Clave" "📅 Vence" "$(center_text '⏳ Días' 10)" "📱 Móviles" "⏰ Primer Login"
+        echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
+
+        NUM=1
+        while IFS=$'\t' read -r USUARIO CLAVE FECHA_VENCIMIENTO DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                FECHA_HOY=$(date -d "$(date +%Y-%m-%d)" +%s)
+                FECHA_VENCIMIENTO_S=$(date -d "$FECHA_VENCIMIENTO" +%s 2>/dev/null)
+
+                if [[ $? -eq 0 && -n $FECHA_VENCIMIENTO_S ]]; then
+                    DIAS_RESTANTES=$(( (FECHA_VENCIMIENTO_S - FECHA_HOY) / 86400 ))
+                    if (( DIAS_RESTANTES < 0 )); then
+                        DIAS_RESTANTES=0
+                        COLOR_DIAS="${ROJO}"
+                    elif (( DIAS_RESTANTES == 0 )); then
+                        COLOR_DIAS="${AMARILLO}"
+                    else
+                        COLOR_DIAS="${VERDE}"
+                    fi
+                    FORMATO_VENCE=$(date -d "$FECHA_VENCIMIENTO" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
+                else
+                    DIAS_RESTANTES="Inválido"
+                    FORMATO_VENCE="Desconocido"
+                    COLOR_DIAS="${ROJO}"
+                fi
+
+                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%I:%M %p"; else echo "No registrado"; fi)
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%-10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_VENCE" "$DIAS_RESTANTES" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
+                NUM=$((NUM+1))
+            fi
+        done < "$REGISTROS"
+
+        if [[ $NUM -eq 1 ]]; then
+            echo -e "${ROJO}❌ No hay usuarios existentes en el sistema o los registros no son válidos.${NC}"
+        fi
+    else
+        echo -e "${ROJO}❌ No hay registros aún. El archivo '$REGISTROS' no existe.${NC}"
+    fi
+
+    echo -e "${CIAN}=====================${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
 function crear_multiples_usuarios() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
