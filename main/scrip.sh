@@ -466,8 +466,8 @@ function verificar_online() {
         return
     fi
 
-    # NUEVO ORDEN DE COLUMNAS
-    printf "${AMARILLO}%-15s %-15s %-15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    # NUEVO ORDEN DE COLUMNAS con ajustes para centrado visual
+    printf "${AMARILLO}%-15s %-15s %15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "   📱 MÓVILES   " "     ⏰ TIEMPO CONECTADO     "
     echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
@@ -531,8 +531,8 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            # NUEVO ORDEN DE COLUMNAS EN PRINTF
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-15s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            # Ajuste para centrado visual en MÓVILES y TIEMPO CONECTADO
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%15d ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
