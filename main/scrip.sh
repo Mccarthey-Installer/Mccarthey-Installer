@@ -449,7 +449,8 @@ function eliminar_usuario() {
 }
 
 
-function verificar_online() {
+
+ function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
 
@@ -466,9 +467,9 @@ function verificar_online() {
         return
     fi
 
-    # ENCABEZADOS ALINEADOS
-    printf "${AMARILLO}%-17s %-17s %-13s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
+    # NUEVO ORDEN DE COLUMNAS
+    printf "${AMARILLO}%-15s %-15s %-15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
@@ -531,9 +532,8 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-
-            # IMPRESIÓN DE DATOS CON COLUMNAS ALINEADAS
-            printf "${AMARILLO}%-17s ${COLOR_ESTADO}%-17s ${AMARILLO}%-13s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            # NUEVO ORDEN DE COLUMNAS EN PRINTF
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-15s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
@@ -542,7 +542,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
- 
+
 
 
 function bloquear_desbloquear_usuario() {
