@@ -466,9 +466,9 @@ function verificar_online() {
         return
     fi
 
-    # NUEVO ORDEN DE COLUMNAS
-    printf "${AMARILLO}%-15s %-15s %-15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
+    # ENCABEZADOS ALINEADOS
+    printf "${AMARILLO}%-17s %-17s %-13s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
@@ -531,8 +531,9 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            # NUEVO ORDEN DE COLUMNAS EN PRINTF
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-15s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+
+            # IMPRESIÓN DE DATOS CON COLUMNAS ALINEADAS
+            printf "${AMARILLO}%-17s ${COLOR_ESTADO}%-17s ${AMARILLO}%-13s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
