@@ -279,14 +279,16 @@ function ver_registros() {
                         DIAS_RESTANTES="0"
                         COLOR_DIAS="${ROJO}"
                     fi
-                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%Y-%m-%d %I:%M %p")
+                    # Formato de fecha para Expira: YYYY/mes/DD
+                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
                 else
                     DIAS_RESTANTES="Inválido"
                     FORMATO_EXPIRA="Desconocido"
                     COLOR_DIAS="${ROJO}"
                 fi
 
-                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%Y-%m-%d %I:%M %p"; else echo "No registrado"; fi)
+                # Formato de Primer Login: solo hora (HH:MM AM/PM)
+                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%I:%M %p"; else echo "No registrado"; fi)
                 printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$(center_value "$DIAS_RESTANTES" 10)" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
                 NUM=$((NUM+1))
