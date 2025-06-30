@@ -138,9 +138,6 @@ function barra_sistema() {
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-
-
-
 function crear_usuario() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR USUARIO SSH =====${NC}"
@@ -188,72 +185,6 @@ function crear_usuario() {
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
     printf "${VERDE}%-15s %-15s %-20s %-15s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES"
     echo -e "${CIAN}===============================================================${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
-
-function ver_registros() {
-    clear
-    echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
-
-    center_text() {
-        local text="$1"
-        local width="$2"
-        local len=${#text}
-        local padding=$(( (width - len) / 2 ))
-        printf "%*s%s%*s" "$padding" "" "$text" "$((width - len - padding))" ""
-    }
-
-    center_value() {
-        local value="$1"
-        local width="$2"
-        local len=${#value}
-        local padding=$(( (width - len) / 2 ))
-        printf "%*s%s%*s" "$padding" "" "$value" "$((width - len - padding))" ""
-    }
-
-    if [[ -f $REGISTROS ]]; then
-        printf "${AMARILLO}%-3s %-12s %-12s %-22s %10s %-12s %-22s${NC}\n" \
-            "Nº" "👤 Usuario" "🔑 Clave" "📅 Vence" "$(center_text '⏳ Días' 10)" "📱 Móviles" "⏰ Primer Login"
-        echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
-
-        NUM=1
-        while IFS=$'\t' read -r USUARIO CLAVE FECHA_VENCIMIENTO DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                FECHA_HOY=$(date -d "$(date +%Y-%m-%d)" +%s)
-                FECHA_VENCIMIENTO_S=$(date -d "$FECHA_VENCIMIENTO" +%s 2>/dev/null)
-
-                if [[ $? -eq 0 && -n $FECHA_VENCIMIENTO_S ]]; then
-                    DIAS_RESTANTES=$(( (FECHA_VENCIMIENTO_S - FECHA_HOY) / 86400 ))
-                    if (( DIAS_RESTANTES < 0 )); then
-                        DIAS_RESTANTES=0
-                        COLOR_DIAS="${ROJO}"
-                    elif (( DIAS_RESTANTES == 0 )); then
-                        COLOR_DIAS="${AMARILLO}"
-                    else
-                        COLOR_DIAS="${VERDE}"
-                    fi
-                    FORMATO_VENCE=$(date -d "$FECHA_VENCIMIENTO" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
-                else
-                    DIAS_RESTANTES="Inválido"
-                    FORMATO_VENCE="Desconocido"
-                    COLOR_DIAS="${ROJO}"
-                fi
-
-                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%I:%M %p"; else echo "No registrado"; fi)
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%-10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_VENCE" "$DIAS_RESTANTES" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
-                NUM=$((NUM+1))
-            fi
-        done < "$REGISTROS"
-
-        if [[ $NUM -eq 1 ]]; then
-            echo -e "${ROJO}❌ No hay usuarios existentes en el sistema o los registros no son válidos.${NC}"
-        fi
-    else
-        echo -e "${ROJO}❌ No hay registros aún. El archivo '$REGISTROS' no existe.${NC}"
-    fi
-
-    echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
@@ -359,7 +290,145 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+function crear_multiples_usuarios() {
+    clear
+    echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
+    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
+    echo -e "${AMARILLO}📋 Ejemplo: juan 123 5 4${NC}"
+    echo -e "${AMARILLO}✅ Presiona Enter dos veces para confirmar.${NC}"
+    echo
 
+    declare -a USUARIOS
+    while IFS= read -r LINEA; do
+        [[ -z "$LINEA" ]] && break
+        USUARIOS+=("$LINEA")
+    done
+
+    if [[ ${#USUARIOS[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se ingresaron usuarios.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    echo -e "${CIAN}===== 📋 USUARIOS A CREAR =====${NC}"
+    printf "${AMARILLO}%-15s %-15s %-15s %-15s${NC}\n" "👤 Usuario" "🔑 Clave" "⏳ Días" "📱 Móviles"
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    for LINEA in "${USUARIOS[@]}"; do
+        read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
+        if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+            echo -e "${ROJO}❌ Línea inválida: $LINEA${NC}"
+            continue
+        fi
+        printf "${VERDE}%-15s %-15s %-15s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES"
+    done
+    echo -e "${CIAN}===============================================================${NC}"
+    echo -e "${AMARILLO}✅ ¿Confirmar creación de estos usuarios? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    for LINEA in "${USUARIOS[@]}"; do
+        read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
+        if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+            echo -e "${ROJO}❌ Línea inválida: $LINEA${NC}"
+            continue
+        fi
+
+        if ! [[ "$DIAS" =~ ^[0-9]+$ ]] || ! [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$MOVILES" -gt 999 ]; then
+            echo -e "${ROJO}❌ Datos inválidos para $USUARIO (Días: $DIAS, Móviles: $MOVILES).${NC}"
+            continue
+        fi
+
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
+            continue
+        fi
+
+        useradd -m -s /bin/bash "$USUARIO"
+        echo "$USUARIO:$CLAVE" | chpasswd
+
+        # Fecha de expiración ajustada (00:00 del día siguiente al último día)
+        EXPIRA_FECHA=$(date -d "$((DIAS + 1)) days 00:00" +"%Y-%m-%d")
+        EXPIRA_DATETIME="${EXPIRA_FECHA} 00:00:00"
+        usermod -e "$EXPIRA_FECHA" "$USUARIO"
+
+        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
+        echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
+    done
+
+    echo -e "${VERDE}✅ Creación de usuarios finalizada.${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
+
+function ver_registros() {
+    clear
+    echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
+
+    center_text() {
+        local text="$1"
+        local width="$2"
+        local len=${#text}
+        local padding=$(( (width - len) / 2 ))
+        printf "%*s%s%*s" "$padding" "" "$text" "$((width - len - padding))" ""
+    }
+
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding=$(( (width - len) / 2 ))
+        printf "%*s%s%*s" "$padding" "" "$value" "$((width - len - padding))" ""
+    }
+
+    if [[ -f $REGISTROS ]]; then
+        printf "${AMARILLO}%-3s %-12s %-12s %-22s %10s %-12s %-22s${NC}\n" \
+            "Nº" "👤 Usuario" "🔑 Clave" "📅 Vence" "$(center_text '⏳ Días' 10)" "📱 Móviles" "⏰ Primer Login"
+        echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
+
+        NUM=1
+        while IFS=$'\t' read -r USUARIO CLAVE FECHA_VENCIMIENTO DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                FECHA_HOY=$(date -d "$(date +%Y-%m-%d)" +%s)
+                FECHA_VENCIMIENTO_S=$(date -d "$FECHA_VENCIMIENTO" +%s 2>/dev/null)
+
+                if [[ $? -eq 0 && -n $FECHA_VENCIMIENTO_S ]]; then
+                    DIAS_RESTANTES=$(( (FECHA_VENCIMIENTO_S - FECHA_HOY) / 86400 ))
+                    if (( DIAS_RESTANTES < 0 )); then
+                        DIAS_RESTANTES=0
+                        COLOR_DIAS="${ROJO}"
+                    elif (( DIAS_RESTANTES == 0 )); then
+                        COLOR_DIAS="${AMARILLO}"
+                    else
+                        COLOR_DIAS="${VERDE}"
+                    fi
+                    FORMATO_VENCE=$(date -d "$FECHA_VENCIMIENTO" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
+                else
+                    DIAS_RESTANTES="Inválido"
+                    FORMATO_VENCE="Desconocido"
+                    COLOR_DIAS="${ROJO}"
+                fi
+
+                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%I:%M %p"; else echo "No registrado"; fi)
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%-10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_VENCE" "$DIAS_RESTANTES" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
+                NUM=$((NUM+1))
+            fi
+        done < "$REGISTROS"
+
+        if [[ $NUM -eq 1 ]]; then
+            echo -e "${ROJO}❌ No hay usuarios existentes en el sistema o los registros no son válidos.${NC}"
+        fi
+    else
+        echo -e "${ROJO}❌ No hay registros aún. El archivo '$REGISTROS' no existe.${NC}"
+    fi
+
+    echo -e "${CIAN}=====================${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
 
 
 function eliminar_usuario() {
@@ -447,8 +516,6 @@ function eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
 
 function verificar_online() {
     clear
@@ -544,8 +611,6 @@ function verificar_online() {
 }
 
 
-
-
 function bloquear_desbloquear_usuario() {
     clear
     echo -e "${VIOLETA}===== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO =====${NC}"
@@ -623,6 +688,38 @@ function bloquear_desbloquear_usuario() {
 
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+function mini_registro() {
+    clear
+    echo -e "${VIOLETA}===== 📋 MINI REGISTRO =====${NC}"
+
+    if [[ ! -f $REGISTROS ]]; then
+        echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    printf "${AMARILLO}%-15s %-15s %-10s %-15s${NC}\n" "👤 Nombre" "🔑 Contraseña" "⏳ Días" "📱 Móviles"
+    echo -e "${CIAN}--------------------------------------------${NC}"
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        if id "$USUARIO" &>/dev/null; then
+            # Calcular días restantes reales
+            FECHA_HOY=$(date -d "$(date +%Y-%m-%d)" +%s)
+            FECHA_EXPIRA=$(date -d "$EXPIRA_DATETIME" +%s 2>/dev/null)
+            if [[ $? -eq 0 && -n $FECHA_EXPIRA ]]; then
+                DIAS_RESTANTES=$(( (FECHA_EXPIRA - FECHA_HOY) / 86400 - 1 ))
+                (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+            else
+                DIAS_RESTANTES="?"
+            fi
+            MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+            printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS_RESTANTES" "$MOVILES_NUM"
+        fi
+    done < "$REGISTROS"
+    echo -e "${CIAN}============================================${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
 
 while true; do
     clear
