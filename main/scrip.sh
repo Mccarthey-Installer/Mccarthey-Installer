@@ -600,14 +600,23 @@ function mini_registro() {
     echo -e "${CIAN}--------------------------------------------${NC}"
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
-            DIAS=$(echo "$DURACION" | grep -oE '[0-9]+')
+            # Calcular días restantes reales
+            FECHA_HOY=$(date -d "$(date +%Y-%m-%d)" +%s)
+            FECHA_EXPIRA=$(date -d "$EXPIRA_DATETIME" +%s 2>/dev/null)
+            if [[ $? -eq 0 && -n $FECHA_EXPIRA ]]; then
+                DIAS_RESTANTES=$(( (FECHA_EXPIRA - FECHA_HOY) / 86400 - 1 ))
+                (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+            else
+                DIAS_RESTANTES="?"
+            fi
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-            printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES_NUM"
+            printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS_RESTANTES" "$MOVILES_NUM"
         fi
     done < "$REGISTROS"
     echo -e "${CIAN}============================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 while true; do
     clear
