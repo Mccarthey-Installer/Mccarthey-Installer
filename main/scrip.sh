@@ -532,7 +532,7 @@ function verificar_online() {
                 fi
             fi
             # NUEVO ORDEN DE COLUMNAS EN PRINTF
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-12s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-13s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
