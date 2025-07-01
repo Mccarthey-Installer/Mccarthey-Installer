@@ -67,13 +67,33 @@ function monitorear_conexiones() {
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
-                # Verificar si el usuario está bloqueado
-                if grep -q "^$USUARIO:!" /etc/shadow; then
-                    echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
-                    continue
-                fi
+                # Extraer el número de móviles permitidos
+                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+
+                # Verificar si el usuario está bloqueado en /etc/shadow
+                SHADOW_BLOCKED=$(grep "^$USUARIO:!" /etc/shadow)
 
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
+                NEW_BLOQUEO_MANUAL="$BLOQUEO_MANUAL"
+
+                # Lógica de bloqueo/desbloqueo automático
+                if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
+                    # Bloquear usuario si excede el límite de conexiones
+                    if [[ -z "$SHADOW_BLOCKED" ]]; then
+                        usermod -L "$USUARIO"
+                        pkill -u "$USUARIO" sshd
+                        pkill -u "$USUARIO" dropbear
+                        NEW_BLOQUEO_MANUAL="SÍ"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite de conexiones ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
+                    fi
+                elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
+                    # Desbloquear usuario si vuelve al límite permitido
+                    usermod -U "$USUARIO"
+                    NEW_BLOQUEO_MANUAL="NO"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desbloqueado automáticamente al cumplir con el límite de conexiones ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
+                fi
+
+                # Actualizar PRIMER_LOGIN
                 if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
                     NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $NEW_PRIMER_LOGIN" >> "$LOG"
@@ -83,7 +103,7 @@ function monitorear_conexiones() {
                 fi
 
                 # Escribir la línea actualizada
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$NEW_BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
             else
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
             fi
@@ -101,6 +121,7 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
 
 # Iniciar monitoreo con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
