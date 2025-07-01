@@ -448,8 +448,7 @@ function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
 
-    declare -A month_map
-    month_map=(
+    declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
         ["May"]="Mayo" ["Jun"]="Junio" ["Jul"]="Julio" ["Aug"]="Agosto"
         ["Sep"]="Septiembre" ["Oct"]="Octubre" ["Nov"]="Noviembre" ["Dec"]="Diciembre"
@@ -461,7 +460,8 @@ function verificar_online() {
         return
     fi
 
-    printf "${AMARILLO}%-15s %-15s %-25s %-15s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "⏰ TIEMPO CONECTADO" "📱 MÓVILES"
+    # Encabezado con el nuevo orden solicitado
+    printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${CIAN}------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
@@ -503,17 +503,12 @@ function verificar_online() {
                             fi
                         else
                             DETALLES="⏰ Tiempo no disponible"
-                            # Limpiar PRIMER_LOGIN inválido
-                            sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN inválido para $USUARIO" >> /var/log/panel_errors.log
-                            }
                         fi
                     else
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    # Buscar la última conexión en los logs del sistema
-                    LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null; } | tail -1)
+                    LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
                     if [[ -n "$LOGIN_LINE" ]]; then
                         MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
                         DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
@@ -526,7 +521,7 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AZUL}%-25s ${AMARILLO}%-15s${NC}\n" "$USUARIO" "$ESTADO" "$DETALLES" "$MOVILES_NUM"
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
@@ -535,6 +530,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function bloquear_desbloquear_usuario() {
     clear
