@@ -34,6 +34,7 @@ configurar_autoejecucion
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
+    LOCKFILE="/tmp/monitorear_conexiones.lock"
 
     # Evitar múltiples instancias
     if [[ -f "$PIDFILE" ]] && ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
@@ -43,31 +44,51 @@ function monitorear_conexiones() {
     echo $$ > "$PIDFILE"
 
     while true; do
-        if [[ ! -f $REGISTROS ]]; then
+        if [[ ! -f "$REGISTROS" ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
             continue
         fi
+
+        # Usar un archivo temporal para evitar corrupción
+        TEMP_FILE=$(mktemp)
+        cp "$REGISTROS" "$TEMP_FILE"
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+
+                # Verificar si el usuario está bloqueado
+                if grep -q "^$USUARIO:!" /etc/shadow; then
+                    continue
+                fi
+
+                NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
                 if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
-                    TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
+                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $NEW_PRIMER_LOGIN" >> "$LOG"
                 elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
+                    NEW_PRIMER_LOGIN=""
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
                 fi
+
+                # Escribir la línea actualizada en el archivo temporal
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
+            else
+                # Mantener la línea si el usuario no existe en el sistema
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
             fi
-        done < "$REGISTROS"
+        done < "$TEMP_FILE"
+
+        # Mover el archivo temporal al original con bloqueo
+        (
+            flock -x 200
+            mv "$TEMP_FILE.new" "$REGISTROS"
+        ) 200>"$LOCKFILE"
+
+        rm -f "$TEMP_FILE"
         sleep "$INTERVALO"
     done
 }
@@ -438,7 +459,6 @@ function verificar_online() {
             ESTADO="0"
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${ROJO}"
-
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
@@ -468,6 +488,7 @@ function verificar_online() {
                             fi
                         else
                             DETALLES="⏰ Tiempo no disponible"
+                            # Limpiar PRIMER_LOGIN inválido
                             sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
                                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN inválido para $USUARIO" >> /var/log/panel_errors.log
                             }
@@ -476,7 +497,8 @@ function verificar_online() {
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/auth.log 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/secure 2>/dev/null || grep -E "Accepted password for $USUARIO|session opened for user $USUARIO|session closed for user $USUARIO" /var/log/messages 2>/dev/null || grep -E "login by user $USUARIO|exit before auth|exit after auth" /var/log/dropbear.log 2>/dev/null; } | tail -1)
+                    # Buscar la última conexión en los logs del sistema
+                    LOGIN_LINE=$( { grep -E "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null; } | tail -1)
                     if [[ -n "$LOGIN_LINE" ]]; then
                         MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
                         DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
