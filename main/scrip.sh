@@ -31,6 +31,7 @@ fi'
 configurar_autoejecucion
 
 # Función para monitorear conexiones y actualizar PRIMER_LOGIN
+
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
@@ -78,16 +79,13 @@ function monitorear_conexiones() {
 
                 # Lógica de bloqueo/desbloqueo automático
                 if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-                    # Bloquear usuario si excede el límite de conexiones
                     if [[ -z "$SHADOW_BLOCKED" ]]; then
                         usermod -L "$USUARIO"
-                        pkill -u "$USUARIO" sshd
-                        pkill -u "$USUARIO" dropbear
+                        pkill -KILL -u "$USUARIO"    # Mata todas las sesiones y procesos del usuario
                         NEW_BLOQUEO_MANUAL="SÍ"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite de conexiones ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite de conexiones ($CONEXIONES > $MOVILES_NUM). Sesiones cerradas." >> "$LOG"
                     fi
                 elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
-                    # Desbloquear usuario si vuelve al límite permitido
                     usermod -U "$USUARIO"
                     NEW_BLOQUEO_MANUAL="NO"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desbloqueado automáticamente al cumplir con el límite de conexiones ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
