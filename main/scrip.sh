@@ -31,7 +31,6 @@ fi'
 configurar_autoejecucion
 
 # Función para monitorear conexiones y actualizar PRIMER_LOGIN
-
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
@@ -43,52 +42,54 @@ function monitorear_conexiones() {
             continue
         fi
 
-        # Usar archivo temporal para actualizar registros
+        # Usar un temporal para no corromper el archivo
         TEMP_FILE=$(mktemp)
-        > "$TEMP_FILE"
+        cp "$REGISTROS" "$TEMP_FILE"
+        > "$TEMP_FILE.new"
 
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
             if id "$USUARIO" &>/dev/null; then
                 # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
 
-                # Estado actual de bloqueo en el sistema
-                SHADOW_BLOCKED=$(grep "^$USUARIO:!" /etc/shadow)
+                # Extraer número de móviles permitido
+                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
 
-                NEW_BLOQUEO_MANUAL="$BLOQUEO_MANUAL"
+                # Verificar si el usuario está bloqueado en /etc/shadow
+                ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
-                # Solo bloquear/desbloquear automáticamente si NO está bloqueado manualmente
+                # SOLO si el bloqueo no es manual
                 if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
                     # Bloqueo automático
                     if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-                        if [[ -z "$SHADOW_BLOCKED" ]]; then
+                        if [[ -z "$ESTA_BLOQUEADO" ]]; then
                             usermod -L "$USUARIO"
                             pkill -KILL -u "$USUARIO"
-                            NEW_BLOQUEO_MANUAL="NO"
+                            BLOQUEO_MANUAL="NO"
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
                         fi
                     # Desbloqueo automático
-                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
+                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
                         usermod -U "$USUARIO"
-                        NEW_BLOQUEO_MANUAL="NO"
+                        BLOQUEO_MANUAL="NO"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
                 fi
-
-                # Escribir la línea actualizada
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$NEW_BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE"
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL" >> "$TEMP_FILE.new"
             else
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE"
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL" >> "$TEMP_FILE.new"
             fi
-        done < "$REGISTROS"
+        done < "$TEMP_FILE"
 
-        mv "$TEMP_FILE" "$REGISTROS"
+        mv "$TEMP_FILE.new" "$REGISTROS"
+        rm -f "$TEMP_FILE"
         sleep "$INTERVALO"
     done
 }
+
+
 
 
 
