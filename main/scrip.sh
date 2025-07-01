@@ -54,15 +54,18 @@ function monitorear_conexiones() {
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-
                 if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
                     TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
                     sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
                     }
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
+                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
+                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
+                    }
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
                 fi
-                # NO borrar el primer login mientras haya conexiones activas
             fi
         done < "$REGISTROS"
         sleep "$INTERVALO"
@@ -422,9 +425,8 @@ function verificar_online() {
         return
     fi
 
-    # NUEVO ORDEN DE COLUMNAS
-    printf "${AMARILLO}%-15s %-15s %-15s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
+    printf "${AMARILLO}%-15s %-15s %-25s %-15s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "⏰ TIEMPO CONECTADO" "📱 MÓVILES"
+    echo -e "${CIAN}------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
@@ -487,8 +489,7 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            # NUEVO ORDEN DE COLUMNAS EN PRINTF
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-15s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AZUL}%-25s ${AMARILLO}%-15s${NC}\n" "$USUARIO" "$ESTADO" "$DETALLES" "$MOVILES_NUM"
         fi
     done < "$REGISTROS"
 
@@ -497,7 +498,6 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 function bloquear_desbloquear_usuario() {
     clear
