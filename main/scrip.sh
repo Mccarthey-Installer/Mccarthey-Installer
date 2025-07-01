@@ -42,12 +42,11 @@ function monitorear_conexiones() {
             continue
         fi
 
-        # Usar un temporal para no corromper el archivo
         TEMP_FILE=$(mktemp)
         cp "$REGISTROS" "$TEMP_FILE"
         > "$TEMP_FILE.new"
 
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
@@ -77,9 +76,19 @@ function monitorear_conexiones() {
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
                 fi
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL" >> "$TEMP_FILE.new"
+
+                # === ACTUALIZAR PRIMER_LOGIN ===
+                NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
+                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
+                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
+                    NEW_PRIMER_LOGIN=""
+                fi
+
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
             else
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL" >> "$TEMP_FILE.new"
+                # Usuario no existe en sistema, copia línea igual
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
             fi
         done < "$TEMP_FILE"
 
@@ -88,8 +97,6 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-
-
 
 
 
