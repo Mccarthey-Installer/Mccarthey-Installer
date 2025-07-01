@@ -585,16 +585,17 @@ function bloquear_desbloquear_usuario() {
         usermod -L "$USUARIO"
         pkill -u "$USUARIO" sshd
         pkill -u "$USUARIO" dropbear
-        sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tSÍ\t$PRIMER_LOGIN/" "$REGISTROS"
+        sed -i "|^$USUARIO\t| s|\t[^\t]*\t[^\t]*$|\tSÍ\t$PRIMER_LOGIN|" "$REGISTROS"
         echo -e "${VERDE}🔒 Usuario '$USUARIO' bloqueado exitosamente y sesiones SSH/Dropbear terminadas.${NC}"
     else
         usermod -U "$USUARIO"
-        sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tNO\t$PRIMER_LOGIN/" "$REGISTROS"
+        sed -i "|^$USUARIO\t| s|\t[^\t]*\t[^\t]*$|\tNO\t$PRIMER_LOGIN|" "$REGISTROS"
         echo -e "${VERDE}🔓 Usuario '$USUARIO' desbloqueado exitosamente.${NC}"
     fi
 
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function mini_registro() {
     clear
