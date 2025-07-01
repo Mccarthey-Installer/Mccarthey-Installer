@@ -637,30 +637,33 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-while true; do
-    clear
-    barra_sistema
-    echo
-    echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
-    echo -e "${VERDE}1. 🆕 Crear usuario${NC}"
-    echo -e "${VERDE}2. 📋 Ver registros${NC}"
-    echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"
-    echo -e "${VERDE}5. 🟢 Verificar usuarios online${NC}"
-    echo -e "${VERDE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-    echo -e "${VERDE}7. 🆕 Crear múltiples usuarios${NC}"
-    echo -e "${VERDE}8. 📋 Mini registro${NC}"
-    echo -e "${VERDE}9. 🚪 Salir${NC}"
-    PROMPT=$(echo -e "${AMARILLO}➡️ Selecciona una opción: ${NC}")
-    read -p "$PROMPT" OPCION
-    case $OPCION in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_usuario ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) echo -e "${AZUL}🚪 Saliendo...${NC}"; exit 0 ;;
-        *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" ;;
-    esac
-done
+if [[ -t 0 ]]; then
+    # Solo muestra el menú si está en una terminal interactiva
+    while true; do
+        clear
+        barra_sistema
+        echo
+        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VERDE}1. 🆕 Crear usuario${NC}"
+        echo -e "${VERDE}2. 📋 Ver registros${NC}"
+        echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"
+        echo -e "${VERDE}5. 🟢 Verificar usuarios online${NC}"
+        echo -e "${VERDE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${VERDE}7. 🆕 Crear múltiples usuarios${NC}"
+        echo -e "${VERDE}8. 📋 Mini registro${NC}"
+        echo -e "${VERDE}9. 🚪 Salir${NC}"
+        PROMPT=$(echo -e "${AMARILLO}➡️ Selecciona una opción: ${NC}")
+        read -p "$PROMPT" OPCION
+        case $OPCION in
+            1) crear_usuario ;;
+            2) ver_registros ;;
+            3) eliminar_usuario ;;
+            5) verificar_online ;;
+            6) bloquear_desbloquear_usuario ;;
+            7) crear_multiples_usuarios ;;
+            8) mini_registro ;;
+            9) echo -e "${AZUL}🚪 Saliendo...${NC}"; exit 0 ;;
+            *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" ;;
+        esac
+    done
+fi
