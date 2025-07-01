@@ -104,8 +104,14 @@ function monitorear_conexiones() {
 
 # Iniciar monitoreo con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
-    nohup bash -c "monitorear_conexiones" >/var/log/monitoreo_conexiones.log 2>&1 &
-    echo -e "${VERDE}🚀 Monitoreo iniciado en segundo plano (PID: $!).${NC}"
+    rm -f "$PIDFILE" # Eliminar PID si el proceso no está corriendo
+    nohup bash -c "source $0; monitorear_conexiones" >> /var/log/monitoreo_conexiones.log 2>&1 &
+    sleep 1
+    if ps -p $! >/dev/null 2>&1; then
+        echo -e "${VERDE}🚀 Monitoreo iniciado en segundo plano (PID: $!).${NC}"
+    else
+        echo -e "${ROJO}❌ Error al iniciar el monitoreo. Revisa /var/log/monitoreo_conexiones.log.${NC}"
+    fi
 else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
