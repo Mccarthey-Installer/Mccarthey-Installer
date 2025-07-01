@@ -81,7 +81,7 @@ function monitorear_conexiones() {
                 if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                     if [[ -z "$SHADOW_BLOCKED" ]]; then
                         usermod -L "$USUARIO"
-                        pkill -KILL -u "$USUARIO"    # Mata todas las sesiones y procesos del usuario
+                        pkill -KILL -u "$USUARIO"   # Mata todas las sesiones y procesos del usuario
                         NEW_BLOQUEO_MANUAL="SÍ"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite de conexiones ($CONEXIONES > $MOVILES_NUM). Sesiones cerradas." >> "$LOG"
                     fi
@@ -119,6 +119,7 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
 
 
 # Iniciar monitoreo con nohup si no está corriendo
