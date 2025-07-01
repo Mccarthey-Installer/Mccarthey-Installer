@@ -35,80 +35,61 @@ configurar_autoejecucion
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
-    LOCKFILE="/tmp/monitorear_conexiones.lock"
-
-    touch "$LOG"
-    chmod 600 "$LOG"
-    chown root:root "$LOG"
-
-    if [[ -f "$PIDFILE" ]] && ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso de monitoreo ya está corriendo (PID: $(cat "$PIDFILE"))." >> "$LOG"
-        return
-    fi
-    echo $$ > "$PIDFILE"
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones (PID: $$)." >> "$LOG"
 
     while true; do
-        if [[ ! -f "$REGISTROS" ]]; then
+        if [[ ! -f $REGISTROS ]]; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
             continue
         fi
 
+        # Usar archivo temporal para actualizar registros
         TEMP_FILE=$(mktemp)
-        cp "$REGISTROS" "$TEMP_FILE"
-        > "$TEMP_FILE.new"
+        > "$TEMP_FILE"
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
+                # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+
+                # Estado actual de bloqueo en el sistema
                 SHADOW_BLOCKED=$(grep "^$USUARIO:!" /etc/shadow)
 
-                NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
                 NEW_BLOQUEO_MANUAL="$BLOQUEO_MANUAL"
 
-                # SOLO bloquear/desbloquear automáticamente si el bloqueo NO es manual
+                # Solo bloquear/desbloquear automáticamente si NO está bloqueado manualmente
                 if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
-                    # BLOQUEO AUTOMÁTICO
+                    # Bloqueo automático
                     if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                         if [[ -z "$SHADOW_BLOCKED" ]]; then
                             usermod -L "$USUARIO"
                             pkill -KILL -u "$USUARIO"
                             NEW_BLOQUEO_MANUAL="NO"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
                         fi
-                    # DESBLOQUEO AUTOMÁTICO
+                    # Desbloqueo automático
                     elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
                         usermod -U "$USUARIO"
                         NEW_BLOQUEO_MANUAL="NO"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
                 fi
 
-                # Actualizar PRIMER_LOGIN
-                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
-                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    NEW_PRIMER_LOGIN=""
-                fi
-
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$NEW_BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
+                # Escribir la línea actualizada
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$NEW_BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE"
             else
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE"
             fi
-        done < "$TEMP_FILE"
+        done < "$REGISTROS"
 
-        (
-            flock -x 200
-            mv "$TEMP_FILE.new" "$REGISTROS"
-        ) 200>"$LOCKFILE"
-
-        rm -f "$TEMP_FILE"
+        mv "$TEMP_FILE" "$REGISTROS"
         sleep "$INTERVALO"
     done
 }
+
 
 
 
