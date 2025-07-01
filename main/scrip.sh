@@ -36,12 +36,18 @@ function monitorear_conexiones() {
     INTERVALO=10
     LOCKFILE="/tmp/monitorear_conexiones.lock"
 
+    # Crear archivo de log si no existe
+    touch "$LOG"
+    chmod 600 "$LOG"
+    chown root:root "$LOG"
+
     # Evitar múltiples instancias
     if [[ -f "$PIDFILE" ]] && ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso de monitoreo ya está corriendo (PID: $(cat "$PIDFILE"))." >> "$LOG"
         return
     fi
     echo $$ > "$PIDFILE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones (PID: $$)." >> "$LOG"
 
     while true; do
         if [[ ! -f "$REGISTROS" ]]; then
@@ -53,6 +59,7 @@ function monitorear_conexiones() {
         # Usar un archivo temporal para evitar corrupción
         TEMP_FILE=$(mktemp)
         cp "$REGISTROS" "$TEMP_FILE"
+        > "$TEMP_FILE.new"
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
@@ -62,6 +69,7 @@ function monitorear_conexiones() {
 
                 # Verificar si el usuario está bloqueado
                 if grep -q "^$USUARIO:!" /etc/shadow; then
+                    echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
                     continue
                 fi
 
@@ -74,10 +82,9 @@ function monitorear_conexiones() {
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
                 fi
 
-                # Escribir la línea actualizada en el archivo temporal
+                # Escribir la línea actualizada
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
             else
-                # Mantener la línea si el usuario no existe en el sistema
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
             fi
         done < "$TEMP_FILE"
@@ -85,7 +92,9 @@ function monitorear_conexiones() {
         # Mover el archivo temporal al original con bloqueo
         (
             flock -x 200
-            mv "$TEMP_FILE.new" "$REGISTROS"
+            mv "$TEMP_FILE.new" "$REGISTROS" || {
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al mover archivo temporal a $REGISTROS" >> "$LOG"
+            }
         ) 200>"$LOCKFILE"
 
         rm -f "$TEMP_FILE"
