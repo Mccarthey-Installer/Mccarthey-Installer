@@ -14,74 +14,83 @@ ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
 NC='\033[0m'
 
-# Función para configurar la autoejecución en ~/.bashrc
+# ===== BLOQUE PARA MODO MONITOREAR =====
+if [[ "$1" == "--monitorear" ]]; then
+    function monitorear_conexiones() {
+        LOG="/var/log/monitoreo_conexiones.log"
+        INTERVALO=10
+
+        # Evitar múltiples instancias
+        if [[ -f "$PIDFILE" ]] && ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso de monitoreo ya está corriendo (PID: $(cat "$PIDFILE"))." >> "$LOG"
+            return
+        fi
+        echo $$ > "$PIDFILE"
+
+        while true; do
+            if [[ ! -f $REGISTROS ]]; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
+                sleep "$INTERVALO"
+                continue
+            fi
+
+            while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+                if id "$USUARIO" &>/dev/null; then
+                    CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                    CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                    CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                    if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
+                        TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+                        sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
+                        }
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
+                    elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
+                        sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
+                        }
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
+                    fi
+                fi
+            done < "$REGISTROS"
+            sleep "$INTERVALO"
+        done
+    }
+    monitorear_conexiones
+    exit 0
+fi
+
+# ===== CONFIGURACIÓN AUTOEJECUCIÓN =====
 function configurar_autoejecucion() {
     BASHRC="/root/.bashrc"
-    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
+    AUTOEXEC_BLOCK_START="# === PANEL VPN/SSH AUTOEXEC START ==="
+    AUTOEXEC_BLOCK_END="# === PANEL VPN/SSH AUTOEXEC END ==="
+    AUTOEXEC_BLOCK="${AUTOEXEC_BLOCK_START}
+if [[ -t 0 && -z \"\$IN_PANEL\" ]]; then
     export IN_PANEL=1
     bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh)
     unset IN_PANEL
-fi'
+fi
+${AUTOEXEC_BLOCK_END}"
 
-    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
-        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
-        echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
-    fi
+    # Eliminar bloque anterior si existe
+    sed -i "/${AUTOEXEC_BLOCK_START}/,/${AUTOEXEC_BLOCK_END}/d" "$BASHRC"
+    # Agregar nuevo bloque
+    echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
+    echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
 }
 
 configurar_autoejecucion
 
-# Función para monitorear conexiones y actualizar PRIMER_LOGIN
-function monitorear_conexiones() {
-    LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=10
-
-    # Evitar múltiples instancias
-    if [[ -f "$PIDFILE" ]] && ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso de monitoreo ya está corriendo (PID: $(cat "$PIDFILE"))." >> "$LOG"
-        return
-    fi
-    echo $$ > "$PIDFILE"
-
-    while true; do
-        if [[ ! -f $REGISTROS ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
-            sleep "$INTERVALO"
-            continue
-        fi
-
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
-                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
-                    TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t$TIMESTAMP/" "$REGISTROS" || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error actualizando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $TIMESTAMP" >> "$LOG"
-                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    sed -i "/^$USUARIO\t/s/\t[^\t]*$/\t/" "$REGISTROS" || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error limpiando PRIMER_LOGIN para $USUARIO" >> "$LOG"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
-                fi
-            fi
-        done < "$REGISTROS"
-        sleep "$INTERVALO"
-    done
-}
-
-# Guardar el script en /tmp para nohup
-if [[ ! -f "$TEMP_SCRIPT" ]] || ! cmp -s "$0" "$TEMP_SCRIPT"; then
+# ===== COPIA DEL SCRIPT TEMPORAL =====
+if [[ ! -f "$TEMP_SCRIPT" ]] || ! cmp -s "$0" "$TEMP_SCRIPT" 2>/dev/null; then
     cp "$0" "$TEMP_SCRIPT" 2>/dev/null || {
         wget -qO "$TEMP_SCRIPT" https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh
-        chmod +x "$TEMP_SCRIPT"
     }
+    chmod +x "$TEMP_SCRIPT"
 fi
 
-# Iniciar monitoreo con nohup si no está corriendo
+# ===== INICIAR MONITOREO =====
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
     nohup bash "$TEMP_SCRIPT" --monitorear >/var/log/monitoreo_conexiones.log 2>&1 &
     echo -e "${VERDE}🚀 Monitoreo iniciado en segundo plano (PID: $!).${NC}"
@@ -89,12 +98,7 @@ else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
 
-# Ejecutar solo monitorear_conexiones si se pasa --monitorear
-if [[ "$1" == "--monitorear" ]]; then
-    monitorear_conexiones
-    exit 0
-fi
-
+# ===== FUNCIONES DEL PANEL =====
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
@@ -615,6 +619,7 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+# ===== MENÚ PRINCIPAL =====
 while true; do
     clear
     barra_sistema
