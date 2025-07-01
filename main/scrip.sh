@@ -57,7 +57,6 @@ function monitorear_conexiones() {
             continue
         fi
 
-        # Usar un archivo temporal para evitar corrupción
         TEMP_FILE=$(mktemp)
         cp "$REGISTROS" "$TEMP_FILE"
         > "$TEMP_FILE.new"
@@ -68,24 +67,31 @@ function monitorear_conexiones() {
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
-                # Extraer el número de móviles permitidos
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-
-                # Verificar si el usuario está bloqueado en /etc/shadow
                 SHADOW_BLOCKED=$(grep "^$USUARIO:!" /etc/shadow)
 
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
                 NEW_BLOQUEO_MANUAL="$BLOQUEO_MANUAL"
 
-                # Lógica de bloqueo/desbloqueo automático
+                # BLOQUEO AUTOMÁTICO
                 if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                     if [[ -z "$SHADOW_BLOCKED" ]]; then
                         usermod -L "$USUARIO"
-                        pkill -KILL -u "$USUARIO"   # Mata todas las sesiones y procesos del usuario
+                        pkill -KILL -u "$USUARIO"
                         NEW_BLOQUEO_MANUAL="SÍ"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite de conexiones ($CONEXIONES > $MOVILES_NUM). Sesiones cerradas." >> "$LOG"
+                        sleep 1 # Espera para que los procesos se cierren
                     fi
-                elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
+                fi
+
+                # DESBLOQUEO AUTOMÁTICO
+                # Vuelve a contar conexiones después de cerrar sesiones
+                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                SHADOW_BLOCKED=$(grep "^$USUARIO:!" /etc/shadow)
+
+                if [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
                     usermod -U "$USUARIO"
                     NEW_BLOQUEO_MANUAL="NO"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desbloqueado automáticamente al cumplir con el límite de conexiones ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
@@ -100,14 +106,12 @@ function monitorear_conexiones() {
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
                 fi
 
-                # Escribir la línea actualizada
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$NEW_BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
             else
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
             fi
         done < "$TEMP_FILE"
 
-        # Mover el archivo temporal al original con bloqueo
         (
             flock -x 200
             mv "$TEMP_FILE.new" "$REGISTROS" || {
@@ -119,6 +123,7 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
 
 
 
