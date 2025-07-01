@@ -37,12 +37,10 @@ function monitorear_conexiones() {
     INTERVALO=10
     LOCKFILE="/tmp/monitorear_conexiones.lock"
 
-    # Crear archivo de log si no existe
     touch "$LOG"
     chmod 600 "$LOG"
     chown root:root "$LOG"
 
-    # Evitar múltiples instancias
     if [[ -f "$PIDFILE" ]] && ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso de monitoreo ya está corriendo (PID: $(cat "$PIDFILE"))." >> "$LOG"
         return
@@ -52,7 +50,6 @@ function monitorear_conexiones() {
 
     while true; do
         if [[ ! -f "$REGISTROS" ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
             continue
         fi
@@ -66,44 +63,35 @@ function monitorear_conexiones() {
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
                 SHADOW_BLOCKED=$(grep "^$USUARIO:!" /etc/shadow)
 
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
                 NEW_BLOQUEO_MANUAL="$BLOQUEO_MANUAL"
 
-                # BLOQUEO AUTOMÁTICO
-                if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-                    if [[ -z "$SHADOW_BLOCKED" ]]; then
-                        usermod -L "$USUARIO"
-                        pkill -KILL -u "$USUARIO"
-                        NEW_BLOQUEO_MANUAL="SÍ"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite de conexiones ($CONEXIONES > $MOVILES_NUM). Sesiones cerradas." >> "$LOG"
-                        sleep 1 # Espera para que los procesos se cierren
+                # SOLO bloquear/desbloquear automáticamente si el bloqueo NO es manual
+                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                    # BLOQUEO AUTOMÁTICO
+                    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
+                        if [[ -z "$SHADOW_BLOCKED" ]]; then
+                            usermod -L "$USUARIO"
+                            pkill -KILL -u "$USUARIO"
+                            NEW_BLOQUEO_MANUAL="NO"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
+                        fi
+                    # DESBLOQUEO AUTOMÁTICO
+                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
+                        usermod -U "$USUARIO"
+                        NEW_BLOQUEO_MANUAL="NO"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
-                fi
-
-                # DESBLOQUEO AUTOMÁTICO
-                # Vuelve a contar conexiones después de cerrar sesiones
-                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
-                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-                SHADOW_BLOCKED=$(grep "^$USUARIO:!" /etc/shadow)
-
-                if [[ $CONEXIONES -le $MOVILES_NUM && -n "$SHADOW_BLOCKED" ]]; then
-                    usermod -U "$USUARIO"
-                    NEW_BLOQUEO_MANUAL="NO"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desbloqueado automáticamente al cumplir con el límite de conexiones ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                 fi
 
                 # Actualizar PRIMER_LOGIN
                 if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
                     NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión detectada para $USUARIO (SSH: $CONEXIONES_SSH, Dropbear: $CONEXIONES_DROPBEAR). PRIMER_LOGIN establecido a $NEW_PRIMER_LOGIN" >> "$LOG"
                 elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
                     NEW_PRIMER_LOGIN=""
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión terminada para $USUARIO. PRIMER_LOGIN limpiado." >> "$LOG"
                 fi
 
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$NEW_BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
@@ -114,9 +102,7 @@ function monitorear_conexiones() {
 
         (
             flock -x 200
-            mv "$TEMP_FILE.new" "$REGISTROS" || {
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al mover archivo temporal a $REGISTROS" >> "$LOG"
-            }
+            mv "$TEMP_FILE.new" "$REGISTROS"
         ) 200>"$LOCKFILE"
 
         rm -f "$TEMP_FILE"
