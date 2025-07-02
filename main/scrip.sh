@@ -33,74 +33,8 @@ fi'
 configurar_autoejecucion
 
 # Función para monitorear conexiones y actualizar PRIMER_LOGIN
-function monitorear_conexiones() {
-    LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=10
 
-    while true; do
-        if [[ ! -f $REGISTROS ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
-            sleep "$INTERVALO"
-            continue
-        fi
 
-        TEMP_FILE=$(mktemp)
-        cp "$REGISTROS" "$TEMP_FILE"
-        > "$TEMP_FILE.new"
-
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                # Contar conexiones SSH y Dropbear
-                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
-                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-
-                # Extraer número de móviles permitido
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
-
-                # Verificar si el usuario está bloqueado en /etc/shadow
-                ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
-
-                # SOLO si el bloqueo no es manual
-                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
-                    # Bloqueo automático
-                    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-                        if [[ -z "$ESTA_BLOQUEADO" ]]; then
-                            usermod -L "$USUARIO"
-                            pkill -KILL -u "$USUARIO"
-                            BLOQUEO_MANUAL="NO"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
-                        fi
-                    # Desbloqueo automático
-                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
-                        usermod -U "$USUARIO"
-                        BLOQUEO_MANUAL="NO"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
-                    fi
-                fi
-
-                # === ACTUALIZAR PRIMER_LOGIN ===
-                NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
-                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
-                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    NEW_PRIMER_LOGIN=""
-                fi
-
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
-            else
-                # Usuario no existe en sistema, copia línea igual
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
-            fi
-        done < "$TEMP_FILE"
-
-        mv "$TEMP_FILE.new" "$REGISTROS"
-        rm -f "$TEMP_FILE"
-        sleep "$INTERVALO"
-    done
-}
-
-# Nueva función para monitorear tiempos de conexión en segundo plano
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
@@ -166,20 +100,25 @@ function monitorear_conexiones() {
         rm -f "$TEMP_FILE"
 
         # === REGISTRO DE HISTORIAL DE CONEXIONES ===
+        HISTORIAL="/root/historial_conexiones.txt"
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            # Usamos un archivo temporal para guardar el último estado de conexión
             TMP_STATUS="/tmp/status_${USUARIO}.tmp"
             CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
             CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
             CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
             if [[ $CONEXIONES -gt 0 ]]; then
+                # Si está conectado y no hay registro previo, guardamos la hora de conexión
                 if [[ ! -f $TMP_STATUS ]]; then
                     date +"%Y-%m-%d %H:%M:%S" > "$TMP_STATUS"
                 fi
             else
+                # Si está desconectado y hay registro previo, calculamos duración y guardamos en historial
                 if [[ -f $TMP_STATUS ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS")
                     HORA_DESCONECCION=$(date +"%Y-%m-%d %H:%M:%S")
+                    # Calcula duración
                     SEC_CON=$(date -d "$HORA_CONEXION" +%s)
                     SEC_DES=$(date -d "$HORA_DESCONECCION" +%s)
                     DURACION_SEC=$((SEC_DES - SEC_CON))
@@ -187,6 +126,7 @@ function monitorear_conexiones() {
                     MINUTOS=$(( (DURACION_SEC % 3600) / 60 ))
                     SEGUNDOS=$((DURACION_SEC % 60))
                     DURACION_FORMAT=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
+                    # Guarda el registro
                     echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONECCION|$DURACION_FORMAT" >> "$HISTORIAL"
                     rm -f "$TMP_STATUS"
                 fi
@@ -196,7 +136,6 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-
 
 
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
