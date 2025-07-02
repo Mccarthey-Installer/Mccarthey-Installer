@@ -3,9 +3,8 @@ export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
 
 REGISTROS="/root/registros.txt"
-HISTORIAL_CONEXIONES="/root/conexion_historial.txt"  # New file for connection history
+HISTORIAL="/root/historial_conexiones.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
-PIDFILE_TIEMPO="/var/run/monitorear_conexiones_tiempo.pid"  # PID file for time monitoring
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -32,9 +31,7 @@ fi'
 
 configurar_autoejecucion
 
-# Función para monitorear conexiones y actualizar PRIMER_LOGIN
-
-
+# Función para monitorear conexiones y actualizar PRIMER_LOGIN y el historial
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
@@ -100,25 +97,20 @@ function monitorear_conexiones() {
         rm -f "$TEMP_FILE"
 
         # === REGISTRO DE HISTORIAL DE CONEXIONES ===
-        HISTORIAL="/root/historial_conexiones.txt"
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            # Usamos un archivo temporal para guardar el último estado de conexión
             TMP_STATUS="/tmp/status_${USUARIO}.tmp"
             CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
             CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
             CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
             if [[ $CONEXIONES -gt 0 ]]; then
-                # Si está conectado y no hay registro previo, guardamos la hora de conexión
                 if [[ ! -f $TMP_STATUS ]]; then
                     date +"%Y-%m-%d %H:%M:%S" > "$TMP_STATUS"
                 fi
             else
-                # Si está desconectado y hay registro previo, calculamos duración y guardamos en historial
                 if [[ -f $TMP_STATUS ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS")
                     HORA_DESCONECCION=$(date +"%Y-%m-%d %H:%M:%S")
-                    # Calcula duración
                     SEC_CON=$(date -d "$HORA_CONEXION" +%s)
                     SEC_DES=$(date -d "$HORA_DESCONECCION" +%s)
                     DURACION_SEC=$((SEC_DES - SEC_CON))
@@ -126,7 +118,6 @@ function monitorear_conexiones() {
                     MINUTOS=$(( (DURACION_SEC % 3600) / 60 ))
                     SEGUNDOS=$((DURACION_SEC % 60))
                     DURACION_FORMAT=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
-                    # Guarda el registro
                     echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONECCION|$DURACION_FORMAT" >> "$HISTORIAL"
                     rm -f "$TMP_STATUS"
                 fi
@@ -136,7 +127,6 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-
 
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
@@ -151,21 +141,6 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
     fi
 else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
-fi
-
-# Iniciar monitoreo de tiempos con nohup si no está corriendo
-if [[ ! -f "$PIDFILE_TIEMPO" ]] || ! ps -p $(cat "$PIDFILE_TIEMPO") >/dev/null 2>&1; then
-    rm -f "$PIDFILE_TIEMPO"
-    nohup bash -c "source $0; monitorear_conexiones_tiempo" >> /var/log/monitoreo_conexiones_tiempo.log 2>&1 &
-    sleep 1
-    if ps -p $! >/dev/null 2>&1; then
-        echo $! > "$PIDFILE_TIEMPO"
-        echo -e "${VERDE}🚀 Monitoreo de tiempos iniciado en segundo plano (PID: $!).${NC}"
-    else
-        echo -e "${ROJO}❌ Error al iniciar el monitoreo de tiempos. Revisa /var/log/monitoreo_conexiones_tiempo.log.${NC}"
-    fi
-else
-    echo -e "${AMARILLO}⚠️ Monitoreo de tiempos ya está corriendo (PID: $(cat "$PIDFILE_TIEMPO")).${NC}"
 fi
 
 function barra_sistema() {
@@ -226,18 +201,15 @@ function barra_sistema() {
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# Nueva función para mostrar información de conexiones
+# Función para mostrar historial de conexiones
 function informacion_usuarios() {
     clear
     echo -e "${VIOLETA}===== ℹ️ INFORMACIÓN DE CONEXIONES =====${NC}"
-    HISTORIAL="/root/historial_conexiones.txt"
-
     if [[ ! -f $HISTORIAL ]]; then
         echo -e "${ROJO}❌ No hay historial de conexiones aún.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
-
     printf "${AMARILLO}%-15s %-22s %-22s %-12s${NC}\n" "Usuario" "Se conectó a las" "Se desconectó a las" "Tiempo"
     echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
     while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
@@ -246,7 +218,6 @@ function informacion_usuarios() {
     echo -e "${CIAN}===============================================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 function crear_usuario() {
     clear
@@ -273,8 +244,7 @@ function crear_usuario() {
     useradd -m -s /bin/bash "$USUARIO"
     echo "$USUARIO:$CLAVE" | chpasswd
 
-    EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
-    EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
+    EXPIRA_DATETIME=$(d=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
     usermod -e "$EXPIRA_FECHA" "$USUARIO"
 
     echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
@@ -726,8 +696,8 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+# Menú principal
 if [[ -t 0 ]]; then
-    # Solo muestra el menú si está en una terminal interactiva
     while true; do
         clear
         barra_sistema
@@ -736,7 +706,7 @@ if [[ -t 0 ]]; then
         echo -e "${VERDE}1. 🆕 Crear usuario${NC}"
         echo -e "${VERDE}2. 📋 Ver registros${NC}"
         echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"
-        echo -e "${VERDE}4. 📊 Información${NC}"  # New option added
+        echo -e "${VERDE}4. 📊 Información${NC}"
         echo -e "${VERDE}5. 🟢 Verificar usuarios online${NC}"
         echo -e "${VERDE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${VERDE}7. 🆕 Crear múltiples usuarios${NC}"
@@ -748,7 +718,7 @@ if [[ -t 0 ]]; then
             1) crear_usuario ;;
             2) ver_registros ;;
             3) eliminar_usuario ;;
-            4) informacion_usuarios ;;  # Call new function
+            4) informacion_usuarios ;;
             5) verificar_online ;;
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
