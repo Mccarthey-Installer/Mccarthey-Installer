@@ -281,17 +281,19 @@ function ver_registros() {
     clear
     echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
 
-    center_text() {
-        local text="$1"
+    # Centrar texto en un ancho dado
+    center_value() {
+        local value="$1"
         local width="$2"
-        local len=${#text}
-        local padding=$(( (width - len) / 2 ))
-        printf "%*s%s%*s" "$padding" "" "$text" "$((width - len - padding))" ""
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
     }
 
     if [[ -f $REGISTROS ]]; then
         printf "${AMARILLO}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
-            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_text '⏳ Días' 10)" "📱 Móviles"
+            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📱 Móviles"
         echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
 
         NUM=1
@@ -315,8 +317,11 @@ function ver_registros() {
                     COLOR_DIAS="${ROJO}"
                 fi
 
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%10s${NC} ${AMARILLO}%-12s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_RESTANTES" "$MOVILES"
+                # Centrar los días en 10 caracteres
+                DIAS_CENTRADO=$(center_value "$DIAS_RESTANTES" 10)
+
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%s${NC} ${AMARILLO}%-12s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_CENTRADO" "$MOVILES"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
@@ -331,6 +336,7 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 function eliminar_usuario() {
