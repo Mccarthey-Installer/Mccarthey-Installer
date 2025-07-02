@@ -410,7 +410,7 @@ function eliminar_usuario() {
         fi
         if userdel -r "$USUARIO" 2>/dev/null; then
             sed -i "/^$USUARIO\t/d" "$REGISTROS"
-            sed -i "/^$USUARIO\t/d" "$HISTORIAL_CONEXIONES"  # Also remove from connection history
+            sed -i "/^$USUARIO|/d" "$HISTORIAL"  # Also remove from connection history
             echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
         else
             echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
