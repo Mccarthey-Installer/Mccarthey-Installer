@@ -204,25 +204,25 @@ function barra_sistema() {
 # Función para mostrar historial de conexiones
 function informacion_usuarios() {
     clear
-    echo -e "${VIOLETA}===== ℹ️ INFORMACIÓN DE CONEXIONES =====${NC}"
+    echo -e "${ROSADO}🌸✨ INFORMACIÓN DE CONEXIONES 💖✨🌸${NC}"
     if [[ ! -f $HISTORIAL ]]; then
-        echo -e "${ROJO}❌ No hay historial de conexiones aún.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        echo -e "${LILA}😿 ¡Oh no! No hay historial de conexiones aún, pequeña! 💔${NC}"
+        read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"
         return
     fi
 
-    printf "${AMARILLO}%-15s %-15s %-15s %-12s${NC}\n" "Usuario" "Se conectó" "Se desconectó" "Tiempo"
-    echo -e "${CIAN}-------------------------------------------------------------${NC}"
+    printf "${LILA}%-15s %-18s %-18s %-12s${NC}\n" "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰ Duración"
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
 
     tac "$HISTORIAL" | awk -F'|' '!v[$1]++' | tac | while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
-        # Formatear fechas: extraer día/mes y hora am/pm
-        CONECTO_FMT=$(date -d "$CONECTO" +"%d/%m %I:%M %p" 2>/dev/null || echo "$CONECTO")
-        DESCONECTO_FMT=$(date -d "$DESCONECTO" +"%d/%m %I:%M %p" 2>/dev/null || echo "$DESCONECTO")
-        printf "${VERDE}%-15s %-15s %-15s %-12s${NC}\n" "$USUARIO" "$CONECTO_FMT" "$DESCONECTO_FMT" "$DURACION"
+        # Formatear fechas: dd/mes en español y hora en formato 12h con AM/PM
+        CONECTO_FMT=$(date -d "$CONECTO" +"%d/%B %I:%M %p" 2>/dev/null | sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$CONECTO")
+        DESCONECTO_FMT=$(date -d "$DESCONECTO" +"%d/%B %I:%M %p" 2>/dev/null | sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$DESCONECTO")
+        printf "${TURQUESA}%-15s %-18s %-18s %-12s${NC}\n" "$USUARIO" "$CONECTO_FMT" "$DESCONECTO_FMT" "$DURACION"
     done
 
-    echo -e "${CIAN}=============================================================${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
 
 
