@@ -289,18 +289,10 @@ function ver_registros() {
         printf "%*s%s%*s" "$padding" "" "$text" "$((width - len - padding))" ""
     }
 
-    center_value() {
-        local value="$1"
-        local width="$2"
-        local len=${#value}
-        local padding=$(( (width - len) / 2 ))
-        printf "%*s%s%*s" "$padding" "" "$value" "$((width - len - padding))" ""
-    }
-
     if [[ -f $REGISTROS ]]; then
-        printf "${AMARILLO}%-3s %-12s %-12s %-22s %10s %-12s %-22s${NC}\n" \
-            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_text '⏳ Días' 10)" "📱 Móviles" "⏰ Primer Login"
-        echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
+        printf "${AMARILLO}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
+            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_text '⏳ Días' 10)" "📱 Móviles"
+        echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
 
         NUM=1
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
@@ -316,16 +308,15 @@ function ver_registros() {
                         DIAS_RESTANTES="0"
                         COLOR_DIAS="${ROJO}"
                     fi
-                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
+                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 else
                     DIAS_RESTANTES="Inválido"
                     FORMATO_EXPIRA="Desconocido"
                     COLOR_DIAS="${ROJO}"
                 fi
 
-                PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%I:%M %p"; else echo "No registrado"; fi)
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-22s ${COLOR_DIAS}%-10s${NC} ${AMARILLO}%-12s %-22s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_RESTANTES" "$MOVILES" "$PRIMER_LOGIN_FORMAT"
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%10s${NC} ${AMARILLO}%-12s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_RESTANTES" "$MOVILES"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
@@ -340,6 +331,7 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function eliminar_usuario() {
     clear
