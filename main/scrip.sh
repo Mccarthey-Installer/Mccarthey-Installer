@@ -101,12 +101,9 @@ function monitorear_conexiones() {
 }
 
 # Nueva función para monitorear tiempos de conexión en segundo plano
-function monitorear_conexiones_tiempo() {
-    LOG="/var/log/monitoreo_conexiones_tiempo.log"
+function monitorear_conexiones() {
+    LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
-
-    # Crear archivo de historial si no existe
-    touch "$HISTORIAL_CONEXIONES"
 
     while true; do
         if [[ ! -f $REGISTROS ]]; then
@@ -115,66 +112,97 @@ function monitorear_conexiones_tiempo() {
             continue
         fi
 
-        TEMP_HISTORIAL=$(mktemp)
-        cp "$HISTORIAL_CONEXIONES" "$TEMP_HISTORIAL" 2>/dev/null || touch "$TEMP_HISTORIAL"
-        > "$TEMP_HISTORIAL.new"
+        TEMP_FILE=$(mktemp)
+        cp "$REGISTROS" "$TEMP_FILE"
+        > "$TEMP_FILE.new"
 
-        declare -A usuarios_activos
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
+                # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
-                if [[ $CONEXIONES -gt 0 && -n "$PRIMER_LOGIN" ]]; then
-                    # Usuario está conectado
-                    usuarios_activos["$USUARIO"]="$PRIMER_LOGIN"
-                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    # Usuario se desconectó
-                    START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
-                    if [[ $? -eq 0 && -n "$START" ]]; then
-                        CURRENT=$(date +%s)
-                        ELAPSED_SEC=$((CURRENT - START))
-                        H=$((ELAPSED_SEC / 3600))
-                        M=$(((ELAPSED_SEC % 3600) / 60))
-                        S=$((ELAPSED_SEC % 60))
-                        TIEMPO=$(printf "%02d:%02d:%02d" $H $M $S)
-                        CONEXION=$(date -d "$PRIMER_LOGIN" +"%I:%M %p")
-                        DESCONEXION=$(date +"%I:%M %p")
-                        echo -e "$USUARIO\t$CONEXION\t$DESCONEXION\t$TIEMPO" >> "$TEMP_HISTORIAL.new"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Registrada desconexión de '$USUARIO' (Duración: $TIEMPO)." >> "$LOG"
+                # Extraer número de móviles permitido
+                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
+
+                # Verificar si el usuario está bloqueado en /etc/shadow
+                ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
+
+                # SOLO si el bloqueo no es manual
+                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                    # Bloqueo automático
+                    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
+                        if [[ -z "$ESTA_BLOQUEADO" ]]; then
+                            usermod -L "$USUARIO"
+                            pkill -KILL -u "$USUARIO"
+                            BLOQUEO_MANUAL="NO"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
+                        fi
+                    # Desbloqueo automático
+                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
+                        usermod -U "$USUARIO"
+                        BLOQUEO_MANUAL="NO"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
+                fi
+
+                # === ACTUALIZAR PRIMER_LOGIN ===
+                NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
+                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
+                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
+                    NEW_PRIMER_LOGIN=""
+                fi
+
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
+            else
+                # Usuario no existe en sistema, copia línea igual
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
+            fi
+        done < "$TEMP_FILE"
+
+        mv "$TEMP_FILE.new" "$REGISTROS"
+        rm -f "$TEMP_FILE"
+
+        # === REGISTRO DE HISTORIAL DE CONEXIONES ===
+        HISTORIAL="/root/historial_conexiones.txt"
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            # Usamos un archivo temporal para guardar el último estado de conexión
+            TMP_STATUS="/tmp/status_${USUARIO}.tmp"
+            CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+            CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+            CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+
+            if [[ $CONEXIONES -gt 0 ]]; then
+                # Si está conectado y no hay registro previo, guardamos la hora de conexión
+                if [[ ! -f $TMP_STATUS ]]; then
+                    date +"%Y-%m-%d %H:%M:%S" > "$TMP_STATUS"
+                fi
+            else
+                # Si está desconectado y hay registro previo, calculamos duración y guardamos en historial
+                if [[ -f $TMP_STATUS ]]; then
+                    HORA_CONEXION=$(cat "$TMP_STATUS")
+                    HORA_DESCONECCION=$(date +"%Y-%m-%d %H:%M:%S")
+                    # Calcula duración
+                    SEC_CON=$(date -d "$HORA_CONEXION" +%s)
+                    SEC_DES=$(date -d "$HORA_DESCONECCION" +%s)
+                    DURACION_SEC=$((SEC_DES - SEC_CON))
+                    HORAS=$((DURACION_SEC / 3600))
+                    MINUTOS=$(( (DURACION_SEC % 3600) / 60 ))
+                    SEGUNDOS=$((DURACION_SEC % 60))
+                    DURACION_FORMAT=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
+                    # Guarda el registro
+                    echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONECCION|$DURACION_FORMAT" >> "$HISTORIAL"
+                    rm -f "$TMP_STATUS"
                 fi
             fi
         done < "$REGISTROS"
 
-        # Copiar conexiones previas no activas
-        while IFS=$'\t' read -r USUARIO CONEXION DESCONEXION TIEMPO; do
-            if [[ -z "${usuarios_activos[$USUARIO]}" ]]; then
-                echo -e "$USUARIO\t$CONEXION\t$DESCONEXION\t$TIEMPO" >> "$TEMP_HISTORIAL.new"
-            fi
-        done < "$TEMP_HISTORIAL" 2>/dev/null
-
-        # Añadir usuarios activos sin desconexión
-        for USUARIO in "${!usuarios_activos[@]}"; do
-            CONEXION=$(date -d "${usuarios_activos[$USUARIO]}" +"%I:%M %p" 2>/dev/null)
-            START=$(date -d "${usuarios_activos[$USUARIO]}" +%s 2>/dev/null)
-            if [[ $? -eq 0 && -n "$START" ]]; then
-                CURRENT=$(date +%s)
-                ELAPSED_SEC=$((CURRENT - START))
-                H=$((ELAPSED_SEC / 3600))
-                M=$(((ELAPSED_SEC % 3600) / 60))
-                S=$((ELAPSED_SEC % 60))
-                TIEMPO=$(printf "%02d:%02d:%02d" $H $M $S)
-                echo -e "$USUARIO\t$CONEXION\tConectado\t$TIEMPO" >> "$TEMP_HISTORIAL.new"
-            fi
-        done
-
-        mv "$TEMP_HISTORIAL.new" "$HISTORIAL_CONEXIONES"
-        rm -f "$TEMP_HISTORIAL"
         sleep "$INTERVALO"
     done
 }
+
 
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
@@ -333,6 +361,26 @@ function crear_usuario() {
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
     printf "${VERDE}%-15s %-15s %-20s %-15s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES"
     echo -e "${CIAN}===============================================================${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
+function informacion_usuarios() {
+    clear
+    echo -e "${VIOLETA}===== ℹ️ INFORMACIÓN DE CONEXIONES =====${NC}"
+    HISTORIAL="/root/historial_conexiones.txt"
+
+    if [[ ! -f $HISTORIAL ]]; then
+        echo -e "${ROJO}❌ No hay historial de conexiones aún.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    printf "${AMARILLO}%-15s %-22s %-22s %-12s${NC}\n" "Usuario" "Se conectó a las" "Se desconectó a las" "Tiempo"
+    echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
+    cat "$HISTORIAL" | while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
+        printf "${VERDE}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONECTO" "$DESCONECTO" "$DURACION"
+    done
+    echo -e "${CIAN}===============================================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
@@ -768,7 +816,7 @@ if [[ -t 0 ]]; then
             1) crear_usuario ;;
             2) ver_registros ;;
             3) eliminar_usuario ;;
-            4) mostrar_informacion ;;  # Call new function
+            4) informacion_usuarios ;;  # Call new function
             5) verificar_online ;;
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
