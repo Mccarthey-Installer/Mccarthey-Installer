@@ -166,25 +166,20 @@ function monitorear_conexiones() {
         rm -f "$TEMP_FILE"
 
         # === REGISTRO DE HISTORIAL DE CONEXIONES ===
-        HISTORIAL="/root/historial_conexiones.txt"
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            # Usamos un archivo temporal para guardar el último estado de conexión
             TMP_STATUS="/tmp/status_${USUARIO}.tmp"
             CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
             CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
             CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
             if [[ $CONEXIONES -gt 0 ]]; then
-                # Si está conectado y no hay registro previo, guardamos la hora de conexión
                 if [[ ! -f $TMP_STATUS ]]; then
                     date +"%Y-%m-%d %H:%M:%S" > "$TMP_STATUS"
                 fi
             else
-                # Si está desconectado y hay registro previo, calculamos duración y guardamos en historial
                 if [[ -f $TMP_STATUS ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS")
                     HORA_DESCONECCION=$(date +"%Y-%m-%d %H:%M:%S")
-                    # Calcula duración
                     SEC_CON=$(date -d "$HORA_CONEXION" +%s)
                     SEC_DES=$(date -d "$HORA_DESCONECCION" +%s)
                     DURACION_SEC=$((SEC_DES - SEC_CON))
@@ -192,7 +187,6 @@ function monitorear_conexiones() {
                     MINUTOS=$(( (DURACION_SEC % 3600) / 60 ))
                     SEGUNDOS=$((DURACION_SEC % 60))
                     DURACION_FORMAT=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
-                    # Guarda el registro
                     echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONECCION|$DURACION_FORMAT" >> "$HISTORIAL"
                     rm -f "$TMP_STATUS"
                 fi
@@ -202,6 +196,7 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
 
 
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
@@ -293,28 +288,26 @@ function barra_sistema() {
 }
 
 # Nueva función para mostrar información de conexiones
-function mostrar_informacion() {
+function informacion_usuarios() {
     clear
-    echo -e "${VIOLETA}===== 📊 INFORMACIÓN DE CONEXIONES =====${NC}"
+    echo -e "${VIOLETA}===== ℹ️ INFORMACIÓN DE CONEXIONES =====${NC}"
+    HISTORIAL="/root/historial_conexiones.txt"
 
-    if [[ ! -f "$HISTORIAL_CONEXIONES" ]]; then
-        echo -e "${ROJO}❌ No hay registros de conexiones disponibles.${NC}"
+    if [[ ! -f $HISTORIAL ]]; then
+        echo -e "${ROJO}❌ No hay historial de conexiones aún.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    printf "${AMARILLO}%-15s %-20s %-20s %-15s${NC}\n" "Usuario" "Se conectó a las" "Se desconectó a las" "Tiempo"
-    echo -e "${CIAN}----------------------------------------------------------------${NC}"
-
-    while IFS=$'\t' read -r USUARIO CONEXION DESCONEXION TIEMPO; do
-        if id "$USUARIO" &>/dev/null; then
-            printf "${VERDE}%-15s ${AMARILLO}%-20s %-20s %-15s${NC}\n" "$USUARIO" "$CONEXION" "$DESCONEXION" "$TIEMPO"
-        fi
-    done < "$HISTORIAL_CONEXIONES"
-
-    echo -e "${CIAN}===============================================================${NC}"
+    printf "${AMARILLO}%-15s %-22s %-22s %-12s${NC}\n" "Usuario" "Se conectó a las" "Se desconectó a las" "Tiempo"
+    echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
+    while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
+        printf "${VERDE}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONECTO" "$DESCONECTO" "$DURACION"
+    done < "$HISTORIAL"
+    echo -e "${CIAN}===============================================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function crear_usuario() {
     clear
