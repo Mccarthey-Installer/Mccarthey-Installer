@@ -201,7 +201,7 @@ function barra_sistema() {
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# Función para mostrar historial de conexiones
+# Función para mostrar historial de conexione
 function informacion_usuarios() {
     clear
     echo -e "${ROSADO}🌸✨ INFORMACIÓN DE CONEXIONES 💖✨🌸${NC}"
