@@ -210,14 +210,21 @@ function informacion_usuarios() {
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
-    printf "${AMARILLO}%-15s %-22s %-22s %-12s${NC}\n" "Usuario" "Se conectó a las" "Se desconectó a las" "Tiempo"
-    echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
-    while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
-        printf "${VERDE}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONECTO" "$DESCONECTO" "$DURACION"
-    done < "$HISTORIAL"
-    echo -e "${CIAN}===============================================================================${NC}"
+
+    printf "${AMARILLO}%-15s %-15s %-15s %-12s${NC}\n" "Usuario" "Se conectó" "Se desconectó" "Tiempo"
+    echo -e "${CIAN}-------------------------------------------------------------${NC}"
+
+    tac "$HISTORIAL" | awk -F'|' '!v[$1]++' | tac | while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
+        # Formatear fechas: extraer día/mes y hora am/pm
+        CONECTO_FMT=$(date -d "$CONECTO" +"%d/%m %I:%M %p" 2>/dev/null || echo "$CONECTO")
+        DESCONECTO_FMT=$(date -d "$DESCONECTO" +"%d/%m %I:%M %p" 2>/dev/null || echo "$DESCONECTO")
+        printf "${VERDE}%-15s %-15s %-15s %-12s${NC}\n" "$USUARIO" "$CONECTO_FMT" "$DESCONECTO_FMT" "$DURACION"
+    done
+
+    echo -e "${CIAN}=============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function crear_usuario() {
     clear
