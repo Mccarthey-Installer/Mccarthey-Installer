@@ -11,6 +11,7 @@ sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
 locale-gen
 update-locale LANG=es_SV.UTF-8
 
+# Establecer zona horaria de El Salvador
 timedatectl set-timezone America/El_Salvador
 
 apt install -y curl unzip wget screen nginx nload htop python3 python3-pip \
