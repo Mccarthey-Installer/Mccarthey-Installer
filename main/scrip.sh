@@ -276,7 +276,77 @@ function crear_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+function crear_multiples_usuarios() {
+    clear
+    echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
+    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
+    echo -e "${AMARILLO}📋 Ejemplo: juan 123 5 4${NC}"
+    echo -e "${AMARILLO}✅ Presiona Enter dos veces para confirmar.${NC}"
+    echo
 
+    declare -a USUARIOS
+    while IFS= read -r LINEA; do
+        [[ -z "$LINEA" ]] && break
+        USUARIOS+=("$LINEA")
+    done
+
+    if [[ ${#USUARIOS[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se ingresaron usuarios.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    echo -e "${CIAN}===== 📋 USUARIOS A CREAR =====${NC}"
+    printf "${AMARILLO}%-15s %-15s %-15s %-15s${NC}\n" "👤 Usuario" "🔑 Clave" "⏳ Días" "📱 Móviles"
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    for LINEA in "${USUARIOS[@]}"; do
+        read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
+        if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+            echo -e "${ROJO}❌ Línea inválida: $LINEA${NC}"
+            continue
+        fi
+        printf "${VERDE}%-15s %-15s %-15s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES"
+    done
+    echo -e "${CIAN}===============================================================${NC}"
+    echo -e "${AMARILLO}✅ ¿Confirmar creación de estos usuarios? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    for LINEA in "${USUARIOS[@]}"; do
+        read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
+        if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+            echo -e "${ROJO}❌ Línea inválida: $LINEA${NC}"
+            continue
+        fi
+
+        if ! [[ "$DIAS" =~ ^[0-9]+$ ]] || ! [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$MOVILES" -gt 999 ]; then
+            echo -e "${ROJO}❌ Datos inválidos para $USUARIO (Días: $DIAS, Móviles: $MOVILES).${NC}"
+            continue
+        fi
+
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
+            continue
+        fi
+
+        useradd -m -s /bin/bash "$USUARIO"
+        echo "$USUARIO:$CLAVE" | chpasswd
+
+        EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
+        EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
+        usermod -e "$EXPIRA_FECHA" "$USUARIO"
+
+        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
+        echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
+    done
+
+    echo -e "${VERDE}✅ Creación de usuarios finalizada.${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
 
 
 function ver_registros() {
