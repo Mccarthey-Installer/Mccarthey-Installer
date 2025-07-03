@@ -4,7 +4,15 @@
 # 1. ACTUALIZAR SISTEMA Y PAQUETES
 #========================
 apt update -y && apt upgrade -y
+
+# Configurar locales para idioma y formato de El Salvador
+apt install -y locales
+sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
+locale-gen
+update-locale LANG=es_SV.UTF-8
+
 timedatectl set-timezone America/El_Salvador
+
 apt install -y curl unzip wget screen nginx nload htop python3 python3-pip \
 nodejs npm lsof psmisc socat bc net-tools cowsay nmap jq iptables openssh-server \
 dropbear stunnel4 cmake make g++ git
