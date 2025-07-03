@@ -203,6 +203,12 @@ function barra_sistema() {
 }
 
 # Función para mostrar historial de conexione
+# Colores necesarios (agrega esto al inicio de tu script)
+ROSADO='\033[38;5;218m'
+LILA='\033[38;5;135m'
+TURQUESA='\033[38;5;45m'
+NC='\033[0m'  # Asegúrate de tener esta línea también
+
 function informacion_usuarios() {
     clear
     echo -e "${ROSADO}🌸✨ INFORMACIÓN DE CONEXIONES 💖✨🌸${NC}"
