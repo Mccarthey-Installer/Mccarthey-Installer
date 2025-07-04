@@ -478,15 +478,14 @@ function eliminar_usuario() {
         return
     fi
 
-    # Nuevo encabezado con el orden solicitado
-    echo -e "${AMARILLO}Nº\t👤 Usuario\t🔑 Clave\t📱 Móviles\t📅 Expira${NC}"
-    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    # Encabezado solo con número y usuario
+    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
+    echo -e "${CIAN}--------------------------${NC}"
     NUM=1
     declare -A USUARIOS_EXISTENTES
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
-            # Solo mostramos los campos requeridos y en el orden solicitado
-            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO\t$CLAVE\t$MOVILES\t$EXPIRA_DATETIME${NC}"
+            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
             USUARIOS_EXISTENTES[$NUM]="$USUARIO"
             NUM=$((NUM+1))
         fi
@@ -528,7 +527,7 @@ function eliminar_usuario() {
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
         echo -e "${VERDE}$USUARIO${NC}"
     done
-    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    echo -e "${CIAN}--------------------------${NC}"
     echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
     read -p "" CONFIRMAR
     if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
@@ -556,6 +555,7 @@ function eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
