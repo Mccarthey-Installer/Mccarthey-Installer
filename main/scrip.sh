@@ -469,6 +469,8 @@ function ver_registros() {
 }
 
 
+
+
 function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
@@ -498,7 +500,8 @@ function eliminar_usuario() {
     fi
 
     echo
-    PROMPT=$(echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios, 0 para cancelar): ${NC}")
+    echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
+    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
     read -p "$PROMPT" INPUT_NUMEROS
     if [[ "$INPUT_NUMEROS" == "0" ]]; then
         echo -e "${AZUL}🚫 Operación cancelada.${NC}"
@@ -555,7 +558,6 @@ function eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 
 
