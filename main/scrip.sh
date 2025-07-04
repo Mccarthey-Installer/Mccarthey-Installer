@@ -430,16 +430,16 @@ function ver_registros() {
         NUM=1
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                FECHA_ACTUAL=$(date +%s)
-                FECHA_EXPIRA=$(date -d "$EXPIRA_DATETIME" +%s 2>/dev/null)
-
-                if [[ $? -eq 0 && -n $FECHA_EXPIRA ]]; then
-                    if (( FECHA_EXPIRA > FECHA_ACTUAL )); then
-                        DIAS_RESTANTES=$(( ( ($FECHA_EXPIRA - $FECHA_ACTUAL - 1 ) / 86400 ) + 1 ))
-                        COLOR_DIAS="${NC}"
-                    else
-                        DIAS_RESTANTES="0"
+                # -- Cálculo de días por calendario --
+                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+                if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
+                    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+                    if (( DIAS_RESTANTES < 0 )); then
+                        DIAS_RESTANTES=0
                         COLOR_DIAS="${ROJO}"
+                    else
+                        COLOR_DIAS="${NC}"
                     fi
                     FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 else
@@ -467,6 +467,7 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
@@ -739,14 +740,25 @@ function mini_registro() {
     echo -e "${CIAN}--------------------------------------------${NC}"
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
-            DIAS=$(echo "$DURACION" | grep -oE '[0-9]+')
+            # Cálculo de días por calendario
+            FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+            FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+            if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
+                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+                if (( DIAS_RESTANTES < 0 )); then
+                    DIAS_RESTANTES=0
+                fi
+            else
+                DIAS_RESTANTES="Inválido"
+            fi
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-            printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES_NUM"
+            printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS_RESTANTES" "$MOVILES_NUM"
         fi
     done < "$REGISTROS"
     echo -e "${CIAN}============================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 # Menú principal
 if [[ -t 0 ]]; then
