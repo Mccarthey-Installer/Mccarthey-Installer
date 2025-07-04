@@ -768,22 +768,29 @@ function mini_registro() {
 
 
 # Menú principal
+
+ROSA="\033[1;35m"
+LILA="\033[1;94m"
+DORADO="\033[1;33m"
+ROSA_CLARO="\033[1;95m"
+ROJO="\033[1;31m"
+NC="\033[0m"
 if [[ -t 0 ]]; then
     while true; do
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
-        echo -e "${VERDE}1. 🆕 Crear usuario${NC}"
-        echo -e "${VERDE}2. 📋 Ver registros${NC}"
-        echo -e "${VERDE}3. 🗑️ Eliminar usuario${NC}"
-        echo -e "${VERDE}4. 📊 Información${NC}"
-        echo -e "${VERDE}5. 🟢 Verificar usuarios online${NC}"
-        echo -e "${VERDE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-        echo -e "${VERDE}7. 🆕 Crear múltiples usuarios${NC}"
-        echo -e "${VERDE}8. 📋 Mini registro${NC}"
-        echo -e "${VERDE}9. 🚪 Salir${NC}"
-        PROMPT=$(echo -e "${AMARILLO}➡️ Selecciona una opción: ${NC}")
+        echo -e "${ROSA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${LILA}1. 🆕 Crear usuario${NC}"
+        echo -e "${LILA}2. 📋 Ver registros${NC}"
+        echo -e "${LILA}3. 🗑️ Eliminar usuario${NC}"
+        echo -e "${LILA}4. 📊 Información${NC}"
+        echo -e "${LILA}5. 🟢 Verificar usuarios online${NC}"
+        echo -e "${LILA}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${LILA}7. 🆕 Crear múltiples usuarios${NC}"
+        echo -e "${LILA}8. 📋 Mini registro${NC}"
+        echo -e "${LILA}9. 🚪 Salir${NC}"
+        PROMPT=$(echo -e "${DORADO}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
             1) crear_usuario ;;
@@ -794,8 +801,8 @@ if [[ -t 0 ]]; then
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) echo -e "${AZUL}🚪 Saliendo...${NC}"; exit 0 ;;
-            *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" ;;
+            9) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
 fi
