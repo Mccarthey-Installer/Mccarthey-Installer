@@ -323,37 +323,89 @@ function crear_multiples_usuarios() {
         return
     fi
 
+    # Crear un log de errores
+    ERROR_LOG="/tmp/creacion_usuarios_$(date +%Y%m%d_%H%M%S).log"
+    touch "$ERROR_LOG" || {
+        echo -e "${ROJO}❌ No se pudo crear el archivo de log. Continuando sin registro de errores.${NC}"
+        ERROR_LOG=""
+    }
+
+    # Contador de éxitos y fallos
+    EXITOS=0
+    FALLOS=0
+    
     for LINEA in "${USUARIOS[@]}"; do
         read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
         if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
-            echo -e "${ROJO}❌ Línea inválida: $LINEA${NC}"
+            echo -e "${ROJO}❌ Datos incompletos: $LINEA${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Datos incompletos: $LINEA" >> "$ERROR_LOG"
+            ((FALLOS++))
             continue
         fi
 
         if ! [[ "$DIAS" =~ ^[0-9]+$ ]] || ! [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$MOVILES" -gt 999 ]; then
             echo -e "${ROJO}❌ Datos inválidos para $USUARIO (Días: $DIAS, Móviles: $MOVILES).${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Datos inválidos para $USUARIO (Días: $DIAS, Móviles: $MOVILES)" >> "$ERROR_LOG"
+            ((FALLOS++))
             continue
         fi
 
         if id "$USUARIO" &>/dev/null; then
             echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO' ya existe" >> "$ERROR_LOG"
+            ((FALLOS++))
             continue
         fi
 
-        useradd -m -s /bin/bash "$USUARIO"
-        echo "$USUARIO:$CLAVE" | chpasswd
+        # === Creación robusta con rollback ===
+        useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"
+        if [[ $? -ne 0 ]]; then
+            echo -e "${ROJO}❌ Error creando usuario $USUARIO. Revisa $ERROR_LOG para más detalles.${NC}"
+            ((FALLOS++))
+            continue
+        fi
+
+        echo "$USUARIO:$CLAVE" | chpasswd 2>>"$ERROR_LOG"
+        if [[ $? -ne 0 ]]; then
+            echo -e "${ROJO}❌ Error estableciendo la contraseña para $USUARIO. Eliminando usuario...${NC}"
+            userdel -r "$USUARIO" 2>/dev/null
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error estableciendo contraseña para $USUARIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
 
         EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
         EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
-        usermod -e "$EXPIRA_FECHA" "$USUARIO"
+        usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>>"$ERROR_LOG"
+        if [[ $? -ne 0 ]]; then
+            echo -e "${ROJO}❌ Error configurando la expiración para $USUARIO. Eliminando usuario...${NC}"
+            userdel -r "$USUARIO" 2>/dev/null
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error configurando expiración para $USUARIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
 
-        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
+        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>>"$ERROR_LOG"
+        if [[ $? -ne 0 ]]; then
+            echo -e "${ROJO}❌ Error escribiendo en el archivo de registros para $USUARIO. Eliminando usuario...${NC}"
+            userdel -r "$USUARIO" 2>/dev/null
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error escribiendo en registros para $USUARIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
         echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
+        ((EXITOS++))
     done
 
-    echo -e "${VERDE}✅ Creación de usuarios finalizada.${NC}"
+    echo -e "${CIAN}===== 📊 RESUMEN DE CREACIÓN =====${NC}"
+    echo -e "${VERDE}✅ Usuarios creados exitosamente: $EXITOS${NC}"
+    echo -e "${ROJO}❌ Usuarios con error: $FALLOS${NC}"
+    [[ -n "$ERROR_LOG" && $FALLOS -gt 0 ]] && echo -e "${AMARILLO}📝 Log de errores: $ERROR_LOG${NC}"
+    
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 function ver_registros() {
