@@ -469,7 +469,6 @@ function ver_registros() {
 }
 
 
-
 function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
@@ -479,14 +478,15 @@ function eliminar_usuario() {
         return
     fi
 
-    echo -e "${AMARILLO}Nº\t👤 Usuario\t🔑 Clave\t📅 Expira\t\t⏳ Duración\t📱 Móviles\t⏰ Primer Login${NC}"
+    # Nuevo encabezado con el orden solicitado
+    echo -e "${AMARILLO}Nº\t👤 Usuario\t🔑 Clave\t📱 Móviles\t📅 Expira${NC}"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
     NUM=1
     declare -A USUARIOS_EXISTENTES
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
-            PRIMER_LOGIN_FORMAT=$(if [[ -n "$PRIMER_LOGIN" ]]; then date -d "$PRIMER_LOGIN" +"%Y-%m-%d %I:%M %p"; else echo "No registrado"; fi)
-            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$PRIMER_LOGIN_FORMAT${NC}"
+            # Solo mostramos los campos requeridos y en el orden solicitado
+            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO\t$CLAVE\t$MOVILES\t$EXPIRA_DATETIME${NC}"
             USUARIOS_EXISTENTES[$NUM]="$USUARIO"
             NUM=$((NUM+1))
         fi
@@ -546,7 +546,7 @@ function eliminar_usuario() {
         fi
         if userdel -r "$USUARIO" 2>/dev/null; then
             sed -i "/^$USUARIO\t/d" "$REGISTROS"
-            sed -i "/^$USUARIO|/d" "$HISTORIAL"  # Also remove from connection history
+            sed -i "/^$USUARIO|/d" "$HISTORIAL"
             echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
         else
             echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
@@ -556,6 +556,8 @@ function eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+
 
 function verificar_online() {
     clear
