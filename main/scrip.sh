@@ -768,28 +768,27 @@ function mini_registro() {
 
 
 # Menú principal
+if [[ -t 0 ]]; then
+    while true; do
 
-ROSA="\033[1;35m"
-LILA="\033[1;94m"
+    TEAL="\033[38;2;0;128;128m"
 DORADO="\033[1;33m"
 ROSA_CLARO="\033[1;95m"
 ROJO="\033[1;31m"
 NC="\033[0m"
-if [[ -t 0 ]]; then
-    while true; do
         clear
         barra_sistema
         echo
-        echo -e "${ROSA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
-        echo -e "${LILA}1. 🆕 Crear usuario${NC}"
-        echo -e "${LILA}2. 📋 Ver registros${NC}"
-        echo -e "${LILA}3. 🗑️ Eliminar usuario${NC}"
-        echo -e "${LILA}4. 📊 Información${NC}"
-        echo -e "${LILA}5. 🟢 Verificar usuarios online${NC}"
-        echo -e "${LILA}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-        echo -e "${LILA}7. 🆕 Crear múltiples usuarios${NC}"
-        echo -e "${LILA}8. 📋 Mini registro${NC}"
-        echo -e "${LILA}9. 🚪 Salir${NC}"
+        echo -e "${TEAL}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${TEAL}1. 🆕 Crear usuario${NC}"
+        echo -e "${TEAL}2. 📋 Ver registros${NC}"
+        echo -e "${TEAL}3. 🗑️ Eliminar usuario${NC}"
+        echo -e "${TEAL}4. 📊 Información${NC}"
+        echo -e "${TEAL}5. 🟢 Verificar usuarios online${NC}"
+        echo -e "${TEAL}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${TEAL}7. 🆕 Crear múltiples usuarios${NC}"
+        echo -e "${TEAL}8. 📋 Mini registro${NC}"
+        echo -e "${TEAL}9. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${DORADO}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
