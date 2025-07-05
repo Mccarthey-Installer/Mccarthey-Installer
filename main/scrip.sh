@@ -768,28 +768,31 @@ function mini_registro() {
 
 
 # Menú principal
-if [[ -t 0 ]]; then
-    while true; do
 
-    TEAL="\033[38;2;0;128;128m"
-DORADO="\033[1;33m"
+FUCHSIA="\033[38;2;255;0;255m"
+AMARILLO_SUAVE="\033[38;2;255;204;0m"
+ROSA="\033[38;2;255;105;180m"
 ROSA_CLARO="\033[1;95m"
 ROJO="\033[1;31m"
 NC="\033[0m"
+
+
+if [[ -t 0 ]]; then
+    while true; do
         clear
         barra_sistema
         echo
-        echo -e "${TEAL}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
-        echo -e "${TEAL}1. 🆕 Crear usuario${NC}"
-        echo -e "${TEAL}2. 📋 Ver registros${NC}"
-        echo -e "${TEAL}3. 🗑️ Eliminar usuario${NC}"
-        echo -e "${TEAL}4. 📊 Información${NC}"
-        echo -e "${TEAL}5. 🟢 Verificar usuarios online${NC}"
-        echo -e "${TEAL}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-        echo -e "${TEAL}7. 🆕 Crear múltiples usuarios${NC}"
-        echo -e "${TEAL}8. 📋 Mini registro${NC}"
-        echo -e "${TEAL}9. 🚪 Salir${NC}"
-        PROMPT=$(echo -e "${DORADO}➡️ Selecciona una opción: ${NC}")
+        echo -e "${FUCHSIA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
+        echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
+        echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
+        echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
+        echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
+        echo -e "${AMARILLO_SUAVE}9. 🚪 Salir${NC}"
+        PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
             1) crear_usuario ;;
