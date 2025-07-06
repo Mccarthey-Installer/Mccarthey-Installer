@@ -38,22 +38,23 @@ sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear || echo "D
 systemctl enable dropbear
 systemctl restart dropbear
 
+#
 #========================
-# 4. PROXY PYTHON MULTIPUERTO: 80 y 443 → 444
+# 4. PROXY PYTHON AVANZADO: 80 → 444
 #========================
 
 mkdir -p /etc/mccproxy
 
 cat > /etc/mccproxy/proxy.py << 'EOF'
 #!/usr/bin/env python3
-import socket, threading
+import socket, threading, time
 
-# Configuración
+# Configuración del proxy
 LISTEN_HOST = '0.0.0.0'
-LISTEN_PORTS = [80, 443]
+LISTEN_PORT = 80
 DEST_HOST = '127.0.0.1'
 DEST_PORT = 444
-PASS = ''  # Si querés protegerlo, poné una pass aquí. Ej: 'mccvpn'
+PASS = ''  # Si querés proteger con contraseña, ponela aquí. Ej: PASS = 'mcc2025'
 
 BUFLEN = 4096
 TIMEOUT = 60
@@ -88,30 +89,24 @@ def handle_client(client_socket, addr):
     except:
         client_socket.close()
 
-def start_proxy(port):
-    try:
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(('0.0.0.0', port))
-        server.listen(100)
-        print(f"[+] Proxy McCarthey escuchando en 0.0.0.0:{port} → {DEST_HOST}:{DEST_PORT}")
-        while True:
+def main():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((LISTEN_HOST, LISTEN_PORT))
+    server.listen(100)
+    print(f"[+] Proxy McCarthey escuchando en {LISTEN_HOST}:{LISTEN_PORT} -> {DEST_HOST}:{DEST_PORT}")
+    while True:
+        try:
             client, addr = server.accept()
             threading.Thread(target=handle_client, args=(client, addr), daemon=True).start()
-    except Exception as e:
-        print(f"[!] Error en el puerto {port}: {e}")
-
-def main():
-    for port in LISTEN_PORTS:
-        threading.Thread(target=start_proxy, args=(port,), daemon=True).start()
-    while True:
-        pass  # Mantener vivo el proceso principal
+        except: continue
 
 if __name__ == "__main__":
     main()
 EOF
 
 chmod +x /etc/mccproxy/proxy.py
+
 
 #========================
 # Servicio SystemD para proxy multipuerto
