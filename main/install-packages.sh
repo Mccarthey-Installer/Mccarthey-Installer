@@ -1,6 +1,14 @@
 #!/bin/bash
 
 #========================
+# Esperar hasta que se libere el lock
+#========================
+while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+   echo "⏳ Esperando que se libere el gestor de paquetes..."
+   sleep 3
+done
+
+#========================
 # 1. ACTUALIZAR SISTEMA Y PAQUETES
 #========================
 apt update -y && apt upgrade -y
