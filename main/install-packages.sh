@@ -38,34 +38,26 @@ sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear || echo "D
 systemctl enable dropbear
 systemctl restart dropbear
 
-#
 #========================
-# 4. PROXY PYTHON AVANZADO: 80 → 444
+# 4. PROXY PYTHON: 80 → 22
 #========================
-
 mkdir -p /etc/mccproxy
 
 cat > /etc/mccproxy/proxy.py << 'EOF'
 #!/usr/bin/env python3
-import socket, threading, time
+import socket, threading
 
-# Configuración del proxy
 LISTEN_HOST = '0.0.0.0'
 LISTEN_PORT = 80
 DEST_HOST = '127.0.0.1'
-DEST_PORT = 444
-PASS = ''  # Si querés proteger con contraseña, ponela aquí. Ej: PASS = 'mcc2025'
+DEST_PORT = 22
 
-BUFLEN = 4096
-TIMEOUT = 60
-
-RESPONSE_101 = b"HTTP/1.1 101 Switching Protocols\r\nContent-length: 999999999\r\n\r\n"
-RESPONSE_403 = b"HTTP/1.1 403 Forbidden\r\n\r\n"
+RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
 
 def forward(source, destination):
     try:
         while True:
-            data = source.recv(BUFLEN)
+            data = source.recv(4096)
             if not data: break
             destination.sendall(data)
     except: pass
@@ -75,31 +67,22 @@ def forward(source, destination):
 
 def handle_client(client_socket, addr):
     try:
-        client_socket.settimeout(TIMEOUT)
         req = client_socket.recv(1024)
-        if b"HTTP" in req:
-            if PASS and PASS.encode() not in req:
-                client_socket.sendall(RESPONSE_403)
-                client_socket.close()
-                return
-            client_socket.sendall(RESPONSE_101)
+        if b"HTTP" in req: client_socket.sendall(RESPONSE)
         remote = socket.create_connection((DEST_HOST, DEST_PORT))
-        threading.Thread(target=forward, args=(client_socket, remote), daemon=True).start()
-        threading.Thread(target=forward, args=(remote, client_socket), daemon=True).start()
-    except:
-        client_socket.close()
+        threading.Thread(target=forward, args=(client_socket, remote)).start()
+        threading.Thread(target=forward, args=(remote, client_socket)).start()
+    except: client_socket.close()
 
 def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((LISTEN_HOST, LISTEN_PORT))
     server.listen(100)
-    print(f"[+] Proxy McCarthey escuchando en {LISTEN_HOST}:{LISTEN_PORT} -> {DEST_HOST}:{DEST_PORT}")
+    print(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT} y redirigiendo a {DEST_HOST}:{DEST_PORT}")
     while True:
-        try:
-            client, addr = server.accept()
-            threading.Thread(target=handle_client, args=(client, addr), daemon=True).start()
-        except: continue
+        client, addr = server.accept()
+        threading.Thread(target=handle_client, args=(client, addr)).start()
 
 if __name__ == "__main__":
     main()
@@ -107,14 +90,9 @@ EOF
 
 chmod +x /etc/mccproxy/proxy.py
 
-
-#========================
-# Servicio SystemD para proxy multipuerto
-#========================
-
 cat > /etc/systemd/system/mccproxy.service <<EOF
 [Unit]
-Description=Proxy TCP Multipuerto McCarthey (80 y 443 → 444)
+Description=Proxy TCP McCarthey (80 → 22)
 After=network.target
 
 [Service]
@@ -126,7 +104,6 @@ User=root
 WantedBy=multi-user.target
 EOF
 
-# Activar servicio
 systemctl daemon-reexec
 systemctl daemon-reload
 systemctl enable mccproxy
