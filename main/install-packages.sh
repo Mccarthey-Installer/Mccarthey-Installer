@@ -29,55 +29,57 @@ if [ -f /etc/nginx/sites-available/default ]; then
 fi
 
 #========================
-# 3. CONFIGURAR DROPBEAR EN PUERTO 90
+# 3. CONFIGURAR DROPBEAR EN PUERTO 444
 #========================
 echo "/bin/bash" > /etc/shells
 echo "/usr/sbin/dropbear" >> /etc/shells
 sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear
-sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=90/' /etc/default/dropbear || echo "DROPBEAR_PORT=90" >> /etc/default/dropbear
+sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear || echo "DROPBEAR_PORT=444" >> /etc/default/dropbear
 systemctl enable dropbear
 systemctl restart dropbear
 
 #========================
-# 4. PROXY PYTHON: 80 → 90
+# 4. PROXY PYTHON: 80 → 22
 #========================
 mkdir -p /etc/mccproxy
 
 cat > /etc/mccproxy/proxy.py << 'EOF'
-#!/usr/bin/env python3
 #!/usr/bin/env python3
 import socket, threading
 
 LISTEN_HOST = '0.0.0.0'
 LISTEN_PORT = 80
 DEST_HOST = '127.0.0.1'
-DEST_PORT = 90
+DEST_PORT = 22
 
-def forward(src, dst):
+RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
+
+def forward(source, destination):
     try:
         while True:
-            data = src.recv(4096)
+            data = source.recv(4096)
             if not data: break
-            dst.sendall(data)
+            destination.sendall(data)
     except: pass
     finally:
-        src.close()
-        dst.close()
+        source.close()
+        destination.close()
 
 def handle_client(client_socket, addr):
     try:
-        target_socket = socket.create_connection((DEST_HOST, DEST_PORT))
-        threading.Thread(target=forward, args=(client_socket, target_socket)).start()
-        threading.Thread(target=forward, args=(target_socket, client_socket)).start()
-    except:
-        client_socket.close()
+        req = client_socket.recv(1024)
+        if b"HTTP" in req: client_socket.sendall(RESPONSE)
+        remote = socket.create_connection((DEST_HOST, DEST_PORT))
+        threading.Thread(target=forward, args=(client_socket, remote)).start()
+        threading.Thread(target=forward, args=(remote, client_socket)).start()
+    except: client_socket.close()
 
 def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((LISTEN_HOST, LISTEN_PORT))
     server.listen(100)
-    print(f"Proxy transparente activo en {LISTEN_HOST}:{LISTEN_PORT} → {DEST_HOST}:{DEST_PORT}")
+    print(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT} y redirigiendo a {DEST_HOST}:{DEST_PORT}")
     while True:
         client, addr = server.accept()
         threading.Thread(target=handle_client, args=(client, addr)).start()
