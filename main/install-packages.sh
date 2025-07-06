@@ -5,7 +5,7 @@
 #========================
 set -e # Exit on error
 exec 1>/var/log/setup-script.log 2>&1 # Redirect output to log file
-trap 'echo "❌ Error occurred at line $LINENO"; exit 1' ERR
+trap 'echo "❌  Error occurred at line $LINENO"; exit 1' ERR
 
 # Ensure script runs as root
 if [ "$EUID" -ne 0 ]; then
@@ -17,13 +17,13 @@ fi
 # 1. UPDATE SYSTEM AND PACKAGES
 #========================
 echo "📦 Actualizando sistema y paquetes..."
-apt update -y && apt upgrade -y
+apt-get update -y && apt-get upgrade -y
 
 # Install required packages with retry mechanism
 max_retries=3
 for pkg in locales curl unzip wget screen nginx nload htop python3 python3-pip nodejs npm lsof psmisc socat bc net-tools cowsay nmap jq iptables openssh-server dropbear stunnel4 cmake make g++ git; do
     for ((i=1; i<=max_retries; i++)); do
-        if apt install -y $pkg; then
+        if apt-get install -y $pkg; then
             break
         else
             echo "⚠️ Fallo al instalar $pkg, reintentando ($i/$max_retries)..."
@@ -33,13 +33,30 @@ for pkg in locales curl unzip wget screen nginx nload htop python3 python3-pip n
     done
 done
 
-# Configure locales for El Salvador
+#========================
+# 1.1 CONFIGURE LOCALES FOR EL SALVADOR (FIXED)
+#========================
 echo "🌐 Configurando locales para El Salvador..."
-if ! grep -q "es_SV.UTF-8" /etc/locale.gen; then
+
+# Agrega el locale si no existe
+if ! grep -q "^es_SV.UTF-8 UTF-8" /etc/locale.gen; then
     echo "es_SV.UTF-8 UTF-8" >> /etc/locale.gen
 fi
-locale-gen
-update-locale LANG=es_SV.UTF-8
+
+# Genera el locale y verifica que se creó correctamente
+locale-gen es_SV.UTF-8
+
+# Verifica que el locale esté disponible antes de actualizar
+if locale -a | grep -q "es_SV.utf8"; then
+    update-locale LANG=es_SV.UTF-8
+else
+    echo "⚠️ No se pudo generar el locale es_SV.UTF-8, usando es_MX.UTF-8 como fallback."
+    if ! grep -q "^es_MX.UTF-8 UTF-8" /etc/locale.gen; then
+        echo "es_MX.UTF-8 UTF-8" >> /etc/locale.gen
+        locale-gen es_MX.UTF-8
+    fi
+    update-locale LANG=es_MX.UTF-8
+fi
 
 # Set El Salvador timezone
 echo "⏰ Configurando zona horaria..."
@@ -148,7 +165,7 @@ def main():
         server.bind((LISTEN_HOST, LISTEN_PORT))
         server.listen(100)
         logging.info(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT} y redirigiendo a {DEST_HOST}:{DEST_PORT}")
-        print(f"Proxy escuchando en {LISTEN_HOST}:{LIST}>{DEST_PORT}")
+        print(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT}>{DEST_PORT}")
         while True:
             try:
                 client, addr = server.accept()
