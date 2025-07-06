@@ -39,7 +39,7 @@ systemctl enable dropbear
 systemctl restart dropbear
 
 #========================
-# 4. PROXY PYTHON: 80 → 22
+# 4. PROXY PYTHON: 80 → 444
 #========================
 mkdir -p /etc/mccproxy
 
@@ -50,7 +50,7 @@ import socket, threading
 LISTEN_HOST = '0.0.0.0'
 LISTEN_PORT = 80
 DEST_HOST = '127.0.0.1'
-DEST_PORT = 22
+DEST_PORT = 444
 
 RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
 
