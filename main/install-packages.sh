@@ -1,14 +1,6 @@
 #!/bin/bash
 
 #========================
-# Esperar hasta que se libere el lock
-#========================
-while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-   echo "⏳ Esperando que se libere el gestor de paquetes..."
-   sleep 3
-done
-
-#========================
 # 1. ACTUALIZAR SISTEMA Y PAQUETES
 #========================
 apt update -y && apt upgrade -y
@@ -47,25 +39,32 @@ systemctl enable dropbear
 systemctl restart dropbear
 
 #========================
-# 4. PROXY PYTHON: 80 → 22
 #========================
+# 4. PROXY PYTHON MULTIPUERTO: 80 y 443 → 444
+#========================
+
 mkdir -p /etc/mccproxy
 
 cat > /etc/mccproxy/proxy.py << 'EOF'
 #!/usr/bin/env python3
 import socket, threading
 
-LISTEN_HOST = '0.0.0.0'
-LISTEN_PORT = 80
+# Configuración
+LISTEN_PORTS = [80, 443]
 DEST_HOST = '127.0.0.1'
-DEST_PORT = 22
+DEST_PORT = 444
+PASS = ''  # Si querés protegerlo, poné una pass aquí. Ej: 'mccvpn'
 
-RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
+BUFLEN = 4096
+TIMEOUT = 60
+
+RESPONSE_101 = b"HTTP/1.1 101 Switching Protocols\r\nContent-length: 999999999\r\n\r\n"
+RESPONSE_403 = b"HTTP/1.1 403 Forbidden\r\n\r\n"
 
 def forward(source, destination):
     try:
         while True:
-            data = source.recv(4096)
+            data = source.recv(BUFLEN)
             if not data: break
             destination.sendall(data)
     except: pass
@@ -75,22 +74,38 @@ def forward(source, destination):
 
 def handle_client(client_socket, addr):
     try:
+        client_socket.settimeout(TIMEOUT)
         req = client_socket.recv(1024)
-        if b"HTTP" in req: client_socket.sendall(RESPONSE)
+        if b"HTTP" in req:
+            if PASS and PASS.encode() not in req:
+                client_socket.sendall(RESPONSE_403)
+                client_socket.close()
+                return
+            client_socket.sendall(RESPONSE_101)
         remote = socket.create_connection((DEST_HOST, DEST_PORT))
-        threading.Thread(target=forward, args=(client_socket, remote)).start()
-        threading.Thread(target=forward, args=(remote, client_socket)).start()
-    except: client_socket.close()
+        threading.Thread(target=forward, args=(client_socket, remote), daemon=True).start()
+        threading.Thread(target=forward, args=(remote, client_socket), daemon=True).start()
+    except:
+        client_socket.close()
+
+def start_proxy(port):
+    try:
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('0.0.0.0', port))
+        server.listen(100)
+        print(f"[+] Proxy McCarthey escuchando en 0.0.0.0:{port} → {DEST_HOST}:{DEST_PORT}")
+        while True:
+            client, addr = server.accept()
+            threading.Thread(target=handle_client, args=(client, addr), daemon=True).start()
+    except Exception as e:
+        print(f"[!] Error en el puerto {port}: {e}")
 
 def main():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((LISTEN_HOST, LISTEN_PORT))
-    server.listen(100)
-    print(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT} y redirigiendo a {DEST_HOST}:{DEST_PORT}")
+    for port in LISTEN_PORTS:
+        threading.Thread(target=start_proxy, args=(port,), daemon=True).start()
     while True:
-        client, addr = server.accept()
-        threading.Thread(target=handle_client, args=(client, addr)).start()
+        pass  # Mantener vivo el proceso principal
 
 if __name__ == "__main__":
     main()
@@ -98,9 +113,13 @@ EOF
 
 chmod +x /etc/mccproxy/proxy.py
 
+#========================
+# Servicio SystemD para proxy
+#========================
+
 cat > /etc/systemd/system/mccproxy.service <<EOF
 [Unit]
-Description=Proxy TCP McCarthey (80 → 22)
+Description=Proxy TCP Multipuerto McCarthey (80 y 443 → 444)
 After=network.target
 
 [Service]
@@ -112,11 +131,11 @@ User=root
 WantedBy=multi-user.target
 EOF
 
+# Activar servicio
 systemctl daemon-reexec
 systemctl daemon-reload
 systemctl enable mccproxy
 systemctl restart mccproxy
-
 #========================
 # 5. BADVPN-UDPGW PUERTO 7300
 #========================
