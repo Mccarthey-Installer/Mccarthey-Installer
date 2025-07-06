@@ -52,7 +52,7 @@ LISTEN_PORT = 80
 DEST_HOST = '127.0.0.1'
 DEST_PORT = 90
 
-RESPONSE = b"HTTP/1.1 101 TE AMO🤩\r\nContent-length: 999999999\r\n\r\n"
+RESPONSE = b"HTTP/1.1 101 TE AMO\r\nContent-length: 999999999\r\n\r\n"
 
 def forward(source, destination):
     try:
