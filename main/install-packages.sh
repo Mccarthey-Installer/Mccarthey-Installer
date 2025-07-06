@@ -49,6 +49,7 @@ cat > /etc/mccproxy/proxy.py << 'EOF'
 import socket, threading
 
 # Configuración
+LISTEN_HOST = '0.0.0.0'
 LISTEN_PORTS = [80, 443]
 DEST_HOST = '127.0.0.1'
 DEST_PORT = 444
