@@ -29,17 +29,17 @@ if [ -f /etc/nginx/sites-available/default ]; then
 fi
 
 #========================
-# 3. CONFIGURAR DROPBEAR EN PUERTO 444
+# 3. CONFIGURAR DROPBEAR EN PUERTO 90
 #========================
 echo "/bin/bash" > /etc/shells
 echo "/usr/sbin/dropbear" >> /etc/shells
 sed -i 's/^NO_START=1/NO_START=0/' /etc/default/dropbear
-sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=444/' /etc/default/dropbear || echo "DROPBEAR_PORT=444" >> /etc/default/dropbear
+sed -i 's/^DROPBEAR_PORT=.*/DROPBEAR_PORT=90/' /etc/default/dropbear || echo "DROPBEAR_PORT=90" >> /etc/default/dropbear
 systemctl enable dropbear
 systemctl restart dropbear
 
 #========================
-# 4. PROXY PYTHON: 80 → 444
+# 4. PROXY PYTHON: 80 → 90
 #========================
 mkdir -p /etc/mccproxy
 
@@ -50,9 +50,9 @@ import socket, threading
 LISTEN_HOST = '0.0.0.0'
 LISTEN_PORT = 80
 DEST_HOST = '127.0.0.1'
-DEST_PORT = 444
+DEST_PORT = 90
 
-RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
+RESPONSE = b"HTTP/1.1 101 TE AMO🤩\r\nContent-length: 999999999\r\n\r\n"
 
 def forward(source, destination):
     try:
