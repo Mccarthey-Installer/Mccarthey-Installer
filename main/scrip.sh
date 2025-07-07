@@ -807,7 +807,9 @@ function alternar_limitador() {
 
     read -p "$(echo -e "${AZUL}Presiona Enter para continuar...${NC}")"
 }
-# Menú principal
+
+
+# Menú principal 
 FUCHSIA="\033[38;2;255;0;255m"
 AMARILLO_SUAVE="\033[38;2;255;204;0m"
 ROSA="\033[38;2;255;105;180m"
@@ -821,7 +823,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${FUCHSIA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -838,7 +840,8 @@ if [[ -t 0 ]]; then
             LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
         fi
 
-        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador $LIMITADOR_MENU${NC}"
+        # Aquí el color amarillo termina antes del estado, y el color del estado se aplica solo a la palabra (ACTIVADO)/(DESACTIVADO)
+        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${LIMITADOR_MENU}${NC}"
         echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
@@ -857,4 +860,3 @@ if [[ -t 0 ]]; then
         esac
     done
 fi
-
