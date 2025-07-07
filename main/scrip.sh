@@ -784,7 +784,7 @@ function alternar_limitador() {
     if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
         echo -e "${AMARILLO}🔴 ¿Desea DESACTIVAR el limitador de conexiones? (s/n)${NC}"
         echo -e "${AZUL}Nota: Si se desactiva, los usuarios podrán exceder el límite de conexiones sin ser bloqueados.${NC}"
-        read -p "$(echo -e ${ROSA}Confirmar (s/n): ${NC})" CONFIRMAR
+        read -p "${ROSA}Confirmar (s/n): ${NC}" CONFIRMAR
         if [[ "$CONFIRMAR" == "s" || "$CONFIRMAR" == "S" ]]; then
             echo "DESACTIVADO" > "$LIMITADOR_FILE"
             LIMITADOR_ESTADO="DESACTIVADO"
@@ -795,7 +795,7 @@ function alternar_limitador() {
     else
         echo -e "${AMARILLO}🟢 ¿Desea ACTIVAR el limitador de conexiones? (s/n)${NC}"
         echo -e "${AZUL}Nota: Si se activa, los usuarios que excedan el límite de conexiones serán bloqueados automáticamente.${NC}"
-        read -p "$(echo -e ${ROSA}Confirmar (s/n): ${NC})" CONFIRMAR
+        read -p "${ROSA}Confirmar (s/n): ${NC}" CONFIRMAR
         if [[ "$CONFIRMAR" == "s" || "$CONFIRMAR" == "S" ]]; then
             echo "ACTIVADO" > "$LIMITADOR_FILE"
             LIMITADOR_ESTADO="ACTIVADO"
@@ -807,6 +807,7 @@ function alternar_limitador() {
 
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 # Menú principal
 FUCHSIA="\033[38;2;255;0;255m"
