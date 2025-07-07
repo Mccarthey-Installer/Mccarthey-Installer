@@ -833,9 +833,9 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
         if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-            LIMITADOR_MENU="${VERDE}(ACTIVADO)${NC}"
+            LIMITADOR_MENU="\033[38;5;42m(ACTIVADO)\033[0m"
         else
-            LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
+            LIMITADOR_MENU="\033[1;31m(DESACTIVADO)\033[0m"
         fi
         echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador $LIMITADOR_MENU${NC}"
         echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
