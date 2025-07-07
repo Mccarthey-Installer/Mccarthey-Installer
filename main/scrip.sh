@@ -472,7 +472,7 @@ function ver_registros() {
                 # Centrar los días en 10 caracteres
                 DIAS_CENTRADO=$(center_value "$DIAS_RESTANTES" 10)
 
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%s${NC} ${AMARILLO} Дело в том, что я не знаю, что делать с этим делом.%-12s${NC}\n" \
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%s${NC} ${AMARILLO}%-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_CENTRADO" "$MOVILES"
                 NUM=$((NUM+1))
             fi
@@ -808,14 +808,13 @@ function alternar_limitador() {
     read -p "$(echo -e "${AZUL}Presiona Enter para continuar...${NC}")"
 }
 
-
-
 # Menú principal
 FUCHSIA="\033[38;2;255;0;255m"
 AMARILLO_SUAVE="\033[38;2;255;204;0m"
 ROSA="\033[38;2;255;105;180m"
 ROSA_CLARO="\033[1;95m"
 ROJO="\033[1;31m"
+VERDE="\033[38;5;42m"
 NC="\033[0m"
 
 if [[ -t 0 ]]; then
@@ -834,11 +833,11 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
         if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-            LIMITADOR_MENU="${VERDE}ACTIVADO${NC}"
+            LIMITADOR_MENU="${VERDE}(ACTIVADO)${NC}"
         else
-            LIMITADOR_MENU="${ROJO}DESACTIVADO${NC}"
+            LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
         fi
-        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ($LIMITADOR_MENU)${NC}"
+        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador $LIMITADOR_MENU${NC}"
         echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
