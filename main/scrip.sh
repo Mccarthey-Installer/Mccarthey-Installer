@@ -6,6 +6,13 @@ timedatectl set-timezone America/El_Salvador
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
+LIMITADOR_FILE="/root/limitador_estado.txt"
+
+# Inicializar el estado del limitador si el archivo no existe
+if [[ ! -f "$LIMITADOR_FILE" ]]; then
+    echo "ACTIVADO" > "$LIMITADOR_FILE"
+fi
+LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -38,6 +45,7 @@ function monitorear_conexiones() {
     INTERVALO=10
 
     while true; do
+        LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)  # Recargar estado en cada iteración
         if [[ ! -f $REGISTROS ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
@@ -61,8 +69,8 @@ function monitorear_conexiones() {
                 # Verificar si el usuario está bloqueado en /etc/shadow
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
-                # SOLO si el bloqueo no es manual
-                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                # SOLO si el bloqueo no es manual y el limitador está activado
+                if [[ "$BLOQUEO_MANUAL" != "SÍ" && "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
                     # Bloqueo automático
                     if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                         if [[ -z "$ESTA_BLOQUEADO" ]]; then
@@ -144,7 +152,6 @@ else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
 
-
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
@@ -202,6 +209,14 @@ function barra_sistema() {
         SO_NAME=$(uname -o)
     fi
 
+    # Mostrar estado del limitador
+    LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
+    if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
+        LIMITADOR_DISPLAY="${VERDE}ACTIVADO${NC}"
+    else
+        LIMITADOR_DISPLAY="${ROJO}DESACTIVADO${NC}"
+    fi
+
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e " 🖥️ TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ M|DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
     echo -e " 🖥️ U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
@@ -209,10 +224,11 @@ function barra_sistema() {
     echo -e " 🌐 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 📅 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "🥂 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "LIMITADOR: ${LIMITADOR_DISPLAY}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# Función para mostrar historial de conexione
+# Función para mostrar historial de conexiones
 ROSADO='\033[38;5;218m'
 LILA='\033[38;5;135m'
 TURQUESA='\033[38;5;45m'
@@ -413,8 +429,6 @@ function crear_multiples_usuarios() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
-
 function ver_registros() {
     clear
     echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
@@ -458,7 +472,7 @@ function ver_registros() {
                 # Centrar los días en 10 caracteres
                 DIAS_CENTRADO=$(center_value "$DIAS_RESTANTES" 10)
 
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%s${NC} ${AMARILLO}%-12s${NC}\n" \
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%s${NC} ${AMARILLO} Дело в том, что я не знаю, что делать с этим делом.%-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_CENTRADO" "$MOVILES"
                 NUM=$((NUM+1))
             fi
@@ -474,10 +488,6 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
-
-
 
 function eliminar_usuario() {
     clear
@@ -566,8 +576,6 @@ function eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
 
 function verificar_online() {
     clear
@@ -766,16 +774,47 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+function alternar_limitador() {
+    clear
+    LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)  # Recargar estado al inicio
+    echo -e "${VIOLETA}===== ⚙️ CONTROL DEL LIMITADOR DE CONEXIONES =====${NC}"
+    echo -e "${AMARILLO}Estado actual del limitador: ${VERDE}$LIMITADOR_ESTADO${NC}"
+    echo
+
+    if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
+        echo -e "${AMARILLO}🔴 ¿Desea DESACTIVAR el limitador de conexiones? (s/n)${NC}"
+        echo -e "${AZUL}Nota: Si se desactiva, los usuarios podrán exceder el límite de conexiones sin ser bloqueados.${NC}"
+        read -p "$(echo -e ${ROSA}Confirmar (s/n): ${NC})" CONFIRMAR
+        if [[ "$CONFIRMAR" == "s" || "$CONFIRMAR" == "S" ]]; then
+            echo "DESACTIVADO" > "$LIMITADOR_FILE"
+            LIMITADOR_ESTADO="DESACTIVADO"
+            echo -e "${VERDE}✅ Limitador DESACTIVADO. Los usuarios ahora pueden exceder el límite de conexiones.${NC}"
+        else
+            echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        fi
+    else
+        echo -e "${AMARILLO}🟢 ¿Desea ACTIVAR el limitador de conexiones? (s/n)${NC}"
+        echo -e "${AZUL}Nota: Si se activa, los usuarios que excedan el límite de conexiones serán bloqueados automáticamente.${NC}"
+        read -p "$(echo -e ${ROSA}Confirmar (s/n): ${NC})" CONFIRMAR
+        if [[ "$CONFIRMAR" == "s" || "$CONFIRMAR" == "S" ]]; then
+            echo "ACTIVADO" > "$LIMITADOR_FILE"
+            LIMITADOR_ESTADO="ACTIVADO"
+            echo -e "${VERDE}✅ Limitador ACTIVADO. Los usuarios que excedan el límite de conexiones serán bloqueados.${NC}"
+        else
+            echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        fi
+    fi
+
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
 
 # Menú principal
-
 FUCHSIA="\033[38;2;255;0;255m"
 AMARILLO_SUAVE="\033[38;2;255;204;0m"
 ROSA="\033[38;2;255;105;180m"
 ROSA_CLARO="\033[1;95m"
 ROJO="\033[1;31m"
 NC="\033[0m"
-
 
 if [[ -t 0 ]]; then
     while true; do
@@ -791,7 +830,14 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-        echo -e "${AMARILLO_SUAVE}9. 🚪 Salir${NC}"
+        LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
+        if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
+            LIMITADOR_MENU="${VERDE}ACTIVADO${NC}"
+        else
+            LIMITADOR_MENU="${ROJO}DESACTIVADO${NC}"
+        fi
+        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ($LIMITADOR_MENU)${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
@@ -803,7 +849,8 @@ if [[ -t 0 ]]; then
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            9) alternar_limitador ;;
+            10) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
