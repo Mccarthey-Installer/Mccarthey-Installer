@@ -125,7 +125,9 @@ Description=Badvpn UDPGW Service
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300
+ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
+  --max-clients 2048 \
+  --max-connections-for-client 64
 Restart=always
 User=root
 
