@@ -810,6 +810,7 @@ function alternar_limitador() {
 
 
 # Menú principal 
+
 FUCHSIA="\033[38;2;255;0;255m"
 AMARILLO_SUAVE="\033[38;2;255;204;0m"
 ROSA="\033[38;2;255;105;180m"
@@ -823,7 +824,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${FUCHSIA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -833,6 +834,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
 
+        # Leer el estado del limitador
         LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
         if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
             LIMITADOR_MENU="${VERDE}(ACTIVADO)${NC}"
@@ -840,11 +842,12 @@ if [[ -t 0 ]]; then
             LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
         fi
 
-        # Aquí el color amarillo termina antes del estado, y el color del estado se aplica solo a la palabra (ACTIVADO)/(DESACTIVADO)
+        # Mostrar opción con color amarillo y estado con color correspondiente
         echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${LIMITADOR_MENU}${NC}"
         echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
+
         case $OPCION in
             1) crear_usuario ;;
             2) ver_registros ;;
