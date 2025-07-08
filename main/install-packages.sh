@@ -110,35 +110,59 @@ systemctl enable mccproxy
 systemctl restart mccproxy
 
 #========================
-# 5. BADVPN-UDPGW PUERTO 7300
+# 5. BADVPN-UDPGW PUERTO 7300 (con systemd avanzado)
 #========================
+
+# Crear usuario y grupo badvpn si no existen
+id badvpn &>/dev/null || useradd -r -s /usr/sbin/nologin badvpn
+
 git clone https://github.com/ambrop72/badvpn.git /opt/badvpn
 mkdir -p /opt/badvpn/build && cd /opt/badvpn/build
 cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
 make -j$(nproc)
 cp udpgw/badvpn-udpgw /usr/bin/badvpn-udpgw
-chmod +x /usr/bin/badvpn-udpgw
+chown badvpn:badvpn /usr/bin/badvpn-udpgw
+chmod 755 /usr/bin/badvpn-udpgw
 
 cat > /etc/systemd/system/badvpn.service <<EOF
 [Unit]
-Description=Badvpn UDPGW Service
+Description=Badvpn UDPGW Service for VPN Tunneling on Port 7300
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
-  --max-clients 2048 \
+ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \\
+  --max-clients 2048 \\
   --max-connections-for-client 64
+Type=simple
 Restart=always
-User=root
-StandardOutput=null
-StandardError=null
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+User=badvpn
+Group=badvpn
+LimitNOFILE=4096
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
+Alias=badvpn.service
 EOF
 
+systemctl daemon-reload
 systemctl enable badvpn
-systemctl start badvpn
+systemctl restart badvpn
 
 #========================
 # 6. STUNNEL CONFIG Y CERTIFICADO
