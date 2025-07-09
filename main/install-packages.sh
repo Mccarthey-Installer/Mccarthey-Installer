@@ -45,163 +45,44 @@ mkdir -p /etc/mccproxy
 
 cat > /etc/mccproxy/proxy.py << 'EOF'
 #!/usr/bin/env python3
-import socket
-import threading
-import logging
-import os
-import signal
-import sys
-from queue import Queue
-from collections import defaultdict
-import time
+import socket, threading
 
-# Configuración del logger
-logging.basicConfig(
-    level=logging.DEBUG,  # Nivel DEBUG para mayor detalle
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(), logging.FileHandler('/var/log/mccproxy.log')]
-)
-logger = logging.getLogger(__name__)
+LISTEN_HOST = '0.0.0.0'
+LISTEN_PORT = 80
+DEST_HOST = '127.0.0.1'
+DEST_PORT = 22
 
-# Configuración desde variables de entorno
-LISTEN_HOST = os.getenv('LISTEN_HOST', '0.0.0.0')
-LISTEN_PORT = int(os.getenv('LISTEN_PORT', 80))
-DEST_HOST = os.getenv('DEST_HOST', '127.0.0.1')
-DEST_PORT = int(os.getenv('DEST_PORT', 22))
-MAX_CONNECTIONS = int(os.getenv('MAX_CONNECTIONS', 100))
-SOCKET_TIMEOUT = float(os.getenv('SOCKET_TIMEOUT', 120.0))  # Mayor para túneles
-MAX_CONNECTIONS_PER_IP = int(os.getenv('MAX_CONNECTIONS_PER_IP', 5))
+RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
 
-# Respuesta WebSocket para HTTP Injector
-RESPONSE = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nContent-Length: 999999999\r\n\r\n"
-
-# Control de conexiones
-connection_queue = Queue(maxsize=MAX_CONNECTIONS)
-ip_connections = defaultdict(int)  # Contador de conexiones por IP
-running = True
-
-def forward(source, destination, addr, direction):
-    """Transfiere datos entre source y destination, con manejo robusto de EOF."""
+def forward(source, destination):
     try:
-        source.settimeout(SOCKET_TIMEOUT)
-        destination.settimeout(SOCKET_TIMEOUT)
-        while running:
-            try:
-                data = source.recv(8192)  # Buffer más grande
-                if not data:
-                    logger.debug(f"EOF detectado en {direction} para {addr}")
-                    break
-                destination.sendall(data)
-                logger.debug(f"Enviados {len(data)} bytes en {direction} para {addr}")
-            except socket.timeout:
-                logger.debug(f"Timeout en {direction} para {addr}, manteniendo conexión")
-                continue  # No cerrar en timeout, mantener conexión
-            except BrokenPipeError:
-                logger.warning(f"Broken pipe en {direction} para {addr}")
-                break
-            except Exception as e:
-                logger.error(f"Error en forward {direction} para {addr}: {e}")
-                break
+        while True:
+            data = source.recv(4096)
+            if not data: break
+            destination.sendall(data)
+    except: pass
     finally:
-        try:
-            source.shutdown(socket.SHUT_RDWR)
-            source.close()
-            destination.shutdown(socket.SHUT_RDWR)
-            destination.close()
-        except:
-            pass
+        source.close()
+        destination.close()
 
 def handle_client(client_socket, addr):
-    """Maneja una conexión de cliente, optimizada para HTTP Injector."""
-    ip = addr[0]
     try:
-        # Verificar límite de conexiones por IP
-        if ip_connections[ip] >= MAX_CONNECTIONS_PER_IP:
-            logger.warning(f"Límite de conexiones alcanzado para IP {ip}")
-            client_socket.close()
-            return
-        
-        connection_queue.put(1)
-        ip_connections[ip] += 1
-        client_socket.settimeout(SOCKET_TIMEOUT)
-        
-        # Leer solicitud inicial
         req = client_socket.recv(1024)
-        if not req:
-            logger.warning(f"Solicitud vacía desde {addr}")
-            client_socket.close()
-            return
-        
-        # Validación de solicitud WebSocket
-        if not (b"GET" in req and b"HTTP" in req and b"Upgrade: websocket" in req and b"Connection: Upgrade" in req):
-            logger.warning(f"Solicitud no válida desde {addr}: {req[:100]}")
-            client_socket.close()
-            return
-        
-        # Enviar respuesta WebSocket
-        client_socket.sendall(RESPONSE)
-        logger.debug(f"Respuesta WebSocket enviada a {addr}")
-        
-        # Conectar al servidor SSH
-        try:
-            remote = socket.create_connection((DEST_HOST, DEST_PORT), timeout=SOCKET_TIMEOUT)
-        except Exception as e:
-            logger.error(f"No se pudo conectar a {DEST_HOST}:{DEST_PORT} desde {addr}: {e}")
-            client_socket.close()
-            return
-        
-        # Crear hilos para transferencia bidireccional
-        threading.Thread(target=forward, args=(client_socket, remote, addr, "client->remote"), daemon=True).start()
-        threading.Thread(target=forward, args=(remote, client_socket, addr, "remote->client"), daemon=True).start()
-        
-    except socket.timeout:
-        logger.warning(f"Timeout en conexión inicial desde {addr}")
-    except Exception as e:
-        logger.error(f"Error manejando cliente {addr}: {e}")
-    finally:
-        try:
-            client_socket.close()
-        except:
-            pass
-        ip_connections[ip] -= 1
-        connection_queue.get()
-        connection_queue.task_done()
-
-def signal_handler(sig, frame):
-    """Maneja la señal de terminación."""
-    global running
-    logger.info("Cerrando el servidor...")
-    running = False
-    sys.exit(0)
+        if b"HTTP" in req: client_socket.sendall(RESPONSE)
+        remote = socket.create_connection((DEST_HOST, DEST_PORT))
+        threading.Thread(target=forward, args=(client_socket, remote)).start()
+        threading.Thread(target=forward, args=(remote, client_socket)).start()
+    except: client_socket.close()
 
 def main():
-    """Inicia el servidor proxy optimizado para HTTP Injector."""
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    server = socket.socket(socket.AF_INET6 if ':' in LISTEN_HOST else socket.AF_INET, socket.SOCK_STREAM)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    
-    try:
-        server.bind((LISTEN_HOST, LISTEN_PORT))
-        server.listen(MAX_CONNECTIONS)
-        logger.info(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT} y redirigiendo a {DEST_HOST}:{DEST_PORT}")
-        
-        while running:
-            try:
-                server.settimeout(1.0)
-                client, addr = server.accept()
-                logger.debug(f"Nueva conexión desde {addr}")
-                threading.Thread(target=handle_client, args=(client, addr), daemon=True).start()
-            except socket.timeout:
-                continue
-            except Exception as e:
-                logger.error(f"Error aceptando conexión: {e}")
-    except Exception as e:
-        logger.error(f"Error iniciando el servidor: {e}")
-    finally:
-        server.close()
-        logger.info("Servidor cerrado")
+    server.bind((LISTEN_HOST, LISTEN_PORT))
+    server.listen(100)
+    print(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT} y redirigiendo a {DEST_HOST}:{DEST_PORT}")
+    while True:
+        client, addr = server.accept()
+        threading.Thread(target=handle_client, args=(client, addr)).start()
 
 if __name__ == "__main__":
     main()
