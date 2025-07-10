@@ -176,17 +176,6 @@ function barra_sistema() {
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
     CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
 
-    CPU_DISPONIBLE=$((100 - CPU_PORC))
-    if (( CPU_DISPONIBLE >= 60 )); then
-        COLOR_CPU="$VERDE"
-    elif (( CPU_DISPONIBLE >= 30 )); then
-        COLOR_CPU="$AMARILLO"
-    else
-        COLOR_CPU="$ROJO"
-    fi
-
-    # Solo para mostrar el número de núcleos (core)
-    NUCLEOS=$(grep -c ^processor /proc/cpuinfo)
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
 
@@ -230,7 +219,6 @@ function barra_sistema() {
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e " 🖥️ TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ M|DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
     echo -e " 🖥️ U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
-    echo -e " 🔋 Núcleo: ${AMARILLO}${NUCLEOS}${NC} ∘ DISPONIBLE CPU: ${COLOR_CPU}${CPU_DISPONIBLE}%${NC}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e " 🌐 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 📅 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "🥂 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
@@ -238,6 +226,7 @@ function barra_sistema() {
     echo -e "LIMITADOR: ${LIMITADOR_DISPLAY}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
+
 
 
 # Función para mostrar historial de conexiones
