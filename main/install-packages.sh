@@ -44,45 +44,70 @@ systemctl restart dropbear
 mkdir -p /etc/mccproxy
 
 cat > /etc/mccproxy/proxy.py << 'EOF'
-#!/usr/bin/env python3
-import socket, threading
+import socket
+import threading
+import sys
 
-LISTEN_HOST = '0.0.0.0'
-LISTEN_PORT = 80
-DEST_HOST = '127.0.0.1'
-DEST_PORT = 22
+# Configuración del proxy
+LOCAL_HOST = '0.0.0.0'  # Escucha en todas las interfaces
+LOCAL_PORT = 80         # Puerto de entrada (HTTP)
+REMOTE_HOST = '127.0.0.1'  # Servidor SSH (puede ser otra IP)
+REMOTE_PORT = 22        # Puerto SSH
 
-RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
-
-def forward(source, destination):
+def handle_client(client_socket):
+    # Conectar al servidor remoto (SSH)
+    remote_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        while True:
-            data = source.recv(4096)
-            if not data: break
-            destination.sendall(data)
-    except: pass
-    finally:
-        source.close()
-        destination.close()
+        remote_socket.connect((REMOTE_HOST, REMOTE_PORT))
+    except Exception as e:
+        print(f"Error al conectar con {REMOTE_HOST}:{REMOTE_PORT}: {e}")
+        client_socket.close()
+        return
 
-def handle_client(client_socket, addr):
-    try:
-        req = client_socket.recv(1024)
-        if b"HTTP" in req: client_socket.sendall(RESPONSE)
-        remote = socket.create_connection((DEST_HOST, DEST_PORT))
-        threading.Thread(target=forward, args=(client_socket, remote)).start()
-        threading.Thread(target=forward, args=(remote, client_socket)).start()
-    except: client_socket.close()
+    # Función para reenviar datos
+    def forward_data(source, destination):
+        try:
+            while True:
+                data = source.recv(4096)
+                if not data:
+                    break
+                destination.sendall(data)
+        except:
+            pass
+        finally:
+            source.close()
+            destination.close()
+
+    # Crear hilos para reenviar datos en ambas direcciones
+    threading.Thread(target=forward_data, args=(client_socket, remote_socket), daemon=True).start()
+    threading.Thread(target=forward_data, args=(remote_socket, client_socket), daemon=True).start()
 
 def main():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((LISTEN_HOST, LISTEN_PORT))
-    server.listen(100)
-    print(f"Proxy escuchando en {LISTEN_HOST}:{LISTEN_PORT} y redirigiendo a {DEST_HOST}:{DEST_PORT}")
+    # Crear socket del proxy
+    proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    proxy_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    
+    try:
+        proxy_socket.bind((LOCAL_HOST, LOCAL_PORT))
+        proxy_socket.listen(5)
+        print(f"Proxy escuchando en {LOCAL_HOST}:{LOCAL_PORT} -> redirigiendo a {REMOTE_HOST}:{REMOTE_PORT}")
+    except Exception as e:
+        print(f"Error al iniciar el proxy: {e}")
+        sys.exit(1)
+
+    # Aceptar conexiones entrantes
     while True:
-        client, addr = server.accept()
-        threading.Thread(target=handle_client, args=(client, addr)).start()
+        try:
+            client_socket, addr = proxy_socket.accept()
+            print(f"Conexión desde {addr}")
+            # Manejar cada cliente en un hilo separado
+            threading.Thread(target=handle_client, args=(client_socket,), daemon=True).start()
+        except KeyboardInterrupt:
+            print("\nApagando el proxy...")
+            proxy_socket.close()
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
