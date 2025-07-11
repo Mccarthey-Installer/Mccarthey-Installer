@@ -58,7 +58,10 @@ function monitorear_conexiones() {
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                # Contar conexiones SSH y Dropbear
+                # === LIMPIEZA DE PROCESOS ZOMBIE ===
+                ps -u "$USUARIO" -o pid=,stat= | awk '$2 ~ /^[Zz]/ {print $1}' | xargs -r kill -9
+
+                # === CONTAR CONEXIONES ===
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
@@ -69,9 +72,9 @@ function monitorear_conexiones() {
                 # Verificar si el usuario está bloqueado en /etc/shadow
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
-                # SOLO si el bloqueo no es manual y el limitador está activado
+                # === BLOQUEO/DESBLOQUEO AUTOMÁTICO MEJORADO ===
                 if [[ "$BLOQUEO_MANUAL" != "SÍ" && "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-                    # Bloqueo automático
+                    # Bloqueo automático si excede el límite
                     if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                         if [[ -z "$ESTA_BLOQUEADO" ]]; then
                             usermod -L "$USUARIO"
@@ -79,11 +82,20 @@ function monitorear_conexiones() {
                             BLOQUEO_MANUAL="NO"
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
                         fi
-                    # Desbloqueo automático
-                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
+                    fi
+
+                    # Desbloqueo automático si está bloqueado y está dentro del límite
+                    if [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
                         usermod -U "$USUARIO"
                         BLOQUEO_MANUAL="NO"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
+                    fi
+
+                    # Desbloqueo de emergencia si no hay conexiones activas y sigue bloqueado
+                    if [[ $CONEXIONES -eq 0 && -n "$ESTA_BLOQUEADO" ]]; then
+                        usermod -U "$USUARIO"
+                        BLOQUEO_MANUAL="NO"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado de emergencia (sin conexiones activas)." >> "$LOG"
                     fi
                 fi
 
@@ -136,6 +148,7 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
 
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
