@@ -1,5 +1,3 @@
-#!/bin/bash
-
 #========================
 # 1. ACTUALIZAR SISTEMA Y PAQUETES
 #========================
@@ -130,10 +128,9 @@ Description=Badvpn UDPGW Service for VPN Tunneling on Port 7300
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
-  --max-clients 2048 \
-  --max-connections-for-client 64 \
-  --udpgw-connection-buffer-size 1024
+ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \\
+  --max-clients 2048 \\
+  --max-connections-for-client 64
 Type=simple
 Restart=always
 RestartSec=5
@@ -160,7 +157,6 @@ StandardError=journal
 WantedBy=multi-user.target
 Alias=badvpn.service
 EOF
-
 
 systemctl daemon-reload
 systemctl enable badvpn
