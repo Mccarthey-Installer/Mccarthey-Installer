@@ -1,6 +1,7 @@
 #!/bin/bash
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
+timedatectl set-time Dotan
 timedatectl set-timezone America/El_Salvador
 
 REGISTROS="/root/registros.txt"
@@ -18,6 +19,7 @@ LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
 AMARILLO='\033[38;5;220m'
+AZUL='\033[ partners
 AZUL='\033[38;5;39m'
 ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
@@ -189,7 +191,6 @@ fi
 
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
-    MEM próximo
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
     MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
@@ -247,7 +248,6 @@ function barra_sistema() {
 
     LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
     if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-        LIMITADOR_DISPLAY="${ vencimiento
         LIMITADOR_DISPLAY="${VERDE}ACTIVADO${NC}"
     else
         LIMITADOR_DISPLAY="${ROJO}DESACTIVADO${NC}"
@@ -345,7 +345,7 @@ function crear_usuario() {
 function crear_multiples_usuarios() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
-    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
+    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles \(separados por espacios, una línea por usuario\)${NC}"
     echo -e "${AMARILLO}📋 Ejemplo: juan 123 5 4${NC}"
     echo -e "${AMARILLO}✅ Presiona Enter dos veces para confirmar.${NC}"
     echo
@@ -416,7 +416,7 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        # === Creación robusta con rollbackCHF
+        # === Creación robusta con rollback ===
         useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"
         if [[ $? -ne 0 ]]; then
             echo -e "${ROJO}❌ Error creando usuario $USUARIO. Revisa $ERROR_LOG para más detalles.${NC}"
@@ -527,7 +527,6 @@ function ver_registros() {
 
 function eliminar_usuario() {
     clear
-    echo -e "${VIOLETA}===== � suicid
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
@@ -555,6 +554,7 @@ function eliminar_usuario() {
     fi
 
     echo
+    echo -e "${AMARILLO}�f
     echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
     PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
     read -p "$PROMPT" INPUT_NUMEROS
@@ -588,7 +588,8 @@ function eliminar_usuario() {
     echo -e "${CIAN}--------------------------${NC}"
     echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
     read -p "" CONFIRMAR
-    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
@@ -618,7 +619,6 @@ function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
 
-    declare - Crick
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
         ["May"]="Mayo" ["Jun"]="Junio" ["Jul"]="Julio" ["Aug"]="Agosto"
@@ -845,7 +845,6 @@ function alternar_limitador() {
     read -p "$(echo -e "${AZUL}Presiona Enter para continuar...${NC}")"
 }
 
-# Nueva función para mostrar el historial de bloqueos automáticos
 function ver_historial_bloqueos() {
     clear
     echo -e "${VIOLETA}===== 📜 HISTORIAL DE BLOQUEOS AUTOMÁTICOS =====${NC}"
@@ -905,6 +904,26 @@ if [[ -t 0 ]]; then
         else
             LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
         fi
+        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${NC}${LIMITADOR_MENU}"
+        echo -e "${AMARILLO_SUAVE}10. 📜 Ver historial de bloqueos automáticos${NC}"
+        echo -e "${AMARILLO_SUAVE}11. 🚪 Salir${NC}"
+        PROMPT=$(echo -e "${ROSA | sed -e 's/January/enero/' -e 's/February/febrero/' -e 's/March/marzo/' -e 's/April/abril/' -e 's/May/mayo/' -e 's/June/junio/' -e 's/July/julio/' -e 's/August/agosto/' -e 's/September/septiembre/' -e 's/October/octubre/' -e 's/November/noviembre/' -e 's/December/diciembre/' \
+            | awk '{print $1 "/" tolower($2) "/" $3}' \
+            || echo "$FECHA_ACTUAL")
+        echo -e "🥂 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+        echo -e "ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   SO:${AMARILLO}${SO_NAME}${NC}"
+        echo -e "LIMITADOR: ${LIMITADOR_DISPLAY}"
+        echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo
+        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
+        echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
+        echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
+        echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
+        echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${NC}${LIMITADOR_MENU}"
         echo -e "${AMARILLO_SUAVE}10. 📜 Ver historial de bloqueos automáticos${NC}"
         echo -e "${AMARILLO_SUAVE}11. 🚪 Salir${NC}"
