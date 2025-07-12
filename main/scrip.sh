@@ -48,6 +48,7 @@ fi'
 configurar_autoejecucion
 
 # Función para monitorear conexiones y actualizar PRIMER_LOGIN y el historial
+
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
@@ -68,6 +69,9 @@ function monitorear_conexiones() {
             if id "$USUARIO" &>/dev/null; then
                 # === LIMPIEZA DE PROCESOS ZOMBIE ===
                 ps -u "$USUARIO" -o pid=,stat= | awk '$2 ~ /^[Zz]/ {print $1}' | xargs -r kill -9
+
+                # === LIMPIEZA DE PROCESOS COLGADOS (estado D) ===
+                ps -u "$USUARIO" -o pid=,stat=,comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^D/ {print $1}' | xargs -r kill -9
 
                 # === CONTAR CONEXIONES ===
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
