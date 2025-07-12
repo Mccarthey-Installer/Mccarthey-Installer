@@ -1,14 +1,10 @@
 #!/bin/bash
-set -e
-
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
-# timedatectl set-time '2025-07-11 21:55:00'  # Solo si deseas establecer la fecha/hora manualmente
 timedatectl set-timezone America/El_Salvador
 
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
-HISTORIAL_BLOQUEOS="/root/historial_bloqueos.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
 LIMITADOR_FILE="/root/limitador_estado.txt"
 
@@ -29,16 +25,14 @@ NC='\033[0m'
 # Función para configurar la autoejecución en ~/.bashrc
 function configurar_autoejecucion() {
     BASHRC="/root/.bashrc"
-    if ! grep -q "IN_PANEL" "$BASHRC"; then
-        cat <<'EOF' >> "$BASHRC"
-
-if [[ -t 0 && -z "\$IN_PANEL" ]]; then
+    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
     export IN_PANEL=1
     bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh)
     unset IN_PANEL
-fi
+fi'
 
-EOF
+    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
+        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
         echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
 }
@@ -86,8 +80,6 @@ function monitorear_conexiones() {
                             usermod -L "$USUARIO"
                             pkill -KILL -u "$USUARIO"
                             BLOQUEO_MANUAL="NO"
-                            FECHA_BLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
-                            echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Bloqueado" >> "$HISTORIAL_BLOQUEOS"
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
                         fi
                     fi
@@ -95,34 +87,14 @@ function monitorear_conexiones() {
                     # Desbloqueo automático si está bloqueado y está dentro del límite
                     if [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
                         usermod -U "$USUARIO"
-                        FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
                         BLOQUEO_MANUAL="NO"
-                        # Actualizar la última entrada de bloqueo con la hora de desbloqueo
-                        if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
-                            ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
-                            if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
-                                sed -i "/^${USUARIO}|.*|Bloqueado$/ s/$/|$FECHA_DESBLOQUEO|Desbloqueado/" "$HISTORIAL_BLOQUEOS"
-                            else
-                                echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Desbloqueado|$FECHA_DESBLOQUEO" >> "$HISTORIAL_BLOQUEOS"
-                            fi
-                        fi
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
 
                     # Desbloqueo de emergencia si no hay conexiones activas y sigue bloqueado
                     if [[ $CONEXIONES -eq 0 && -n "$ESTA_BLOQUEADO" ]]; then
                         usermod -U "$USUARIO"
-                        FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
                         BLOQUEO_MANUAL="NO"
-                        # Actualizar la última entrada de bloqueo con la hora de desbloqueo
-                        if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
-                            ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
-                            if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
-                                sed -i "/^${USUARIO}|.*|Bloqueado$/ s/$/|$FECHA_DESBLOQUEO|Desbloqueado/" "$HISTORIAL_BLOQUEOS"
-                            else
-                                echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Desbloqueado|$FECHA_DESBLOQUEO" >> "$HISTORIAL_BLOQUEOS"
-                            fi
-                        fi
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado de emergencia (sin conexiones activas)." >> "$LOG"
                     fi
                 fi
@@ -176,6 +148,7 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
 
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
@@ -267,6 +240,8 @@ function barra_sistema() {
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
+
+
 # Función para mostrar historial de conexiones
 ROSADO='\033[38;5;218m'
 LILA='\033[38;5;135m'
@@ -348,7 +323,7 @@ function crear_usuario() {
 function crear_multiples_usuarios() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
-    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles \(separados por espacios, una línea por usuario\)${NC}"
+    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
     echo -e "${AMARILLO}📋 Ejemplo: juan 123 5 4${NC}"
     echo -e "${AMARILLO}✅ Presiona Enter dos veces para confirmar.${NC}"
     echo
@@ -557,7 +532,6 @@ function eliminar_usuario() {
     fi
 
     echo
-    echo -e "${AMARILLO}�f
     echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
     PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
     read -p "$PROMPT" INPUT_NUMEROS
@@ -607,7 +581,6 @@ function eliminar_usuario() {
         if userdel -r "$USUARIO" 2>/dev/null; then
             sed -i "/^$USUARIO\t/d" "$REGISTROS"
             sed -i "/^$USUARIO|/d" "$HISTORIAL"
-            sed -i "/^$USUARIO|/d" "$HISTORIAL_BLOQUEOS"  # Limpiar historial de bloqueos
             echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
         else
             echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
@@ -702,6 +675,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function bloquear_desbloquear_usuario() {
     clear
@@ -848,37 +822,12 @@ function alternar_limitador() {
     read -p "$(echo -e "${AZUL}Presiona Enter para continuar...${NC}")"
 }
 
-function ver_historial_bloqueos() {
-    clear
-    echo -e "${VIOLETA}===== 📜 HISTORIAL DE BLOQUEOS AUTOMÁTICOS =====${NC}"
-    if [[ ! -f $HISTORIAL_BLOQUEOS ]]; then
-        echo -e "${ROJO}❌ No hay historial de bloqueos automáticos aún.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
 
-    echo -e "${AMARILLO}📋 Listado de bloqueos y desbloqueos automáticos:${NC}"
-    echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
-    while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO; do
-        if [[ -n "$USUARIO" ]]; then
-            # Formatear fechas
-            FECHA_BLOQUEO_FMT=$(date -d "$FECHA_BLOQUEO" +"%d/%B/%Y %I:%M %p" 2>/dev/null | \
-                sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$FECHA_BLOQUEO")
-            if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
-                FECHA_DESBLOQUEO_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%B/%Y %I:%M %p" 2>/dev/null | \
-                    sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$FECHA_DESBLOQUEO")
-                MENSAJE="$USUARIO solo tiene $MOVILES_PERMITIDOS conexiones permitidas y fue autobloqueado porque tuvo un total de $CONEXIONES conexiones a las $FECHA_BLOQUEO_FMT, pero como volvió a respetar el límite fue desbloqueado a las $FECHA_DESBLOQUEO_FMT."
-            else
-                MENSAJE="$USUARIO solo tiene $MOVILES_PERMITIDOS conexiones permitidas y fue autobloqueado porque tuvo un total de $CONEXIONES conexiones a las $FECHA_BLOQUEO_FMT (aún bloqueado)."
-            fi
-            echo -e "${VERDE}$MENSAJE${NC}"
-        fi
-    done < "$HISTORIAL_BLOQUEOS"
-    echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
+# Menú principal 
 
-# Menú principal
+#!/bin/bash
+
+# Definición de colores
 FUCHSIA="\033[38;2;255;0;255m"
 AMARILLO_SUAVE="\033[38;2;255;204;0m"
 ROSA="\033[38;2;255;105;180m"
@@ -901,35 +850,17 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
+
         LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
         if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
             LIMITADOR_MENU="${VERDE}(ACTIVADO)${NC}"
         else
             LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
         fi
+
+        # Aquí el color amarillo termina antes del estado, y el color del estado se aplica solo a la palabra (ACTIVADO)/(DESACTIVADO)
         echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${NC}${LIMITADOR_MENU}"
-        echo -e "${AMARILLO_SUAVE}10. 📜 Ver historial de bloqueos automáticos${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🚪 Salir${NC}"
-        PROMPT=$(echo -e "${ROSA | sed -e 's/January/enero/' -e 's/February/febrero/' -e 's/March/marzo/' -e 's/April/abril/' -e 's/May/mayo/' -e 's/June/junio/' -e 's/July/julio/' -e 's/August/agosto/' -e 's/September/septiembre/' -e 's/October/octubre/' -e 's/November/noviembre/' -e 's/December/diciembre/' \
-            | awk '{print $1 "/" tolower($2) "/" $3}' \
-            || echo "$FECHA_ACTUAL")
-        echo -e "🥂 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-        echo -e "ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   SO:${AMARILLO}${SO_NAME}${NC}"
-        echo -e "LIMITADOR: ${LIMITADOR_DISPLAY}"
-        echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo
-        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
-        echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
-        echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
-        echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
-        echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
-        echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${NC}${LIMITADOR_MENU}"
-        echo -e "${AMARILLO_SUAVE}10. 📜 Ver historial de bloqueos automáticos${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🚪 Salir${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
@@ -942,8 +873,7 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) alternar_limitador ;;
-            10) ver_historial_bloqueos ;;
-            11) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            10) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
