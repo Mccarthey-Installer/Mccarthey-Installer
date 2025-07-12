@@ -53,6 +53,11 @@ function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
 
+    # Verificar si el comando 'ss' está disponible
+    if ! command -v ss >/dev/null 2>&1; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Comando 'ss' no disponible, no se pueden verificar conexiones fantasmas." >> "$LOG"
+    fi
+
     while true; do
         LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)  # Recargar estado en cada iteración
         if [[ ! -f $REGISTROS ]]; then
@@ -68,10 +73,32 @@ function monitorear_conexiones() {
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 # === LIMPIEZA DE PROCESOS ZOMBIE ===
-                ps -u "$USUARIO" -o pid=,stat= | awk '$2 ~ /^[Zz]/ {print $1}' | xargs -r kill -9
+                ps -u "$USUARIO" -o pid= -o stat= | awk '$2 ~ /^[Zz]/ {print $1}' | while read -r PID; do
+                    kill -9 "$PID" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombi (PID: $PID) de usuario $USUARIO eliminado." >> "$LOG"
+                done
 
                 # === LIMPIEZA DE PROCESOS COLGADOS (estado D) ===
-                ps -u "$USUARIO" -o pid=,stat=,comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^D/ {print $1}' | xargs -r kill -9
+                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^D/ {print $1}' | while read -r PID; do
+                    kill -9 "$PID" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso colgado en estado D (PID: $PID, sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
+                done
+
+                # === LIMPIEZA DE CONEXIONES FANTASMAS (estado S, sin conexión de red) ===
+                if command -v ss >/dev/null 2>&1; then
+                    ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^S/ {print $1}' | while read -r PID; do
+                        if ! ss -tpn 2>/dev/null | grep -q "pid=$PID,"; then
+                            kill -9 "$PID" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión fantasma (PID: $PID, sshd/dropbear, estado S) de usuario $USUARIO eliminada." >> "$LOG"
+                        fi
+                    done
+                fi
+
+                # === LIMPIEZA DE OTROS PROCESOS NO DESEADOS (estados S o R, no sshd/dropbear) ===
+                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$2 ~ /^[SR]/ && $3 !~ /^(sshd|dropbear)$/ {print $1}' | while read -r PID; do
+                    kill -9 "$PID" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso no deseado (PID: $PID, estado $2, no sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
+                done
 
                 # === CONTAR CONEXIONES ===
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
@@ -79,7 +106,7 @@ function monitorear_conexiones() {
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
                 # Extraer número de móviles permitido
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
+                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
 
                 # Verificar si el usuario está bloqueado en /etc/shadow
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
@@ -103,7 +130,6 @@ function monitorear_conexiones() {
                         usermod -U "$USUARIO"
                         FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
                         BLOQUEO_MANUAL="NO"
-                        # Actualizar la última entrada de bloqueo con la hora de desbloqueo
                         if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
                             ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
                             if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
@@ -120,7 +146,6 @@ function monitorear_conexiones() {
                         usermod -U "$USUARIO"
                         FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
                         BLOQUEO_MANUAL="NO"
-                        # Actualizar la última entrada de bloqueo con la hora de desbloqueo
                         if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
                             ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
                             if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
