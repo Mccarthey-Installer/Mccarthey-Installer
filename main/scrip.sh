@@ -843,7 +843,7 @@ function ver_historial_bloqueos() {
         return
     fi
 
-    # Verificar permisos de escritura/lectura
+    # Verificar permisos de lectura
     if [[ ! -r "$HISTORIAL_BLOQUEOS" ]]; then
         echo -e "${ROJO}❌ No se puede leer $HISTORIAL_BLOQUEOS. Verifica permisos.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
@@ -855,16 +855,28 @@ function ver_historial_bloqueos() {
     printf "${AMARILLO}%-12s %-10s %-6s %-8s %-10s${NC}\n" "👤 Usuario" "📅 Fecha" "📱 Lím." "🔌 Conex." "🔐 Estado"
     echo -e "${CIAN}----------------------------------------${NC}"
 
-    while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO; do
+    # Filtrar duplicados, mostrando solo la última entrada por usuario
+    tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$1]++' | tac | while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO; do
         if [[ -z "$USUARIO" || -z "$FECHA_BLOQUEO" || -z "$MOVILES_PERMITIDOS" || -z "$CONEXIONES" || -z "$ESTADO" ]]; then
             echo -e "${ROJO}⚠️ Línea corrupta: $USUARIO|$FECHA_BLOQUEO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO${NC}"
             continue
         fi
 
-        # Formatear fechas en español directamente
-        FECHA_BLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_BLOQUEO")
+        # Intentar formatear fechas con LC_TIME, con fallback a inglés
+        if locale -a 2>/dev/null | grep -qi "es_ES.utf8"; then
+            FECHA_BLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_BLOQUEO")
+            [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]] && \
+                FECHA_DESBLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_DESBLOQUEO")
+        else
+            FECHA_BLOQUEO_FMT=$(date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null | \
+                sed 's/Jan/ene/;s/Feb/feb/;s/Mar/mar/;s/Apr/abr/;s/May/may/;s/Jun/jun/;s/Jul/jul/;s/Aug/ago/;s/Sep/sep/;s/Oct/oct/;s/Nov/nov/;s/Dec/dic/' || echo "$FECHA_BLOQUEO")
+            [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]] && \
+                FECHA_DESBLOQUEO_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null | \
+                sed 's/Jan/ene/;s/Feb/feb/;s/Mar/mar/;s/Apr/abr/;s/May/may/;s/Jun/jun/;s/Jul/jul/;s/Aug/ago/;s/Sep/sep/;s/Oct/oct/;s/Nov/nov/;s/Dec/dic/' || echo "$FECHA_DESBLOQUEO")
+        fi
+
+        # Formatear estado
         if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
-            FECHA_DESBLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_DESBLOQUEO")
             ESTADO_FMT="🔓 $FECHA_DESBLOQUEO_FMT"
         elif [[ "$ESTADO" == "Bloqueado" ]]; then
             ESTADO_FMT="🔒 Bloqueado"
@@ -875,7 +887,7 @@ function ver_historial_bloqueos() {
 
         printf "${VERDE}%-12s %-10s %-6s %-8s %-10s${NC}\n" \
             "$USUARIO" "$FECHA_BLOQUEO_FMT" "$MOVILES_PERMITIDOS" "$CONEXIONES" "$ESTADO_FMT"
-    done < "$HISTORIAL_BLOQUEOS"
+    done
 
     echo -e "${CIAN}----------------------------------------${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
