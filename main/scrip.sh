@@ -837,29 +837,47 @@ function alternar_limitador() {
 function ver_historial_bloqueos() {
     clear
     echo -e "${VIOLETA}===== 📜 HISTORIAL DE BLOQUEOS AUTOMÁTICOS =====${NC}"
-    if [[ ! -f $HISTORIAL_BLOQUEOS ]]; then
-        echo -e "${ROJO}❌ No hay historial de bloqueos automáticos aún.${NC}"
+    if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
+        echo -e "${ROJO}❌ No hay historial de bloqueos aún.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    echo -e "${AMARILLO}📋 Listado de bloqueos y desbloqueos automáticos:${NC}"
-    echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
+    # Verificar permisos de escritura/lectura
+    if [[ ! -r "$HISTORIAL_BLOQUEOS" ]]; then
+        echo -e "${ROJO}❌ No se puede leer $HISTORIAL_BLOQUEOS. Verifica permisos.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    echo -e "${AMARILLO}📋 Bloqueos y desbloqueos automáticos:${NC}"
+    echo -e "${CIAN}----------------------------------------${NC}"
+    printf "${AMARILLO}%-12s %-10s %-6s %-8s %-10s${NC}\n" "👤 Usuario" "📅 Fecha" "📱 Lím." "🔌 Conex." "🔐 Estado"
+    echo -e "${CIAN}----------------------------------------${NC}"
+
     while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO; do
-        if [[ -n "$USUARIO" ]]; then
-            FECHA_BLOQUEO_FMT=$(date -d "$FECHA_BLOQUEO" +"%d/%B/%Y %I:%M %p" 2>/dev/null | \
-                sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$FECHA_BLOQUEO")
-            if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
-                FECHA_DESBLOQUEO_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%B/%Y %I:%M %p" 2>/dev/null | \
-                    sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$FECHA_DESBLOQUEO")
-                MENSAJE="$USUARIO solo tiene $MOVILES_PERMITIDOS conexiones permitidas y fue autobloqueado porque tuvo un total de $CONEXIONES conexiones a las $FECHA_BLOQUEO_FMT, pero como volvió a respetar el límite fue desbloqueado a las $FECHA_DESBLOQUEO_FMT."
-            else
-                MENSAJE="$USUARIO solo tiene $MOVILES_PERMITIDOS conexiones permitidas y fue autobloqueado porque tuvo un total de $CONEXIONES conexiones a las $FECHA_BLOQUEO_FMT (aún bloqueado)."
-            fi
-            echo -e "${VERDE}$MENSAJE${NC}"
+        if [[ -z "$USUARIO" || -z "$FECHA_BLOQUEO" || -z "$MOVILES_PERMITIDOS" || -z "$CONEXIONES" || -z "$ESTADO" ]]; then
+            echo -e "${ROJO}⚠️ Línea corrupta: $USUARIO|$FECHA_BLOQUEO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO${NC}"
+            continue
         fi
+
+        # Formatear fechas en español directamente
+        FECHA_BLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_BLOQUEO")
+        if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
+            FECHA_DESBLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_DESBLOQUEO")
+            ESTADO_FMT="🔓 $FECHA_DESBLOQUEO_FMT"
+        elif [[ "$ESTADO" == "Bloqueado" ]]; then
+            ESTADO_FMT="🔒 Bloqueado"
+        else
+            echo -e "${ROJO}⚠️ Estado inválido: $ESTADO${NC}"
+            continue
+        fi
+
+        printf "${VERDE}%-12s %-10s %-6s %-8s %-10s${NC}\n" \
+            "$USUARIO" "$FECHA_BLOQUEO_FMT" "$MOVILES_PERMITIDOS" "$CONEXIONES" "$ESTADO_FMT"
     done < "$HISTORIAL_BLOQUEOS"
-    echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
+
+    echo -e "${CIAN}----------------------------------------${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
