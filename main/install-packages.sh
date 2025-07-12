@@ -122,8 +122,14 @@ echo "net.core.rmem_max=26214400" >> /etc/sysctl.conf
 # Crear usuario y grupo badvpn si no existen
 id badvpn &>/dev/null || useradd -r -s /usr/sbin/nologin badvpn
 
+# Descargar y compilar badvpn con buffer ampliado automáticamente
 git clone https://github.com/ambrop72/badvpn.git /opt/badvpn
+# Modificar los buffers en el código fuente antes de compilar
+sed -i 's/^#define CONNECTION_CLIENT_BUFFER_SIZE .*/#define CONNECTION_CLIENT_BUFFER_SIZE 100/' /opt/badvpn/udpgw/udpgw.h
+sed -i 's/^#define CONNECTION_UDP_BUFFER_SIZE .*/#define CONNECTION_UDP_BUFFER_SIZE 100/' /opt/badvpn/udpgw/udpgw.h
+
 mkdir -p /opt/badvpn/build && cd /opt/badvpn/build
+make clean || true
 cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
 make -j$(nproc)
 cp udpgw/badvpn-udpgw /usr/bin/badvpn-udpgw
@@ -136,9 +142,7 @@ Description=Badvpn UDPGW Service for VPN Tunneling on Port 7300
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
-  --max-clients 2048 \
-  --max-connections-for-client 64
+ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 2048 --max-connections-for-client 64
 Type=simple
 Restart=always
 RestartSec=5
@@ -163,8 +167,6 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-Alias=badvpn.service
-
 EOF
 
 systemctl daemon-reload
