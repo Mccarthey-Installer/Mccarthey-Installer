@@ -164,7 +164,6 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
-Alias=badvpn.service
 EOF
 
 systemctl daemon-reload
