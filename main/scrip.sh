@@ -1,12 +1,14 @@
 #!/bin/bash
+set -e
+
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
-timedatectl set-time Dotan
+# timedatectl set-time '2025-07-11 21:55:00'  # Solo si deseas establecer la fecha/hora manualmente
 timedatectl set-timezone America/El_Salvador
 
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
-HISTORIAL_BLOQUEOS="/root/historial_bloqueos.txt"  # Nuevo archivo para historial de bloqueos
+HISTORIAL_BLOQUEOS="/root/historial_bloqueos.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
 LIMITADOR_FILE="/root/limitador_estado.txt"
 
@@ -19,7 +21,6 @@ LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
 AMARILLO='\033[38;5;220m'
-AZUL='\033[ partners
 AZUL='\033[38;5;39m'
 ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
@@ -28,14 +29,16 @@ NC='\033[0m'
 # Función para configurar la autoejecución en ~/.bashrc
 function configurar_autoejecucion() {
     BASHRC="/root/.bashrc"
-    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
+    if ! grep -q "IN_PANEL" "$BASHRC"; then
+        cat <<'EOF' >> "$BASHRC"
+
+if [[ -t 0 && -z "\$IN_PANEL" ]]; then
     export IN_PANEL=1
     bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/scrip.sh)
     unset IN_PANEL
-fi'
+fi
 
-    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
-        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
+EOF
         echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
 }
