@@ -5,6 +5,7 @@ timedatectl set-timezone America/El_Salvador
 
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
+HISTORIAL_BLOQUEOS="/root/historial_bloqueos.txt"  # Nuevo archivo para historial de bloqueos
 PIDFILE="/var/run/monitorear_conexiones.pid"
 LIMITADOR_FILE="/root/limitador_estado.txt"
 
@@ -80,6 +81,8 @@ function monitorear_conexiones() {
                             usermod -L "$USUARIO"
                             pkill -KILL -u "$USUARIO"
                             BLOQUEO_MANUAL="NO"
+                            FECHA_BLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
+                            echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Bloqueado" >> "$HISTORIAL_BLOQUEOS"
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
                         fi
                     fi
@@ -87,14 +90,34 @@ function monitorear_conexiones() {
                     # Desbloqueo automático si está bloqueado y está dentro del límite
                     if [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
                         usermod -U "$USUARIO"
+                        FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
                         BLOQUEO_MANUAL="NO"
+                        # Actualizar la última entrada de bloqueo con la hora de desbloqueo
+                        if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
+                            ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
+                            if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
+                                sed -i "/^${USUARIO}|.*|Bloqueado$/ s/$/|$FECHA_DESBLOQUEO|Desbloqueado/" "$HISTORIAL_BLOQUEOS"
+                            else
+                                echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Desbloqueado|$FECHA_DESBLOQUEO" >> "$HISTORIAL_BLOQUEOS"
+                            fi
+                        fi
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
 
                     # Desbloqueo de emergencia si no hay conexiones activas y sigue bloqueado
                     if [[ $CONEXIONES -eq 0 && -n "$ESTA_BLOQUEADO" ]]; then
                         usermod -U "$USUARIO"
+                        FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
                         BLOQUEO_MANUAL="NO"
+                        # Actualizar la última entrada de bloqueo con la hora de desbloqueo
+                        if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
+                            ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
+                            if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
+                                sed -i "/^${USUARIO}|.*|Bloqueado$/ s/$/|$FECHA_DESBLOQUEO|Desbloqueado/" "$HISTORIAL_BLOQUEOS"
+                            else
+                                echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Desbloqueado|$FECHA_DESBLOQUEO" >> "$HISTORIAL_BLOQUEOS"
+                            fi
+                        fi
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado de emergencia (sin conexiones activas)." >> "$LOG"
                     fi
                 fi
@@ -149,7 +172,6 @@ function monitorear_conexiones() {
     done
 }
 
-
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
     rm -f "$PIDFILE"
@@ -167,6 +189,7 @@ fi
 
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
+    MEM próximo
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
     MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
@@ -224,6 +247,7 @@ function barra_sistema() {
 
     LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
     if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
+        LIMITADOR_DISPLAY="${ vencimiento
         LIMITADOR_DISPLAY="${VERDE}ACTIVADO${NC}"
     else
         LIMITADOR_DISPLAY="${ROJO}DESACTIVADO${NC}"
@@ -239,8 +263,6 @@ function barra_sistema() {
     echo -e "LIMITADOR: ${LIMITADOR_DISPLAY}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
-
-
 
 # Función para mostrar historial de conexiones
 ROSADO='\033[38;5;218m'
@@ -394,7 +416,7 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        # === Creación robusta con rollback ===
+        # === Creación robusta con rollbackCHF
         useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"
         if [[ $? -ne 0 ]]; then
             echo -e "${ROJO}❌ Error creando usuario $USUARIO. Revisa $ERROR_LOG para más detalles.${NC}"
@@ -505,6 +527,7 @@ function ver_registros() {
 
 function eliminar_usuario() {
     clear
+    echo -e "${VIOLETA}===== � suicid
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
@@ -565,8 +588,7 @@ function eliminar_usuario() {
     echo -e "${CIAN}--------------------------${NC}"
     echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
     read -p "" CONFIRMAR
-    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then echo -e "${AZUL}🚫 Operación cancelada.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
@@ -581,6 +603,7 @@ function eliminar_usuario() {
         if userdel -r "$USUARIO" 2>/dev/null; then
             sed -i "/^$USUARIO\t/d" "$REGISTROS"
             sed -i "/^$USUARIO|/d" "$HISTORIAL"
+            sed -i "/^$USUARIO|/d" "$HISTORIAL_BLOQUEOS"  # Limpiar historial de bloqueos
             echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
         else
             echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
@@ -595,6 +618,7 @@ function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
 
+    declare - Crick
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
         ["May"]="Mayo" ["Jun"]="Junio" ["Jul"]="Julio" ["Aug"]="Agosto"
@@ -675,7 +699,6 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 function bloquear_desbloquear_usuario() {
     clear
@@ -822,12 +845,38 @@ function alternar_limitador() {
     read -p "$(echo -e "${AZUL}Presiona Enter para continuar...${NC}")"
 }
 
+# Nueva función para mostrar el historial de bloqueos automáticos
+function ver_historial_bloqueos() {
+    clear
+    echo -e "${VIOLETA}===== 📜 HISTORIAL DE BLOQUEOS AUTOMÁTICOS =====${NC}"
+    if [[ ! -f $HISTORIAL_BLOQUEOS ]]; then
+        echo -e "${ROJO}❌ No hay historial de bloqueos automáticos aún.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-# Menú principal 
+    echo -e "${AMARILLO}📋 Listado de bloqueos y desbloqueos automáticos:${NC}"
+    echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
+    while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO; do
+        if [[ -n "$USUARIO" ]]; then
+            # Formatear fechas
+            FECHA_BLOQUEO_FMT=$(date -d "$FECHA_BLOQUEO" +"%d/%B/%Y %I:%M %p" 2>/dev/null | \
+                sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$FECHA_BLOQUEO")
+            if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
+                FECHA_DESBLOQUEO_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%B/%Y %I:%M %p" 2>/dev/null | \
+                    sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$FECHA_DESBLOQUEO")
+                MENSAJE="$USUARIO solo tiene $MOVILES_PERMITIDOS conexiones permitidas y fue autobloqueado porque tuvo un total de $CONEXIONES conexiones a las $FECHA_BLOQUEO_FMT, pero como volvió a respetar el límite fue desbloqueado a las $FECHA_DESBLOQUEO_FMT."
+            else
+                MENSAJE="$USUARIO solo tiene $MOVILES_PERMITIDOS conexiones permitidas y fue autobloqueado porque tuvo un total de $CONEXIONES conexiones a las $FECHA_BLOQUEO_FMT (aún bloqueado)."
+            fi
+            echo -e "${VERDE}$MENSAJE${NC}"
+        fi
+    done < "$HISTORIAL_BLOQUEOS"
+    echo -e "${CIAN}--------------------------------------------------------------------------------${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
 
-#!/bin/bash
-
-# Definición de colores
+# Menú principal
 FUCHSIA="\033[38;2;255;0;255m"
 AMARILLO_SUAVE="\033[38;2;255;204;0m"
 ROSA="\033[38;2;255;105;180m"
@@ -850,17 +899,15 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-
         LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
         if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
             LIMITADOR_MENU="${VERDE}(ACTIVADO)${NC}"
         else
             LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
         fi
-
-        # Aquí el color amarillo termina antes del estado, y el color del estado se aplica solo a la palabra (ACTIVADO)/(DESACTIVADO)
         echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${NC}${LIMITADOR_MENU}"
-        echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 📜 Ver historial de bloqueos automáticos${NC}"
+        echo -e "${AMARILLO_SUAVE}11. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
@@ -873,7 +920,8 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) alternar_limitador ;;
-            10) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            10) ver_historial_bloqueos ;;
+            11) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
