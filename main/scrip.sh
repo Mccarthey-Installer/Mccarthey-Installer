@@ -836,7 +836,7 @@ function alternar_limitador() {
 
 function ver_historial_bloqueos() {
     clear
-    echo -e "${VIOLETA}===== 📜 HISTORIAL DE BLOQUEOS AUTOMÁTICOS =====${NC}"
+    echo -e "${VIOLETA}===== 📜 HISTORIAL DE BLOQUEOS =====${NC}"
     if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
         echo -e "${ROJO}❌ No hay historial de bloqueos aún.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
@@ -850,10 +850,8 @@ function ver_historial_bloqueos() {
         return
     fi
 
-    echo -e "${AMARILLO}📋 Bloqueos y desbloqueos automáticos:${NC}"
-    echo -e "${CIAN}----------------------------------------${NC}"
-    printf "${AMARILLO}%-12s %-10s %-6s %-8s %-10s${NC}\n" "👤 Usuario" "📅 Fecha" "📱 Lím." "🔌 Conex." "🔐 Estado"
-    echo -e "${CIAN}----------------------------------------${NC}"
+    echo -e "${AMARILLO}📋 Eventos de bloqueo/desbloqueo:${NC}"
+    echo -e "${CIAN}--------------------------------${NC}"
 
     # Filtrar duplicados, mostrando solo la última entrada por usuario
     tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$1]++' | tac | while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO; do
@@ -862,7 +860,7 @@ function ver_historial_bloqueos() {
             continue
         fi
 
-        # Intentar formatear fechas con LC_TIME, con fallback a inglés
+        # Formatear fechas con LC_TIME o fallback a inglés con traducción
         if locale -a 2>/dev/null | grep -qi "es_ES.utf8"; then
             FECHA_BLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_BLOQUEO")
             [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]] && \
@@ -875,21 +873,20 @@ function ver_historial_bloqueos() {
                 sed 's/Jan/ene/;s/Feb/feb/;s/Mar/mar/;s/Apr/abr/;s/May/may/;s/Jun/jun/;s/Jul/jul/;s/Aug/ago/;s/Sep/sep/;s/Oct/oct/;s/Nov/nov/;s/Dec/dic/' || echo "$FECHA_DESBLOQUEO")
         fi
 
-        # Formatear estado
+        # Generar mensaje según estado
         if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
-            ESTADO_FMT="🔓 $FECHA_DESBLOQUEO_FMT"
+            MENSAJE="🔓 $USUARIO desbloqueado $FECHA_DESBLOQUEO_FMT"
         elif [[ "$ESTADO" == "Bloqueado" ]]; then
-            ESTADO_FMT="🔒 Bloqueado"
+            MENSAJE="🔒 $USUARIO bloqueado $FECHA_BLOQUEO_FMT ($CONEXIONES/$MOVILES_PERMITIDOS)"
         else
             echo -e "${ROJO}⚠️ Estado inválido: $ESTADO${NC}"
             continue
         fi
 
-        printf "${VERDE}%-12s %-10s %-6s %-8s %-10s${NC}\n" \
-            "$USUARIO" "$FECHA_BLOQUEO_FMT" "$MOVILES_PERMITIDOS" "$CONEXIONES" "$ESTADO_FMT"
+        echo -e "${VERDE}$MENSAJE${NC}"
     done
 
-    echo -e "${CIAN}----------------------------------------${NC}"
+    echo -e "${CIAN}--------------------------------${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
