@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #========================
 # 1. ACTUALIZAR SISTEMA Y PAQUETES
 #========================
@@ -108,7 +110,13 @@ systemctl enable mccproxy
 systemctl restart mccproxy
 
 #========================
-# 5. BADVPN-UDPGW PUERTO 7300 (con systemd avanzado)
+# 5. AJUSTAR BUFFER UDP DEL SISTEMA OPERATIVO PARA TRÁFICO INTENSO
+#========================
+sysctl -w net.core.rmem_max=26214400
+echo "net.core.rmem_max=26214400" >> /etc/sysctl.conf
+
+#========================
+# 6. BADVPN-UDPGW PUERTO 7300 (con systemd avanzado y buffer ampliado)
 #========================
 
 # Crear usuario y grupo badvpn si no existen
@@ -130,7 +138,8 @@ After=network.target
 [Service]
 ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \\
   --max-clients 2048 \\
-  --max-connections-for-client 64
+  --max-connections-for-client 64 \\
+  --udpgw-connection-buffer-size 1024
 Type=simple
 Restart=always
 RestartSec=5
@@ -155,6 +164,7 @@ StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
+Alias=badvpn.service
 EOF
 
 systemctl daemon-reload
@@ -162,7 +172,7 @@ systemctl enable badvpn
 systemctl restart badvpn
 
 #========================
-# 6. STUNNEL CONFIG Y CERTIFICADO
+# 7. STUNNEL CONFIG Y CERTIFICADO
 #========================
 mkdir -p /etc/stunnel/certs
 
@@ -192,7 +202,7 @@ systemctl enable stunnel4
 systemctl restart stunnel4
 
 #========================
-# 7. VERIFICACIÓN FINAL
+# 8. VERIFICACIÓN FINAL
 #========================
 echo -e "\n✅ Todo instalado correctamente"
 ss -tulnp | grep -E ':22|:80|:81|:443|:444|:7300'
