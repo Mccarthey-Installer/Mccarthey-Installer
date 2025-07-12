@@ -822,6 +822,9 @@ function mini_registro() {
 
     printf "${AMARILLO}%-15s %-15s %-10s %-15s${NC}\n" "👤 Nombre" "🔑 Contraseña" "⏳ Días" "📱 Móviles"
     echo -e "${CIAN}--------------------------------------------${NC}"
+
+    TOTAL_USUARIOS=0
+
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
             FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
@@ -836,9 +839,12 @@ function mini_registro() {
             fi
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS_RESTANTES" "$MOVILES_NUM"
+            ((TOTAL_USUARIOS++))
         fi
     done < "$REGISTROS"
-    echo -e "${CIAN}============================================${NC}"
+
+    echo -e "${CIAN}============================================${NC}\n"
+    echo -e "${AMARILLO}TOTAL: $TOTAL_USUARIOS${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
