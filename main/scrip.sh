@@ -94,6 +94,18 @@ function monitorear_conexiones() {
                     done
                 fi
 
+                # === LIMPIEZA DE PROCESOS DETENIDOS/PAUSADOS (estado T) ===
+                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^T/ {print $1}' | while read -r PID; do
+                    kill -9 "$PID" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (estado T, PID: $PID, sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
+                done
+
+                # Limpieza de otros procesos detenidos (no sshd/dropbear)
+                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$2 ~ /^T/ && $3 !~ /^(sshd|dropbear)$/ {print $1}' | while read -r PID; do
+                    kill -9 "$PID" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (estado T, PID: $PID, no sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
+                done
+
                 # === LIMPIEZA DE OTROS PROCESOS NO DESEADOS (estados S o R, no sshd/dropbear) ===
                 ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$2 ~ /^[SR]/ && $3 !~ /^(sshd|dropbear)$/ {print $1}' | while read -r PID; do
                     kill -9 "$PID" 2>/dev/null
@@ -207,6 +219,7 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
 
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
