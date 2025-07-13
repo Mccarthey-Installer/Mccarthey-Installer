@@ -160,7 +160,6 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-
 systemctl daemon-reload
 systemctl enable badvpn
 systemctl restart badvpn
