@@ -110,71 +110,34 @@ systemctl enable mccproxy
 systemctl restart mccproxy
 
 #========================
-# 5. AJUSTAR BUFFER UDP DEL SISTEMA OPERATIVO PARA TRÁFICO INTENSO
+# 5. BADVPN-UDPGW PUERTO 7300
 #========================
-sysctl -w net.core.rmem_max=26214400
-echo "net.core.rmem_max=26214400" >> /etc/sysctl.conf
-
-#========================
-# 6. BADVPN-UDPGW PUERTO 7300 (con systemd avanzado y buffer ampliado)
-#========================
-
-# Crear usuario y grupo badvpn si no existen
-id badvpn &>/dev/null || useradd -r -s /usr/sbin/nologin badvpn
-
-# Descargar y compilar badvpn con buffer ampliado automáticamente
 git clone https://github.com/ambrop72/badvpn.git /opt/badvpn
-# Modificar los buffers en el código fuente antes de compilar
-sed -i 's/^#define CONNECTION_CLIENT_BUFFER_SIZE .*/#define CONNECTION_CLIENT_BUFFER_SIZE 100/' /opt/badvpn/udpgw/udpgw.h
-sed -i 's/^#define CONNECTION_UDP_BUFFER_SIZE .*/#define CONNECTION_UDP_BUFFER_SIZE 100/' /opt/badvpn/udpgw/udpgw.h
-
 mkdir -p /opt/badvpn/build && cd /opt/badvpn/build
-make clean || true
 cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
 make -j$(nproc)
 cp udpgw/badvpn-udpgw /usr/bin/badvpn-udpgw
-chown badvpn:badvpn /usr/bin/badvpn-udpgw
-chmod 755 /usr/bin/badvpn-udpgw
+chmod +x /usr/bin/badvpn-udpgw
 
 cat > /etc/systemd/system/badvpn.service <<EOF
 [Unit]
-Description=Badvpn UDPGW Service for VPN Tunneling on Port 7300
+Description=Badvpn UDPGW Service
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 2048 --max-connections-for-client 64
-Type=simple
+ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300
 Restart=always
-RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=5
-User=badvpn
-Group=badvpn
-LimitNOFILE=4096
-NoNewPrivileges=true
-ProtectSystem=full
-ProtectHome=true
-PrivateTmp=true
-PrivateDevices=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-RestrictNamespaces=true
-RestrictAddressFamilies=AF_INET AF_INET6
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-StandardOutput=journal
-StandardError=journal
+User=root
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
 systemctl enable badvpn
-systemctl restart badvpn
+systemctl start badvpn
 
 #========================
-# 7. STUNNEL CONFIG Y CERTIFICADO
+# 6. STUNNEL CONFIG Y CERTIFICADO
 #========================
 mkdir -p /etc/stunnel/certs
 
@@ -204,7 +167,7 @@ systemctl enable stunnel4
 systemctl restart stunnel4
 
 #========================
-# 8. VERIFICACIÓN FINAL
+# 7. VERIFICACIÓN FINAL
 #========================
 echo -e "\n✅ Todo instalado correctamente"
 ss -tulnp | grep -E ':22|:80|:81|:443|:444|:7300'
