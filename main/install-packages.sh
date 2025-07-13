@@ -126,22 +126,31 @@ chmod 755 /usr/bin/badvpn-udpgw
 
 cat > /etc/systemd/system/badvpn.service <<EOF
 [Unit]
-Description=Badvpn UDPGW Service for VPN Tunneling on Port 7300
+Description=Badvpn UDPGW Service para tunelización de paquetes UDP (puerto 7300)
 After=network.target
 
 [Service]
+# Ruta al binario compilado de BadVPN
 ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
   --max-clients 2048 \
   --max-connections-for-client 64
+
+# Tipo de ejecución
 Type=simple
+
+# Reiniciar automáticamente en caso de fallo
 Restart=always
 RestartSec=5
+
+# Ejecutar como usuario sin acceso interactivo
 User=badvpn
 Group=badvpn
-LimitNOFILE=4096
-NoNewPrivileges=true
 
-# Seguridad avanzada (systemd 249 compatible)
+# Límite de archivos abiertos
+LimitNOFILE=4096
+
+# Seguridad con systemd
+NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
@@ -151,9 +160,12 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictNamespaces=true
 RestrictAddressFamilies=AF_INET AF_INET6
+
+# Capacidad para escuchar puertos (>1024)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
-# Logging
+# Logs al journal (systemd)
 StandardOutput=journal
 StandardError=journal
 
