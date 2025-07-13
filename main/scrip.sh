@@ -351,8 +351,9 @@ function crear_usuario() {
         fi
     done
 
-    if id "$USUARIO" &>/dev/null; then
-        echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
+    # Validar que usuario no exista ni en sistema ni en registros
+    if id "$USUARIO" &>/dev/null || grep -qP "^$USUARIO\t" "$REGISTROS"; then
+        echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema o en los registros. No se puede crear.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
@@ -448,8 +449,9 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
+        # Validar que usuario no exista ni en sistema ni en registros
+        if id "$USUARIO" &>/dev/null || grep -qP "^$USUARIO\t" "$REGISTROS"; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema o en los registros. No se puede crear.${NC}"
             [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO' ya existe" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
@@ -502,6 +504,7 @@ function crear_multiples_usuarios() {
     
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function ver_registros() {
     clear
