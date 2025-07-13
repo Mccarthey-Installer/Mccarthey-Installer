@@ -130,18 +130,18 @@ Description=Badvpn UDPGW Service for VPN Tunneling on Port 7300
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \\
-  --max-clients 2048 \\
+ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
+  --max-clients 2048 \
   --max-connections-for-client 64
 Type=simple
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=5
 User=badvpn
 Group=badvpn
 LimitNOFILE=4096
 NoNewPrivileges=true
+
+# Seguridad avanzada (systemd 249 compatible)
 ProtectSystem=full
 ProtectHome=true
 PrivateTmp=true
@@ -152,6 +152,8 @@ ProtectControlGroups=true
 RestrictNamespaces=true
 RestrictAddressFamilies=AF_INET AF_INET6
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Logging
 StandardOutput=journal
 StandardError=journal
 
