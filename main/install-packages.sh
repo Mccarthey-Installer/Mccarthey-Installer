@@ -130,6 +130,8 @@ Description=Badvpn UDPGW Service para tunelización de paquetes UDP (puerto 7300
 After=network.target
 
 [Service]
+MemoryHigh=400M
+MemoryMax=600M
 # Ruta al binario compilado de BadVPN
 ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
   --max-clients 128 \
