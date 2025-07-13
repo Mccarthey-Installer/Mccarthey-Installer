@@ -132,8 +132,8 @@ After=network.target
 [Service]
 # Ruta al binario compilado de BadVPN
 ExecStart=/usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
-  --max-clients 2048 \
-  --max-connections-for-client 64
+  --max-clients 128 \
+  --max-connections-for-client 32
 
 # Tipo de ejecución
 Type=simple
