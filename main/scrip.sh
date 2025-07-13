@@ -996,8 +996,25 @@ function ver_historial_bloqueos() {
     echo -e "${CIAN}--------------------------------${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+function limpiar_duplicados_registros() {
+    if [[ ! -f "$REGISTROS" ]]; then
+        echo -e "${ROJO}❌ El archivo de registros '$REGISTROS' no existe.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return 1
+    fi
 
-if [[ -t 0 ]]; then
+    awk -F'\t' '!seen[$1]++' "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS"
+
+    if [[ $? -eq 0 ]]; then
+        echo -e "${VERDE}✅ Duplicados eliminados correctamente en '$REGISTROS'.${NC}"
+    else
+        echo -e "${ROJO}❌ Error al limpiar duplicados en '$REGISTROS'.${NC}"
+    fi
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
+
+function menu_principal() {
     while true; do
         clear
         barra_sistema
@@ -1011,17 +1028,22 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
+
         LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
         if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
             LIMITADOR_MENU="${VERDE}(ACTIVADO)${NC}"
         else
             LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
         fi
+
         echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${NC}${LIMITADOR_MENU}"
         echo -e "${AMARILLO_SUAVE}10. 📜 Ver historial de bloqueos automáticos${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🚪 Salir${NC}"
+        echo -e "${AMARILLO_SUAVE}11. 🧹 Limpiar duplicados en registros${NC}"
+        echo -e "${AMARILLO_SUAVE}12. 🚪 Salir${NC}"
+
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
+
         case $OPCION in
             1) crear_usuario ;;
             2) ver_registros ;;
@@ -1033,8 +1055,14 @@ if [[ -t 0 ]]; then
             8) mini_registro ;;
             9) alternar_limitador ;;
             10) ver_historial_bloqueos ;;
-            11) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            11) limpiar_duplicados_registros ;;
+            12) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
+}
+
+# Ejecutar menú solo si hay terminal interactivo
+if [[ -t 0 ]]; then
+    menu_principal
 fi
