@@ -632,15 +632,27 @@ function verificar_online() {
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
-                    if [[ -n "$LOGIN_LINE" ]]; then
-                        MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
-                        DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
-                        HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
+                    # Buscar la última desconexión
+                    LOGOUT_LINE=$(grep -hE "session closed for user $USUARIO|Disconnected from user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
+                    if [[ -n "$LOGOUT_LINE" ]]; then
+                        MES=$(echo "$LOGOUT_LINE" | awk '{print $1}')
+                        DIA=$(echo "$LOGOUT_LINE" | awk '{print $2}')
+                        HORA=$(echo "$LOGOUT_LINE" | awk '{print $3}')
                         MES_ES=${month_map["$MES"]}
                         if [ -z "$MES_ES" ]; then MES_ES="$MES"; fi
                         HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
                         DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
+                    else
+                        LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
+                        if [[ -n "$LOGIN_LINE" ]]; then
+                            MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
+                            DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
+                            HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
+                            MES_ES=${month_map["$MES"]}
+                            if [ -z "$MES_ES" ]; then MES_ES="$MES"; fi
+                            HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                            DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
+                        fi
                     fi
                     ((INACTIVOS++))
                 fi
@@ -654,6 +666,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function bloquear_desbloquear_usuario() {
     clear
