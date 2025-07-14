@@ -5,15 +5,7 @@ timedatectl set-timezone America/El_Salvador
 
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
-HISTORIAL_BLOQUEOS="/root/historial_bloqueos.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
-LIMITADOR_FILE="/root/limitador_estado.txt"
-
-# Inicializar el estado del limitador si el archivo no existe
-if [[ ! -f "$LIMITADOR_FILE" ]]; then
-    echo "ACTIVADO" > "$LIMITADOR_FILE"
-fi
-LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -21,13 +13,6 @@ AMARILLO='\033[38;5;220m'
 AZUL='\033[38;5;39m'
 ROJO='\033[38;5;196m'
 CIAN='\033[38;5;51m'
-ROSADO='\033[38;5;218m'
-LILA='\033[38;5;135m'
-TURQUESA='\033[38;5;45m'
-FUCHSIA='\033[38;2;255;0;255m'
-AMARILLO_SUAVE='\033[38;2;255;204;0m'
-ROSA='\033[38;2;255;105;180m'
-ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
 # Función para configurar la autoejecución en ~/.bashrc
@@ -48,18 +33,11 @@ fi'
 configurar_autoejecucion
 
 # Función para monitorear conexiones y actualizar PRIMER_LOGIN y el historial
-
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
 
-    # Verificar si el comando 'ss' está disponible
-    if ! command -v ss >/dev/null 2>&1; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Comando 'ss' no disponible, no se pueden verificar conexiones fantasmas." >> "$LOG"
-    fi
-
     while true; do
-        LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)  # Recargar estado en cada iteración
         if [[ ! -f $REGISTROS ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
@@ -72,101 +50,32 @@ function monitorear_conexiones() {
 
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                # === LIMPIEZA DE PROCESOS ZOMBIE ===
-                ps -u "$USUARIO" -o pid= -o stat= | awk '$2 ~ /^[Zz]/ {print $1}' | while read -r PID; do
-                    kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombi (PID: $PID) de usuario $USUARIO eliminado." >> "$LOG"
-                done
-
-                # === LIMPIEZA DE PROCESOS COLGADOS (estado D) ===
-                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^D/ {print $1}' | while read -r PID; do
-                    kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso colgado en estado D (PID: $PID, sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
-                done
-
-                # === LIMPIEZA DE CONEXIONES FANTASMAS (estado S, sin conexión de red) ===
-                if command -v ss >/dev/null 2>&1; then
-                    ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^S/ {print $1}' | while read -r PID; do
-                        if ! ss -tpn 2>/dev/null | grep -q "pid=$PID,"; then
-                            kill -9 "$PID" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión fantasma (PID: $PID, sshd/dropbear, estado S) de usuario $USUARIO eliminada." >> "$LOG"
-                        fi
-                    done
-                fi
-
-                # === LIMPIEZA DE PROCESOS DETENIDOS/PAUSADOS (estado T) ===
-                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$3 ~ /^(sshd|dropbear)$/ && $2 ~ /^T/ {print $1}' | while read -r PID; do
-                    kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (estado T, PID: $PID, sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
-                done
-
-                # Limpieza de otros procesos detenidos (no sshd/dropbear)
-                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$2 ~ /^T/ && $3 !~ /^(sshd|dropbear)$/ {print $1}' | while read -r PID; do
-                    kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (estado T, PID: $PID, no sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
-                done
-
-                # === LIMPIEZA DE OTROS PROCESOS NO DESEADOS (estados S o R, no sshd/dropbear) ===
-                ps -u "$USUARIO" -o pid= -o stat= -o comm= | awk '$2 ~ /^[SR]/ && $3 !~ /^(sshd|dropbear)$/ {print $1}' | while read -r PID; do
-                    kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso no deseado (PID: $PID, estado $2, no sshd/dropbear) de usuario $USUARIO eliminado." >> "$LOG"
-                done
-
-                # === CONTAR CONEXIONES ===
+                # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
                 # Extraer número de móviles permitido
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
 
                 # Verificar si el usuario está bloqueado en /etc/shadow
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
-                # === BLOQUEO/DESBLOQUEO AUTOMÁTICO MEJORADO ===
-                if [[ "$BLOQUEO_MANUAL" != "SÍ" && "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-                    # Bloqueo automático si excede el límite
+                # SOLO si el bloqueo no es manual
+                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                    # Bloqueo automático
                     if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
                         if [[ -z "$ESTA_BLOQUEADO" ]]; then
                             usermod -L "$USUARIO"
                             pkill -KILL -u "$USUARIO"
                             BLOQUEO_MANUAL="NO"
-                            FECHA_BLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
-                            echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Bloqueado" >> "$HISTORIAL_BLOQUEOS"
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
                         fi
-                    fi
-
-                    # Desbloqueo automático si está bloqueado y está dentro del límite
-                    if [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
+                    # Desbloqueo automático
+                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
                         usermod -U "$USUARIO"
-                        FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
                         BLOQUEO_MANUAL="NO"
-                        if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
-                            ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
-                            if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
-                                sed -i "/^${USUARIO}|.*|Bloqueado$/ s/$/|$FECHA_DESBLOQUEO|Desbloqueado/" "$HISTORIAL_BLOQUEOS"
-                            else
-                                echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Desbloqueado|$FECHA_DESBLOQUEO" >> "$HISTORIAL_BLOQUEOS"
-                            fi
-                        fi
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
-                    fi
-
-                    # Desbloqueo de emergencia si no hay conexiones activas y sigue bloqueado
-                    if [[ $CONEXIONES -eq 0 && -n "$ESTA_BLOQUEADO" ]]; then
-                        usermod -U "$USUARIO"
-                        FECHA_DESBLOQUEO=$(date +"%Y-%m-%d %I:%M %p")
-                        BLOQUEO_MANUAL="NO"
-                        if [[ -f "$HISTORIAL_BLOQUEOS" ]]; then
-                            ULTIMA_LINEA=$(grep "^$USUARIO|" "$HISTORIAL_BLOQUEOS" | tail -1)
-                            if [[ -n "$ULTIMA_LINEA" && $(echo "$ULTIMA_LINEA" | awk -F'|' '{print $5}') == "Bloqueado" ]]; then
-                                sed -i "/^${USUARIO}|.*|Bloqueado$/ s/$/|$FECHA_DESBLOQUEO|Desbloqueado/" "$HISTORIAL_BLOQUEOS"
-                            else
-                                echo "$USUARIO|$FECHA_BLOQUEO|$MOVILES_NUM|$CONEXIONES|Desbloqueado|$FECHA_DESBLOQUEO" >> "$HISTORIAL_BLOQUEOS"
-                            fi
-                        fi
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado de emergencia (sin conexiones activas)." >> "$LOG"
                     fi
                 fi
 
@@ -180,9 +89,8 @@ function monitorear_conexiones() {
 
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
             else
-                # Usuario no existe en el sistema: NO copiar la línea (LIMPIEZA AUTOMÁTICA)
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' no existe, eliminado de registros.txt." >> "$LOG"
-                # No escribas la línea en $TEMP_FILE.new
+                # Usuario no existe en sistema, copia línea igual
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
             fi
         done < "$TEMP_FILE"
 
@@ -221,7 +129,6 @@ function monitorear_conexiones() {
     done
 }
 
-
 # Iniciar monitoreo de conexiones con nohup si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
     rm -f "$PIDFILE"
@@ -236,6 +143,7 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
 else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
+
 
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
@@ -294,13 +202,6 @@ function barra_sistema() {
         SO_NAME=$(uname -o)
     fi
 
-    LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
-    if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-        LIMITADOR_DISPLAY="${VERDE}ACTIVADO${NC}"
-    else
-        LIMITADOR_DISPLAY="${ROJO}DESACTIVADO${NC}"
-    fi
-
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e " 🖥️ TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ M|DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
     echo -e " 🖥️ U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
@@ -308,10 +209,14 @@ function barra_sistema() {
     echo -e " 🌐 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 📅 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "🥂 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   SO:${AMARILLO}${SO_NAME}${NC}"
-    echo -e "LIMITADOR: ${LIMITADOR_DISPLAY}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
+# Función para mostrar historial de conexione
+ROSADO='\033[38;5;218m'
+LILA='\033[38;5;135m'
+TURQUESA='\033[38;5;45m'
+NC='\033[0m'
 function informacion_usuarios() {
     clear
     echo -e "${ROSADO}🌸✨ INFORMACIÓN DE CONEXIONES 💖✨🌸${NC}"
@@ -325,6 +230,7 @@ function informacion_usuarios() {
     echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
 
     tac "$HISTORIAL" | awk -F'|' '!v[$1]++' | tac | while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
+        # Formatear fechas: dd/mes hh:mm AM/PM (mes en español, AM/PM en MAYÚSCULA)
         CONECTO_FMT=$(date -d "$CONECTO" +"%d/%B %I:%M %p" 2>/dev/null | \
             sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$CONECTO")
         DESCONECTO_FMT=$(date -d "$DESCONECTO" +"%d/%B %I:%M %p" 2>/dev/null | \
@@ -352,9 +258,8 @@ function crear_usuario() {
         fi
     done
 
-    # Validar que usuario no exista ni en sistema ni en registros
-    if id "$USUARIO" &>/dev/null || grep -qP "^$USUARIO\t" "$REGISTROS"; then
-        echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema o en los registros. No se puede crear.${NC}"
+    if id "$USUARIO" &>/dev/null; then
+        echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
@@ -388,7 +293,7 @@ function crear_usuario() {
 function crear_multiples_usuarios() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
-    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles \(separados por espacios, una línea por usuario\)${NC}"
+    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
     echo -e "${AMARILLO}📋 Ejemplo: juan 123 5 4${NC}"
     echo -e "${AMARILLO}✅ Presiona Enter dos veces para confirmar.${NC}"
     echo
@@ -425,15 +330,17 @@ function crear_multiples_usuarios() {
         return
     fi
 
+    # Crear un log de errores
     ERROR_LOG="/tmp/creacion_usuarios_$(date +%Y%m%d_%H%M%S).log"
     touch "$ERROR_LOG" || {
         echo -e "${ROJO}❌ No se pudo crear el archivo de log. Continuando sin registro de errores.${NC}"
         ERROR_LOG=""
     }
 
+    # Contador de éxitos y fallos
     EXITOS=0
     FALLOS=0
-
+    
     for LINEA in "${USUARIOS[@]}"; do
         read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
         if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
@@ -450,14 +357,14 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        # Validar que usuario no exista ni en sistema ni en registros
-        if id "$USUARIO" &>/dev/null || grep -qP "^$USUARIO\t" "$REGISTROS"; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema o en los registros. No se puede crear.${NC}"
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
             [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO' ya existe" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
+        # === Creación robusta con rollback ===
         useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"
         if [[ $? -ne 0 ]]; then
             echo -e "${ROJO}❌ Error creando usuario $USUARIO. Revisa $ERROR_LOG para más detalles.${NC}"
@@ -507,10 +414,12 @@ function crear_multiples_usuarios() {
 }
 
 
+
 function ver_registros() {
     clear
     echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
 
+    # Centrar texto en un ancho dado
     center_value() {
         local value="$1"
         local width="$2"
@@ -528,6 +437,7 @@ function ver_registros() {
         NUM=1
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
+                # -- Cálculo de días por calendario --
                 FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
                 FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
                 if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
@@ -545,6 +455,7 @@ function ver_registros() {
                     COLOR_DIAS="${ROJO}"
                 fi
 
+                # Centrar los días en 10 caracteres
                 DIAS_CENTRADO=$(center_value "$DIAS_RESTANTES" 10)
 
                 printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%s${NC} ${AMARILLO}%-12s${NC}\n" \
@@ -564,38 +475,34 @@ function ver_registros() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
+
+
+
 function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
-
-    # 1. Verificar si hay registros
     if [[ ! -f $REGISTROS ]]; then
-        echo -e "${ROJO}❌ No hay registros para eliminar. El archivo '$REGISTROS' no existe.${NC}"
+        echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    # 2. Mostrar usuarios existentes y construir mapa de selección
+    # Encabezado solo con número y usuario
     echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
     echo -e "${CIAN}--------------------------${NC}"
     NUM=1
-    declare -A USUARIOS_DISPONIBLES # Almacena {numero: usuario}
-    declare -A USUARIOS_VISTOS    # Para evitar duplicados si el REGISTROS tiene líneas repetidas
-
-    # Leer el archivo de registros y mostrar solo usuarios únicos que existen en el sistema
+    declare -A USUARIOS_EXISTENTES
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-        # Asegurarse de que el usuario exista en el sistema y no haya sido mostrado ya
-        if id "$USUARIO" &>/dev/null && [[ -z "${USUARIOS_VISTOS[$USUARIO]}" ]]; then
+        if id "$USUARIO" &>/dev/null; then
             echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
-            USUARIOS_DISPONIBLES[$NUM]="$USUARIO"
-            USUARIOS_VISTOS[$USUARIO]="1" # Marca como visto
+            USUARIOS_EXISTENTES[$NUM]="$USUARIO"
             NUM=$((NUM+1))
         fi
     done < "$REGISTROS"
 
-    # 3. Validar si hay usuarios para eliminar
-    if [[ ${#USUARIOS_DISPONIBLES[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No hay usuarios activos en el sistema listados en los registros para eliminar.${NC}"
+    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
@@ -604,109 +511,63 @@ function eliminar_usuario() {
     echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
     PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
     read -p "$PROMPT" INPUT_NUMEROS
-
-    # 4. Manejar cancelación
     if [[ "$INPUT_NUMEROS" == "0" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada por el usuario.${NC}"
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    # 5. Construir lista de usuarios a eliminar (filtrando inválidos)
-    read -ra NUMEROS_SELECCIONADOS <<< "$INPUT_NUMEROS"
-    declare -a USUARIOS_A_ELIMINAR_FINAL # Esta será la lista final sin duplicados y válidos
-    declare -A USUARIOS_SELECCIONADOS_VISTOS # Para evitar añadir el mismo usuario dos veces si se ingresa su número repetido
-
-    for NUMERO in "${NUMEROS_SELECCIONADOS[@]}"; do
-        if [[ -n "${USUARIOS_DISPONIBLES[$NUMERO]}" ]]; then
-            USUARIO_TEMP="${USUARIOS_DISPONIBLES[$NUMERO]}"
-            # Asegurarse de que no se añada el mismo usuario dos veces
-            if [[ -z "${USUARIOS_SELECCIONADOS_VISTOS[$USUARIO_TEMP]}" ]]; then
-                USUARIOS_A_ELIMINAR_FINAL+=("$USUARIO_TEMP")
-                USUARIOS_SELECCIONADOS_VISTOS[$USUARIO_TEMP]="1"
-            fi
+    read -ra NUMEROS <<< "$INPUT_NUMEROS"
+    declare -a USUARIOS_A_ELIMINAR
+    for NUMERO in "${NUMEROS[@]}"; do
+        if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then
+            USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")
         else
-            echo -e "${ROJO}❌ Número inválido o no disponible: $NUMERO. Ignorando.${NC}"
+            echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"
         fi
     done
 
-    # 6. Validar si se seleccionaron usuarios válidos
-    if [[ ${#USUARIOS_A_ELIMINAR_FINAL[@]} -eq 0 ]]; then
+    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
         echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    # 7. Confirmación final
-    echo -e "${CIAN}\n===== 🗑️ USUARIOS SELECCIONADOS PARA ELIMINAR =====${NC}"
-    echo -e "${AMARILLO}👤 Se eliminarán los siguientes usuarios:${NC}"
-    for USUARIO in "${USUARIOS_A_ELIMINAR_FINAL[@]}"; do
-        echo -e "${VERDE}  - $USUARIO${NC}"
+    echo -e "${CIAN}===== 🗑️ USUARIOS A ELIMINAR =====${NC}"
+    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        echo -e "${VERDE}$USUARIO${NC}"
     done
-    echo -e "${CIAN}--------------------------------------------------${NC}"
+    echo -e "${CIAN}--------------------------${NC}"
     echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
     read -p "" CONFIRMAR
-    if [[ "$CONFIRMAR" != "s" && "$CONFIRMAR" != "S" ]]; then
-        echo -e "${AZUL}🚫 Operación de eliminación cancelada.${NC}"
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    # 8. Proceso de eliminación
-    echo -e "${CIAN}\n===== INICIANDO ELIMINACIÓN DE USUARIOS =====${NC}"
-    for USUARIO in "${USUARIOS_A_ELIMINAR_FINAL[@]}"; do
-        echo -e "${AMARILLO}Procesando usuario: $USUARIO...${NC}"
-
-        # Verificar si el usuario existe en el sistema antes de intentar cualquier operación
-        if id "$USUARIO" &>/dev/null; then
-            # Intentar matar procesos asociados al usuario
-            PIDS=$(pgrep -u "$USUARIO")
-            if [[ -n $PIDS ]]; then
-                echo -e "${ROJO}  ⚠️ Procesos activos detectados para $USUARIO (${PIDS}). Intentando terminarlos...${NC}"
-                # Usar 'pkill -u' para mayor robustez o un bucle para 'kill -9' si hay muchos PIDs
-                pkill -9 -u "$USUARIO" &>/dev/null
-                sleep 1 # Dar un momento para que los procesos terminen
-                # Volver a verificar si quedan procesos
-                if pgrep -u "$USUARIO" &>/dev/null; then
-                    echo -e "${ROJO}  ❌ Algunos procesos de $USUARIO no pudieron ser terminados. Esto podría causar fallos.${NC}"
-                else
-                    echo -e "${VERDE}  ✅ Procesos de $USUARIO terminados exitosamente.${NC}"
-                fi
-            else
-                echo -e "${VERDE}  ✅ No se encontraron procesos activos para $USUARIO.${NC}"
-            fi
-
-            # Eliminar el usuario del sistema
-            if userdel -r "$USUARIO" 2>/dev/null; then
-                echo -e "${VERDE}  ✅ Usuario '$USUARIO' eliminado del sistema exitosamente.${NC}"
-                
-                # Eliminar todas las líneas asociadas a este usuario de los archivos de registro
-                # El 'sed -i' modifica el archivo en su lugar
-                # La expresión '/^USUARIO\t/d' busca líneas que empiecen con el nombre de usuario seguido de un tabulador
-                # Esto es crucial para limpiar todas las referencias, incluso si el REGISTROS tenía duplicados.
-                sed -i "/^$USUARIO\t/d" "$REGISTROS" &>/dev/null # Elimina del registro principal
-                sed -i "/^$USUARIO|/d" "$HISTORIAL" &>/dev/null # Elimina del historial (asumiendo separador '|')
-                sed -i "/^$USUARIO|/d" "$HISTORIAL_BLOQUEOS" &>/dev/null # Elimina del historial de bloqueos
-
-                echo -e "${VERDE}  ✅ Registros de '$USUARIO' limpiados en los archivos.${NC}"
-            else
-                echo -e "${ROJO}  ❌ Falló la eliminación del usuario '$USUARIO' del sistema. Puede que aún esté en uso o haya permisos insuficientes.${NC}"
-            fi
-        else
-            echo -e "${AMARILLO}  ⚠️ El usuario '$USUARIO' ya no existe en el sistema. Limpiando solo registros...${NC}"
-            sed -i "/^$USUARIO\t/d" "$REGISTROS" &>/dev/null
-            sed -i "/^$USUARIO|/d" "$HISTORIAL" &>/dev/null
-            sed -i "/^$USUARIO|/d" "$HISTORIAL_BLOQUEOS" &>/dev/null
-            echo -e "${VERDE}  ✅ Registros de '$USUARIO' limpiados en los archivos.${NC}"
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        PIDS=$(pgrep -u "$USUARIO")
+        if [[ -n $PIDS ]]; then
+            echo -e "${ROJO}⚠️ Procesos activos detectados para $USUARIO. Cerrándolos...${NC}"
+            kill -9 $PIDS 2>/dev/null
+            sleep 1
         fi
-        echo -e "${CIAN}------------------------------------------${NC}"
+        if userdel -r "$USUARIO" 2>/dev/null; then
+            sed -i "/^$USUARIO\t/d" "$REGISTROS"
+            sed -i "/^$USUARIO|/d" "$HISTORIAL"
+            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
+        else
+            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
+        fi
     done
 
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-# 
+
 
 function verificar_online() {
     clear
@@ -771,13 +632,15 @@ function verificar_online() {
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
-                    if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | \
-                            sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$ULTIMO_LOGOUT")
-                        DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
-                    else
-                        DETALLES="Nunca conectado"
+                    LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
+                    if [[ -n "$LOGIN_LINE" ]]; then
+                        MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
+                        DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
+                        HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
+                        MES_ES=${month_map["$MES"]}
+                        if [ -z "$MES_ES" ]; then MES_ES="$MES"; fi
+                        HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                        DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                     fi
                     ((INACTIVOS++))
                 fi
@@ -882,11 +745,9 @@ function mini_registro() {
 
     printf "${AMARILLO}%-15s %-15s %-10s %-15s${NC}\n" "👤 Nombre" "🔑 Contraseña" "⏳ Días" "📱 Móviles"
     echo -e "${CIAN}--------------------------------------------${NC}"
-
-    TOTAL_USUARIOS=0
-
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
+            # Cálculo de días por calendario
             FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
             FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
             if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
@@ -899,123 +760,24 @@ function mini_registro() {
             fi
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS_RESTANTES" "$MOVILES_NUM"
-            ((TOTAL_USUARIOS++))
         fi
     done < "$REGISTROS"
-
-    echo -e "${CIAN}============================================${NC}\n"
-    echo -e "${AMARILLO}TOTAL: $TOTAL_USUARIOS${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
-
-function alternar_limitador() {
-    clear
-    LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
-    echo -e "${VIOLETA}===== ⚙️ CONTROL DEL LIMITADOR DE CONEXIONES =====${NC}"
-    echo -e "${AMARILLO}Estado actual del limitador: ${VERDE}$LIMITADOR_ESTADO${NC}"
-    echo
-
-    if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-        echo -e "${AMARILLO}🔴 ¿Desea DESACTIVAR el limitador de conexiones? (s/n)${NC}"
-        echo -e "${AZUL}Nota: Si se desactiva, los usuarios podrán exceder el límite de conexiones sin ser bloqueados.${NC}"
-        read -p "$(echo -e "${ROSA}Confirmar (s/n): ${NC}")" CONFIRMAR
-        if [[ "$CONFIRMAR" == "s" || "$CONFIRMAR" == "S" ]]; then
-            echo "DESACTIVADO" > "$LIMITADOR_FILE"
-            LIMITADOR_ESTADO="DESACTIVADO"
-            echo -e "${VERDE}✅ Limitador DESACTIVADO. Los usuarios ahora pueden exceder el límite de conexiones.${NC}"
-        else
-            echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        fi
-    else
-        echo -e "${AMARILLO}🟢 ¿Desea ACTIVAR el limitador de conexiones? (s/n)${NC}"
-        echo -e "${AZUL}Nota: Si se activa, los usuarios que excedan el límite de conexiones serán bloqueados automáticamente.${NC}"
-        read -p "$(echo -e "${ROSA}Confirmar (s/n): ${NC}")" CONFIRMAR
-        if [[ "$CONFIRMAR" == "s" || "$CONFIRMAR" == "S" ]]; then
-            echo "ACTIVADO" > "$LIMITADOR_FILE"
-            LIMITADOR_ESTADO="ACTIVADO"
-            echo -e "${VERDE}✅ Limitador ACTIVADO. Los usuarios que excedan el límite de conexiones serán bloqueados.${NC}"
-        else
-            echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        fi
-    fi
-
-    read -p "$(echo -e "${AZUL}Presiona Enter para continuar...${NC}")"
-}
-
-function ver_historial_bloqueos() {
-    clear
-    echo -e "${VIOLETA}===== 📜 HISTORIAL DE BLOQUEOS =====${NC}"
-    if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
-        echo -e "${ROJO}❌ No hay historial de bloqueos aún.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    # Verificar permisos de lectura
-    if [[ ! -r "$HISTORIAL_BLOQUEOS" ]]; then
-        echo -e "${ROJO}❌ No se puede leer $HISTORIAL_BLOQUEOS. Verifica permisos.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    echo -e "${AMARILLO}📋 Eventos de bloqueo/desbloqueo:${NC}"
-    echo -e "${CIAN}--------------------------------${NC}"
-
-    # Filtrar duplicados, mostrando solo la última entrada por usuario
-    tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$1]++' | tac | while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO; do
-        if [[ -z "$USUARIO" || -z "$FECHA_BLOQUEO" || -z "$MOVILES_PERMITIDOS" || -z "$CONEXIONES" || -z "$ESTADO" ]]; then
-            echo -e "${ROJO}⚠️ Línea corrupta: $USUARIO|$FECHA_BLOQUEO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO${NC}"
-            continue
-        fi
-
-        # Formatear fechas con LC_TIME o fallback a inglés con traducción
-        if locale -a 2>/dev/null | grep -qi "es_ES.utf8"; then
-            FECHA_BLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_BLOQUEO")
-            [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]] && \
-                FECHA_DESBLOQUEO_FMT=$(LC_TIME=es_ES.UTF-8 date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_DESBLOQUEO")
-        else
-            FECHA_BLOQUEO_FMT=$(date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null | \
-                sed 's/Jan/ene/;s/Feb/feb/;s/Mar/mar/;s/Apr/abr/;s/May/may/;s/Jun/jun/;s/Jul/jul/;s/Aug/ago/;s/Sep/sep/;s/Oct/oct/;s/Nov/nov/;s/Dec/dic/' || echo "$FECHA_BLOQUEO")
-            [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]] && \
-                FECHA_DESBLOQUEO_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null | \
-                sed 's/Jan/ene/;s/Feb/feb/;s/Mar/mar/;s/Apr/abr/;s/May/may/;s/Jun/jun/;s/Jul/jul/;s/Aug/ago/;s/Sep/sep/;s/Oct/oct/;s/Nov/nov/;s/Dec/dic/' || echo "$FECHA_DESBLOQUEO")
-        fi
-
-        # Generar mensaje según estado
-        if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
-            MENSAJE="🔓 $USUARIO desbloqueado $FECHA_DESBLOQUEO_FMT"
-        elif [[ "$ESTADO" == "Bloqueado" ]]; then
-            MENSAJE="🔒 $USUARIO bloqueado $FECHA_BLOQUEO_FMT ($CONEXIONES/$MOVILES_PERMITIDOS)"
-        else
-            echo -e "${ROJO}⚠️ Estado inválido: $ESTADO${NC}"
-            continue
-        fi
-
-        echo -e "${VERDE}$MENSAJE${NC}"
-    done
-
-    echo -e "${CIAN}--------------------------------${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
-function limpiar_duplicados_registros() {
-    if [[ ! -f "$REGISTROS" ]]; then
-        echo -e "${ROJO}❌ El archivo de registros '$REGISTROS' no existe.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    awk -F'\t' '!seen[$1]++' "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS"
-
-    if [[ $? -eq 0 ]]; then
-        echo -e "${VERDE}✅ Duplicados eliminados correctamente en '$REGISTROS'.${NC}"
-    else
-        echo -e "${ROJO}❌ Error al limpiar duplicados en '$REGISTROS'.${NC}"
-    fi
+    echo -e "${CIAN}============================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
 
-function menu_principal() {
+# Menú principal
+
+FUCHSIA="\033[38;2;255;0;255m"
+AMARILLO_SUAVE="\033[38;2;255;204;0m"
+ROSA="\033[38;2;255;105;180m"
+ROSA_CLARO="\033[1;95m"
+ROJO="\033[1;31m"
+NC="\033[0m"
+
+
+if [[ -t 0 ]]; then
     while true; do
         clear
         barra_sistema
@@ -1029,22 +791,9 @@ function menu_principal() {
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-
-        LIMITADOR_ESTADO=$(cat "$LIMITADOR_FILE" 2>/dev/null)
-        if [[ "$LIMITADOR_ESTADO" == "ACTIVADO" ]]; then
-            LIMITADOR_MENU="${VERDE}(ACTIVADO)${NC}"
-        else
-            LIMITADOR_MENU="${ROJO}(DESACTIVADO)${NC}"
-        fi
-
-        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador ${NC}${LIMITADOR_MENU}"
-        echo -e "${AMARILLO_SUAVE}10. 📜 Ver historial de bloqueos automáticos${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🧹 Limpiar duplicados en registros${NC}"
-        echo -e "${AMARILLO_SUAVE}12. 🚪 Salir${NC}"
-
+        echo -e "${AMARILLO_SUAVE}9. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
-
         case $OPCION in
             1) crear_usuario ;;
             2) ver_registros ;;
@@ -1054,16 +803,8 @@ function menu_principal() {
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) alternar_limitador ;;
-            10) ver_historial_bloqueos ;;
-            11) limpiar_duplicados_registros ;;
-            12) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            9) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
-}
-
-# Ejecutar menú solo si hay terminal interactivo
-if [[ -t 0 ]]; then
-    menu_principal
 fi
