@@ -180,8 +180,9 @@ function monitorear_conexiones() {
 
                 echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
             else
-                # Usuario no existe en sistema, copia línea igual
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
+                # Usuario no existe en el sistema: NO copiar la línea (LIMPIEZA AUTOMÁTICA)
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' no existe, eliminado de registros.txt." >> "$LOG"
+                # No escribas la línea en $TEMP_FILE.new
             fi
         done < "$TEMP_FILE"
 
