@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "✅ Script TIGO Ilimitado ejecutado correctamente."
 set -e
 export TZ="America/El_Salvador"
 echo "🛠️ Instalando dependencias..."
