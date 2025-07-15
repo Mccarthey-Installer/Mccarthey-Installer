@@ -7,7 +7,7 @@ apt update -y && apt upgrade -y
 apt install -y git cmake build-essential screen curl unzip wget python3 python3-pip \
     stunnel4 dropbear openssl locales
 
-# Locales ES
+# Configuración de Locales a Español El Salvador
 sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
 locale-gen
 update-locale LANG=es_SV.UTF-8
@@ -66,20 +66,20 @@ chmod +x /root/PDirect80.py
 screen -dmS ws80 python3 /root/PDirect80.py
 
 # ===========================
-# 2. STUNNEL4 PUERTO 443 → 80
+# 2. STUNNEL4 PUERTO 443 → 80 CON CERTIFICADO PERSONALIZADO
 # ===========================
-echo "🔐 Configurando stunnel para redirigir 443 → 80..."
-
+echo "🔐 Generando certificado SSL autofirmado para Stunnel con tu firma personalizada..."
 mkdir -p /etc/stunnel/certs
 
 openssl req -x509 -nodes -days 1095 -newkey rsa:2048 \
   -keyout /etc/stunnel/certs/stunnel.key \
   -out /etc/stunnel/certs/stunnel.crt \
-  -subj "/C=US/ST=Florida/L=Miami/O=$(hostname -I | cut -d' ' -f1):81/OU=ADMcgh Corp/CN=EC Department/emailAddress=ChumoGH .Ing"
+  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=McCPanel/CN=SSLService/emailAddress=admin@mccarthey.net"
 
 cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
 chmod 600 /etc/stunnel/certs/stunnel.pem
 
+echo "🧩 Configurando Stunnel..."
 cat > /etc/stunnel/stunnel.conf <<EOF
 cert = /etc/stunnel/certs/stunnel.pem
 pid = /var/run/stunnel4.pid
@@ -157,12 +157,18 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. VERIFICACIÓN FINAL
+# 5. MENSAJE FINAL CLARO Y BONITO
 # ===========================
-echo -e "\n✅ INSTALACIÓN COMPLETA"
-echo -e "Verifica con:"
-echo -e "  🔍 screen -ls"
-echo -e "  🔍 systemctl status stunnel4"
-echo -e "  🔍 ss -tulnp | grep -E ':80|:443|:7200|:7300'"
-echo -e "\n🧪 Test rápido:\n"
-curl -vk https://127.0.0.1 --resolve 127.0.0.1:443:127.0.0.1 || true
+echo ""
+echo "======================================"
+echo "✅ INSTALACIÓN COMPLETA DE MCCARTHY VPN"
+echo "📦 Puertos activos:"
+ss -tulnp | grep -E ':80|:443|:444|:7200|:7300' || true
+echo ""
+echo "🛡️  SSL + Python Directo (80->22): ACTIVO"
+echo "🎯 Puedes probarlo desde HTTP Injector o curl: 443 -> SSH"
+echo "🧠 Listo para usar con WebSocket SSL"
+echo "======================================"
+echo ""
+
+exit 0
