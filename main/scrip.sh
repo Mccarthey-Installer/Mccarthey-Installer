@@ -783,6 +783,58 @@ function mini_registro() {
     echo -e "${AMARILLO}TOTAL: $TOTAL_USUARIOS${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+function nuclear_eliminar() {
+    clear
+    echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
+    read -p "👤 Ingresa los nombres de usuarios a eliminar (separados por espacio): " USUARIOS
+    for USUARIO in $USUARIOS; do
+        echo -e "${AMARILLO}Procesando usuario: $USUARIO${NC}"
+
+        # Paso 0: Intento inicial de eliminar con deluser, por si no tiene recursos abiertos
+        echo -e "${ROJO}→ (0) Primer intento con deluser...${NC}"
+        sudo deluser "$USUARIO" 2>/dev/null
+
+        # Paso 1: Bloquear usuario
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
+            sudo usermod --lock "$USUARIO" 2>/dev/null
+        fi
+
+        # Paso 2: Matar todos sus procesos
+        echo -e "${ROJO}→ (2) Matando procesos del usuario...${NC}"
+        sudo kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
+
+        # Paso 3: Eliminar del sistema con máxima fuerza
+        echo -e "${ROJO}→ (3) Eliminando cuentas y directorios...${NC}"
+        sudo userdel --force "$USUARIO" 2>/dev/null
+        sudo deluser --remove-home "$USUARIO" 2>/dev/null
+
+        # Paso 4: Eliminar carpeta huérfana
+        echo -e "${ROJO}→ (4) Eliminando carpeta /home/$USUARIO (si existe)...${NC}"
+        sudo rm -rf "/home/$USUARIO"
+
+        # Paso 5: Limpiar sesión con loginctl
+        echo -e "${ROJO}→ (5) Limpiando sesiones residuales...${NC}"
+        sudo loginctl kill-user "$USUARIO" 2>/dev/null
+
+        # Paso 6: Segundo intento "por si acaso" con deluser para asegurar
+        echo -e "${ROJO}→ (6) Segundo y último intento con deluser...${NC}"
+        sudo deluser "$USUARIO" 2>/dev/null
+
+        # Paso 7: Borrar del registro y del historial personalizado
+        sed -i "/^$USUARIO\t/d" "$REGISTROS"
+        sed -i "/^$USUARIO|/d" "$HISTORIAL"
+
+        # Paso 8: Verificación final
+        if ! id "$USUARIO" &>/dev/null; then
+            echo -e "${VERDE}✅ Usuario $USUARIO eliminado completamente y sin residuos.${NC}"
+        else
+            echo -e "${ROJO}⚠️ Advertencia: El usuario $USUARIO aún existe. Verifica manualmente.${NC}"
+        fi
+        echo
+    done
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
 
 
 # Menú principal
@@ -809,7 +861,8 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-        echo -e "${AMARILLO_SUAVE}9. 🚪 Salir${NC}"
+        echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
@@ -821,7 +874,8 @@ if [[ -t 0 ]]; then
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            9) nuclear_eliminar ;;
+            10) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
