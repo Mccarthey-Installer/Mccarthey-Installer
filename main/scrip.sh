@@ -568,7 +568,6 @@ function eliminar_usuario() {
 }
 
 
-
 function verificar_online() {
 clear
 echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
@@ -621,7 +620,7 @@ while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_M
                         H=$(( (ELAPSED_SEC % 86400) / 3600 ))
                         M=$(( (ELAPSED_SEC % 3600) / 60 ))
                         S=$((ELAPSED_SEC % 60 ))
-                        DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                        DETALLES=$(printf "⏰ %02d:%02d" $H $M)
                         if [[ $D -gt 0 ]]; then
                             DETALLES="$D días $DETALLES"
                         fi
@@ -641,8 +640,7 @@ while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_M
                     MES_ES=${month_map["$MES"]}
                     [[ -z "$MES_ES" ]] && MES_ES="$MES"
                     FECHA_COMPLETA="$DIA $MES $HORA"
-                    # Corregido: usar fecha completa para evitar horas futuras
-                    HORA_SIMPLE=$(date -d "$FECHA_COMPLETA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                    HORA_SIMPLE=$(date -d "$FECHA_COMPLETA" +"%I:%M %p" 2>/dev/null | sed 's/^0//')
                     DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                 else
                     LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
@@ -653,8 +651,7 @@ while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_M
                         MES_ES=${month_map["$MES"]}
                         [[ -z "$MES_ES" ]] && MES_ES="$MES"
                         FECHA_COMPLETA="$DIA $MES $HORA"
-                        # Corregido: usar fecha completa para evitar horas futuras
-                        HORA_SIMPLE=$(date -d "$FECHA_COMPLETA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                        HORA_SIMPLE=$(date -d "$FECHA_COMPLETA" +"%I:%M %p" 2>/dev/null | sed 's/^0//')
                         DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                     fi
                 fi
@@ -670,6 +667,8 @@ echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  ${CIAN}Tot
 echo -e "${CIAN}================================================${NC}"
 read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+
 
 
 
