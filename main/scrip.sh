@@ -554,6 +554,8 @@ function eliminar_usuario() {
             kill -9 $PIDS 2>/dev/null
             sleep 1
         fi
+        loginctl terminate-user "$USUARIO" 2>/dev/null
+        sleep 1
         if userdel -r "$USUARIO" 2>/dev/null; then
             sed -i "/^$USUARIO\t/d" "$REGISTROS"
             sed -i "/^$USUARIO|/d" "$HISTORIAL"
