@@ -568,107 +568,107 @@ function eliminar_usuario() {
 }
 
 
+
+
 function verificar_online() {
-clear
-echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
+    clear
+    echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
 
-declare -A month_map=(
-    ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
-    ["May"]="Mayo" ["Jun"]="Junio" ["Jul"]="Julio" ["Aug"]="Agosto"
-    ["Sep"]="Septiembre" ["Oct"]="Octubre" ["Nov"]="Noviembre" ["Dec"]="Diciembre"
-)
+    declare -A month_map=(
+        ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
+        ["May"]="Mayo" ["Jun"]="Junio" ["Jul"]="Julio" ["Aug"]="Agosto"
+        ["Sep"]="Septiembre" ["Oct"]="Octubre" ["Nov"]="Noviembre" ["Dec"]="Diciembre"
+    )
 
-if [[ ! -f $REGISTROS ]]; then
-    echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-    return
-fi
+    if [[ ! -f $REGISTROS ]]; then
+        echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-echo -e "${CIAN}------------------------------------------------------------${NC}"
+    printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    echo -e "${CIAN}------------------------------------------------------------${NC}"
 
-TOTAL_CONEXIONES=0
-TOTAL_USUARIOS=0
-INACTIVOS=0
+    TOTAL_CONEXIONES=0
+    TOTAL_USUARIOS=0
+    INACTIVOS=0
 
-while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-    if id "$USUARIO" &>/dev/null; then
-        ((TOTAL_USUARIOS++))
-        ESTADO="0"
-        DETALLES="Nunca conectado"
-        COLOR_ESTADO="${ROJO}"
-        MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        if id "$USUARIO" &>/dev/null; then
+            ((TOTAL_USUARIOS++))
+            ESTADO="0"
+            DETALLES="Nunca conectado"
+            COLOR_ESTADO="${ROJO}"
+            MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
 
-        if grep -q "^$USUARIO:!" /etc/shadow; then
-            DETALLES="🔒 Usuario bloqueado"
-            ((INACTIVOS++))
-        else
-            CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-            CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
-            CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-            if [[ $CONEXIONES -gt 0 ]]; then
-                ESTADO="🟢 $CONEXIONES"
-                COLOR_ESTADO="${VERDE}"
-                TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
+            if grep -q "^$USUARIO:!" /etc/shadow; then
+                DETALLES="🔒 Usuario bloqueado"
+                ((INACTIVOS++))
+            else
+                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                if [[ $CONEXIONES -gt 0 ]]; then
+                    ESTADO="🟢 $CONEXIONES"
+                    COLOR_ESTADO="${VERDE}"
+                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
-                if [[ -n "$PRIMER_LOGIN" ]]; then
-                    START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
-                    if [[ $? -eq 0 && -n "$START" ]]; then
-                        CURRENT=$(date +%s)
-                        ELAPSED_SEC=$((CURRENT - START))
-                        D=$((ELAPSED_SEC / 86400))
-                        H=$(( (ELAPSED_SEC % 86400) / 3600 ))
-                        M=$(( (ELAPSED_SEC % 3600) / 60 ))
-                        S=$((ELAPSED_SEC % 60 ))
-                        DETALLES=$(printf "⏰ %02d:%02d" $H $M)
-                        if [[ $D -gt 0 ]]; then
-                            DETALLES="$D días $DETALLES"
+                    if [[ -n "$PRIMER_LOGIN" ]]; then
+                        START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
+                        if [[ $? -eq 0 && -n "$START" ]]; then
+                            CURRENT=$(date +%s)
+                            ELAPSED_SEC=$((CURRENT - START))
+                            D=$((ELAPSED_SEC / 86400))
+                            H=$(( (ELAPSED_SEC % 86400) / 3600 ))
+                            M=$(( (ELAPSED_SEC % 3600) / 60 ))
+                            S=$((ELAPSED_SEC % 60 ))
+                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                            if [[ $D -gt 0 ]]; then
+                                DETALLES="$D días $DETALLES"
+                            fi
+                        else
+                            DETALLES="⏰ Tiempo no disponible"
                         fi
                     else
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    DETALLES="⏰ Tiempo no disponible"
-                fi
-            else
-                # Buscar la última desconexión
-                LOGOUT_LINE=$(grep -hE "session closed for user $USUARIO|Disconnected from user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
-                if [[ -n "$LOGOUT_LINE" ]]; then
-                    MES=$(echo "$LOGOUT_LINE" | awk '{print $1}')
-                    DIA=$(echo "$LOGOUT_LINE" | awk '{print $2}')
-                    HORA=$(echo "$LOGOUT_LINE" | awk '{print $3}')
-                    MES_ES=${month_map["$MES"]}
-                    [[ -z "$MES_ES" ]] && MES_ES="$MES"
-                    FECHA_COMPLETA="$DIA $MES $HORA"
-                    HORA_SIMPLE=$(date -d "$FECHA_COMPLETA" +"%I:%M %p" 2>/dev/null | sed 's/^0//')
-                    DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
-                else
-                    LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
-                    if [[ -n "$LOGIN_LINE" ]]; then
-                        MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
-                        DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
-                        HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
+                    # Buscar la última desconexión
+                    LOGOUT_LINE=$(grep -hE "session closed for user $USUARIO|Disconnected from user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
+                    if [[ -n "$LOGOUT_LINE" ]]; then
+                        MES=$(echo "$LOGOUT_LINE" | awk '{print $1}')
+                        DIA=$(echo "$LOGOUT_LINE" | awk '{print $2}')
+                        HORA=$(echo "$LOGOUT_LINE" | awk '{print $3}')
                         MES_ES=${month_map["$MES"]}
                         [[ -z "$MES_ES" ]] && MES_ES="$MES"
-                        FECHA_COMPLETA="$DIA $MES $HORA"
-                        HORA_SIMPLE=$(date -d "$FECHA_COMPLETA" +"%I:%M %p" 2>/dev/null | sed 's/^0//')
+
+                        HORA_SIMPLE=$(TZ="America/El_Salvador" date -d "$MES $DIA $HORA UTC" +"%I:%M %p" 2>/dev/null || echo "$HORA")
                         DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
+                    else
+                        LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
+                        if [[ -n "$LOGIN_LINE" ]]; then
+                            MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
+                            DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
+                            HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
+                            MES_ES=${month_map["$MES"]}
+                            [[ -z "$MES_ES" ]] && MES_ES="$MES"
+
+                            HORA_SIMPLE=$(TZ="America/El_Salvador" date -d "$MES $DIA $HORA UTC" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                            DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
+                        fi
                     fi
+                    ((INACTIVOS++))
                 fi
-                ((INACTIVOS++))
             fi
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
-        printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
-    fi
-done < "$REGISTROS"
+    done < "$REGISTROS"
 
-echo
-echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  ${CIAN}Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
-echo -e "${CIAN}================================================${NC}"
-read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    echo
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  ${CIAN}Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
+    echo -e "${CIAN}================================================${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
 
 
 
