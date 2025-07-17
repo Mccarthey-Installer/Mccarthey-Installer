@@ -62,37 +62,70 @@ function monitorear_conexiones() {
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
                 # SOLO si el bloqueo no es manual
-                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
-    EXCESO_FILE="/tmp/exceso_${USUARIO}.tmp"
-    # Si está EXCEDIENDO conexiones
-    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-        if [[ -z "$ESTA_BLOQUEADO" ]]; then
-            # Registrar el momento en que empezó el exceso
-            if [[ ! -f "$EXCESO_FILE" ]]; then
-                date +%s > "$EXCESO_FILE"
-            else
-                EXCESO_INICIO=$(cat "$EXCESO_FILE")
-                AHORA=$(date +%s)
-                DIFERENCIA=$((AHORA - EXCESO_INICIO))
-                # Si ya pasaron 240 segundos (3 minutos)
-                if (( DIFERENCIA >= 180 )); then
-                    usermod -L "$USUARIO"
-                    pkill -KILL -u "$USUARIO"
-                    BLOQUEO_MANUAL="NO"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado AUTOMÁTICAMENTE tras 4 minutos de exceso ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
-                    rm -f "$EXCESO_FILE"
+           
+# SOLO si el bloqueo no es manual (mantén este control si lo deseas)
+if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+    # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
+    # Elimina procesos Z (zombie), D (uninterruptible), T (stopped), S (sleep/desconectado), R (running no ssh/dropbear)
+    while read -r pid stat comm; do
+        case "$stat" in
+            *Z*) # Zombie
+                kill -9 "$pid" 2>/dev/null
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                ;;
+            *D*) # Uninterruptible sleep
+                kill -9 "$pid" 2>/dev/null
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                ;;
+            *T*) # Stopped
+                kill -9 "$pid" 2>/dev/null
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                ;;
+            *S*) # Sleeping - revisa conexión real con ss
+                if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
+                    # Si está dormido, pero no tiene conexión activa, elimínalo
+                    PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
+                    if [[ -z "$PORTS" ]]; then
+                        kill -9 "$pid" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                    fi
+                else
+                    # No es sshd/dropbear, elimínalo siempre
+                    kill -9 "$pid" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
                 fi
-            fi
-        fi
-    elif [[ $CONEXIONES -le $MOVILES_NUM ]]; then
-        # Si ya se normalizó y está bloqueado, desbloquea
-        if [[ -n "$ESTA_BLOQUEADO" ]]; then
-            usermod -U "$USUARIO"
-            BLOQUEO_MANUAL="NO"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' DESBLOQUEADO automáticamente al cumplir el límite." >> "$LOG"
-        fi
-        # Quita el archivo de exceso si existe
-        rm -f "$EXCESO_FILE"
+                ;;
+            *R*) # Running - si no es sshd/dropbear, mátalo
+                if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
+                    kill -9 "$pid" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                fi
+                ;;
+        esac
+    done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
+    
+    # --- CONTROL DE SESIONES: CIERRA SOLO LAS EXTRAS ---
+    # Recolecta y ordena sesiones sshd y dropbear por antigüedad
+    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+
+    # Mezcla ambos tipos y ordénalos por antigüedad
+    PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
+    # Si por algún motivo faltan espacios, vuelve a ordenarlos bien
+    mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
+        START=$(ps -p "$pid" -o lstart= 2>/dev/null)
+        echo "$pid:$START"
+    done | sort -t: -k2 | awk -F: '{print $1}')
+
+    TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
+
+    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+    if (( TOTAL_CONEX > MOVILES_NUM )); then
+        # Conserva solo las primeras MOVILES_NUM, mata el resto
+        for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
+            kill -9 "$PID" 2>/dev/null
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
+        done
     fi
 fi
 
