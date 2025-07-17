@@ -877,16 +877,72 @@ function nuclear_eliminar() {
 }
 
 
+
+# Colores y emojis
+VIOLETA='\033[38;5;141m'
+VERDE='\033[38;5;42m'
+AMARILLO='\033[38;5;220m'
+AZUL='\033[38;5;39m'
+ROJO='\033[1;31m'
+CIAN='\033[38;5;51m'
+FUCHSIA='\033[38;2;255;0;255m'
+AMARILLO_SUAVE='\033[38;2;255;204;0m'
+ROSA='\033[38;2;255;105;180m'
+ROSA_CLARO='\033[1;95m'
+NC='\033[0m'
+
+# Función mejorada para historial de bloqueos
+historial_bloqueos() {
+    clear
+    echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
+    HISTORIAL_BLOQUEOS="/etc/mccpanel/historial_bloqueos.db"
+
+    if [[ ! -s "$HISTORIAL_BLOQUEOS" ]]; then  
+        echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}"  
+        sleep 2  
+        return  
+    fi  
+
+    echo -e "${VIOLETA}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+
+    # Mostrar el historial desde el más reciente al más antiguo sin repetir usuarios
+    tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$1]++' | tac | while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do  
+        # Formatear fechas
+        FECHA_BLOQUEO_FMT=$(date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_BLOQUEO")
+        FECHA_DESBLOQUEO_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "N/A")
+
+        # Traducir estado del proceso con íconos y descripción
+        case "$ESTADO_PROC" in  
+            S) ESTADO_DESC="🟡 Durmiendo (S)" ;;  
+            R) ESTADO_DESC="🟢 Ejecutando (R)" ;;  
+            D) ESTADO_DESC="🔵 Esperando I/O (D)" ;;  
+            T) ESTADO_DESC="🟠 Detenido (T)" ;;  
+            Z) ESTADO_DESC="🔴 Zombie (Z)" ;;  
+            *) ESTADO_DESC="⚪ Desconocido ($ESTADO_PROC)" ;;  
+        esac  
+
+        # Mensajes según el estado y la acción
+        if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then  
+            MENSAJE="🔓 ${VERDE}$USUARIO desbloqueado el $FECHA_DESBLOQUEO_FMT 🎉${NC}"  
+        elif [[ "$ESTADO" == "Bloqueado" ]]; then  
+            MENSAJE="🔒 ${ROJO}$USUARIO bloqueado el $FECHA_BLOQUEO_FMT (${CONEXIONES}/${MOVILES_PERMITIDOS} conexiones) 🚫 — Estado: $ESTADO_DESC${NC}"  
+        elif [[ "$ESTADO" == "Conexión cerrada" ]]; then  
+            MENSAJE="🛑 ${ROJO}Conexión adicional de $USUARIO cerrada el $FECHA_BLOQUEO_FMT ($CONEXIONES/${MOVILES_PERMITIDOS}) ⚡${NC}"  
+        elif [[ "$ESTADO" == "Cumple límite" ]]; then  
+            MENSAJE="✅ ${VERDE}$USUARIO volvió a cumplir el límite el $FECHA_BLOQUEO_FMT ($CONEXIONES/${MOVILES_PERMITIDOS}) 🌟${NC}"  
+        else  
+            echo -e "${ROJO}⚠️ Estado inválido para $USUARIO: $ESTADO 😕${NC}"  
+            continue  
+        fi  
+
+        echo -e "$MENSAJE"  
+    done  
+
+    echo -e "${VIOLETA}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    read -p "$(echo -e ${AZUL}⏎ Presiona Enter para regresar al menú...${NC})"
+}
+
 # Menú principal
-
-FUCHSIA="\033[38;2;255;0;255m"
-AMARILLO_SUAVE="\033[38;2;255;204;0m"
-ROSA="\033[38;2;255;105;180m"
-ROSA_CLARO="\033[1;95m"
-ROJO="\033[1;31m"
-NC="\033[0m"
-
-
 if [[ -t 0 ]]; then
     while true; do
         clear
@@ -902,7 +958,8 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
-        echo -e "${AMARILLO_SUAVE}10. 🚪 Salir${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 📜 Historial de bloqueos y conexiones${NC}"
+        echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
@@ -915,7 +972,8 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) nuclear_eliminar ;;
-            10) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            10) historial_bloqueos ;;
+            0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
