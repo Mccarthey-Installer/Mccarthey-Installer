@@ -63,21 +63,39 @@ function monitorear_conexiones() {
 
                 # SOLO si el bloqueo no es manual
                 if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
-                    # Bloqueo automático
-                    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-                        if [[ -z "$ESTA_BLOQUEADO" ]]; then
-                            usermod -L "$USUARIO"
-                            pkill -KILL -u "$USUARIO"
-                            BLOQUEO_MANUAL="NO"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
-                        fi
-                    # Desbloqueo automático
-                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
-                        usermod -U "$USUARIO"
-                        BLOQUEO_MANUAL="NO"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
-                    fi
+    EXCESO_FILE="/tmp/exceso_${USUARIO}.tmp"
+    # Si está EXCEDIENDO conexiones
+    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
+        if [[ -z "$ESTA_BLOQUEADO" ]]; then
+            # Registrar el momento en que empezó el exceso
+            if [[ ! -f "$EXCESO_FILE" ]]; then
+                date +%s > "$EXCESO_FILE"
+            else
+                EXCESO_INICIO=$(cat "$EXCESO_FILE")
+                AHORA=$(date +%s)
+                DIFERENCIA=$((AHORA - EXCESO_INICIO))
+                # Si ya pasaron 240 segundos (3 minutos)
+                if (( DIFERENCIA >= 180 )); then
+                    usermod -L "$USUARIO"
+                    pkill -KILL -u "$USUARIO"
+                    BLOQUEO_MANUAL="NO"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado AUTOMÁTICAMENTE tras 4 minutos de exceso ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
+                    rm -f "$EXCESO_FILE"
                 fi
+            fi
+        fi
+    elif [[ $CONEXIONES -le $MOVILES_NUM ]]; then
+        # Si ya se normalizó y está bloqueado, desbloquea
+        if [[ -n "$ESTA_BLOQUEADO" ]]; then
+            usermod -U "$USUARIO"
+            BLOQUEO_MANUAL="NO"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' DESBLOQUEADO automáticamente al cumplir el límite." >> "$LOG"
+        fi
+        # Quita el archivo de exceso si existe
+        rm -f "$EXCESO_FILE"
+    fi
+fi
+
 
                 # === ACTUALIZAR PRIMER_LOGIN ===
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
