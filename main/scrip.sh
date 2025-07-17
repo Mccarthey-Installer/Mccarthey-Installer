@@ -693,7 +693,8 @@ function verificar_online() {
                         HORA=$(echo "$LOGOUT_LINE" | awk '{print $3}')
                         MES_ES=${month_map["$MES"]}
                         if [ -z "$MES_ES" ]; then MES_ES="$MES"; fi
-                        HORA_SIMPLE=$(TZ="America/El_Salvador" date -d "$MES $DIA $HORA UTC" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                        HORA_SIMPLE=$(TZ="America/El_Salvador" date -d "$MES $DIA $HORA UTC" +"%I:%M %p" 2>/dev/null)
+                        if [[ -z "$HORA_SIMPLE" ]]; then HORA_SIMPLE="$HORA"; fi
                         DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                     else
                         LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
@@ -703,7 +704,8 @@ function verificar_online() {
                             HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
                             MES_ES=${month_map["$MES"]}
                             if [ -z "$MES_ES" ]; then MES_ES="$MES"; fi
-                            HORA_SIMPLE=$(TZ="America/El_Salvador" date -d "$MES $DIA $HORA UTC" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                            HORA_SIMPLE=$(TZ="America/El_Salvador" date -d "$MES $DIA $HORA UTC" +"%I:%M %p" 2>/dev/null)
+                            if [[ -z "$HORA_SIMPLE" ]]; then HORA_SIMPLE="$HORA"; fi
                             DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                         fi
                     fi
@@ -719,6 +721,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
