@@ -878,20 +878,6 @@ function nuclear_eliminar() {
 
 
 
-# Colores y emojis
-VIOLETA='\033[38;5;141m'
-VERDE='\033[38;5;42m'
-AMARILLO='\033[38;5;220m'
-AZUL='\033[38;5;39m'
-ROJO='\033[1;31m'
-CIAN='\033[38;5;51m'
-FUCHSIA='\033[38;2;255;0;255m'
-AMARILLO_SUAVE='\033[38;2;255;204;0m'
-ROSA='\033[38;2;255;105;180m'
-ROSA_CLARO='\033[1;95m'
-NC='\033[0m'
-
-# Función mejorada para historial de bloqueos
 
 
 # Colores y emojis
@@ -933,7 +919,8 @@ historial_bloqueos() {
             USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
             PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
             MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
-            CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -cE "^(sshd|dropbear)$")
+            # Usar conexiones estimadas (asumimos al menos 2 porque es una conexión extra)
+            CONEXIONES=$((MOVILES_NUM + 1))
             echo "$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada|||$PID" >> "$HISTORIAL_BLOQUEOS"
         done
     fi
@@ -954,7 +941,7 @@ historial_bloqueos() {
     done < <(tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$2]++')
 
     # Mostrar estado actual y último evento para cada usuario en REGISTROS
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+    while IFS=$'\t' read -r USUARIO _ _ _ MOVILES _ _; do
         if id "$USUARIO" &>/dev/null; then
             # Obtener número de móviles permitidos
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
@@ -967,6 +954,12 @@ historial_bloqueos() {
                 ESTADO_ACTUAL="Bloqueado"
                 ESTADO_DESC="🔒 Bloqueado 🚫"
                 COLOR_ESTADO="${ROJO}"
+                # Añadir entrada de bloqueo al historial si no existe
+                if [[ -z "${ULTIMO_EVENTO[$USUARIO]}" || "${ULTIMO_EVENTO[$USUARIO]}" != *"Bloqueado"* ]]; then
+                    FECHA_ACTUAL=$(date +"%Y-%m-%d %H:%M:%S")
+                    echo "$FECHA_ACTUAL|$USUARIO|$MOVILES_NUM|$CONEXIONES|Bloqueado|||" >> "$HISTORIAL_BLOQUEOS"
+                    ULTIMO_EVENTO["$USUARIO"]="$FECHA_ACTUAL|$USUARIO|$MOVILES_NUM|$CONEXIONES|Bloqueado|||"
+                fi
             else
                 # Verificar procesos fantasmas
                 PROCESOS_FANTASMA=$(ps -u "$USUARIO" -o comm= | grep -vE "^(sshd|dropbear)$" | wc -l)
@@ -978,6 +971,12 @@ historial_bloqueos() {
                     ESTADO_ACTUAL="Activo"
                     ESTADO_DESC="🟢 Activo 🌟"
                     COLOR_ESTADO="${VERDE}"
+                    # Añadir entrada de Cumple límite si no excede el límite
+                    if [[ $CONEXIONES -le $MOVILES_NUM && -z "${ULTIMO_EVENTO[$USUARIO]}" || "${ULTIMO_EVENTO[$USUARIO]}" == *"Conexión cerrada"* ]]; then
+                        FECHA_ACTUAL=$(date +"%Y-%m-%d %H:%M:%S")
+                        echo "$FECHA_ACTUAL|$USUARIO|$MOVILES_NUM|$CONEXIONES|Cumple límite|||" >> "$HISTORIAL_BLOQUEOS"
+                        ULTIMO_EVENTO["$USUARIO"]="$FECHA_ACTUAL|$USUARIO|$MOVILES_NUM|$CONEXIONES|Cumple límite|||"
+                    fi
                 fi
             fi
             # Obtener estado del proceso más reciente
