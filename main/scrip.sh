@@ -536,7 +536,6 @@ function eliminar_usuario() {
         return
     fi
 
-    # Mostrar lista numerada de usuarios
     echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
     echo -e "${CIAN}--------------------------${NC}"
     NUM=1
@@ -596,36 +595,27 @@ function eliminar_usuario() {
     fi
 
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        echo -e "${ROJO}⚠️ Cerrando procesos y sesiones activas de $USUARIO...${NC}"
-        pkill -u "$USUARIO" 2>/dev/null
-        kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
-        loginctl terminate-user "$USUARIO" 2>/dev/null
+        echo -e "${CIAN}🔒 Cerrando sesión (loginctl) de $USUARIO...${NC}"
+        loginctl terminate-user "$USUARIO" &>/dev/null
+        sleep 1
 
-        for i in {1..5}; do
-            sleep 1
-            ! pgrep -u "$USUARIO" &>/dev/null && break
-        done
+        echo -e "${ROJO}🔪 Matando procesos restantes de $USUARIO...${NC}"
+        pkill -u "$USUARIO" &>/dev/null
+        sleep 1
 
-        if id "$USUARIO" &>/dev/null; then
-            if userdel -r "$USUARIO" 2>/dev/null; then
-                echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
-            else
-                echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Borrando manualmente...${NC}"
-            fi
+        echo -e "${AMARILLO}🗑️ Eliminando usuario $USUARIO...${NC}"
+        if userdel -r "$USUARIO" &>/dev/null; then
+            sed -i "/^$USUARIO\t/d" "$REGISTROS"
+            sed -i "/^$USUARIO|/d" "$HISTORIAL"
+            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
         else
-            echo -e "${ROJO}⚠️ El usuario $USUARIO ya no existe en el sistema.${NC}"
+            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
         fi
-
-        rm -rf "/home/$USUARIO" 2>/dev/null
-
-        sed -i "/^$USUARIO\t/d" "$REGISTROS"
-        sed -i "/^$USUARIO|/d" "$HISTORIAL"
     done
 
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 
 function verificar_online() {
