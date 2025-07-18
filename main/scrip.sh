@@ -529,64 +529,55 @@ function ver_registros() {
 
 eliminar_usuario() {
     clear
-    echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
-    
-    read -p "🔹 Ingresa el nombre del usuario a eliminar: " USUARIO
+    echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO(S) =====${NC}"
+    echo -e "${AMARILLO}Puedes ingresar varios nombres separados por espacios:${NC}"
+    read -p "🔹 Ingresa el/los usuario(s) a eliminar: " USUARIOS
 
-    if [[ -z "$USUARIO" ]]; then
-        echo -e "${ROJO}⚠️ No ingresaste un nombre de usuario.${NC}"
+    if [[ -z "$USUARIOS" ]]; then
+        echo -e "${ROJO}⚠️ No ingresaste ningún nombre de usuario.${NC}"
         return
     fi
 
-    if id "$USUARIO" &>/dev/null; then
-        echo -e "${AMARILLO}⏳ Eliminando usuario '$USUARIO'...${NC}"
-
-        # Bloquear para evitar que se reconecte
-        usermod --lock "$USUARIO" 2>/dev/null
-
-        # Matar procesos sin piedad
-        pkill -u "$USUARIO" 2>/dev/null
-        kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
-
-        # Terminar sesiones activas
-        loginctl terminate-user "$USUARIO" 2>/dev/null
-
-        # Esperar a que se liberen los recursos
-        for i in {1..5}; do
-            if ! pgrep -u "$USUARIO" &>/dev/null; then
-                break
-            fi
-            sleep 1
-        done
-
-        # Eliminar usuario y su home, forzadamente
-        userdel -r --force "$USUARIO" &>/dev/null
-        rm -rf "/home/$USUARIO" 2>/dev/null
-
-        # Eliminar del archivo registros.txt si existe
-        if [[ -f "/root/registros.txt" ]]; then
-            sed -i "/^$USUARIO\b/d" /root/registros.txt
-        fi
-
-        # Eliminar del historial si existe
-        if [[ -f "/etc/mccpanel/historial_bloqueos.db" ]]; then
-            sed -i "/^$USUARIO\b/d" /etc/mccpanel/historial_bloqueos.db
-        fi
+    for USUARIO in $USUARIOS; do
+        echo -e "${CIAN}⏳ Procesando usuario: $USUARIO...${NC}"
 
         if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}❌ No se pudo eliminar completamente al usuario '$USUARIO'.${NC}"
+            # Bloquear acceso
+            usermod --lock "$USUARIO" 2>/dev/null
+
+            # Matar procesos y sesiones
+            pkill -u "$USUARIO" 2>/dev/null
+            kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
+            loginctl terminate-user "$USUARIO" 2>/dev/null
+
+            # Espera rápida por si queda proceso colgado
+            for i in {1..5}; do
+                pgrep -u "$USUARIO" &>/dev/null || break
+                sleep 1
+            done
+
+            # Eliminar usuario y home
+            userdel -r --force "$USUARIO" &>/dev/null
+            rm -rf "/home/$USUARIO" 2>/dev/null
+
+            # Limpiar registros
+            [[ -f /root/registros.txt ]] && sed -i "/^$USUARIO\b/d" /root/registros.txt
+            [[ -f /etc/mccpanel/historial_bloqueos.db ]] && sed -i "/^$USUARIO\b/d" /etc/mccpanel/historial_bloqueos.db
+
+            # Confirmación
+            if id "$USUARIO" &>/dev/null; then
+                echo -e "${ROJO}❌ Falló al eliminar '$USUARIO'.${NC}"
+            else
+                echo -e "${VERDE}✅ Usuario '$USUARIO' eliminado exitosamente.${NC}"
+            fi
         else
-            echo -e "${VERDE}✅ Usuario '$USUARIO' eliminado exitosamente.${NC}"
-            echo -e "${VERDE}🧹 Limpieza final completa.${NC}"
+            echo -e "${ROJO}⚠️ Usuario '$USUARIO' no existe.${NC}"
         fi
-    else
-        echo -e "${ROJO}⚠️ El usuario '$USUARIO' no existe.${NC}"
-    fi
+    done
 
     echo -e "${AMARILLO}Presiona Enter para continuar...${NC}"
     read
 }
-
 
 
 
