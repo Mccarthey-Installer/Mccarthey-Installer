@@ -896,47 +896,78 @@ historial_bloqueos() {
     clear
     echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
     HISTORIAL_BLOQUEOS="/etc/mccpanel/historial_bloqueos.db"
+    LOG="/var/log/monitoreo_conexiones.log"
 
-    if [[ ! -s "$HISTORIAL_BLOQUEOS" ]]; then  
-        echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}"  
-        sleep 2  
-        return  
-    fi  
+    # Crear directorio y archivo si no existen
+    if [[ ! -d "/etc/mccpanel" ]]; then
+        mkdir -p /etc/mccpanel
+        chmod 700 /etc/mccpanel
+    fi
+    if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
+        touch "$HISTORIAL_BLOQUEOS"
+        chmod 600 "$HISTORIAL_BLOQUEOS"
+        echo -e "${AMARILLO}⚠️ Archivo de historial creado en $HISTORIAL_BLOQUEOS. 😺${NC}"
+    fi
+
+    # Verificar si el archivo está vacío
+    if [[ ! -s "$HISTORIAL_BLOQUEOS" ]]; then
+        # Buscar en el log para generar entradas iniciales
+        if [[ -f "$LOG" ]]; then
+            grep "Sesión extra.*cerrada automáticamente" "$LOG" | while read -r LINEA; do
+                FECHA=$(echo "$LINEA" | cut -d' ' -f1,2)
+                USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
+                PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
+                MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
+                CONEXIONES=$(ps -u "$USUARIO" -o comm= | grep -cE "^(sshd|dropbear)$")
+                echo "$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada|||$PID" >> "$HISTORIAL_BLOQUEOS"
+            done
+            # Verificar nuevamente si se llenó el archivo
+            if [[ ! -s "$HISTORIAL_BLOQUEOS" ]]; then
+                echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}"
+                sleep 2
+                return
+            fi
+        else
+            echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}"
+            sleep 2
+            return
+        fi
+    fi
 
     echo -e "${VIOLETA}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
 
     # Mostrar el historial desde el más reciente al más antiguo sin repetir usuarios
-    tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$1]++' | tac | while IFS='|' read -r USUARIO FECHA_BLOQUEO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do  
+    tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$1]++' | tac | while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
         # Formatear fechas
-        FECHA_BLOQUEO_FMT=$(date -d "$FECHA_BLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA_BLOQUEO")
+        FECHA_BLOQUEO_FMT=$(date -d "$FECHA" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA")
         FECHA_DESBLOQUEO_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "N/A")
 
         # Traducir estado del proceso con íconos y descripción
-        case "$ESTADO_PROC" in  
-            S) ESTADO_DESC="🟡 Durmiendo (S)" ;;  
-            R) ESTADO_DESC="🟢 Ejecutando (R)" ;;  
-            D) ESTADO_DESC="🔵 Esperando I/O (D)" ;;  
-            T) ESTADO_DESC="🟠 Detenido (T)" ;;  
-            Z) ESTADO_DESC="🔴 Zombie (Z)" ;;  
-            *) ESTADO_DESC="⚪ Desconocido ($ESTADO_PROC)" ;;  
-        esac  
+        case "$ESTADO_PROC" in
+            S) ESTADO_DESC="🟡 Durmiendo (S)" ;;
+            R) ESTADO_DESC="🟢 Ejecutando (R)" ;;
+            D) ESTADO_DESC="🔵 Esperando I/O (D)" ;;
+            T) ESTADO_DESC="🟠 Detenido (T)" ;;
+            Z) ESTADO_DESC="🔴 Zombie (Z)" ;;
+            *) ESTADO_DESC="⚪ Desconocido ($ESTADO_PROC)" ;;
+        esac
 
-        # Mensajes según el estado y la acción
-        if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then  
-            MENSAJE="🔓 ${VERDE}$USUARIO desbloqueado el $FECHA_DESBLOQUEO_FMT 🎉${NC}"  
-        elif [[ "$ESTADO" == "Bloqueado" ]]; then  
-            MENSAJE="🔒 ${ROJO}$USUARIO bloqueado el $FECHA_BLOQUEO_FMT (${CONEXIONES}/${MOVILES_PERMITIDOS} conexiones) 🚫 — Estado: $ESTADO_DESC${NC}"  
-        elif [[ "$ESTADO" == "Conexión cerrada" ]]; then  
-            MENSAJE="🛑 ${ROJO}Conexión adicional de $USUARIO cerrada el $FECHA_BLOQUEO_FMT ($CONEXIONES/${MOVILES_PERMITIDOS}) ⚡${NC}"  
-        elif [[ "$ESTADO" == "Cumple límite" ]]; then  
-            MENSAJE="✅ ${VERDE}$USUARIO volvió a cumplir el límite el $FECHA_BLOQUEO_FMT ($CONEXIONES/${MOVILES_PERMITIDOS}) 🌟${NC}"  
-        else  
-            echo -e "${ROJO}⚠️ Estado inválido para $USUARIO: $ESTADO 😕${NC}"  
-            continue  
-        fi  
+        # Mensajes según el estado
+        if [[ "$ESTADO" == "Desbloqueado" && -n "$FECHA_DESBLOQUEO" ]]; then
+            MENSAJE="🔓 ${VERDE}$USUARIO desbloqueado el $FECHA_DESBLOQUEO_FMT 🎉${NC}"
+        elif [[ "$ESTADO" == "Bloqueado" ]]; then
+            MENSAJE="🔒 ${ROJO}$USUARIO bloqueado el $FECHA_BLOQUEO_FMT (${CONEXIONES}/${MOVILES_PERMITIDOS} conexiones) 🚫 — Estado: $ESTADO_DESC${NC}"
+        elif [[ "$ESTADO" == "Conexión cerrada" ]]; then
+            MENSAJE="🛑 ${ROJO}Conexión adicional de $USUARIO cerrada el $FECHA_BLOQUEO_FMT (${CONEXIONES}/${MOVILES_PERMITIDOS}) ⚡${NC}"
+        elif [[ "$ESTADO" == "Cumple límite" ]]; then
+            MENSAJE="✅ ${VERDE}$USUARIO volvió a cumplir el límite el $FECHA_BLOQUEO_FMT (${CONEXIONES}/${MOVILES_PERMITIDOS}) 🌟${NC}"
+        else
+            echo -e "${ROJO}⚠️ Estado inválido para $USUARIO: $ESTADO 😕${NC}"
+            continue
+        fi
 
-        echo -e "$MENSAJE"  
-    done  
+        echo -e "$MENSAJE"
+    done
 
     echo -e "${VIOLETA}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
     read -p "$(echo -e ${AZUL}⏎ Presiona Enter para regresar al menú...${NC})"
