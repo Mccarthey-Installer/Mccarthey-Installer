@@ -636,7 +636,7 @@ eliminar_usuario() {
 
 verificar_online() {
     clear
-    # Define colores
+    # Definir colores
     VIOLETA='\033[1;35m'
     ROJO='\033[1;31m'
     VERDE='\033[1;32m'
@@ -655,7 +655,6 @@ verificar_online() {
     if [[ ! -f $HISTORIAL ]]; then
         touch "$HISTORIAL"
     fi
-
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
@@ -663,7 +662,7 @@ verificar_online() {
     fi
 
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}\n"
-    printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    printf "${AMARILLO}%-15s${NC} %-15s %-10s %-25s\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     printf "${CIAN}%.65s${NC}\n" "-----------------------------------------------------------------"
 
     TOTAL_CONEXIONES=0
@@ -718,7 +717,6 @@ verificar_online() {
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
                         ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null ||
                             echo "$ULTIMO_LOGOUT")
-                        # Traducir mes en español 
                         MES=$(echo "$ULTIMO_LOGOUT_FMT" | awk '{print $4}')
                         for k in "${!month_map[@]}"; do
                             if [[ "$MES" =~ $k ]]; then
@@ -733,8 +731,8 @@ verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            # Imprime la línea: color sólo en estado
-            printf "%-15s " "$USUARIO"
+            # Solo NOMBRE EN AMARILLO, el resto igual
+            printf "${AMARILLO}%-15s${NC} " "$USUARIO"
             printf "${COLOR_ESTADO}%-15s${NC} " "$ESTADO"
             printf "%-10s " "$MOVILES_NUM"
             printf "$AZUL_SUAVE%-25s${NC}\n" "$DETALLES"
@@ -742,10 +740,11 @@ verificar_online() {
     done < "$REGISTROS"
 
     echo
-    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  ${CIAN}Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
+    printf "${CIAN}Total de Online: %-3s  Total usuarios: %-3s  Inactivos: %-3s${NC}\n" "$TOTAL_CONEXIONES" "$TOTAL_USUARIOS" "$INACTIVOS"
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 function bloquear_desbloquear_usuario() {
