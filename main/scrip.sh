@@ -924,16 +924,26 @@ historial_bloqueos() {
 
     # 🔄 Actualizar historial con nuevas líneas del log
     if [[ -f "$LOG" ]]; then
-        grep "Sesión extra.*cerrada automáticamente" "$LOG" | while read -r LINEA; do
+        grep -E "Sesión extra.*cerrada automáticamente|Proceso sleeping no-sshd" "$LOG" | while read -r LINEA; do
             FECHA=$(echo "$LINEA" | cut -d' ' -f1,2)
-            USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
-            PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
-            MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
-            CONEXIONES=$((MOVILES_NUM + 1))
 
-            # Evitar duplicados
-            if ! grep -q "$FECHA.*$USUARIO.*$PID" "$HISTORIAL_BLOQUEOS"; then
-                echo "$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada|||$PID" >> "$HISTORIAL_BLOQUEOS"
+            if [[ "$LINEA" == *"cerrada automáticamente por exceso de conexiones"* ]]; then
+                USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
+                PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
+                MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
+                CONEXIONES=$((MOVILES_NUM + 1))
+
+                if ! grep -q "$FECHA.*$USUARIO.*$PID" "$HISTORIAL_BLOQUEOS"; then
+                    echo "$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada|||$PID" >> "$HISTORIAL_BLOQUEOS"
+                fi
+            elif [[ "$LINEA" == *"Proceso sleeping no-sshd"* ]]; then
+                USUARIO=$(echo "$LINEA" | grep -oP "de '\K[^']+")
+                PID=$(echo "$LINEA" | grep -oP '\(([0-9]+),.*\)' | grep -oP '[0-9]+')
+                PROC=$(echo "$LINEA" | grep -oP '\(\K[^)]+(?=\))' | cut -d, -f2 | tr -d ' ')
+
+                if ! grep -q "$FECHA.*$USUARIO.*$PID.*sleeping" "$HISTORIAL_BLOQUEOS"; then
+                    echo "$FECHA|$USUARIO|||sleeping|$PROC|$PID" >> "$HISTORIAL_BLOQUEOS"
+                fi
             fi
         done
     fi
@@ -942,49 +952,34 @@ historial_bloqueos() {
 
     echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-    declare -A ULTIMO_EVENTO
-    while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
-        ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO|$FECHA_DESBLOQUEO|$ESTADO_PROC|$ACCION"
-    done < <(tac "$HISTORIAL_BLOQUEOS" | awk -F'|' '!seen[$2]++')
-
-    for USUARIO in "${!ULTIMO_EVENTO[@]}"; do
-        IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION <<< "${ULTIMO_EVENTO[$USUARIO]}"
-        CONEXIONES_ACTIVAS=$(ps -u "$USUARIO" -o comm= 2>/dev/null | grep -cE 'sshd|dropbear')
-        PROCESOS_FANTASMA=$(ps -u "$USUARIO" -o comm= 2>/dev/null | grep -vE '^(sshd|dropbear)$' | wc -l)
-        BLOQUEADO=$(grep -q "^$USUARIO:!" /etc/shadow && echo "1" || echo "0")
-
-        ESTADO_PROC_VAL=$(ps -u "$USUARIO" -o stat= 2>/dev/null | head -1)
-        case "$ESTADO_PROC_VAL" in
-            *S*) ESTADO_PROC_DESC="💤 Durmiendo (S)" ;;
-            *R*) ESTADO_PROC_DESC="⚡ Ejecutando (R)" ;;
-            *D*) ESTADO_PROC_DESC="💽 Esperando I/O (D)" ;;
-            *T*) ESTADO_PROC_DESC="✋ Detenido (T)" ;;
-            *Z*) ESTADO_PROC_DESC="🧟 Zombie (Z)" ;;
-            *)   ESTADO_PROC_DESC="❔ Desconocido ($ESTADO_PROC_VAL)" ;;
-        esac
-
-        FECHA_FMT=$(date -d "$FECHA" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA")
-        FECHA_DESB_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "N/A")
+    tac "$HISTORIAL_BLOQUEOS" | while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
+        # Convertir fecha al formato 12 horas con AM/PM
+        FECHA_FMT=$(date -d "$FECHA" +"%d-%m-%Y | 🕐 %I:%M:%S %p" 2>/dev/null || echo "$FECHA")
 
         case "$ESTADO" in
+            "sleeping")
+                echo -e "${AZUL}📆 $FECHA_FMT${NC}"
+                echo -e "${AZUL}💤 Se detectó un proceso inactivo del usuario ${VERDE}$USUARIO${AZUL}.${NC}"
+                echo -e "${AZUL}🔢 PID: $ESTADO_PROC | 🧠 Módulo: $FECHA_DESBLOQUEO${NC}"
+                echo -e "${AZUL}🧹 Fue eliminado automáticamente para liberar recursos del sistema.${NC}"
+                ;;
+            "Conexión cerrada")
+                echo -e "${ROJO}📆 $FECHA_FMT${NC}"
+                echo -e "${ROJO}🛑 El usuario ${VERDE}$USUARIO${ROJO} tenía más conexiones de las permitidas.${NC}"
+                echo -e "${ROJO}📱 Conexiones activas: $CONEXIONES (Límite permitido: $MOVILES_PERMITIDOS)${NC}"
+                echo -e "${ROJO}🔒 Se cerró la conexión adicional automáticamente (PID: $ACCION).${NC}"
+                ;;
             "Bloqueado")
                 echo -e "${ROJO}🔒 Usuario bloqueado: $USUARIO ($CONEXIONES/$MOVILES_PERMITIDOS)${NC}"
                 echo -e "${ROJO}🚫 Conexión extra cerrada el $FECHA_FMT — Estado: $ESTADO_PROC_DESC${NC}"
                 ;;
-            "Conexión cerrada")
-                echo -e "${ROJO}🛑 Conexión adicional de $USUARIO fue cerrada el $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) ⚠️${NC}"
+            "Desbloqueado")
+                echo -e "${VERDE}🔓 El usuario $USUARIO fue desbloqueado el $FECHA_DESBLOQUEO 🎉${NC}"
                 ;;
             "Cumple límite")
-                echo -e "${VERDE}✅ $USUARIO está cumpliendo el límite desde $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) 😎${NC}"
-                ;;
-            "Desbloqueado")
-                echo -e "${VERDE}🔓 $USUARIO fue desbloqueado el $FECHA_DESB_FMT 🎉${NC}"
+                echo -e "${VERDE}✅ El usuario $USUARIO cumple con el límite de conexiones desde $FECHA_FMT 😎${NC}"
                 ;;
         esac
-
-        if [[ $CONEXIONES_ACTIVAS -eq 0 && $PROCESOS_FANTASMA -gt 0 ]]; then
-            echo -e "${AMARILLO}👻 Procesos fantasma detectados — $USUARIO (0/$MOVILES_PERMITIDOS) — Estado: $ESTADO_PROC_DESC 😵‍💫${NC}"
-        fi
 
         echo -e "${VIOLETA}───────────────────────────────────────────────────────────────${NC}"
     done
@@ -992,6 +987,7 @@ historial_bloqueos() {
     echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     read -p "$(echo -e ${AZUL}⏎ Presiona Enter para regresar al menú...${NC})"
 }
+
 # Menú principal
 if [[ -t 0 ]]; then
     while true; do
