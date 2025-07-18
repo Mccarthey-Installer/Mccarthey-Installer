@@ -644,6 +644,11 @@ function verificar_online() {
         ["Sep"]="Septiembre" ["Oct"]="Octubre" ["Nov"]="Noviembre" ["Dec"]="Diciembre"
     )
 
+    # Crea el historial si no existe para evitar el error
+    if [[ ! -f $HISTORIAL ]]; then
+        touch "$HISTORIAL"
+    fi
+
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
@@ -717,6 +722,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
