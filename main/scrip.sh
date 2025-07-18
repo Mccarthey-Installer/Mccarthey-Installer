@@ -634,22 +634,17 @@ eliminar_usuario() {
 }
 
 
-function verificar_online() {
+verificar_online() {
     clear
-    echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
-
-    # Colores
+    # Define colores
+    VIOLETA='\033[1;35m'
+    ROJO='\033[1;31m'
+    VERDE='\033[1;32m'
+    CIAN='\033[1;36m'
+    AMARILLO='\033[1;33m'
+    AZUL='\033[1;34m'
     AZUL_SUAVE='\033[38;5;45m'
-
-    # Función para alinear texto con códigos de color ANSI
-    pad_color() {
-        local texto="$1"
-        local largo="$2"
-        local sin_color=$(echo -e "$texto" | sed -E 's/\x1B\[[0-9;]*[a-zA-Z]//g')
-        local largo_real=${#sin_color}
-        local relleno=$((largo - largo_real))
-        printf "%s%*s" "$texto" "$relleno" ""
-    }
+    NC='\033[0m'
 
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
@@ -667,8 +662,9 @@ function verificar_online() {
         return
     fi
 
+    echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}\n"
     printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    echo -e "${CIAN}------------------------------------------------------------${NC}"
+    printf "${CIAN}%.65s${NC}\n" "-----------------------------------------------------------------"
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
@@ -685,6 +681,8 @@ function verificar_online() {
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
                 ((INACTIVOS++))
+                COLOR_ESTADO="${ROJO}"
+                ESTADO="🔴 BLOQ"
             else
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
@@ -703,31 +701,43 @@ function verificar_online() {
                             H=$(( (ELAPSED_SEC % 86400) / 3600 ))
                             M=$(( (ELAPSED_SEC % 3600) / 60 ))
                             S=$((ELAPSED_SEC % 60 ))
-                            DETALLES=$(pad_color "${AZUL_SUAVE}⏰ %02d:%02d:%02d${NC}" 25)
-                            DETALLES=$(printf "$DETALLES" $H $M $S)
                             if [[ $D -gt 0 ]]; then
-                                DETALLES=$(pad_color "${AZUL_SUAVE}$D días ⏰ %02d:%02d:%02d${NC}" 25)
+                                DETALLES="⏰ $D días %02d:%02d:%02d"
                                 DETALLES=$(printf "$DETALLES" $H $M $S)
+                            else
+                                DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
                             fi
                         else
-                            DETALLES=$(pad_color "${AZUL_SUAVE}⏰ Tiempo no disponible${NC}" 25)
+                            DETALLES="⏰ Tiempo no disponible"
                         fi
                     else
-                        DETALLES=$(pad_color "${AZUL_SUAVE}⏰ Tiempo no disponible${NC}" 25)
+                        DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
                     ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | \
-                            sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$ULTIMO_LOGOUT")
-                        DETALLES=$(pad_color "${AZUL_SUAVE}📅 Última: $ULTIMO_LOGOUT_FMT${NC}" 25)
+                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null ||
+                            echo "$ULTIMO_LOGOUT")
+                        # Traducir mes en español 
+                        MES=$(echo "$ULTIMO_LOGOUT_FMT" | awk '{print $4}')
+                        for k in "${!month_map[@]}"; do
+                            if [[ "$MES" =~ $k ]]; then
+                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/$MES/${month_map[$k]}}
+                                break
+                            fi
+                        done
+                        DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
                     else
                         DETALLES="Nunca conectado"
                     fi
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s %s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            # Imprime la línea: color sólo en estado
+            printf "%-15s " "$USUARIO"
+            printf "${COLOR_ESTADO}%-15s${NC} " "$ESTADO"
+            printf "%-10s " "$MOVILES_NUM"
+            printf "$AZUL_SUAVE%-25s${NC}\n" "$DETALLES"
         fi
     done < "$REGISTROS"
 
@@ -736,6 +746,7 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function bloquear_desbloquear_usuario() {
     clear
