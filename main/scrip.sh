@@ -915,55 +915,9 @@ NC='\033[0m'
 # Función mejorada para historial de bloqueos
 # Función mejorada para historial de bloqueos
 
-historial_bloqueos() {
-    clear
-    echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
-    HISTORIAL_BLOQUEOS="/etc/mccpanel/historial_bloqueos.db"
-    LOG="/var/log/monitoreo_conexiones.log"
-    REGISTROS="/root/registros.txt"
 
-    # Definir colores si no están definidos
-    CIAN='\033[0;36m'
-    ROJO='\033[0;31m'
-    VERDE='\033[0;32m'
-    AMARILLO='\033[1;33m'
-    VIOLETA='\033[0;35m'
-    AZUL='\033[0;34m'
-    NC='\033[0m'
 
-    # Crear directorio y archivo si no existen
-    [[ ! -d "/etc/mccpanel" ]] && mkdir -p /etc/mccpanel && chmod 700 /etc/mccpanel
-    if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
-        touch "$HISTORIAL_BLOQUEOS"
-        chmod 600 "$HISTORIAL_BLOQUEOS"
-        echo -e "${AMARILLO}⚠️ Archivo de historial creado en $HISTORIAL_BLOQUEOS. 😺${NC}"
-    fi
-
-    # Procesar el log para actualizar el historial
-    declare -A ULTIMO_EVENTO
-    declare -A PRIORIDAD_ESTADOS
-    PRIORIDAD_ESTADOS=( ["Bloqueado"]=1 ["Conexión cerrada"]=2 ["Desbloqueado"]=3 ["Cumple límite"]=4 )
-    declare -A PRIORIDAD_PROC
-    PRIORIDAD_PROC=( ["Z"]=1 ["T"]=2 ["D"]=3 ["R"]=4 ["S"]=5 )
-
-    # Leer el log para capturar todos los eventos
-    if [[ -f "$LOG" ]]; then
-        while read -r LINEA; do
-            if [[ "$LINEA" =~ Sesión\ extra.*cerrada\ automáticamente ]]; then
-                FECHA=$(echo "$LINEA" | awk '{print $1 " " $2}')
-                USUARIO=$(echo "$LINEA" | grep -oP "'\
-
-System: The user's input was cut off, but I can still provide a complete response based on the context and requirements. The user provided a log with recent events (e.g., `luis` and `goku` sessions closed on 2025-07-18) and an output showing outdated events, indicating that the previous function isn't updating correctly. They want a function that:
-1. Keeps only the most recent event per user, removing older ones.
-2. Considers process states (e.g., "Zombie", "Durmiendo") in prioritization.
-3. Updates `/etc/mccpanel/historial_bloqueos.db` with the latest events from `/var/log/monitoreo_conexiones.log`.
-4. Displays a clean output without empty lines, reflecting the most recent events.
-
-I'll provide a corrected version of the `historial_bloqueos` function that addresses these issues, ensuring it processes the log correctly, prioritizes events by date and process state, and maintains a compact historial file.
-
-### Corrected Function:
-```bash
-historial_bloqueos() {
+    historial_bloqueos() {
     clear
     echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
     HISTORIAL_BLOQUEOS="/etc/mccpanel/historial_bloqueos.db"
@@ -1031,7 +985,7 @@ historial_bloqueos() {
         done < "$LOG"
     fi
 
-    # Leer eventos existentes en el historial para otros estados (Bloqueado, Desbloqueado, Cumple límite)
+    # Leer eventos existentes en el historial para otros estados
     if [[ -s "$HISTORIAL_BLOQUEOS" ]]; then
         while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
             [[ -z "$USUARIO" || -z "$FECHA" ]] && continue
@@ -1090,8 +1044,8 @@ historial_bloqueos() {
             *)   ESTADO_PROC_DESC="❔ Desconocido ($ESTADO_PROC)" ;;
         esac
 
-        FECHA_FMT=$(date -d "$FECHA" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA")
-        FECHA_DESB_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%d/%b %H:%M" 2>/dev/null || echo "N/A")
+        FECHA_FMT=$(date -d "$FECHA" +"%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "$FECHA")
+        FECHA_DESB_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "N/A")
 
         case "$ESTADO" in
             "Bloqueado")
