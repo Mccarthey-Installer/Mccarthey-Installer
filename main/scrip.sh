@@ -527,7 +527,8 @@ function ver_registros() {
 }
 
 
-function eliminar_usuario() {
+
+eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
     if [[ ! -f $REGISTROS ]]; then
@@ -587,28 +588,32 @@ function eliminar_usuario() {
     done
     echo -e "${CIAN}--------------------------${NC}"
     echo -e "${AMARILLO}Presiona ENTER para confirmar o Ctrl+C para cancelar...${NC}"
-    read  # Solo presiona enter sin variable
+    read
 
-    # LIMPIEZA NUCLEAR
+    # LIMPIEZA NUCLEAR 🚀🔥
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        echo -e "${CIAN}🔒 Cerrando sesión (loginctl) de $USUARIO...${NC}"
-        sudo loginctl terminate-user "$USUARIO" &>/dev/null
-        sleep 1
+        UID_USER=$(id -u "$USUARIO" 2>/dev/null)
 
-        echo -e "${ROJO}🔪 Matando procesos restantes de $USUARIO...${NC}"
-        for i in {1..5}; do
-            sudo pkill -u "$USUARIO" &>/dev/null
-            sleep 0.5
-            if ! pgrep -u "$USUARIO" &>/dev/null; then break; fi
-            sudo kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
-            sleep 0.5
-        done
+        if [[ -n "$UID_USER" ]]; then
+            echo -e "${CIAN}🔒 Cerrando sesión (loginctl) de $USUARIO...${NC}"
+            sudo loginctl terminate-user "$USUARIO" &>/dev/null
+            sleep 1
+
+            echo -e "${ROJO}🔪 Matando procesos restantes de $USUARIO por nombre y UID...${NC}"
+            sudo pkill -9 -u "$USUARIO" &>/dev/null || true
+            sleep 1
+            sudo pkill -9 -U "$UID_USER" &>/dev/null || true
+            sleep 1
+        else
+            echo -e "${AMARILLO}⚠️ Usuario $USUARIO no existe, buscando procesos huérfanos por UID...${NC}"
+            # Opcional: agregar limpieza extra si se tiene UID previo
+        fi
 
         echo -e "${AMARILLO}🗑️ Eliminando usuario $USUARIO...${NC}"
         if sudo userdel -r "$USUARIO" &>/dev/null; then
             echo -e "${VERDE}✅ Usuario $USUARIO eliminado del sistema.${NC}"
         else
-            echo -e "${ROJO}❌ userdel falló. Forzando limpieza...${NC}"
+            echo -e "${ROJO}❌ userdel falló o usuario ya no existía.${NC}"
         fi
 
         echo -e "${ROJO}🧹 Limpiando /home/$USUARIO ...${NC}"
@@ -620,17 +625,13 @@ function eliminar_usuario() {
         sed -i "/^$USUARIO\t/d" "$REGISTROS"
         sed -i "/^$USUARIO|/d" "$HISTORIAL"
 
-        if ! id "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO y sus residuos eliminados exitosamente.${NC}"
-        else
-            echo -e "${ROJO}⚠️ No se pudo eliminar al 100%, revisa manualmente.${NC}"
-        fi
+        echo -e "${VERDE}✅ Proceso de limpieza para $USUARIO finalizado.${NC}"
+        echo -e "${VIOLETA}───────────────────────────────────────────────────────────────${NC}"
     done
 
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 
 function verificar_online() {
