@@ -902,7 +902,6 @@ historial_bloqueos() {
     LOG="/var/log/monitoreo_conexiones.log"
     REGISTROS="/root/registros.txt"
 
-    # Crear directorio y archivo si no existen
     [[ ! -d "/etc/mccpanel" ]] && mkdir -p /etc/mccpanel && chmod 700 /etc/mccpanel
     if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
         touch "$HISTORIAL_BLOQUEOS"
@@ -910,7 +909,6 @@ historial_bloqueos() {
         echo -e "${AMARILLO}⚠️ Archivo de historial creado en $HISTORIAL_BLOQUEOS. 😺${NC}"
     fi
 
-    # Inicializar historial desde el log si está vacío
     if [[ ! -s "$HISTORIAL_BLOQUEOS" && -f "$LOG" ]]; then
         grep "Sesión extra.*cerrada automáticamente" "$LOG" | while read -r LINEA; do
             FECHA=$(echo "$LINEA" | cut -d' ' -f1,2)
@@ -924,7 +922,7 @@ historial_bloqueos() {
 
     [[ ! -s "$HISTORIAL_BLOQUEOS" ]] && echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}" && sleep 2 && return
 
-    echo -e "${VIOLETA}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
     declare -A ULTIMO_EVENTO
     while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
@@ -939,12 +937,12 @@ historial_bloqueos() {
 
         ESTADO_PROC_VAL=$(ps -u "$USUARIO" -o stat= 2>/dev/null | head -1)
         case "$ESTADO_PROC_VAL" in
-            *S*) ESTADO_PROC_DESC="🟡 Durmiendo (S)" ;;
-            *R*) ESTADO_PROC_DESC="🟢 Ejecutando (R)" ;;
-            *D*) ESTADO_PROC_DESC="🔵 Esperando I/O (D)" ;;
-            *T*) ESTADO_PROC_DESC="🟠 Detenido (T)" ;;
-            *Z*) ESTADO_PROC_DESC="🔴 Zombie (Z)" ;;
-            *)   ESTADO_PROC_DESC="⚪ Desconocido ($ESTADO_PROC_VAL)" ;;
+            *S*) ESTADO_PROC_DESC="💤 Durmiendo (S)" ;;
+            *R*) ESTADO_PROC_DESC="⚡ Ejecutando (R)" ;;
+            *D*) ESTADO_PROC_DESC="💽 Esperando I/O (D)" ;;
+            *T*) ESTADO_PROC_DESC="✋ Detenido (T)" ;;
+            *Z*) ESTADO_PROC_DESC="🧟 Zombie (Z)" ;;
+            *)   ESTADO_PROC_DESC="❔ Desconocido ($ESTADO_PROC_VAL)" ;;
         esac
 
         FECHA_FMT=$(date -d "$FECHA" +"%d/%b %H:%M" 2>/dev/null || echo "$FECHA")
@@ -952,27 +950,28 @@ historial_bloqueos() {
 
         case "$ESTADO" in
             "Bloqueado")
-                echo -e "${ROJO}🔒 Bloqueado 🚫 — $USUARIO ($CONEXIONES/$MOVILES_PERMITIDOS conexiones) — Estado: $ESTADO_PROC_DESC${NC}"
-                echo -e "${ROJO}🛑 Conexión adicional de $USUARIO cerrada el $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) ⚡${NC}"
+                echo -e "${ROJO}🔒 Usuario bloqueado: $USUARIO ($CONEXIONES/$MOVILES_PERMITIDOS)${NC}"
+                echo -e "${ROJO}🚫 Conexión extra cerrada el $FECHA_FMT — Estado: $ESTADO_PROC_DESC${NC}"
                 ;;
             "Conexión cerrada")
-                echo -e "${ROJO}🛑 Conexión adicional de $USUARIO cerrada el $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) ⚡${NC}"
+                echo -e "${ROJO}🛑 Conexión adicional de $USUARIO fue cerrada el $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) ⚠️${NC}"
                 ;;
             "Cumple límite")
-                echo -e "${VERDE}✅ $USUARIO volvió a cumplir el límite el $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) 🌟${NC}"
+                echo -e "${VERDE}✅ $USUARIO está cumpliendo el límite desde $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) 😎${NC}"
                 ;;
             "Desbloqueado")
-                echo -e "${VERDE}🔓 $USUARIO desbloqueado el $FECHA_DESB_FMT 🎉${NC}"
+                echo -e "${VERDE}🔓 $USUARIO fue desbloqueado el $FECHA_DESB_FMT 🎉${NC}"
                 ;;
         esac
 
-        # Mostrar si es fantasma aunque no haya evento reciente
         if [[ $CONEXIONES_ACTIVAS -eq 0 && $PROCESOS_FANTASMA -gt 0 ]]; then
-            echo -e "${AMARILLO}👻 Fantasma (procesos residuales) 💤 — $USUARIO (0/$MOVILES_PERMITIDOS conexiones) — Estado: $ESTADO_PROC_DESC${NC}"
+            echo -e "${AMARILLO}👻 Procesos fantasma detectados — $USUARIO (0/$MOVILES_PERMITIDOS) — Estado: $ESTADO_PROC_DESC 😵‍💫${NC}"
         fi
+
+        echo -e "${VIOLETA}───────────────────────────────────────────────────────────────${NC}"
     done
 
-    echo -e "${VIOLETA}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     read -p "$(echo -e ${AZUL}⏎ Presiona Enter para regresar al menú...${NC})"
 }
 
