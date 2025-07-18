@@ -892,6 +892,7 @@ ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
 # Función mejorada para historial de bloqueos
+
 historial_bloqueos() {
     clear
     echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
@@ -972,7 +973,6 @@ historial_bloqueos() {
     echo -e "${VIOLETA}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
     read -p "$(echo -e ${AZUL}⏎ Presiona Enter para regresar al menú...${NC})"
 }
-
 # Menú principal
 if [[ -t 0 ]]; then
     while true; do
