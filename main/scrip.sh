@@ -632,11 +632,14 @@ eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-PIEL='\033[38;5;224m'  # Color piel claro (código 224)
+
 
 function verificar_online() {
     clear
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
+
+    # Colores
+    AZUL_SUAVE='\033[38;5;45m'
 
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
@@ -644,7 +647,6 @@ function verificar_online() {
         ["Sep"]="Septiembre" ["Oct"]="Octubre" ["Nov"]="Noviembre" ["Dec"]="Diciembre"
     )
 
-    # Crea el historial si no existe para evitar el error
     if [[ ! -f $HISTORIAL ]]; then
         touch "$HISTORIAL"
     fi
@@ -691,29 +693,29 @@ function verificar_online() {
                             H=$(( (ELAPSED_SEC % 86400) / 3600 ))
                             M=$(( (ELAPSED_SEC % 3600) / 60 ))
                             S=$((ELAPSED_SEC % 60 ))
-                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                            DETALLES=$(printf "${AZUL_SUAVE}⏰ %02d:%02d:%02d${NC}" $H $M $S)
                             if [[ $D -gt 0 ]]; then
-                                DETALLES="$D días $DETALLES"
+                                DETALLES="${AZUL_SUAVE}$D días ⏰ %02d:%02d:%02d${NC}"
                             fi
                         else
-                            DETALLES="⏰ Tiempo no disponible"
+                            DETALLES="${AZUL_SUAVE}⏰ Tiempo no disponible${NC}"
                         fi
                     else
-                        DETALLES="⏰ Tiempo no disponible"
+                        DETALLES="${AZUL_SUAVE}⏰ Tiempo no disponible${NC}"
                     fi
                 else
                     ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
                         ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | \
                             sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$ULTIMO_LOGOUT")
-                        DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
+                        DETALLES="${AZUL_SUAVE}📅 Última: $ULTIMO_LOGOUT_FMT${NC}"
                     else
                         DETALLES="Nunca conectado"
                     fi
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s ${GREEN}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s %-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
@@ -722,9 +724,6 @@ function verificar_online() {
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
-
 
 
 function bloquear_desbloquear_usuario() {
