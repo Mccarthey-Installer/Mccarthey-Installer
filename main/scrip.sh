@@ -907,6 +907,7 @@ NC='\033[0m'
 
 # Función mejorada para historial de bloqueos
 # Función mejorada para historial de bloqueos
+
 historial_bloqueos() {
     clear
     echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
@@ -921,14 +922,19 @@ historial_bloqueos() {
         echo -e "${AMARILLO}⚠️ Archivo de historial creado en $HISTORIAL_BLOQUEOS. 😺${NC}"
     fi
 
-    if [[ ! -s "$HISTORIAL_BLOQUEOS" && -f "$LOG" ]]; then
+    # 🔄 Actualizar historial con nuevas líneas del log
+    if [[ -f "$LOG" ]]; then
         grep "Sesión extra.*cerrada automáticamente" "$LOG" | while read -r LINEA; do
             FECHA=$(echo "$LINEA" | cut -d' ' -f1,2)
             USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
             PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
             MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
             CONEXIONES=$((MOVILES_NUM + 1))
-            echo "$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada|||$PID" >> "$HISTORIAL_BLOQUEOS"
+
+            # Evitar duplicados
+            if ! grep -q "$FECHA.*$USUARIO.*$PID" "$HISTORIAL_BLOQUEOS"; then
+                echo "$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada|||$PID" >> "$HISTORIAL_BLOQUEOS"
+            fi
         done
     fi
 
@@ -986,7 +992,6 @@ historial_bloqueos() {
     echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     read -p "$(echo -e ${AZUL}⏎ Presiona Enter para regresar al menú...${NC})"
 }
-
 # Menú principal
 if [[ -t 0 ]]; then
     while true; do
