@@ -922,6 +922,15 @@ historial_bloqueos() {
     LOG="/var/log/monitoreo_conexiones.log"
     REGISTROS="/root/registros.txt"
 
+    # Definir colores si no están definidos
+    CIAN='\033[0;36m'
+    ROJO='\033[0;31m'
+    VERDE='\033[0;32m'
+    AMARILLO='\033[1;33m'
+    VIOLETA='\033[0;35m'
+    AZUL='\033[0;34m'
+    NC='\033[0m'
+
     # Crear directorio y archivo si no existen
     [[ ! -d "/etc/mccpanel" ]] && mkdir -p /etc/mccpanel && chmod 700 /etc/mccpanel
     if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
@@ -930,73 +939,141 @@ historial_bloqueos() {
         echo -e "${AMARILLO}⚠️ Archivo de historial creado en $HISTORIAL_BLOQUEOS. 😺${NC}"
     fi
 
-    # Inicializar historial desde el log si está vacío
-    if [[ ! -s "$HISTORIAL_BLOQUEOS" && -f "$LOG" ]]; then
-        grep "Sesión extra.*cerrada automáticamente" "$LOG" | while read -r LINEA; do
-            FECHA=$(echo "$LINEA" | awk '{print $1 " " $2}')
-            USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
-            PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
-            MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
-            CONEXIONES=$((MOVILES_NUM + 1))
-            echo "$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada|||$PID" >> "$HISTORIAL_BLOQUEOS"
-        done
-    fi
-
-    # Verificar si hay historial
-    [[ ! -s "$HISTORIAL_BLOQUEOS" ]] && echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}" && sleep 2 && return
-
-    echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-    # Definir prioridad de estados de conexión
+    # Procesar el log para actualizar el historial
+    declare -A ULTIMO_EVENTO
     declare -A PRIORIDAD_ESTADOS
     PRIORIDAD_ESTADOS=( ["Bloqueado"]=1 ["Conexión cerrada"]=2 ["Desbloqueado"]=3 ["Cumple límite"]=4 )
-
-    # Definir prioridad de estados de procesos
     declare -A PRIORIDAD_PROC
     PRIORIDAD_PROC=( ["Z"]=1 ["T"]=2 ["D"]=3 ["R"]=4 ["S"]=5 )
 
-    # Almacenar el evento más reciente por usuario
+    # Leer el log para capturar todos los eventos
+    if [[ -f "$LOG" ]]; then
+        while read -r LINEA; do
+            if [[ "$LINEA" =~ Sesión\ extra.*cerrada\ automáticamente ]]; then
+                FECHA=$(echo "$LINEA" | awk '{print $1 " " $2}')
+                USUARIO=$(echo "$LINEA" | grep -oP "'\
+
+System: The user's input was cut off, but I can still provide a complete response based on the context and requirements. The user provided a log with recent events (e.g., `luis` and `goku` sessions closed on 2025-07-18) and an output showing outdated events, indicating that the previous function isn't updating correctly. They want a function that:
+1. Keeps only the most recent event per user, removing older ones.
+2. Considers process states (e.g., "Zombie", "Durmiendo") in prioritization.
+3. Updates `/etc/mccpanel/historial_bloqueos.db` with the latest events from `/var/log/monitoreo_conexiones.log`.
+4. Displays a clean output without empty lines, reflecting the most recent events.
+
+I'll provide a corrected version of the `historial_bloqueos` function that addresses these issues, ensuring it processes the log correctly, prioritizes events by date and process state, and maintains a compact historial file.
+
+### Corrected Function:
+```bash
+historial_bloqueos() {
+    clear
+    echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
+    HISTORIAL_BLOQUEOS="/etc/mccpanel/historial_bloqueos.db"
+    LOG="/var/log/monitoreo_conexiones.log"
+    REGISTROS="/root/registros.txt"
+
+    # Definir colores
+    CIAN='\033[0;36m'
+    ROJO='\033[0;31m'
+    VERDE='\033[0;32m'
+    AMARILLO='\033[1;33m'
+    VIOLETA='\033[0;35m'
+    AZUL='\033[0;34m'
+    NC='\033[0m'
+
+    # Crear directorio y archivo si no existen
+    [[ ! -d "/etc/mccpanel" ]] && mkdir -p /etc/mccpanel && chmod 700 /etc/mccpanel
+    if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
+        touch "$HISTORIAL_BLOQUEOS"
+        chmod 600 "$HISTORIAL_BLOQUEOS"
+        echo -e "${AMARILLO}⚠️ Archivo de historial creado en $HISTORIAL_BLOQUEOS. 😺${NC}"
+    fi
+
+    # Definir prioridades
+    declare -A PRIORIDAD_ESTADOS
+    PRIORIDAD_ESTADOS=( ["Bloqueado"]=1 ["Conexión cerrada"]=2 ["Desbloqueado"]=3 ["Cumple límite"]=4 )
+    declare -A PRIORIDAD_PROC
+    PRIORIDAD_PROC=( ["Z"]=1 ["T"]=2 ["D"]=3 ["R"]=4 ["S"]=5 )
+
+    # Procesar el log para capturar eventos recientes
     declare -A ULTIMO_EVENTO
-    while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
-        [[ -z "$USUARIO" || -z "$FECHA" ]] && continue
-        
-        # Determinar el estado del proceso para priorización
-        ESTADO_PROC_VAL=$(ps -p "$ACCION" -o stat= 2>/dev/null | head -1 || echo "S")
-        ESTADO_PROC_KEY=$(echo "$ESTADO_PROC_VAL" | grep -oE '[ZTDRS]' || echo "S")
+    if [[ -f "$LOG" ]]; then
+        while read -r LINEA; do
+            if [[ "$LINEA" =~ Sesión\ extra.*cerrada\ automáticamente ]]; then
+                FECHA=$(echo "$LINEA" | awk '{print $1 " " $2}')
+                USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
+                PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
+                MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
+                CONEXIONES=$((MOVILES_NUM + 1))
+                ESTADO_PROC=$(ps -p "$PID" -o stat= 2>/dev/null | head -1 || echo "S")
+                ESTADO_PROC_KEY=$(echo "$ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
 
-        # Comparar eventos para mantener el más reciente o de mayor prioridad
-        if [[ -z "${ULTIMO_EVENTO[$USUARIO]}" ]]; then
-            ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO|$FECHA_DESBLOQUEO|$ESTADO_PROC_VAL|$ACCION"
-        else
-            CURRENT_FECHA=$(date -d "$FECHA" +%s 2>/dev/null || echo 0)
-            LAST_FECHA=$(date -d "$(echo "${ULTIMO_EVENTO[$USUARIO]}" | cut -d'|' -f1)" +%s 2>/dev/null || echo 0)
-            CURRENT_PRIORIDAD=${PRIORIDAD_ESTADOS[$ESTADO]:-5}
-            LAST_ESTADO=$(echo "${ULTIMO_EVENTO[$USUARIO]}" | cut -d'|' -f5)
-            LAST_PRIORIDAD=${PRIORIDAD_ESTADOS[$LAST_ESTADO]:-5}
-            LAST_PROC=$(echo "${ULTIMO_EVENTO[$USUARIO]}" | cut -d'|' -f7)
-            LAST_PROC_KEY=$(echo "$LAST_PROC" | grep -oE '[ZTDRS]' || echo "S")
-            CURRENT_PROC_PRIORIDAD=${PRIORIDAD_PROC[$ESTADO_PROC_KEY]:-6}
-            LAST_PROC_PRIORIDAD=${PRIORIDAD_PROC[$LAST_PROC_KEY]:-6}
+                # Comparar con el evento existente para el usuario
+                CURRENT_FECHA=$(date -d "$FECHA" +%s 2>/dev/null || echo 0)
+                CURRENT_PRIORIDAD=${PRIORIDAD_ESTADOS["Conexión cerrada"]:-5}
+                CURRENT_PROC_PRIORIDAD=${PRIORIDAD_PROC[$ESTADO_PROC_KEY]:-6}
 
-            # Actualizar si:
-            # 1. La fecha es más reciente, o
-            # 2. Fechas iguales, pero el estado de conexión tiene mayor prioridad, o
-            # 3. Fechas y estados de conexión iguales, pero el estado del proceso tiene mayor prioridad
-            if [[ $CURRENT_FECHA -gt $LAST_FECHA || \
-                  ($CURRENT_FECHA -eq $LAST_FECHA && $CURRENT_PRIORIDAD -lt $LAST_PRIORIDAD) || \
-                  ($CURRENT_FECHA -eq $LAST_FECHA && $CURRENT_PRIORIDAD -eq $LAST_PRIORIDAD && $CURRENT_PROC_PRIORIDAD -lt $LAST_PROC_PRIORIDAD) ]]; then
-                ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO|$FECHA_DESBLOQUEO|$ESTADO_PROC_VAL|$ACCION"
+                if [[ -z "${ULTIMO_EVENTO[$USUARIO]}" ]]; then
+                    ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada||$ESTADO_PROC|$PID"
+                else
+                    IFS='|' read -r LAST_FECHA LAST_USUARIO LAST_MOVILES LAST_CONEXIONES LAST_ESTADO LAST_FECHA_DESB LAST_ESTADO_PROC LAST_PID <<< "${ULTIMO_EVENTO[$USUARIO]}"
+                    LAST_FECHA_S=$(date -d "$LAST_FECHA" +%s 2>/dev/null || echo 0)
+                    LAST_PRIORIDAD=${PRIORIDAD_ESTADOS[$LAST_ESTADO]:-5}
+                    LAST_PROC_KEY=$(echo "$LAST_ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
+                    LAST_PROC_PRIORIDAD=${PRIORIDAD_PROC[$LAST_PROC_KEY]:-6}
+
+                    # Actualizar si la fecha es más reciente o si fechas iguales y el estado/proceso es más prioritario
+                    if [[ $CURRENT_FECHA -gt $LAST_FECHA_S || \
+                          ($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -lt $LAST_PRIORIDAD) || \
+                          ($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -eq $LAST_PRIORIDAD && $CURRENT_PROC_PRIORIDAD -lt $LAST_PROC_PRIORIDAD) ]]; then
+                        ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada||$ESTADO_PROC|$PID"
+                    fi
+                fi
             fi
-        fi
-    done < "$HISTORIAL_BLOQUEOS"
+        done < "$LOG"
+    fi
+
+    # Leer eventos existentes en el historial para otros estados (Bloqueado, Desbloqueado, Cumple límite)
+    if [[ -s "$HISTORIAL_BLOQUEOS" ]]; then
+        while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
+            [[ -z "$USUARIO" || -z "$FECHA" ]] && continue
+            CURRENT_FECHA=$(date -d "$FECHA" +%s 2>/dev/null || echo 0)
+            CURRENT_PRIORIDAD=${PRIORIDAD_ESTADOS[$ESTADO]:-5}
+            ESTADO_PROC_KEY=$(echo "$ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
+            CURRENT_PROC_PRIORIDAD=${PRIORIDAD_PROC[$ESTADO_PROC_KEY]:-6}
+
+            if [[ -z "${ULTIMO_EVENTO[$USUARIO]}" ]]; then
+                ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO|$FECHA_DESBLOQUEO|$ESTADO_PROC|$ACCION"
+            else
+                IFS='|' read -r LAST_FECHA LAST_USUARIO LAST_MOVILES_PERMITIDOS LAST_CONEXIONES LAST_ESTADO LAST_FECHA_DESBLOQUEO LAST_ESTADO_PROC LAST_ACCION <<< "${ULTIMO_EVENTO[$USUARIO]}"
+                LAST_FECHA_S=$(date -d "$LAST_FECHA" +%s 2>/dev/null || echo 0)
+                LAST_PRIORIDAD=${PRIORIDAD_ESTADOS[$LAST_ESTADO]:-5}
+                LAST_PROC_KEY=$(echo "$LAST_ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
+                LAST_PROC_PRIORIDAD=${PRIORIDAD_PROC[$LAST_PROC_KEY]:-6}
+
+                if [[ $CURRENT_FECHA -gt $LAST_FECHA_S || \
+                      ($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -lt $LAST_PRIORIDAD) || \
+                      ($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -eq $LAST_PRIORIDAD && $CURRENT_PROC_PRIORIDAD -lt $LAST_PROC_PRIORIDAD) ]]; then
+                    ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO|$FECHA_DESBLOQUEO|$ESTADO_PROC|$ACCION"
+                fi
+            fi
+        done < "$HISTORIAL_BLOQUEOS"
+    fi
 
     # Sobrescribir el historial con los eventos más recientes
-    : > "$HISTORIAL_BLOQUEOS"  # Vaciar el archivo
+    : > "$HISTORIAL_BLOQUEOS"
     for USUARIO in "${!ULTIMO_EVENTO[@]}"; do
         echo "${ULTIMO_EVENTO[$USUARIO]}" >> "$HISTORIAL_BLOQUEOS"
     done
 
-    # Mostrar el evento más reciente por usuario
+    # Verificar si hay eventos para mostrar
+    if [[ ${#ULTIMO_EVENTO[@]} -eq 0 ]]; then
+        echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}"
+        sleep 2
+        return
+    fi
+
+    echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # Mostrar eventos
     for USUARIO in "${!ULTIMO_EVENTO[@]}"; do
         IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION <<< "${ULTIMO_EVENTO[$USUARIO]}"
         CONEXIONES_ACTIVAS=$(ps -u "$USUARIO" -o comm= 2>/dev/null | grep -cE 'sshd|dropbear')
