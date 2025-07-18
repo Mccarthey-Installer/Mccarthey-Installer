@@ -527,98 +527,67 @@ function ver_registros() {
 }
 
 
-
-
-
-function eliminar_usuario() {
+eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
-    if [[ ! -f $REGISTROS ]]; then
-        echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    
+    read -p "🔹 Ingresa el nombre del usuario a eliminar: " USUARIO
+
+    if [[ -z "$USUARIO" ]]; then
+        echo -e "${ROJO}⚠️ No ingresaste un nombre de usuario.${NC}"
         return
     fi
 
-    # Encabezado solo con número y usuario
-    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
-    echo -e "${CIAN}--------------------------${NC}"
-    NUM=1
-    declare -A USUARIOS_EXISTENTES
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
-            USUARIOS_EXISTENTES[$NUM]="$USUARIO"
-            NUM=$((NUM+1))
-        fi
-    done < "$REGISTROS"
+    if id "$USUARIO" &>/dev/null; then
+        echo -e "${AMARILLO}⏳ Eliminando usuario '$USUARIO'...${NC}"
 
-    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
+        # Bloquear para evitar que se reconecte
+        usermod --lock "$USUARIO" 2>/dev/null
 
-    echo
-    echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
-    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
-    read -p "$PROMPT" INPUT_NUMEROS
-    if [[ "$INPUT_NUMEROS" == "0" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
+        # Matar procesos sin piedad
+        pkill -u "$USUARIO" 2>/dev/null
+        kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
 
-    read -ra NUMEROS <<< "$INPUT_NUMEROS"
-    declare -a USUARIOS_A_ELIMINAR
-    for NUMERO in "${NUMEROS[@]}"; do
-        if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then
-            USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")
-        else
-            echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"
-        fi
-    done
-
-    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    echo -e "${CIAN}===== 🗑️ USUARIOS A ELIMINAR =====${NC}"
-    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        echo -e "${VERDE}$USUARIO${NC}"
-    done
-    echo -e "${CIAN}--------------------------${NC}"
-    echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
-    read -p "" CONFIRMAR
-    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        PIDS=$(pgrep -u "$USUARIO")
-        if [[ -n $PIDS ]]; then
-            echo -e "${ROJO}⚠️ Procesos activos detectados para $USUARIO. Cerrándolos...${NC}"
-            kill -9 $PIDS 2>/dev/null
-            sleep 1
-        fi
+        # Terminar sesiones activas
         loginctl terminate-user "$USUARIO" 2>/dev/null
-        sleep 1
-        if userdel -r "$USUARIO" 2>/dev/null; then
-            sed -i "/^$USUARIO\t/d" "$REGISTROS"
-            sed -i "/^$USUARIO|/d" "$HISTORIAL"
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
-        else
-            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
-        fi
-    done
 
-    echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        # Esperar a que se liberen los recursos
+        for i in {1..5}; do
+            if ! pgrep -u "$USUARIO" &>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+
+        # Eliminar usuario y su home, forzadamente
+        userdel -r --force "$USUARIO" &>/dev/null
+        rm -rf "/home/$USUARIO" 2>/dev/null
+
+        # Eliminar del archivo registros.txt si existe
+        if [[ -f "/root/registros.txt" ]]; then
+            sed -i "/^$USUARIO\b/d" /root/registros.txt
+        fi
+
+        # Eliminar del historial si existe
+        if [[ -f "/etc/mccpanel/historial_bloqueos.db" ]]; then
+            sed -i "/^$USUARIO\b/d" /etc/mccpanel/historial_bloqueos.db
+        fi
+
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}❌ No se pudo eliminar completamente al usuario '$USUARIO'.${NC}"
+        else
+            echo -e "${VERDE}✅ Usuario '$USUARIO' eliminado exitosamente.${NC}"
+            echo -e "${VERDE}🧹 Limpieza final completa.${NC}"
+        fi
+    else
+        echo -e "${ROJO}⚠️ El usuario '$USUARIO' no existe.${NC}"
+    fi
+
+    echo -e "${AMARILLO}Presiona Enter para continuar...${NC}"
+    read
 }
+
+
 
 
 function verificar_online() {
