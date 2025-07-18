@@ -691,7 +691,7 @@ function verificar_online() {
                             H=$(( (ELAPSED_SEC % 86400) / 3600 ))
                             M=$(( (ELAPSED_SEC % 3600) / 60 ))
                             S=$((ELAPSED_SEC % 60 ))
-                            DETALLES=$(printf "${PIEL}⏰ %02d:%02d:%02d${NC}" $H $M $S)
+                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
                             if [[ $D -gt 0 ]]; then
                                 DETALLES="$D días $DETALLES"
                             fi
@@ -713,7 +713,7 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s ${GREEN}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
@@ -912,179 +912,6 @@ ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
-# Función mejorada para historial de bloqueos
-# Función mejorada para historial de bloqueos
-historial_bloqueos() {
-clear
-# Definición de colores
-CIAN='\033[0;36m'
-ROJO='\033[0;31m'
-VERDE='\033[0;32m'
-AMARILLO='\033[1;33m'
-VIOLETA='\033[0;35m'
-AZUL='\033[0;34m'
-NC='\033[0m'
-
-echo -e "${CIAN}🚨========== 📜 HISTORIAL DE BLOQUEOS Y CONEXIONES 🚨==========${NC}"
-HISTORIAL_BLOQUEOS="/etc/mccpanel/historial_bloqueos.db"
-LOG="/var/log/monitoreo_conexiones.log"
-REGISTROS="/root/registros.txt"
-
-# Crear directorio y archivo si no existen
-[[ ! -d "/etc/mccpanel" ]] && mkdir -p /etc/mccpanel && chmod 700 /etc/mccpanel
-if [[ ! -f "$HISTORIAL_BLOQUEOS" ]]; then
-    touch "$HISTORIAL_BLOQUEOS"
-    chmod 600 "$HISTORIAL_BLOQUEOS"
-fi
-
-# Diccionarios de prioridad
-declare -A PRIORIDAD_ESTADOS
-PRIORIDAD_ESTADOS=( ["Bloqueado"]=1 ["Proceso eliminado"]=2 ["Conexión cerrada"]=3 ["Desbloqueado"]=4 ["Cumple límite"]=5 )
-declare -A PRIORIDAD_PROC
-PRIORIDAD_PROC=( ["Z"]=1 ["T"]=2 ["D"]=3 ["R"]=4 ["S"]=5 )
-
-declare -A ULTIMO_EVENTO
-
-if [[ -f "$LOG" ]]; then
-    while read -r LINEA; do
-
-        # Sesión extra cerrada
-        if [[ "$LINEA" =~ Sesión\ extra.*cerrada\ automáticamente ]]; then
-            FECHA=$(echo "$LINEA" | awk '{print $1 " " $2}')
-            USUARIO=$(echo "$LINEA" | grep -oP "'\K[^']+" | head -1)
-            PID=$(echo "$LINEA" | grep -oP 'PID \K[0-9]+')
-            [[ -z "$USUARIO" || -z "$FECHA" || -z "$PID" ]] && continue
-            MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
-            CONEXIONES=$((MOVILES_NUM + 1))
-            ESTADO_PROC=$(ps -p "$PID" -o stat= 2>/dev/null | head -1 || echo "S")
-            ESTADO_PROC_KEY=$(echo "$ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
-
-            CURRENT_FECHA=$(date -d "$FECHA" +%s 2>/dev/null || echo 0)
-            CURRENT_PRIORIDAD=${PRIORIDAD_ESTADOS["Conexión cerrada"]:-10}
-            CURRENT_PROC_PRIORIDAD=${PRIORIDAD_PROC[$ESTADO_PROC_KEY]:-6}
-
-            if [[ -z "${ULTIMO_EVENTO[$USUARIO]}" ]]; then
-                ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada||$ESTADO_PROC|$PID"
-            else
-                IFS='|' read -r LAST_FECHA _ _ _ LAST_ESTADO _ LAST_ESTADO_PROC _ <<< "${ULTIMO_EVENTO[$USUARIO]}"
-                LAST_FECHA_S=$(date -d "$LAST_FECHA" +%s 2>/dev/null || echo 0)
-                LAST_PRIORIDAD=${PRIORIDAD_ESTADOS[$LAST_ESTADO]:-10}
-                LAST_PROC_KEY=$(echo "$LAST_ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
-                LAST_PROC_PRIORIDAD=${PRIORIDAD_PROC[$LAST_PROC_KEY]:-6}
-                if [[ $CURRENT_FECHA -gt $LAST_FECHA_S || \
-($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -lt $LAST_PRIORIDAD) || \
-($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -eq $LAST_PRIORIDAD && $CURRENT_PROC_PRIORIDAD -lt $LAST_PROC_PRIORIDAD) ]]; then
-                    ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Conexión cerrada||$ESTADO_PROC|$PID"
-                fi
-            fi
-        fi
-
-        # Proceso sleeping no-sshd eliminado
-        if [[ "$LINEA" =~ Proceso\ sleeping\ no-sshd.*eliminado ]]; then
-            FECHA=$(echo "$LINEA" | awk '{print $1 " " $2}')
-            USUARIO=$(echo "$LINEA" | grep -oP "de\s+'\K[^']+")
-            PID=$(echo "$LINEA" | grep -oP '\(\K[0-9]+')
-            [[ -z "$USUARIO" || -z "$FECHA" || -z "$PID" ]] && continue
-            MOVILES_NUM=$(grep "^$USUARIO" "$REGISTROS" | cut -f5 | grep -oE '[0-9]+' || echo "1")
-            CONEXIONES="?"
-            ESTADO_PROC=$(echo "$LINEA" | grep -oP 'sleeping' &> /dev/null && echo "S" || echo "D")
-
-            CURRENT_FECHA=$(date -d "$FECHA" +%s 2>/dev/null || echo 0)
-            CURRENT_PRIORIDAD=${PRIORIDAD_ESTADOS["Proceso eliminado"]:-10}
-            CURRENT_PROC_PRIORIDAD=${PRIORIDAD_PROC[$ESTADO_PROC]:-6}
-
-            if [[ -z "${ULTIMO_EVENTO[$USUARIO]}" ]]; then
-                ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Proceso eliminado|||$PID"
-            else
-                IFS='|' read -r LAST_FECHA _ _ _ LAST_ESTADO _ LAST_ESTADO_PROC _ <<< "${ULTIMO_EVENTO[$USUARIO]}"
-                LAST_FECHA_S=$(date -d "$LAST_FECHA" +%s 2>/dev/null || echo 0)
-                LAST_PRIORIDAD=${PRIORIDAD_ESTADOS[$LAST_ESTADO]:-10}
-                LAST_PROC_KEY=$(echo "$LAST_ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
-                LAST_PROC_PRIORIDAD=${PRIORIDAD_PROC[$LAST_PROC_KEY]:-6}
-                if [[ $CURRENT_FECHA -gt $LAST_FECHA_S || \
-($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -lt $LAST_PRIORIDAD) || \
-($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -eq $LAST_PRIORIDAD && $CURRENT_PROC_PRIORIDAD -lt $LAST_PROC_PRIORIDAD) ]]; then
-                    ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_NUM|$CONEXIONES|Proceso eliminado|||$PID"
-                fi
-            fi
-        fi
-
-    done < "$LOG"
-fi
-
-# Leer eventos del historial
-if [[ -s "$HISTORIAL_BLOQUEOS" ]]; then
-    while IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION; do
-        [[ -z "$USUARIO" || -z "$FECHA" ]] && continue
-        CURRENT_FECHA=$(date -d "$FECHA" +%s 2>/dev/null || echo 0)
-        CURRENT_PRIORIDAD=${PRIORIDAD_ESTADOS[$ESTADO]:-10}
-        ESTADO_PROC_KEY=$(echo "$ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
-        CURRENT_PROC_PRIORIDAD=${PRIORIDAD_PROC[$ESTADO_PROC_KEY]:-6}
-
-        if [[ -z "${ULTIMO_EVENTO[$USUARIO]}" ]]; then
-            ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO|$FECHA_DESBLOQUEO|$ESTADO_PROC|$ACCION"
-        else
-            IFS='|' read -r LAST_FECHA _ _ _ LAST_ESTADO _ LAST_ESTADO_PROC _ <<< "${ULTIMO_EVENTO[$USUARIO]}"
-            LAST_FECHA_S=$(date -d "$LAST_FECHA" +%s 2>/dev/null || echo 0)
-            LAST_PRIORIDAD=${PRIORIDAD_ESTADOS[$LAST_ESTADO]:-10}
-            LAST_PROC_KEY=$(echo "$LAST_ESTADO_PROC" | grep -oE '[ZTDRS]' || echo "S")
-            LAST_PROC_PRIORIDAD=${PRIORIDAD_PROC[$LAST_PROC_KEY]:-6}
-            if [[ $CURRENT_FECHA -gt $LAST_FECHA_S || \
-($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -lt $LAST_PRIORIDAD) || \
-($CURRENT_FECHA -eq $LAST_FECHA_S && $CURRENT_PRIORIDAD -eq $LAST_PRIORIDAD && $CURRENT_PROC_PRIORIDAD -lt $LAST_PROC_PRIORIDAD) ]]; then
-                ULTIMO_EVENTO["$USUARIO"]="$FECHA|$USUARIO|$MOVILES_PERMITIDOS|$CONEXIONES|$ESTADO|$FECHA_DESBLOQUEO|$ESTADO_PROC|$ACCION"
-            fi
-        fi
-    done < "$HISTORIAL_BLOQUEOS"
-fi
-
-: > "$HISTORIAL_BLOQUEOS"
-for USUARIO in "${!ULTIMO_EVENTO[@]}"; do
-    echo "${ULTIMO_EVENTO[$USUARIO]}" >> "$HISTORIAL_BLOQUEOS"
-done
-
-if [[ ${#ULTIMO_EVENTO[@]} -eq 0 ]]; then
-    echo -e "${AMARILLO}⚠️ No hay historial de bloqueos o conexiones aún. 😿${NC}"
-    sleep 2
-    return
-fi
-
-echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-for USUARIO in "${!ULTIMO_EVENTO[@]}"; do
-    IFS='|' read -r FECHA USUARIO MOVILES_PERMITIDOS CONEXIONES ESTADO FECHA_DESBLOQUEO ESTADO_PROC ACCION <<< "${ULTIMO_EVENTO[$USUARIO]}"
-    FECHA_FMT=$(date -d "$FECHA" +"%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "$FECHA")
-
-    [[ -z "$ESTADO" ]] && continue
-
-    case "$ESTADO" in
-        "Conexión cerrada")
-            echo -e "${ROJO}🛑 Conexión adicional de $USUARIO fue cerrada el $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) ⚠️${NC}"
-            ;;
-        "Proceso eliminado")
-            echo -e "${AMARILLO}🗑️ Para $USUARIO: proceso sleeping eliminado el $FECHA_FMT. PID(s): $ACCION${NC}"
-            ;;
-        "Bloqueado")
-            echo -e "${ROJO}🔒 Usuario bloqueado: $USUARIO ($CONEXIONES/$MOVILES_PERMITIDOS)${NC}"
-            ;;
-        "Cumple límite")
-            echo -e "${VERDE}✅ $USUARIO está cumpliendo el límite desde $FECHA_FMT ($CONEXIONES/$MOVILES_PERMITIDOS) 😎${NC}"
-            ;;
-        "Desbloqueado")
-            FECHA_DESB_FMT=$(date -d "$FECHA_DESBLOQUEO" +"%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "N/A"
-            )
-            echo -e "${VERDE}🔓 $USUARIO fue desbloqueado el $FECHA_DESB_FMT 🎉${NC}"
-            ;;
-        *)
-            echo -e "${CIAN}Evento de $USUARIO el $FECHA_FMT — $ESTADO${NC}"
-            ;;
-    esac
-    echo -e "${VIOLETA}───────────────────────────────────────────────────────────────${NC}"
-done
-echo -e "${VIOLETA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-read -p "$(echo -e ${AZUL}⏎ Presiona Enter para regresar al menú...${NC})"
-}
-
-
 
 # Menú principal
 if [[ -t 0 ]]; then
@@ -1102,7 +929,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
-        echo -e "${AMARILLO_SUAVE}10. 📜 Historial de bloqueos y conexiones${NC}"
+        
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
@@ -1116,7 +943,7 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) nuclear_eliminar ;;
-            10) historial_bloqueos ;;
+            
             0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
