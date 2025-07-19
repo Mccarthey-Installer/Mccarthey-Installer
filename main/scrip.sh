@@ -62,73 +62,70 @@ function monitorear_conexiones() {
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
                 # SOLO si el bloqueo no es manual
-           
-# SOLO si el bloqueo no es manual (mantén este control si lo deseas)
-if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
-    # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
-    # Elimina procesos Z (zombie), D (uninterruptible), T (stopped), S (sleep/desconectado), R (running no ssh/dropbear)
-    while read -r pid stat comm; do
-        case "$stat" in
-            *Z*) # Zombie
-                kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                ;;
-            *D*) # Uninterruptible sleep
-                kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                ;;
-            *T*) # Stopped
-                kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                ;;
-            *S*) # Sleeping - revisa conexión real con ss
-                if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
-                    # Si está dormido, pero no tiene conexión activa, elimínalo
-                    PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
-                    if [[ -z "$PORTS" ]]; then
-                        kill -9 "$pid" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                    # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
+                    # Elimina procesos Z (zombie), D (uninterruptible), T (stopped), S (sleep/desconectado), R (running no ssh/dropbear)
+                    while read -r pid stat comm; do
+                        case "$stat" in
+                            *Z*) # Zombie
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                ;;
+                            *D*) # Uninterruptible sleep
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                ;;
+                            *T*) # Stopped
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                ;;
+                            *S*) # Sleeping - revisa conexión real con ss
+                                if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
+                                    # Si está dormido, pero no tiene conexión activa, elimínalo
+                                    PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
+                                    if [[ -z "$PORTS" ]]; then
+                                        kill -9 "$pid" 2>/dev/null
+                                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    fi
+                                else
+                                    # No es sshd/dropbear, elimínalo siempre
+                                    kill -9 "$pid" 2>/dev/null
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                fi
+                                ;;
+                            *R*) # Running - si no es sshd/dropbear, mátalo
+                                if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
+                                    kill -9 "$pid" 2>/dev/null
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                fi
+                                ;;
+                        esac
+                    done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
+                    
+                    # --- CONTROL DE SESIONES: CIERRA SOLO LAS EXTRAS ---
+                    # Recolecta y ordena sesiones sshd y dropbear por antigüedad
+                    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+                    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+
+                    # Mezcla ambos tipos y ordénalos por antigüedad
+                    PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
+                    # Si por algún motivo faltan espacios, vuelve a ordenarlos bien
+                    mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
+                        START=$(ps -p "$pid" -o lstart= 2>/dev/null)
+                        echo "$pid:$START"
+                    done | sort -t: -k2 | awk -F: '{print $1}')
+
+                    TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
+
+                    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+                    if (( TOTAL_CONEX > MOVILES_NUM )); then
+                        # Conserva solo las primeras MOVILES_NUM, mata el resto
+                        for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
+                            kill -9 "$PID" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
+                        done
                     fi
-                else
-                    # No es sshd/dropbear, elimínalo siempre
-                    kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
                 fi
-                ;;
-            *R*) # Running - si no es sshd/dropbear, mátalo
-                if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
-                    kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                fi
-                ;;
-        esac
-    done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
-    
-    # --- CONTROL DE SESIONES: CIERRA SOLO LAS EXTRAS ---
-    # Recolecta y ordena sesiones sshd y dropbear por antigüedad
-    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-
-    # Mezcla ambos tipos y ordénalos por antigüedad
-    PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
-    # Si por algún motivo faltan espacios, vuelve a ordenarlos bien
-    mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
-        START=$(ps -p "$pid" -o lstart= 2>/dev/null)
-        echo "$pid:$START"
-    done | sort -t: -k2 | awk -F: '{print $1}')
-
-    TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
-
-    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-    if (( TOTAL_CONEX > MOVILES_NUM )); then
-        # Conserva solo las primeras MOVILES_NUM, mata el resto
-        for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
-            kill -9 "$PID" 2>/dev/null
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
-        done
-    fi
-fi
-
 
                 # === ACTUALIZAR PRIMER_LOGIN ===
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
@@ -195,7 +192,6 @@ else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
 
-
 function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
@@ -218,7 +214,7 @@ function barra_sistema() {
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
-    CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
+    CPU_PORC=$(awk Junoawk "BEGIN {printf \"%.0f\", $CPU_PORC}")
 
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
@@ -263,7 +259,7 @@ function barra_sistema() {
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
-# Función para mostrar historial de conexione
+# Función para mostrar historial de conexiones
 ROSADO='\033[38;5;218m'
 LILA='\033[38;5;135m'
 TURQUESA='\033[38;5;45m'
@@ -464,8 +460,6 @@ function crear_multiples_usuarios() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
-
 function ver_registros() {
     clear
     echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
@@ -526,9 +520,7 @@ function ver_registros() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
-
-eliminar_usuario() {
+function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
     if [[ ! -f $REGISTROS ]]; then
@@ -633,19 +625,10 @@ eliminar_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
 verificar_online() {
     clear
-    # Definir colores ANSI
-    VIOLETA='\033[1;35m'
-    ROJO='\033[1;31m'
-    VERDE='\033[1;32m'
-    CIAN='\033[0;36m'  # Cian estándar para mejor compatibilidad
-    AMARILLO='\033[1;33m'
-    AZUL='\033[1;34m'
-    AZUL_SUAVE='\033[38;5;45m'
-    ANARANJADO='\033[38;5;208m'  # Color anaranjado
-    NC='\033[0m'
+    # Usar colores globales en lugar de redefinirlos
+    ANARANJADO='\033[38;5;208m'  # Definir solo ANARANJADO, ya que no está en las variables globales
 
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
@@ -737,19 +720,17 @@ verificar_online() {
             printf "${AMARILLO}%-15s${NC} " "$USUARIO"
             printf "${COLOR_ESTADO}%-15s${NC} " "$ESTADO"
             printf "%-10s " "$MOVILES_NUM"
-            printf "$AZUL_SUAVE%-25s${NC}\n" "$DETALLES"
+            printf "${AZUL}%-25s${NC}\n" "$DETALLES"
         fi
     done < "$REGISTROS"
 
     echo
     # Totales con números en amarillo y texto en cian
     echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
-    echo -e "${CIAN}================================================${NC}"
+    # Línea de separación en anaranjado
+    echo -e "${ANARANJADO}================================================${NC}"
     read -p "$(echo -e ${ANARANJADO}Presiona Enter para continuar...${NC})"
 }
-
-
-
 
 function bloquear_desbloquear_usuario() {
     clear
@@ -866,6 +847,7 @@ function mini_registro() {
     echo -e "${AMARILLO}TOTAL: $TOTAL_USUARIOS${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 function nuclear_eliminar() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
@@ -919,10 +901,6 @@ function nuclear_eliminar() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
-
-
-
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -935,7 +913,6 @@ AMARILLO_SUAVE='\033[38;2;255;204;0m'
 ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
-
 
 # Menú principal
 if [[ -t 0 ]]; then
