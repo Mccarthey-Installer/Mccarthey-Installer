@@ -726,10 +726,10 @@ verificar_online() {
 
     echo
     # Totales con números en amarillo y texto en cian
-    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC} ${CIAN} Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC} ${CIAN} Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     # Línea de separación en anaranjado
-    echo -e "${ANARANJADO}================================================${NC}"
-    read -p "$(echo -e ${ANARANJADO}Presiona Enter para continuar...${NC})"
+    echo -e "${ROJO}================================================${NC}"
+    read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
 
 function bloquear_desbloquear_usuario() {
