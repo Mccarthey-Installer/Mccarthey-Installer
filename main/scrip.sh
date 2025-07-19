@@ -214,7 +214,7 @@ function barra_sistema() {
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
-    CPU_PORC=$(awk Junoawk "BEGIN {printf \"%.0f\", $CPU_PORC}")
+    CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
 
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
