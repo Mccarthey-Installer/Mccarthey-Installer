@@ -522,14 +522,13 @@ function ver_registros() {
 
 function eliminar_usuario() {
     clear
-    echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
+    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    # Encabezado solo con número y usuario
     echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
     echo -e "${CIAN}--------------------------${NC}"
     NUM=1
@@ -574,13 +573,13 @@ function eliminar_usuario() {
         return
     fi
 
-    echo -e "${CIAN}===== 🗑️ USUARIOS A ELIMINAR =====${NC}"
+    echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
     echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
         echo -e "${VERDE}$USUARIO${NC}"
     done
     echo -e "${CIAN}--------------------------${NC}"
-    echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
+    echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR de estos usuarios? (s/n)${NC}"
     read -p "" CONFIRMAR
     if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
         echo -e "${AZUL}🚫 Operación cancelada.${NC}"
@@ -589,22 +588,44 @@ function eliminar_usuario() {
     fi
 
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        PIDS=$(pgrep -u "$USUARIO")
-        if [[ -n $PIDS ]]; then
-            echo -e "${ROJO}⚠️ Procesos activos detectados para $USUARIO. Cerrándolos...${NC}"
-            kill -9 $PIDS 2>/dev/null
-            sleep 1
-        fi
-        if userdel -r "$USUARIO" 2>/dev/null; then
-            sed -i "/^$USUARIO\t/d" "$REGISTROS"
-            sed -i "/^$USUARIO|/d" "$HISTORIAL"
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
+        echo -e "${ROJO}💣 Eliminando usuario: $USUARIO${NC}"
+
+        echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
+        sudo usermod --lock "$USUARIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (2) Matando procesos activos...${NC}"
+        sudo kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
+        sleep 1
+
+        echo -e "${ROJO}→ (3) Eliminando con userdel --force...${NC}"
+        sudo userdel --force "$USUARIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (4) Eliminando con deluser --remove-home...${NC}"
+        sudo deluser --remove-home "$USUARIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (5) Borrando carpeta huérfana en /home/$USUARIO...${NC}"
+        sudo rm -rf "/home/$USUARIO"
+
+        echo -e "${ROJO}→ (6) Limpiando sesión con loginctl...${NC}"
+        sudo loginctl kill-user "$USUARIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (7) Segunda pasada de limpieza...${NC}"
+        sudo deluser "$USUARIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
+        sed -i "/^$USUARIO\t/d" "$REGISTROS"
+        sed -i "/^$USUARIO|/d" "$HISTORIAL"
+
+        if ! id "$USUARIO" &>/dev/null; then
+            echo -e "${VERDE}✅ Usuario $USUARIO eliminado completamente.${NC}"
         else
-            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
+            echo -e "${ROJO}⚠️ El usuario $USUARIO aún persiste. Verifica manualmente.${NC}"
         fi
+
+        echo -e "${CIAN}--------------------------------------${NC}"
     done
 
-    echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
+    echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
