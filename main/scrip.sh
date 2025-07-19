@@ -549,75 +549,48 @@ function eliminar_usuario() {
 
     echo
     echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
-    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
-    read -p "$PROMPT" INPUT_NUMEROS
-    if [[ "$INPUT_NUMEROS" == "0" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
+    read -p "$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")" INPUT_NUMEROS
+    [[ "$INPUT_NUMEROS" == "0" ]] && echo -e "${AZUL}🚫 Operación cancelada.${NC}" && read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" && return
 
     read -ra NUMEROS <<< "$INPUT_NUMEROS"
     declare -a USUARIOS_A_ELIMINAR
     for NUMERO in "${NUMEROS[@]}"; do
-        if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then
-            USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")
-        else
-            echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"
-        fi
+        USUARIO=${USUARIOS_EXISTENTES[$NUMERO]}
+        [[ -n "$USUARIO" ]] && USUARIOS_A_ELIMINAR+=("$USUARIO") || echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"
     done
 
-    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
+    [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]] && echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}" && read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" && return
 
     echo -e "${CIAN}===== 🗑️ USUARIOS A ELIMINAR =====${NC}"
-    echo -e "${AMARILLO}Los siguientes usuarios serán ELIMINADOS:${NC}"
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        echo -e "${VERDE}$USUARIO${NC}"
-    done
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do echo -e "${VERDE}$USUARIO${NC}"; done
     echo -e "${CIAN}--------------------------${NC}"
     echo -e "${AMARILLO}Presiona ENTER para confirmar o Ctrl+C para cancelar...${NC}"
     read
 
-    # LIMPIEZA NUCLEAR 🚀🔥
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
         UID_USER=$(id -u "$USUARIO" 2>/dev/null)
 
-        if [[ -n "$UID_USER" ]]; then
-            echo -e "${CIAN}🔒 Cerrando sesión (loginctl) de $USUARIO...${NC}"
-            sudo loginctl terminate-user "$USUARIO" &>/dev/null
-            sleep 1
+        echo -e "${CIAN}🔒 Forzando cierre de sesión de $USUARIO...${NC}"
+        sudo pkill -KILL -u "$USUARIO" &>/dev/null
+        sudo loginctl terminate-user "$USUARIO" &>/dev/null
+        sleep 1
 
-            echo -e "${ROJO}🔪 Matando procesos restantes de $USUARIO por nombre y UID...${NC}"
-            sudo pkill -9 -u "$USUARIO" &>/dev/null || true
-            sleep 1
-            sudo pkill -9 -U "$UID_USER" &>/dev/null || true
-            sleep 1
-        else
-            echo -e "${AMARILLO}⚠️ Usuario $USUARIO no existe, buscando procesos huérfanos por UID...${NC}"
-            # Opcional: agregar limpieza extra si se tiene UID previo
-        fi
+        echo -e "${ROJO}🔪 Matando procesos huérfanos UID=$UID_USER...${NC}"
+        sudo pkill -9 -U "$UID_USER" &>/dev/null
+        sleep 1
 
         echo -e "${AMARILLO}🗑️ Eliminando usuario $USUARIO...${NC}"
-        if sudo userdel -r "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado del sistema.${NC}"
-        else
-            echo -e "${ROJO}❌ userdel falló o usuario ya no existía.${NC}"
-        fi
+        sudo userdel -f -r "$USUARIO" &>/dev/null
 
-        echo -e "${ROJO}🧹 Limpiando /home/$USUARIO ...${NC}"
-        sudo rm -rf "/home/$USUARIO"
-
-        echo -e "${ROJO}🧹 Eliminando archivos huérfanos en todo el sistema ...${NC}"
+        echo -e "${ROJO}🧹 Eliminando /home/$USUARIO y restos...${NC}"
+        sudo rm -rf "/home/$USUARIO" "/var/mail/$USUARIO"
         sudo find / -user "$USUARIO" -exec rm -rf {} \; 2>/dev/null
 
+        echo -e "${AZUL}🧾 Limpiando registros...${NC}"
         sed -i "/^$USUARIO\t/d" "$REGISTROS"
         sed -i "/^$USUARIO|/d" "$HISTORIAL"
 
-        echo -e "${VERDE}✅ Proceso de limpieza para $USUARIO finalizado.${NC}"
+        echo -e "${VERDE}✅ Proceso finalizado para $USUARIO.${NC}"
         echo -e "${VIOLETA}───────────────────────────────────────────────────────────────${NC}"
     done
 
