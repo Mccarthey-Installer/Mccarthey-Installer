@@ -529,6 +529,7 @@ function eliminar_usuario() {
         return
     fi
 
+    # Encabezado solo con número y usuario
     echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
     echo -e "${CIAN}--------------------------${NC}"
     NUM=1
@@ -549,49 +550,58 @@ function eliminar_usuario() {
 
     echo
     echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
-    read -p "$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")" INPUT_NUMEROS
-    [[ "$INPUT_NUMEROS" == "0" ]] && echo -e "${AZUL}🚫 Operación cancelada.${NC}" && read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" && return
+    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
+    read -p "$PROMPT" INPUT_NUMEROS
+    if [[ "$INPUT_NUMEROS" == "0" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
     read -ra NUMEROS <<< "$INPUT_NUMEROS"
     declare -a USUARIOS_A_ELIMINAR
     for NUMERO in "${NUMEROS[@]}"; do
-        USUARIO=${USUARIOS_EXISTENTES[$NUMERO]}
-        [[ -n "$USUARIO" ]] && USUARIOS_A_ELIMINAR+=("$USUARIO") || echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"
+        if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then
+            USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")
+        else
+            echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"
+        fi
     done
 
-    [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]] && echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}" && read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})" && return
+    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
     echo -e "${CIAN}===== 🗑️ USUARIOS A ELIMINAR =====${NC}"
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do echo -e "${VERDE}$USUARIO${NC}"; done
+    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        echo -e "${VERDE}$USUARIO${NC}"
+    done
     echo -e "${CIAN}--------------------------${NC}"
-    echo -e "${AMARILLO}Presiona ENTER para confirmar o Ctrl+C para cancelar...${NC}"
-    read
+    echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        UID_USER=$(id -u "$USUARIO" 2>/dev/null)
-
-        echo -e "${CIAN}🔒 Forzando cierre de sesión de $USUARIO...${NC}"
-        sudo pkill -KILL -u "$USUARIO" &>/dev/null
-        sudo loginctl terminate-user "$USUARIO" &>/dev/null
-        sleep 1
-
-        echo -e "${ROJO}🔪 Matando procesos huérfanos UID=$UID_USER...${NC}"
-        sudo pkill -9 -U "$UID_USER" &>/dev/null
-        sleep 1
-
-        echo -e "${AMARILLO}🗑️ Eliminando usuario $USUARIO...${NC}"
-        sudo userdel -f -r "$USUARIO" &>/dev/null
-
-        echo -e "${ROJO}🧹 Eliminando /home/$USUARIO y restos...${NC}"
-        sudo rm -rf "/home/$USUARIO" "/var/mail/$USUARIO"
-        sudo find / -user "$USUARIO" -exec rm -rf {} \; 2>/dev/null
-
-        echo -e "${AZUL}🧾 Limpiando registros...${NC}"
-        sed -i "/^$USUARIO\t/d" "$REGISTROS"
-        sed -i "/^$USUARIO|/d" "$HISTORIAL"
-
-        echo -e "${VERDE}✅ Proceso finalizado para $USUARIO.${NC}"
-        echo -e "${VIOLETA}───────────────────────────────────────────────────────────────${NC}"
+        PIDS=$(pgrep -u "$USUARIO")
+        if [[ -n $PIDS ]]; then
+            echo -e "${ROJO}⚠️ Procesos activos detectados para $USUARIO. Cerrándolos...${NC}"
+            kill -9 $PIDS 2>/dev/null
+            sleep 1
+        fi
+        if userdel -r "$USUARIO" 2>/dev/null; then
+            sed -i "/^$USUARIO\t/d" "$REGISTROS"
+            sed -i "/^$USUARIO|/d" "$HISTORIAL"
+            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
+        else
+            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
+        fi
     done
 
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
