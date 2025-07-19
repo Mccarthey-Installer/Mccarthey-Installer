@@ -636,7 +636,7 @@ eliminar_usuario() {
 
 verificar_online() {
     clear
-    # Definir colores
+    # Definir colores ANSI
     VIOLETA='\033[1;35m'
     ROJO='\033[1;31m'
     VERDE='\033[1;32m'
@@ -662,7 +662,8 @@ verificar_online() {
     fi
 
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}\n"
-    printf "${AMARILLO}%-15s${NC} %-15s %-10s %-25s\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    # Encabezados en amarillo
+    printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     printf "${CIAN}%.65s${NC}\n" "-----------------------------------------------------------------"
 
     TOTAL_CONEXIONES=0
@@ -731,7 +732,7 @@ verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            # Solo NOMBRE EN AMARILLO, el resto igual
+            # Nombre en amarillo, el resto igual
             printf "${AMARILLO}%-15s${NC} " "$USUARIO"
             printf "${COLOR_ESTADO}%-15s${NC} " "$ESTADO"
             printf "%-10s " "$MOVILES_NUM"
@@ -740,10 +741,12 @@ verificar_online() {
     done < "$REGISTROS"
 
     echo
-    printf "${CIAN}Total de Online: %-3s  Total usuarios: %-3s  Inactivos: %-3s${NC}\n" "$TOTAL_CONEXIONES" "$TOTAL_USUARIOS" "$INACTIVOS"
+    # Totales en cian
+    echo -e "${CIAN}Total de Online: ${TOTAL_CONEXIONES}  Total usuarios: ${TOTAL_USUARIOS}  Inactivos: ${INACTIVOS}${NC}"
     echo -e "${CIAN}================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
