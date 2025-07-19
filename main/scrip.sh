@@ -640,10 +640,11 @@ verificar_online() {
     VIOLETA='\033[1;35m'
     ROJO='\033[1;31m'
     VERDE='\033[1;32m'
-    CIAN='\033[1;36m'
+    CIAN='\033[0;36m'  # Cian estándar para mejor compatibilidad
     AMARILLO='\033[1;33m'
     AZUL='\033[1;34m'
     AZUL_SUAVE='\033[38;5;45m'
+    ANARANJADO='\033[38;5;208m'  # Color anaranjado
     NC='\033[0m'
 
     declare -A month_map=(
@@ -657,7 +658,7 @@ verificar_online() {
     fi
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        read -p "$(echo -e ${ANARANJADO}Presiona Enter para continuar...${NC})"
         return
     fi
 
@@ -741,10 +742,10 @@ verificar_online() {
     done < "$REGISTROS"
 
     echo
-    # Totales en cian
-    echo -e "${CIAN}Total de Online: ${TOTAL_CONEXIONES}  Total usuarios: ${TOTAL_USUARIOS}  Inactivos: ${INACTIVOS}${NC}"
+    # Totales con números en amarillo y texto en cian
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${CIAN}================================================${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    read -p "$(echo -e ${ANARANJADO}Presiona Enter para continuar...${NC})"
 }
 
 
