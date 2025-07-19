@@ -628,7 +628,9 @@ function eliminar_usuario() {
 verificar_online() {
     clear
     # Usar colores globales en lugar de redefinirlos
-    ANARANJADO='\033[38;5;208m'  # Definir solo ANARANJADO, ya que no está en las variables globales
+    ANARANJADO='\033[38;5;208m'
+    AZUL_SUAVE='\033[38;5;45m'  # Color aplicado solo en DETALLES
+    NC='\033[0m'
 
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
@@ -646,7 +648,6 @@ verificar_online() {
     fi
 
     echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}\n"
-    # Encabezados en amarillo
     printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     printf "${CIAN}%.65s${NC}\n" "-----------------------------------------------------------------"
 
@@ -700,8 +701,7 @@ verificar_online() {
                 else
                     ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null ||
-                            echo "$ULTIMO_LOGOUT")
+                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null || echo "$ULTIMO_LOGOUT")
                         MES=$(echo "$ULTIMO_LOGOUT_FMT" | awk '{print $4}')
                         for k in "${!month_map[@]}"; do
                             if [[ "$MES" =~ $k ]]; then
@@ -716,18 +716,15 @@ verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            # Nombre en amarillo, el resto igual
             printf "${AMARILLO}%-15s${NC} " "$USUARIO"
             printf "${COLOR_ESTADO}%-15s${NC} " "$ESTADO"
             printf "%-10s " "$MOVILES_NUM"
-            printf "${AZUL}%-25s${NC}\n" "$DETALLES"
+            printf "${AZUL_SUAVE}%-25s${NC}\n" "$DETALLES"
         fi
     done < "$REGISTROS"
 
     echo
-    # Totales con números en amarillo y texto en cian
     echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC} ${CIAN} Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC} ${CIAN} Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
-    # Línea de separación en anaranjado
     echo -e "${ROJO}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
