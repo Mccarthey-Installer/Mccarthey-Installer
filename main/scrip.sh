@@ -197,7 +197,7 @@ function barra_sistema() {
     BLANCO="\e[97m"   # Blanco brillante
     AZUL="\e[94m"     # Azul claro
     MAGENTA="\e[95m"  # Magenta
-    Negro=	\e[30m    # Negro
+    NEGRO="\e[30m"    # Negro
     ROJO="\e[91m"     # Rojo claro
     FONDO_VERDE="\e[42m" # Fondo verde
     AMARILLO="\e[93m" # Amarillo brillante
