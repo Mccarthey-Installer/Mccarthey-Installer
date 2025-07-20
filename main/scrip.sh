@@ -193,13 +193,13 @@ else
 fi
 
 function barra_sistema() {
-    # Definimos colores más chidos (menos verde, más estilo)
-    BLANCO="\e[97m"
-    AZUL="\e[94m"
-    MAGENTA="\e[95m"
-    ROJO="\e[91m"
-    AMARILLO="\e[93m"
-    NC="\e[0m" # No color
+    # Definimos colores explícitos (sin verde)
+    BLANCO="\e[97m"   # Blanco brillante
+    AZUL="\e[94m"     # Azul claro
+    MAGENTA="\e[95m"  # Magenta
+    ROJO="\e[91m"     # Rojo claro
+    AMARILLO="\e[93m" # Amarillo brillante
+    NC="\e[0m"        # Sin color
 
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
@@ -258,14 +258,14 @@ function barra_sistema() {
         SO_NAME=$(uname -o)
     fi
 
-    # Mostramos la barra con emojis más cool y colores vibrantes
+    # Salida con colores explícitos y emojis chidos
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
-    echo -e " 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ⚡ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
-    echo -e " 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}⚡ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
-    echo -e " 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "🚀 ${MAGENTA}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e "${MAGENTA}🚀 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
 
     # MOSTRAR USUARIOS CON 0 DÍAS (EXPIRAN HOY)
@@ -275,18 +275,17 @@ function barra_sistema() {
             if id "$USUARIO" &>/dev/null; then
                 FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
                 if [[ "$FECHA_EXPIRA_DIA" == "$FECHA_ACTUAL_DIA" ]]; then
-                    USUARIOS_0DIAS+="$USUARIO 0 días    "
+                    USUARIOS_0DIAS+="${BLANCO}$USUARIO 0 días    ${NC}"
                 fi
             fi
         done < "$REGISTROS"
         if [[ -n "$USUARIOS_0DIAS" ]]; then
-            echo -e "\n${ROJO}⚠️ Usuarios con 0 días:${NC}"
+            echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
             echo -e "$USUARIOS_0DIAS"
             echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
         fi
     fi
 }
-
 
 # Función para mostrar historial de conexiones
 ROSADO='\033[38;5;218m'
