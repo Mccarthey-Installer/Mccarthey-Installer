@@ -197,10 +197,7 @@ function barra_sistema() {
     BLANCO="\e[97m"   # Blanco brillante
     AZUL="\e[94m"     # Azul claro
     MAGENTA="\e[95m"  # Magenta
-    NEGRO="\e[30m"    # Negro
     ROJO="\e[91m"     # Rojo claro
-    FONDO_VERDE="\e[42m" # Fondo verde
-    AMARILLO="\e[43m"  #AMARILLO
     AMARILLO="\e[93m" # Amarillo brillante
     NC="\e[0m"        # Sin color
 
@@ -268,8 +265,8 @@ function barra_sistema() {
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "${MAGENTA}🚀 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL: ${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO: ${AMARILLO}${SO_NAME}${NC}"
-echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
 
     # MOSTRAR USUARIOS CON 0 DÍAS (EXPIRAN HOY)
     if [[ -f $REGISTROS ]]; then
@@ -281,12 +278,12 @@ echo -e "${AZUL}═════════════════════�
                     USUARIOS_0DIAS+="${BLANCO}$USUARIO 0 días    ${NC}"
                 fi
             fi
-        done < "$REGISTROS"  
-        if [[ -n "$USUARIOS_0DIAS" ]]; then  
-            echo -e "${ROJO}⚠️USUARIOS QUE EXPIRAN HOY:${NC}"  
-            echo -e "$USUARIOS_0DIAS"  
-            echo -e "${AZUL}══════════════════════════════════════════════════${NC}"  
-        fi  
+        done < "$REGISTROS"
+        if [[ -n "$USUARIOS_0DIAS" ]]; then
+            echo -e "\n${ROJO}⚠️ Usuarios con 0 días:${NC}"
+            echo -e "$USUARIOS_0DIAS"
+            echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
+        fi
     fi
 }
 # Función para mostrar historial de conexiones
