@@ -228,6 +228,7 @@ function barra_sistema() {
     fi
 
     FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
+    FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
@@ -257,7 +258,26 @@ function barra_sistema() {
     echo -e "🥂 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+    # MOSTRAR USUARIOS CON 0 DÍAS (EXPIRAN HOY)
+    if [[ -f $REGISTROS ]]; then
+        USUARIOS_0DIAS=""
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+                if [[ "$FECHA_EXPIRA_DIA" == "$FECHA_ACTUAL_DIA" ]]; then
+                    USUARIOS_0DIAS+="$USUARIO 0 días    "
+                fi
+            fi
+        done < "$REGISTROS"
+        if [[ -n "$USUARIOS_0DIAS" ]]; then
+            echo -e "\n${ROJO}Usuarios con 0 días:${NC}"
+            echo -e "$USUARIOS_0DIAS"
+            echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        fi
+    fi
 }
+
 
 # Función para mostrar historial de conexiones
 ROSADO='\033[38;5;218m'
