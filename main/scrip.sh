@@ -282,7 +282,7 @@ function barra_sistema() {
             fi
         done < "$REGISTROS"  
         if [[ -n "$USUARIOS_0DIAS" ]]; then  
-            echo -e "\n${FONDO_VERDE}${NEGRO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"  
+            echo -e "\n${FONDO_VERDE}${NEGRO}⚠️ ️ 𝙐𝙎𝙐𝘼𝙍𝙄𝙊𝙎 𝙌𝙐𝙀 𝙀𝙓𝙋𝙄𝙍𝘼𝙉 𝙃𝙊𝙔:${NC}"  
             echo -e "$USUARIOS_0DIAS"  
             echo -e "${AZUL}══════════════════════════════════════════════════${NC}"  
         fi  
