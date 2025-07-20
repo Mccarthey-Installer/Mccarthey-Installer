@@ -200,6 +200,7 @@ function barra_sistema() {
     NEGRO="\e[30m"    # Negro
     ROJO="\e[91m"     # Rojo claro
     FONDO_VERDE="\e[42m" # Fondo verde
+    AMARILLO="\e[43m"  #AMARILLO
     AMARILLO="\e[93m" # Amarillo brillante
     NC="\e[0m"        # Sin color
 
@@ -267,7 +268,7 @@ function barra_sistema() {
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "${MAGENTA}🚀 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "$\n${AMARILLO}{BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
 
     # MOSTRAR USUARIOS CON 0 DÍAS (EXPIRAN HOY)
@@ -282,7 +283,7 @@ function barra_sistema() {
             fi
         done < "$REGISTROS"  
         if [[ -n "$USUARIOS_0DIAS" ]]; then  
-            echo -e "\n${FONDO_VERDE}${NEGRO}⚠️ ️ 𝙐𝙎𝙐𝘼𝙍𝙄𝙊𝙎 𝙌𝙐𝙀 𝙀𝙓𝙋𝙄𝙍𝘼𝙉 𝙃𝙊𝙔:${NC}"  
+            echo -e "\n${FONDO_VERDE}${NEGRO}⚠️ ️ ️ USUARIOS QUE EXPIRAN HOY:${NC}"  
             echo -e "$USUARIOS_0DIAS"  
             echo -e "${AZUL}══════════════════════════════════════════════════${NC}"  
         fi  
