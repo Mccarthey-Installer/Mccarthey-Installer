@@ -197,6 +197,7 @@ function barra_sistema() {
     BLANCO="\e[97m"   # Blanco brillante
     AZUL="\e[94m"     # Azul claro
     MAGENTA="\e[95m"  # Magenta
+    Negro	\e[30m    # Negro
     ROJO="\e[91m"     # Rojo claro
     FONDO_VERDE="\e[42m" # Fondo verde
     AMARILLO="\e[93m" # Amarillo brillante
@@ -281,7 +282,7 @@ function barra_sistema() {
             fi
         done < "$REGISTROS"  
         if [[ -n "$USUARIOS_0DIAS" ]]; then  
-            echo -e "\n${FONDO_VERDE}${ROJO}⚠️ ⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"  
+            echo -e "\n${FONDO_VERDE}${NEGRO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"  
             echo -e "$USUARIOS_0DIAS"  
             echo -e "${AZUL}══════════════════════════════════════════════════${NC}"  
         fi  
