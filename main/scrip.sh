@@ -193,6 +193,14 @@ else
 fi
 
 function barra_sistema() {
+    # Definimos colores más chidos (menos verde, más estilo)
+    BLANCO="\e[97m"
+    AZUL="\e[94m"
+    MAGENTA="\e[95m"
+    ROJO="\e[91m"
+    AMARILLO="\e[93m"
+    NC="\e[0m" # No color
+
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
@@ -250,14 +258,15 @@ function barra_sistema() {
         SO_NAME=$(uname -o)
     fi
 
-    echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " 🖥️ TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ M|DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
-    echo -e " 🖥️ U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
-    echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " 🌐 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 📅 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "🥂 ${CIAN}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   SO:${AMARILLO}${SO_NAME}${NC}"
-    echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    # Mostramos la barra con emojis más cool y colores vibrantes
+    echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
+    echo -e " 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ⚡ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
+    echo -e " 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
+    echo -e " 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e "🚀 ${MAGENTA}𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
 
     # MOSTRAR USUARIOS CON 0 DÍAS (EXPIRAN HOY)
     if [[ -f $REGISTROS ]]; then
@@ -271,9 +280,9 @@ function barra_sistema() {
             fi
         done < "$REGISTROS"
         if [[ -n "$USUARIOS_0DIAS" ]]; then
-            echo -e "\n${ROJO}Usuarios con 0 días:${NC}"
+            echo -e "\n${ROJO}⚠️ Usuarios con 0 días:${NC}"
             echo -e "$USUARIOS_0DIAS"
-            echo -e "${CIAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
         fi
     fi
 }
