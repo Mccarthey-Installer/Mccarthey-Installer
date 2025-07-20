@@ -268,8 +268,8 @@ function barra_sistema() {
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "${MAGENTA}🚀 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "$\n${AMARILLO}{BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
-    echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
+    echo -e "\n\e[97m\e[43m🔗 ONLINE:\e[0m ${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL: ${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO: ${AMARILLO}${SO_NAME}${NC}"
+echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
 
     # MOSTRAR USUARIOS CON 0 DÍAS (EXPIRAN HOY)
     if [[ -f $REGISTROS ]]; then
