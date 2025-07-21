@@ -360,7 +360,7 @@ function crear_usuario() {
         if [[ "$DIAS" =~ ^[0-9]+$ ]] && [ "$DIAS" -ge 0 ]; then
             break
         else
-            echo -e "${ROJO}Por favor, ingresa un número válido de días mayor o igual a 0.${NC}"
+            echo -e "${ROJO}Por favor, ingresa un número válido de días (0 o más).${NC}"
         fi
     done
 
@@ -396,7 +396,7 @@ function crear_usuario() {
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
-    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
+    if ! EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d" 2>/dev/null); then
         echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
         userdel -r "$USUARIO" 2>/dev/null
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
@@ -438,6 +438,8 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+
 function crear_multiples_usuarios() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
