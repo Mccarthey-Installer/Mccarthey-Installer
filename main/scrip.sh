@@ -486,6 +486,20 @@ function crear_multiples_usuarios() {
         ERROR_LOG=""
     }
 
+    # Verificar permisos de $REGISTROS
+    if [[ ! -f "$REGISTROS" ]]; then
+        touch "$REGISTROS" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            return
+        }
+    fi
+    if [[ ! -w "$REGISTROS" ]]; then
+        echo -e "${ROJO}❌ Error: No se puede escribir en $REGISTROS. Verifica permisos.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
     # Contador de éxitos y fallos
     EXITOS=0
     FALLOS=0
@@ -507,22 +521,27 @@ function crear_multiples_usuarios() {
         fi
 
         if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO' ya existe" >> "$ERROR_LOG"
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. No se puede crear.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO' ya existe en el sistema" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
+            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. No se puede crear.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Nombre de usuario '$USUARIO' ya registrado en $REGISTROS" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
         # === Creación robusta con rollback ===
-        useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"
-        if [[ $? -ne 0 ]]; then
+        if ! useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"; then
             echo -e "${ROJO}❌ Error creando usuario $USUARIO. Revisa $ERROR_LOG para más detalles.${NC}"
             ((FALLOS++))
             continue
         fi
 
-        echo "$USUARIO:$CLAVE" | chpasswd 2>>"$ERROR_LOG"
-        if [[ $? -ne 0 ]]; then
+        if ! echo "$USUARIO:$CLAVE" | chpasswd 2>>"$ERROR_LOG"; then
             echo -e "${ROJO}❌ Error estableciendo la contraseña para $USUARIO. Eliminando usuario...${NC}"
             userdel -r "$USUARIO" 2>/dev/null
             [[ -n "$ERROR_LOG" ]] && echo "$(date): Error estableciendo contraseña para $USUARIO" >> "$ERROR_LOG"
@@ -532,8 +551,7 @@ function crear_multiples_usuarios() {
 
         EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
         EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
-        usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>>"$ERROR_LOG"
-        if [[ $? -ne 0 ]]; then
+        if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>>"$ERROR_LOG"; then
             echo -e "${ROJO}❌ Error configurando la expiración para $USUARIO. Eliminando usuario...${NC}"
             userdel -r "$USUARIO" 2>/dev/null
             [[ -n "$ERROR_LOG" ]] && echo "$(date): Error configurando expiración para $USUARIO" >> "$ERROR_LOG"
@@ -541,14 +559,16 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>>"$ERROR_LOG"
-        if [[ $? -ne 0 ]]; then
-            echo -e "${ROJO}❌ Error escribiendo en el archivo de registros para $USUARIO. Eliminando usuario...${NC}"
-            userdel -r "$USUARIO" 2>/dev/null
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error escribiendo en registros para $USUARIO" >> "$ERROR_LOG"
-            ((FALLOS++))
-            continue
-        fi
+        {
+            flock -x 200
+            if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
+                echo -e "${ROJO}❌ Error escribiendo en el archivo de registros para $USUARIO. Eliminando usuario...${NC}"
+                userdel -r "$USUARIO" 2>/dev/null
+                [[ -n "$ERROR_LOG" ]] && echo "$(date): Error escribiendo en registros para $USUARIO" >> "$ERROR_LOG"
+                ((FALLOS++))
+                continue
+            fi
+        } 200>"$REGISTROS.lock"
 
         echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
         ((EXITOS++))
