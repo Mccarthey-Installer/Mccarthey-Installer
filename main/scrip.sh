@@ -319,10 +319,35 @@ function informacion_usuarios() {
 function crear_usuario() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR USUARIO SSH =====${NC}"
+
+    # Verificar permisos de $REGISTROS
+    if [[ ! -f "$REGISTROS" ]]; then
+        touch "$REGISTROS" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            return
+        }
+    fi
+    if [[ ! -w "$REGISTROS" ]]; then
+        echo -e "${ROJO}❌ Error: No se puede escribir en $REGISTROS. Verifica permisos.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
     read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
     read -p "$(echo -e ${AMARILLO}🔑 Contraseña: ${NC})" CLAVE
-    read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
 
+    # Validar días
+    while true; do
+        read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
+        if [[ "$DIAS" =~ ^[0-9]+$ ]] && [ "$DIAS" -gt 0 ]; then
+            break
+        else
+            echo -e "${ROJO}Por favor, ingresa un número válido de días mayor a 0.${NC}"
+        fi
+    done
+
+    # Validar móviles
     while true; do
         read -p "$(echo -e ${AMARILLO}📱 ¿Cuántos móviles? ${NC})" MOVILES
         if [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$MOVILES" -le 999 ]; then
@@ -332,22 +357,62 @@ function crear_usuario() {
         fi
     done
 
+    # Verificar si el usuario ya existe
     if id "$USUARIO" &>/dev/null; then
         echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    useradd -m -s /bin/bash "$USUARIO"
-    echo "$USUARIO:$CLAVE" | chpasswd
+    # Crear usuario
+    if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
+        echo -e "${ROJO}❌ Error creando usuario $USUARIO.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-    EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
-    EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
-    usermod -e "$EXPIRA_FECHA" "$USUARIO"
+    # Establecer contraseña
+    if ! echo "$USUARIO:$CLAVE" | chpasswd 2>/dev/null; then
+        echo -e "${ROJO}❌ Error estableciendo la contraseña para $USUARIO. Eliminando usuario...${NC}"
+        userdel -r "$USUARIO" 2>/dev/null
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-    echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS"
-    echo
+    # Calcular fechas de expiración
+    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S" 2>/dev/null); then
+        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
+        userdel -r "$USUARIO" 2>/dev/null
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
+        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
+        userdel -r "$USUARIO" 2>/dev/null
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
+    # Establecer fecha de expiración
+    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
+        echo -e "${ROJO}❌ Error configurando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
+        userdel -r "$USUARIO" 2>/dev/null
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    # Escribir en el archivo de registros con bloqueo
+    {
+        flock -x 200
+        if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>/dev/null; then
+            echo -e "${ROJO}❌ Error escribiendo en el archivo de registros para $USUARIO. Eliminando usuario...${NC}"
+            userdel -r "$USUARIO" 2>/dev/null
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            return
+        fi
+    } 200>"$REGISTROS.lock"
+
+    # Mostrar información del usuario creado
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO${NC}"
@@ -360,7 +425,9 @@ function crear_usuario() {
     printf "${AMARILLO}%-15s %-15s %-20s %-15s %-15s${NC}\n" "👤 Usuario" "🔑 Clave" "📅 Expira" "⏳ Duración" "📱 Móviles"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
     printf "${VERDE}%-15s %-15s %-20s %-15s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES"
-    echo -e "${CIAN}===============================================================${NC}"
+    echo -e "${CIAN}
+
+===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
