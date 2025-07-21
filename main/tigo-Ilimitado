@@ -21,6 +21,7 @@ sudo update-locale LANG=es_SV.UTF-8
 sudo timedatectl set-timezone America/El_Salvador
 
 
+
 # ===========================
 # 1. INSTALAR PROXY PYTHON EN PUERTO 80 (NOHUP)
 # ===========================
