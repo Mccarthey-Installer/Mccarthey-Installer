@@ -587,7 +587,7 @@ function crear_multiples_usuarios() {
 
 function ver_registros() {
     clear
-    echo -e "${PINK}===== 🌸 REGISTROS =====${NC}"
+    echo -e "${SOFT_PINK}===== 🌸 REGISTROS =====${NC}"
 
     # Centrar texto en un ancho dado
     center_value() {
@@ -600,9 +600,9 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        printf "${LAVENDER}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
+        printf "${PASTEL_BLUE}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
             "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
-        echo -e "${PINK}-----------------------------------------------------------------------${NC}"
+        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
@@ -610,7 +610,7 @@ function ver_registros() {
                 # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 DURACION_CENTRADA=$(center_value "$DURACION" 10)
-                printf "${LIGHT_PINK}%-3d ${LAVENDER}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
+                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
@@ -623,10 +623,9 @@ function ver_registros() {
         echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
     fi
 
-    echo -e "${PINK}=====================${NC}"
-    read -p "$(echo -e ${LIGHT_PURPLE}Presiona Enter para continuar... ✨${NC})"
+    echo -e "${LILAC}=====================${NC}"
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
-
 
 function eliminar_usuario() {
     clear
