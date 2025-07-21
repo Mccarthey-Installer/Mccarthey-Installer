@@ -389,18 +389,13 @@ function crear_usuario() {
         return
     fi
 
-    # Calcular fechas de expiración
-    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
-        userdel -r "$USUARIO" 2>/dev/null
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-    if ! EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
-        userdel -r "$USUARIO" 2>/dev/null
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
+    # Calcular fechas de expiración CORREGIDO
+    if [ "$DIAS" -eq 0 ]; then
+        EXPIRA_DATETIME=$(date -d "tomorrow 00:00" +"%Y-%m-%d %H:%M:%S")
+        EXPIRA_FECHA=$(date -d "tomorrow" +"%Y-%m-%d")
+    else
+        EXPIRA_DATETIME=$(date -d "+$DIAS days 00:00" +"%Y-%m-%d %H:%M:%S")
+        EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d")
     fi
 
     # Establecer fecha de expiración
@@ -438,6 +433,7 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 function crear_multiples_usuarios() {
