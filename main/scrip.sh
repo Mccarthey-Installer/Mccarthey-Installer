@@ -588,13 +588,17 @@ function crear_multiples_usuarios() {
 function ver_registros() {
     clear
     echo -e "${SOFT_PINK}===== 🌸 REGISTROS =====${NC}"
-SOFT_PINK='\033[38;5;211m'
-PASTEL_BLUE='\033[38;5;153m'
-LILAC='\033[38;5;183m'
-SOFT_CORAL='\033[38;5;217m'
-HOT_PINK='\033[38;5;198m'
-PASTEL_PURPLE='\033[38;5;189m'
-NC='\033[0m'
+
+    # Definir colores
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'  # Nuevo color para una columna
+    NC='\033[0m'
+
     # Centrar texto en un ancho dado
     center_value() {
         local value="$1"
@@ -606,7 +610,8 @@ NC='\033[0m'
     }
 
     if [[ -f $REGISTROS ]]; then
-        printf "${PASTEL_BLUE}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
+        # Cada columna con un color diferente
+        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
             "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
         echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
@@ -616,7 +621,8 @@ NC='\033[0m'
                 # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 DURACION_CENTRADA=$(center_value "$DURACION" 10)
-                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
+                # Cada columna con su propio color en las filas de datos
+                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
