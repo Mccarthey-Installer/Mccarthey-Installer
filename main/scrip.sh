@@ -389,16 +389,11 @@ function crear_usuario() {
         return
     fi
 
-    # Calcular fechas de expiración CORREGIDO
-    if [ "$DIAS" -eq 0 ]; then
-        EXPIRA_DATETIME=$(date -d "tomorrow 00:00" +"%Y-%m-%d %H:%M:%S")
-        EXPIRA_FECHA=$(date -d "tomorrow" +"%Y-%m-%d")
-    else
-        EXPIRA_DATETIME=$(date -d "+$DIAS days 00:00" +"%Y-%m-%d %H:%M:%S")
-        EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d")
-    fi
+    # ==== CALENDARIO: Fecha de expiración, suma días+1 ====
+    EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
+    EXPIRA_DATETIME=$(date -d "$EXPIRA_FECHA 00:00" +"%Y-%m-%d %H:%M:%S")
 
-    # Establecer fecha de expiración
+    # Establecer fecha de expiración en el sistema
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
         echo -e "${ROJO}❌ Error configurando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
         userdel -r "$USUARIO" 2>/dev/null
@@ -406,7 +401,7 @@ function crear_usuario() {
         return
     fi
 
-    # Escribir en el archivo de registros con bloqueo
+    # Registrar en archivo (con bloqueo)
     {
         flock -x 200
         if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>/dev/null; then
@@ -433,6 +428,7 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
@@ -601,29 +597,11 @@ function ver_registros() {
         NUM=1
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                # -- Cálculo de días por calendario --
-                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
-                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-                if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
-                    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-                    if (( DIAS_RESTANTES < 0 )); then
-                        DIAS_RESTANTES=0
-                        COLOR_DIAS="${ROJO}"
-                    else
-                        COLOR_DIAS="${NC}"
-                    fi
-                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
-                else
-                    DIAS_RESTANTES="Inválido"
-                    FORMATO_EXPIRA="Desconocido"
-                    COLOR_DIAS="${ROJO}"
-                fi
-
-                # Centrar los días en 10 caracteres
-                DIAS_CENTRADO=$(center_value "$DIAS_RESTANTES" 10)
-
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s ${COLOR_DIAS}%s${NC} ${AMARILLO}%-12s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DIAS_CENTRADO" "$MOVILES"
+                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
+                FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
+                DURACION_CENTRADA=$(center_value "$DURACION" 10)
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
@@ -638,6 +616,7 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function eliminar_usuario() {
     clear
