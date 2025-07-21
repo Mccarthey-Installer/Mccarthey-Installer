@@ -1022,6 +1022,98 @@ function nuclear_eliminar() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
+
+# Nueva función para configurar el banner SSH
+function configurar_banner_ssh() {
+    clear
+    echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
+    echo -e "${AMARILLO}📝 Ingresa el mensaje para el banner (presiona Enter dos veces para confirmar).${NC}"
+    echo -e "${AMARILLO}📌 Usa 'DESACTIVAR' para desactivar el banner.${NC}"
+    echo -e "${AMARILLO}📌 Ejemplo: Bienvenida 🌸 ¡Conéctate con estilo! 💖${NC}"
+    echo
+
+    declare -a LINEAS_BANNER
+    while IFS= read -r LINEA; do
+        [[ -z "$LINEA" ]] && break
+        LINEAS_BANNER+=("$LINEA")
+    done
+
+    BANNER_FILE="/etc/ssh_banner"
+    SSHD_CONFIG="/etc/ssh/sshd_config"
+
+    if [[ ${#LINEAS_BANNER[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    # Verificar si se quiere desactivar el banner
+    if [[ "${LINEAS_BANNER[0]}" == "DESACTIVAR" ]]; then
+        if grep -q "^Banner" "$SSHD_CONFIG"; then
+            sed -i 's/^Banner.*/#Banner none/' "$SSHD_CONFIG" 2>/dev/null || {
+                echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                return
+            }
+            rm -f "$BANNER_FILE" 2>/dev/null
+            systemctl restart sshd >/dev/null 2>&1 || {
+                echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
+                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                return
+            }
+            echo -e "${VERDE}✅ Banner SSH desactivado exitosamente.${NC}"
+        else
+            echo -e "${AMARILLO}⚠️ El banner ya está desactivado.${NC}"
+        fi
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    # Crear el archivo del banner
+    {
+        echo -e "${AZUL_SUAVE}════════════════════════════════════${NC}"
+        echo -e "${ROSA}🌸 ¡Bienvenida al servidor SSH! 💖${NC}"
+        for LINEA in "${LINEAS_BANNER[@]}"; do
+            echo -e "${PASTEL_PURPLE}$LINEA${NC}"
+        done
+        echo -e "${AZUL_SUAVE}════════════════════════════════════${NC}"
+    } > "$BANNER_FILE" 2>/dev/null || {
+        echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    }
+
+    # Configurar el banner en sshd_config
+    if grep -q "^Banner" "$SSHD_CONFIG"; then
+        sed -i "s|^Banner.*|Banner $BANNER_FILE|" "$SSHD_CONFIG" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            return
+        }
+    else
+        echo "Banner $BANNER_FILE" >> "$SSHD_CONFIG" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            return
+        }
+    fi
+
+    # Reiniciar el servicio SSH
+    systemctl restart sshd >/dev/null 2>&1 || {
+        echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    }
+
+    echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
+    echo -e "${CIAN}📜 Contenido del banner:${NC}"
+    cat "$BANNER_FILE"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
+
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -1033,6 +1125,8 @@ FUCHSIA='\033[38;2;255;0;255m'
 AMARILLO_SUAVE='\033[38;2;255;204;0m'
 ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
+AZUL_SUAVE='\033[38;5;45m'
+PASTEL_PURPLE='\033[38;5;189m'
 NC='\033[0m'
 
 # Menú principal
@@ -1051,7 +1145,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
-        
+        echo -e "${AMARILLO_SUAVE}10. 🎀 Configurar banner SSH${NC}"
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
@@ -1065,7 +1159,7 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) nuclear_eliminar ;;
-            
+            10) configurar_banner_ssh ;;
             0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
