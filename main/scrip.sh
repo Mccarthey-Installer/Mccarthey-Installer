@@ -587,7 +587,7 @@ function crear_multiples_usuarios() {
 
 function ver_registros() {
     clear
-    echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
+    echo -e "${PINK}===== 🌸 REGISTROS =====${NC}"
 
     # Centrar texto en un ancho dado
     center_value() {
@@ -600,9 +600,9 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        printf "${AMARILLO}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
-            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📱 Móviles"
-        echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
+        printf "${LAVENDER}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
+            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
+        echo -e "${PINK}-----------------------------------------------------------------------${NC}"
 
         NUM=1
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
@@ -610,21 +610,21 @@ function ver_registros() {
                 # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 DURACION_CENTRADA=$(center_value "$DURACION" 10)
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
+                printf "${LIGHT_PINK}%-3d ${LAVENDER}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
 
         if [[ $NUM -eq 1 ]]; then
-            echo -e "${ROJO}❌ No hay usuarios existentes en el sistema o los registros no son válidos.${NC}"
+            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
         fi
     else
-        echo -e "${ROJO}❌ No hay registros aún. El archivo '$REGISTROS' no existe.${NC}"
+        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
     fi
 
-    echo -e "${CIAN}=====================${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    echo -e "${PINK}=====================${NC}"
+    read -p "$(echo -e ${LIGHT_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
 
 
