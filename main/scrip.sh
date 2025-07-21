@@ -587,16 +587,17 @@ function crear_multiples_usuarios() {
 
 function ver_registros() {
     clear
-    echo -e "${SOFT_PINK}===== 🌸 REGISTROS =====${NC}"
+    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
     # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
     LILAC='\033[38;5;183m'
     SOFT_CORAL='\033[38;5;217m'
     HOT_PINK='\033[38;5;198m'
     PASTEL_PURPLE='\033[38;5;189m'
-    MINT_GREEN='\033[38;5;159m'  # Nuevo color para una columna
+    MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
 
     # Centrar texto en un ancho dado
