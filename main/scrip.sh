@@ -334,7 +334,24 @@ function crear_usuario() {
         return
     fi
 
-    read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
+    # Leer nombre del usuario y verificar si ya existe
+    while true; do
+        read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
+        if [[ -z "$USUARIO" ]]; then
+            echo -e "${ROJO}❌ Por favor, ingresa un nombre de usuario válido.${NC}"
+            continue
+        fi
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. No se puede crear.${NC}"
+            continue
+        fi
+        if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
+            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Elige otro nombre.${NC}"
+            continue
+        fi
+        break
+    done
+
     read -p "$(echo -e ${AMARILLO}🔑 Contraseña: ${NC})" CLAVE
 
     # Validar días
@@ -356,13 +373,6 @@ function crear_usuario() {
             echo -e "${ROJO}Por favor, ingresa un número del 1 al 999.${NC}"
         fi
     done
-
-    # Verificar si el usuario ya existe
-    if id "$USUARIO" &>/dev/null; then
-        echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe. No se puede crear.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
 
     # Crear usuario
     if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
@@ -422,9 +432,9 @@ function crear_usuario() {
     echo
 
     echo -e "${CIAN}===== 📝 REGISTRO CREADO =====${NC}"
-    printf "${AMARILLO}%-15s %-15s %-20s %-15s %-15s${NC}\n" "👤 Usuario" "🔑 Clave" "📅 Expira" "⏳ Duración" "📱 Móviles"
+    printf "${AMARILLO}%-15s %-20s %-15s %-15s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Duración" "📱 Móviles"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    printf "${VERDE}%-15s %-15s %-20s %-15s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES"
+    printf "${VERDE}%-15s %-20s %-15s %-15s${NC}\n" "$USUARIO:$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES"
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
