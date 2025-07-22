@@ -317,17 +317,11 @@ function informacion_usuarios() {
 }
 
 
-
-
-
-    
-
-
 function crear_usuario() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR USUARIO SSH =====${NC}"
 
-    # Validar archivo de registros
+    # Verificar permisos de $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
         touch "$REGISTROS" 2>/dev/null || {
             echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
@@ -341,7 +335,7 @@ function crear_usuario() {
         return
     fi
 
-    # Leer usuario
+    # Leer nombre del usuario y verificar si ya existe
     while true; do
         read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
         if [[ -z "$USUARIO" ]]; then
@@ -349,11 +343,11 @@ function crear_usuario() {
             continue
         fi
         if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema.${NC}"
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. No se puede crear.${NC}"
             continue
         fi
         if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya está registrado en $REGISTROS.${NC}"
+            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Elige otro nombre.${NC}"
             continue
         fi
         break
@@ -361,7 +355,7 @@ function crear_usuario() {
 
     read -p "$(echo -e ${AMARILLO}🔑 Contraseña: ${NC})" CLAVE
 
-    # Duración en días
+    # Validar días
     while true; do
         read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
         if [[ "$DIAS" =~ ^[0-9]+$ ]] && [ "$DIAS" -ge 0 ]; then
@@ -371,7 +365,7 @@ function crear_usuario() {
         fi
     done
 
-    # Móviles permitidos
+    # Validar móviles
     while true; do
         read -p "$(echo -e ${AMARILLO}📱 ¿Cuántos móviles? ${NC})" MOVILES
         if [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$MOVILES" -le 999 ]; then
@@ -396,12 +390,21 @@ function crear_usuario() {
         return
     fi
 
-    # ==== Expiración con lógica Linux estándar ====
-    # Siempre expira a las 00:00am del "día siguiente" si pones 0 días
-    EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
-    EXPIRA_DATETIME=$(date -d "+$((DIAS+1)) days 00:00" +"%Y-%m-%d %H:%M:%S")
+    # Calcular fechas de expiración
+    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00" 2>/dev/null); then
+        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
+        userdel -r "$USUARIO" 2>/dev/null
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
+        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
+        userdel -r "$USUARIO" 2>/dev/null
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-    # Establecer fecha de expiración en el sistema
+    # Establecer fecha de expiración
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
         echo -e "${ROJO}❌ Error configurando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
         userdel -r "$USUARIO" 2>/dev/null
@@ -409,7 +412,7 @@ function crear_usuario() {
         return
     fi
 
-    # Guardar en registros.txt con bloqueo
+    # Escribir en el archivo de registros con bloqueo
     {
         flock -x 200
         if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>/dev/null; then
@@ -420,7 +423,7 @@ function crear_usuario() {
         fi
     } 200>"$REGISTROS.lock"
 
-    # Mostrar la info creada
+    # Mostrar información del usuario creado
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO${NC}"
@@ -428,6 +431,7 @@ function crear_usuario() {
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$FECHA_FORMAT${NC}"
     echo -e "${AZUL}📱 Móviles permitidos: ${AMARILLO}$MOVILES${NC}"
     echo
+
     echo -e "${CIAN}===== 📝 REGISTRO CREADO =====${NC}"
     printf "${AMARILLO}%-15s %-20s %-15s %-15s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Duración" "📱 Móviles"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
@@ -435,8 +439,6 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-  
 
 
 
@@ -585,9 +587,20 @@ function crear_multiples_usuarios() {
 
 function ver_registros() {
     clear
-    echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
+    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
-    # Centrar texto en columnas
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    # Centrar texto en un ancho dado
     center_value() {
         local value="$1"
         local width="$2"
@@ -598,49 +611,34 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        printf "${AMARILLO}%-3s %-12s %-12s %-15s %10s %-14s${NC}\n" \
-            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📱 Móviles"
-        echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
+        # Cada columna con un color diferente
+        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
+            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
+        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
-        FECHA_ACTUAL=$(date +%Y-%m-%d)
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                DIA=$(date -d "$EXPIRA_DATETIME" +"%d")
-                MES_ENG=$(date -d "$EXPIRA_DATETIME" +"%B")
-                declare -A MES_MAP=( ["January"]="enero" ["February"]="febrero" ["March"]="marzo" ["April"]="abril" ["May"]="mayo" \
-                                     ["June"]="junio" ["July"]="julio" ["August"]="agosto" ["September"]="septiembre" \
-                                     ["October"]="octubre" ["November"]="noviembre" ["December"]="diciembre" )
-                MES=${MES_MAP[$MES_ENG]}
-                FORMATO_EXPIRA="${DIA}/${MES}"
-
-                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
-
-                # Cálculo que respeta el ciclo calendario real
-                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ) / 86400 - 1 ))
-                [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
-
-                DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
-
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-15s %-10s %-14s${NC}\n" \
+                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
+                FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
+                DURACION_CENTRADA=$(center_value "$DURACION" 10)
+                # Cada columna con su propio color en las filas de datos
+                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
 
         if [[ $NUM -eq 1 ]]; then
-            echo -e "${ROJO}❌ No hay usuarios existentes en el sistema o los registros no son válidos.${NC}"
+            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
         fi
     else
-        echo -e "${ROJO}❌ No hay registros aún. El archivo '$REGISTROS' no existe.${NC}"
+        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
     fi
 
-    echo -e "${CIAN}=====================${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    echo -e "${LILAC}=====================${NC}"
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
-
-
-
 
 function eliminar_usuario() {
     clear
@@ -1024,113 +1022,6 @@ function nuclear_eliminar() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
-
-# Nueva función para configurar el banner SSH
-function configurar_banner_ssh() {
-    clear
-    echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
-    echo -e "${AMARILLO}📝 Por favor, digite su banner (una sola línea).${NC}"
-    echo -e "${AMARILLO}📌 Usa 'DESACTIVAR' para desactivar el banner.${NC}"
-    echo -e "${AMARILLO}📌 Ejemplo: <h1> <font color=\"red\"> 🌲 VENTA DE ARCHIVOS 🎅 🌲 </font><h2> <font color=\"#FF69B4\"> CLARO REDES</font><h4><font color=\"#FF8C00\"> MAYOR INFORMACIÓN</font> 🎁 <h4><font color=\"red\"> MI WHATSAPP 72261505😍🍾🥂</font>${NC}"
-    echo
-
-    read -r BANNER_TEXT
-    BANNER_FILE="/etc/ssh_banner"
-    SSHD_CONFIG="/etc/ssh/sshd_config"
-
-    if [[ -z "$BANNER_TEXT" ]]; then
-        echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    # Verificar si se quiere desactivar el banner
-    if [[ "$BANNER_TEXT" == "DESACTIVAR" ]]; then
-        if grep -q "^Banner" "$SSHD_CONFIG"; then
-            sed -i 's|^Banner.*|#Banner none|' "$SSHD_CONFIG" 2>/dev/null || {
-                echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            }
-            rm -f "$BANNER_FILE" 2>/dev/null
-            systemctl restart sshd >/dev/null 2>&1 || {
-                echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            }
-            echo -e "${VERDE}✅ Banner SSH desactivado exitosamente.${NC}"
-        else
-            echo -e "${AMARILLO}⚠️ El banner ya está desactivado.${NC}"
-        fi
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    # Guardar el texto del banner tal cual
-    echo "$BANNER_TEXT" > "$BANNER_FILE" 2>/dev/null || {
-        echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    }
-
-    # Configurar el banner en sshd_config
-    if grep -q "^Banner" "$SSHD_CONFIG"; then
-        sed -i "s|^Banner.*|Banner $BANNER_FILE|" "$SSHD_CONFIG" 2>/dev/null || {
-            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return
-        }
-    else
-        echo "Banner $BANNER_FILE" >> "$SSHD_CONFIG" 2>/dev/null || {
-            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return
-        }
-    fi
-
-    # Reiniciar el servicio SSH
-    systemctl restart sshd >/dev/null 2>&1 || {
-        echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    }
-
-    echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
-    echo -e "${CIAN}📜 Contenido del banner:${NC}"
-    cat "$BANNER_FILE"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
-
-
-function checkuser() {
-    USUARIO="$USER"
-    if [[ ! -f "$REGISTROS" ]]; then
-        return
-    fi
-    LINEA=$(grep "^$USUARIO\t" "$REGISTROS")
-    if [[ -z "$LINEA" ]]; then
-        return
-    fi
-    IFS=$'\t' read -r _USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN <<< "$LINEA"
-    if ! id "$USUARIO" &>/dev/null; then
-        return
-    fi
-    FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
-    FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-    if [[ -z "$FECHA_EXPIRA_DIA" ]]; then
-        return
-    fi
-    # Mostrar el mensaje solo cuando hoy es igual o mayor a la fecha de expiración:
-    if [[ $(date +%s) -ge $(date -d "$FECHA_EXPIRA_DIA" +%s) ]]; then
-        echo "<h1> <font color=\"red\"> Estimado cliente, ahora te vence tu archivo por favor lo puedes renovar y seguir disfrutando de Internet Ilimitado 🔥🔥 </font>"
-    fi
-}
-
-
-
-
-
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -1142,8 +1033,6 @@ FUCHSIA='\033[38;2;255;0;255m'
 AMARILLO_SUAVE='\033[38;2;255;204;0m'
 ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
-AZUL_SUAVE='\033[38;5;45m'
-PASTEL_PURPLE='\033[38;5;189m'
 NC='\033[0m'
 
 # Menú principal
@@ -1162,8 +1051,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
-        echo -e "${AMARILLO_SUAVE}10. 🎀 Configurar banner SSH${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🔍 Verificar estado de usuario${NC}"
+        
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
@@ -1177,8 +1065,7 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) nuclear_eliminar ;;
-            10) configurar_banner_ssh ;;
-            11) checkuser ;;
+            
             0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
