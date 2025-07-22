@@ -1121,15 +1121,13 @@ function checkuser() {
     if [[ -z "$FECHA_EXPIRA_DIA" ]]; then
         return
     fi
-    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-    if [[ $DIAS_RESTANTES -lt 0 ]]; then
-        DIAS_RESTANTES=0
-    fi
-    if [[ $DIAS_RESTANTES -eq 0 ]]; then
+    if [[ $(date +%s) -ge $(date -d "$FECHA_EXPIRA_DIA" +%s) ]]; then
         # Mostrar mensaje en formato HTML, en una sola línea, sin procesar colores ANSI
         echo "<h1> <font color=\"red\"> Estimado cliente, ahora te vence tu archivo por favor lo puedes renovar y seguir disfrutando de Internet Ilimitado 🔥🔥 </font>"
     fi
 }
+
+
 
 
 # Colores y emojis
