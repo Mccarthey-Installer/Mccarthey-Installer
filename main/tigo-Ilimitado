@@ -6,21 +6,17 @@ echo "🛠️ Instalando dependencias..."
 
 # Actualizar índices de paquetes
 sudo apt update -y
-
-# Actualizar paquetes ya instalados
 sudo apt upgrade -y
 
-# Instalar util-linux (y otros paquetes necesarios)
-sudo apt install -y util-linux git cmake build-essential curl unzip wget python python-dev \
-screen python2.7 net-tools python3 python3-pip locales
+# Instalar paquetes necesarios (corregido)
+sudo apt install -y util-linux git cmake build-essential curl unzip wget \
+python2 python2-dev python-is-python3 screen net-tools python3 python3-pip locales
 
-# Configurar Locales
+# Configurar locales
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
 sudo locale-gen
 sudo update-locale LANG=es_SV.UTF-8
 sudo timedatectl set-timezone America/El_Salvador
-
-
 
 # ===========================
 # 1. INSTALAR PROXY PYTHON EN PUERTO 80 (NOHUP)
@@ -30,7 +26,7 @@ echo "🌀 Configurando proxy Python en puerto 80..."
 mkdir -p /etc/ADMcgh
 
 cat > /etc/ADMcgh/PDirect.py << 'EOF'
-#!/usr/bin/env python
+#!/usr/bin/env python2
 # encoding: utf-8
 
 import socket, threading, thread, select, signal, sys, time, getopt
@@ -43,8 +39,6 @@ TIMEOUT = 60
 DEFAULT_HOST = '127.0.0.1:22'
 STATUS_RESP = '101'
 FTAG = '\r\nContent-length: 0\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\n'
-
-# Mensaje personalizado solo en rojo con strong
 STATUS_TXT = '<strong style="color: #ff0000;">Kang Sae-byeok</strong>'
 RESPONSE = "HTTP/1.1 " + str(STATUS_RESP) + ' ' + STATUS_TXT + ' ' + FTAG
 
@@ -234,7 +228,7 @@ EOF
 chmod +x /etc/ADMcgh/PDirect.py
 
 # Iniciar con nohup
-nohup python /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+nohup python2 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
 
 # ===========================
 # 2. BADVPN PUERTOS 7200 Y 7300
@@ -264,7 +258,7 @@ echo "🧩 Configurando autoarranque vía rc.local..."
 cat > /etc/rc.local <<EOF
 #!/bin/bash
 sleep 10
-nohup python /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+nohup python2 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
 screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
 screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
 exit 0
