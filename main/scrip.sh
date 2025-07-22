@@ -1025,12 +1025,13 @@ function nuclear_eliminar() {
 
 
 # Nueva función para configurar el banner SSH
+
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
     echo -e "${AMARILLO}📝 Ingresa el mensaje para el banner (presiona Enter dos veces para confirmar).${NC}"
     echo -e "${AMARILLO}📌 Usa 'DESACTIVAR' para desactivar el banner.${NC}"
-    echo -e "${AMARILLO}📌 Ejemplo: ¡Bienvenida, reina! 🌟 Este es tu servidor SSH favorito 💖${NC}"
+    echo -e "${AMARILLO}📌 Ejemplo: VENTA DE ARCHIVOS 🌲 ¡Contacta ahora! 😍${NC}"
     echo
 
     declare -a LINEAS_BANNER
@@ -1041,10 +1042,10 @@ function configurar_banner_ssh() {
 
     BANNER_FILE="/etc/ssh_banner"
     SSHD_CONFIG="/etc/ssh/sshd_config"
-    HOT_PINK='\033[38;2;255;105;180m'
-    LILA='\033[38;2;221;160;221m'
-    TURQUESA='\033[38;2;64;224;208m'
-    LIGHT_PINK='\033[38;2;255;182;193m'
+    HOT_PINK='\033[38;2;255;105;180m'  # #FF69B4
+    DARK_ORANGE='\033[38;2;255;140;0m'  # #FF8C00
+    RED='\033[38;2;255;0;0m'           # #FF0000
+    TURQUESA='\033[38;2;64;224;208m'   # #40E0D0
     NC='\033[0m'
 
     if [[ ${#LINEAS_BANNER[@]} -eq 0 ]]; then
@@ -1075,13 +1076,15 @@ function configurar_banner_ssh() {
         return
     fi
 
-    # Crear el archivo del banner con colores RGB
+    # Crear el archivo del banner con colores RGB y emojis
     {
         printf "\033[38;2;64;224;208m════════════════════════════════════\033[0m\n"
-        printf "\033[38;2;255;105;180m🌸 ¡Bienvenida al servidor SSH! 💖\033[0m\n"
+        printf "\033[38;2;255;0;0m🌲 VENTA DE ARCHIVOS 🎅 🌲\033[0m\n"
+        printf "\033[38;2;255;105;180mCLARO REDES\033[0m\n"
         for LINEA in "${LINEAS_BANNER[@]}"; do
-            printf "\033[38;2;255;182;193m%s\033[0m\n" "$LINEA"
+            printf "\033[38;2;255;140;0m🎁 %s\033[0m\n" "$LINEA"
         done
+        printf "\033[38;2;255;0;0m😍 MI WHATSAPP 72261505 🍾🥂\033[0m\n"
         printf "\033[38;2;64;224;208m════════════════════════════════════\033[0m\n"
     } > "$BANNER_FILE" 2>/dev/null || {
         echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
@@ -1116,7 +1119,6 @@ function configurar_banner_ssh() {
     cat "$BANNER_FILE"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 
 # Colores y emojis
