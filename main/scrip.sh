@@ -322,11 +322,12 @@ function informacion_usuarios() {
 
     
 
+
 function crear_usuario() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR USUARIO SSH =====${NC}"
 
-    # Verificar permisos de $REGISTROS
+    # Validar archivo de registros
     if [[ ! -f "$REGISTROS" ]]; then
         touch "$REGISTROS" 2>/dev/null || {
             echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
@@ -340,7 +341,7 @@ function crear_usuario() {
         return
     fi
 
-    # Leer nombre del usuario y verificar si ya existe
+    # Leer usuario
     while true; do
         read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
         if [[ -z "$USUARIO" ]]; then
@@ -348,11 +349,11 @@ function crear_usuario() {
             continue
         fi
         if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. No se puede crear.${NC}"
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema.${NC}"
             continue
         fi
         if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
-            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Elige otro nombre.${NC}"
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya está registrado en $REGISTROS.${NC}"
             continue
         fi
         break
@@ -360,7 +361,7 @@ function crear_usuario() {
 
     read -p "$(echo -e ${AMARILLO}🔑 Contraseña: ${NC})" CLAVE
 
-    # Validar días
+    # Duración en días
     while true; do
         read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
         if [[ "$DIAS" =~ ^[0-9]+$ ]] && [ "$DIAS" -ge 0 ]; then
@@ -370,7 +371,7 @@ function crear_usuario() {
         fi
     done
 
-    # Validar móviles
+    # Móviles permitidos
     while true; do
         read -p "$(echo -e ${AMARILLO}📱 ¿Cuántos móviles? ${NC})" MOVILES
         if [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$MOVILES" -le 999 ]; then
@@ -395,7 +396,8 @@ function crear_usuario() {
         return
     fi
 
-    # === CADUCIDAD CALENDARIO: N+1 días ===
+    # ==== Expiración con lógica Linux estándar ====
+    # Siempre expira a las 00:00am del "día siguiente" si pones 0 días
     EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
     EXPIRA_DATETIME=$(date -d "+$((DIAS+1)) days 00:00" +"%Y-%m-%d %H:%M:%S")
 
@@ -407,7 +409,7 @@ function crear_usuario() {
         return
     fi
 
-    # Registrar en archivo (con bloqueo)
+    # Guardar en registros.txt con bloqueo
     {
         flock -x 200
         if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>/dev/null; then
@@ -418,7 +420,7 @@ function crear_usuario() {
         fi
     } 200>"$REGISTROS.lock"
 
-    # Mostrar información del usuario creado
+    # Mostrar la info creada
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO${NC}"
@@ -426,7 +428,6 @@ function crear_usuario() {
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$FECHA_FORMAT${NC}"
     echo -e "${AZUL}📱 Móviles permitidos: ${AMARILLO}$MOVILES${NC}"
     echo
-
     echo -e "${CIAN}===== 📝 REGISTRO CREADO =====${NC}"
     printf "${AMARILLO}%-15s %-20s %-15s %-15s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Duración" "📱 Móviles"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
