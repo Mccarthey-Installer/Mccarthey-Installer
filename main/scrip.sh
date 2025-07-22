@@ -601,7 +601,7 @@ function ver_registros() {
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
                 if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
-                    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ) / 86400 - 1 ))
+                    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ) / 86400 ))
                     [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
                     DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
                 else
@@ -624,6 +624,7 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 function eliminar_usuario() {
