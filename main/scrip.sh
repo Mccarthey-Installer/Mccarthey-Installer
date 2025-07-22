@@ -1025,37 +1025,26 @@ function nuclear_eliminar() {
 
 
 # Nueva función para configurar el banner SSH
-
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
-    echo -e "${AMARILLO}📝 Ingresa el mensaje para el banner (presiona Enter dos veces para confirmar).${NC}"
+    echo -e "${AMARILLO}📝 Por favor, digite su banner (una sola línea).${NC}"
     echo -e "${AMARILLO}📌 Usa 'DESACTIVAR' para desactivar el banner.${NC}"
-    echo -e "${AMARILLO}📌 Ejemplo: VENTA DE ARCHIVOS 🌲 ¡Contacta ahora! 😍${NC}"
+    echo -e "${AMARILLO}📌 Ejemplo: <h1> <font color=\"red\"> 🌲 VENTA DE ARCHIVOS 🎅 🌲 </font><h2> <font color=\"#FF69B4\"> CLARO REDES</font><h4><font color=\"#FF8C00\"> MAYOR INFORMACIÓN</font> 🎁 <h4><font color=\"red\"> MI WHATSAPP 72261505😍🍾🥂</font>${NC}"
     echo
 
-    declare -a LINEAS_BANNER
-    while IFS= read -r LINEA; do
-        [[ -z "$LINEA" ]] && break
-        LINEAS_BANNER+=("$LINEA")
-    done
-
+    read -r BANNER_TEXT
     BANNER_FILE="/etc/ssh_banner"
     SSHD_CONFIG="/etc/ssh/sshd_config"
-    HOT_PINK='\033[38;2;255;105;180m'  # #FF69B4
-    DARK_ORANGE='\033[38;2;255;140;0m'  # #FF8C00
-    RED='\033[38;2;255;0;0m'           # #FF0000
-    TURQUESA='\033[38;2;64;224;208m'   # #40E0D0
-    NC='\033[0m'
 
-    if [[ ${#LINEAS_BANNER[@]} -eq 0 ]]; then
+    if [[ -z "$BANNER_TEXT" ]]; then
         echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
     # Verificar si se quiere desactivar el banner
-    if [[ "${LINEAS_BANNER[0]}" == "DESACTIVAR" ]]; then
+    if [[ "$BANNER_TEXT" == "DESACTIVAR" ]]; then
         if grep -q "^Banner" "$SSHD_CONFIG"; then
             sed -i 's|^Banner.*|#Banner none|' "$SSHD_CONFIG" 2>/dev/null || {
                 echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
@@ -1076,17 +1065,8 @@ function configurar_banner_ssh() {
         return
     fi
 
-    # Crear el archivo del banner con colores RGB y emojis
-    {
-        printf "\033[38;2;64;224;208m════════════════════════════════════\033[0m\n"
-        printf "\033[38;2;255;0;0m🌲 VENTA DE ARCHIVOS 🎅 🌲\033[0m\n"
-        printf "\033[38;2;255;105;180mCLARO REDES\033[0m\n"
-        for LINEA in "${LINEAS_BANNER[@]}"; do
-            printf "\033[38;2;255;140;0m🎁 %s\033[0m\n" "$LINEA"
-        done
-        printf "\033[38;2;255;0;0m😍 MI WHATSAPP 72261505 🍾🥂\033[0m\n"
-        printf "\033[38;2;64;224;208m════════════════════════════════════\033[0m\n"
-    } > "$BANNER_FILE" 2>/dev/null || {
+    # Guardar el texto del banner tal cual
+    echo "$BANNER_TEXT" > "$BANNER_FILE" 2>/dev/null || {
         echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
