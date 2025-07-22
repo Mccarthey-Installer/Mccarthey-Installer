@@ -62,73 +62,22 @@ function monitorear_conexiones() {
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
                 # SOLO si el bloqueo no es manual
-           
-# SOLO si el bloqueo no es manual (mantén este control si lo deseas)
-if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
-    # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
-    # Elimina procesos Z (zombie), D (uninterruptible), T (stopped), S (sleep/desconectado), R (running no ssh/dropbear)
-    while read -r pid stat comm; do
-        case "$stat" in
-            *Z*) # Zombie
-                kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                ;;
-            *D*) # Uninterruptible sleep
-                kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                ;;
-            *T*) # Stopped
-                kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                ;;
-            *S*) # Sleeping - revisa conexión real con ss
-                if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
-                    # Si está dormido, pero no tiene conexión activa, elimínalo
-                    PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
-                    if [[ -z "$PORTS" ]]; then
-                        kill -9 "$pid" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                    # Bloqueo automático
+                    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
+                        if [[ -z "$ESTA_BLOQUEADO" ]]; then
+                            usermod -L "$USUARIO"
+                            pkill -KILL -u "$USUARIO"
+                            BLOQUEO_MANUAL="NO"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' bloqueado automáticamente por exceder el límite ($CONEXIONES > $MOVILES_NUM)." >> "$LOG"
+                        fi
+                    # Desbloqueo automático
+                    elif [[ $CONEXIONES -le $MOVILES_NUM && -n "$ESTA_BLOQUEADO" ]]; then
+                        usermod -U "$USUARIO"
+                        BLOQUEO_MANUAL="NO"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario '$USUARIO' desbloqueado automáticamente al cumplir el límite ($CONEXIONES <= $MOVILES_NUM)." >> "$LOG"
                     fi
-                else
-                    # No es sshd/dropbear, elimínalo siempre
-                    kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
                 fi
-                ;;
-            *R*) # Running - si no es sshd/dropbear, mátalo
-                if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
-                    kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                fi
-                ;;
-        esac
-    done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
-    
-    # --- CONTROL DE SESIONES: CIERRA SOLO LAS EXTRAS ---
-    # Recolecta y ordena sesiones sshd y dropbear por antigüedad
-    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-
-    # Mezcla ambos tipos y ordénalos por antigüedad
-    PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
-    # Si por algún motivo faltan espacios, vuelve a ordenarlos bien
-    mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
-        START=$(ps -p "$pid" -o lstart= 2>/dev/null)
-        echo "$pid:$START"
-    done | sort -t: -k2 | awk -F: '{print $1}')
-
-    TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
-
-    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-    if (( TOTAL_CONEX > MOVILES_NUM )); then
-        # Conserva solo las primeras MOVILES_NUM, mata el resto
-        for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
-            kill -9 "$PID" 2>/dev/null
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
-        done
-    fi
-fi
-
 
                 # === ACTUALIZAR PRIMER_LOGIN ===
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
@@ -528,7 +477,9 @@ function ver_registros() {
 
 
 
-eliminar_usuario() {
+
+
+function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🗑️ ELIMINAR USUARIO =====${NC}"
     if [[ ! -f $REGISTROS ]]; then
@@ -537,6 +488,7 @@ eliminar_usuario() {
         return
     fi
 
+    # Encabezado solo con número y usuario
     echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
     echo -e "${CIAN}--------------------------${NC}"
     NUM=1
@@ -582,51 +534,33 @@ eliminar_usuario() {
     fi
 
     echo -e "${CIAN}===== 🗑️ USUARIOS A ELIMINAR =====${NC}"
-    echo -e "${AMARILLO}Los siguientes usuarios serán ELIMINADOS:${NC}"
+    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
         echo -e "${VERDE}$USUARIO${NC}"
     done
     echo -e "${CIAN}--------------------------${NC}"
-    echo -e "${AMARILLO}Presiona ENTER para confirmar o Ctrl+C para cancelar...${NC}"
-    read
+    echo -e "${AMARILLO}✅ ¿Confirmar eliminación de estos usuarios? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-    # LIMPIEZA NUCLEAR 🚀🔥
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        UID_USER=$(id -u "$USUARIO" 2>/dev/null)
-
-        if [[ -n "$UID_USER" ]]; then
-            echo -e "${CIAN}🔒 Cerrando sesión (loginctl) de $USUARIO...${NC}"
-            sudo loginctl terminate-user "$USUARIO" &>/dev/null
+        PIDS=$(pgrep -u "$USUARIO")
+        if [[ -n $PIDS ]]; then
+            echo -e "${ROJO}⚠️ Procesos activos detectados para $USUARIO. Cerrándolos...${NC}"
+            kill -9 $PIDS 2>/dev/null
             sleep 1
-
-            echo -e "${ROJO}🔪 Matando procesos restantes de $USUARIO por nombre y UID...${NC}"
-            sudo pkill -9 -u "$USUARIO" &>/dev/null || true
-            sleep 1
-            sudo pkill -9 -U "$UID_USER" &>/dev/null || true
-            sleep 1
-        else
-            echo -e "${AMARILLO}⚠️ Usuario $USUARIO no existe, buscando procesos huérfanos por UID...${NC}"
-            # Opcional: agregar limpieza extra si se tiene UID previo
         fi
-
-        echo -e "${AMARILLO}🗑️ Eliminando usuario $USUARIO...${NC}"
-        if sudo userdel -r "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado del sistema.${NC}"
+        if userdel -r "$USUARIO" 2>/dev/null; then
+            sed -i "/^$USUARIO\t/d" "$REGISTROS"
+            sed -i "/^$USUARIO|/d" "$HISTORIAL"
+            echo -e "${VERDE}✅ Usuario $USUARIO eliminado exitosamente.${NC}"
         else
-            echo -e "${ROJO}❌ userdel falló o usuario ya no existía.${NC}"
+            echo -e "${ROJO}❌ No se pudo eliminar el usuario $USUARIO. Puede que aún esté en uso.${NC}"
         fi
-
-        echo -e "${ROJO}🧹 Limpiando /home/$USUARIO ...${NC}"
-        sudo rm -rf "/home/$USUARIO"
-
-        echo -e "${ROJO}🧹 Eliminando archivos huérfanos en todo el sistema ...${NC}"
-        sudo find / -user "$USUARIO" -exec rm -rf {} \; 2>/dev/null
-
-        sed -i "/^$USUARIO\t/d" "$REGISTROS"
-        sed -i "/^$USUARIO|/d" "$HISTORIAL"
-
-        echo -e "${VERDE}✅ Proceso de limpieza para $USUARIO finalizado.${NC}"
-        echo -e "${VIOLETA}───────────────────────────────────────────────────────────────${NC}"
     done
 
     echo -e "${VERDE}✅ Eliminación de usuarios finalizada.${NC}"
@@ -634,18 +568,10 @@ eliminar_usuario() {
 }
 
 
-verificar_online() {
+
+function verificar_online() {
     clear
-    # Definir colores ANSI
-    VIOLETA='\033[1;35m'
-    ROJO='\033[1;31m'
-    VERDE='\033[1;32m'
-    CIAN='\033[0;36m'  # Cian estándar para mejor compatibilidad
-    AMARILLO='\033[1;33m'
-    AZUL='\033[1;34m'
-    AZUL_SUAVE='\033[38;5;45m'
-    ANARANJADO='\033[38;5;208m'  # Color anaranjado
-    NC='\033[0m'
+    echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}"
 
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
@@ -653,19 +579,14 @@ verificar_online() {
         ["Sep"]="Septiembre" ["Oct"]="Octubre" ["Nov"]="Noviembre" ["Dec"]="Diciembre"
     )
 
-    if [[ ! -f $HISTORIAL ]]; then
-        touch "$HISTORIAL"
-    fi
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
-        read -p "$(echo -e ${ANARANJADO}Presiona Enter para continuar...${NC})"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    echo -e "${VIOLETA}===== 🟢 USUARIOS ONLINE =====${NC}\n"
-    # Encabezados en amarillo
     printf "${AMARILLO}%-15s %-15s %-10s %-25s${NC}\n" "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    printf "${CIAN}%.65s${NC}\n" "-----------------------------------------------------------------"
+    echo -e "${CIAN}------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
@@ -682,8 +603,6 @@ verificar_online() {
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
                 ((INACTIVOS++))
-                COLOR_ESTADO="${ROJO}"
-                ESTADO="🔴 BLOQ"
             else
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
@@ -702,11 +621,9 @@ verificar_online() {
                             H=$(( (ELAPSED_SEC % 86400) / 3600 ))
                             M=$(( (ELAPSED_SEC % 3600) / 60 ))
                             S=$((ELAPSED_SEC % 60 ))
+                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
                             if [[ $D -gt 0 ]]; then
-                                DETALLES="⏰ $D días %02d:%02d:%02d"
-                                DETALLES=$(printf "$DETALLES" $H $M $S)
-                            else
-                                DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                                DETALLES="$D días $DETALLES"
                             fi
                         else
                             DETALLES="⏰ Tiempo no disponible"
@@ -715,41 +632,28 @@ verificar_online() {
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
-                    if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null ||
-                            echo "$ULTIMO_LOGOUT")
-                        MES=$(echo "$ULTIMO_LOGOUT_FMT" | awk '{print $4}')
-                        for k in "${!month_map[@]}"; do
-                            if [[ "$MES" =~ $k ]]; then
-                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/$MES/${month_map[$k]}}
-                                break
-                            fi
-                        done
-                        DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
-                    else
-                        DETALLES="Nunca conectado"
+                    LOGIN_LINE=$(grep -hE "Accepted password for $USUARIO|session opened for user $USUARIO" /var/log/auth.log /var/log/secure /var/log/messages /var/log/dropbear.log 2>/dev/null | tail -1)
+                    if [[ -n "$LOGIN_LINE" ]]; then
+                        MES=$(echo "$LOGIN_LINE" | awk '{print $1}')
+                        DIA=$(echo "$LOGIN_LINE" | awk '{print $2}')
+                        HORA=$(echo "$LOGIN_LINE" | awk '{print $3}')
+                        MES_ES=${month_map["$MES"]}
+                        if [ -z "$MES_ES" ]; then MES_ES="$MES"; fi
+                        HORA_SIMPLE=$(date -d "$HORA" +"%I:%M %p" 2>/dev/null || echo "$HORA")
+                        DETALLES="📅 Última: $DIA de $MES_ES $HORA_SIMPLE"
                     fi
                     ((INACTIVOS++))
                 fi
             fi
-            # Nombre en amarillo, el resto igual
-            printf "${AMARILLO}%-15s${NC} " "$USUARIO"
-            printf "${COLOR_ESTADO}%-15s${NC} " "$ESTADO"
-            printf "%-10s " "$MOVILES_NUM"
-            printf "$AZUL_SUAVE%-25s${NC}\n" "$DETALLES"
+            printf "${AMARILLO}%-15s ${COLOR_ESTADO}%-15s ${AMARILLO}%-10s ${AZUL}%-25s${NC}\n" "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
     echo
-    # Totales con números en amarillo y texto en cian
-    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC}  ${CIAN}Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${CIAN}================================================${NC}"
-    read -p "$(echo -e ${ANARANJADO}Presiona Enter para continuar...${NC})"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
-
 
 function bloquear_desbloquear_usuario() {
     clear
@@ -841,11 +745,9 @@ function mini_registro() {
 
     printf "${AMARILLO}%-15s %-15s %-10s %-15s${NC}\n" "👤 Nombre" "🔑 Contraseña" "⏳ Días" "📱 Móviles"
     echo -e "${CIAN}--------------------------------------------${NC}"
-
-    TOTAL_USUARIOS=0
-
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
+            # Cálculo de días por calendario
             FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
             FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
             if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
@@ -858,86 +760,23 @@ function mini_registro() {
             fi
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             printf "${VERDE}%-15s %-15s %-10s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS_RESTANTES" "$MOVILES_NUM"
-            ((TOTAL_USUARIOS++))
         fi
     done < "$REGISTROS"
-
-    echo -e "${CIAN}============================================${NC}\n"
-    echo -e "${AMARILLO}TOTAL: $TOTAL_USUARIOS${NC}"
+    echo -e "${CIAN}============================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-function nuclear_eliminar() {
-    clear
-    echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
-    read -p "👤 Ingresa los nombres de usuarios a eliminar (separados por espacio): " USUARIOS
-    for USUARIO in $USUARIOS; do
-        echo -e "${AMARILLO}Procesando usuario: $USUARIO${NC}"
-
-        # Paso 0: Intento inicial de eliminar con deluser, por si no tiene recursos abiertos
-        echo -e "${ROJO}→ (0) Primer intento con deluser...${NC}"
-        sudo deluser "$USUARIO" 2>/dev/null
-
-        # Paso 1: Bloquear usuario
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
-            sudo usermod --lock "$USUARIO" 2>/dev/null
-        fi
-
-        # Paso 2: Matar todos sus procesos
-        echo -e "${ROJO}→ (2) Matando procesos del usuario...${NC}"
-        sudo kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
-
-        # Paso 3: Eliminar del sistema con máxima fuerza
-        echo -e "${ROJO}→ (3) Eliminando cuentas y directorios...${NC}"
-        sudo userdel --force "$USUARIO" 2>/dev/null
-        sudo deluser --remove-home "$USUARIO" 2>/dev/null
-
-        # Paso 4: Eliminar carpeta huérfana
-        echo -e "${ROJO}→ (4) Eliminando carpeta /home/$USUARIO (si existe)...${NC}"
-        sudo rm -rf "/home/$USUARIO"
-
-        # Paso 5: Limpiar sesión con loginctl
-        echo -e "${ROJO}→ (5) Limpiando sesiones residuales...${NC}"
-        sudo loginctl kill-user "$USUARIO" 2>/dev/null
-
-        # Paso 6: Segundo intento "por si acaso" con deluser para asegurar
-        echo -e "${ROJO}→ (6) Segundo y último intento con deluser...${NC}"
-        sudo deluser "$USUARIO" 2>/dev/null
-
-        # Paso 7: Borrar del registro y del historial personalizado
-        sed -i "/^$USUARIO\t/d" "$REGISTROS"
-        sed -i "/^$USUARIO|/d" "$HISTORIAL"
-
-        # Paso 8: Verificación final
-        if ! id "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado completamente y sin residuos.${NC}"
-        else
-            echo -e "${ROJO}⚠️ Advertencia: El usuario $USUARIO aún existe. Verifica manualmente.${NC}"
-        fi
-        echo
-    done
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
-
-
-
-
-
-# Colores y emojis
-VIOLETA='\033[38;5;141m'
-VERDE='\033[38;5;42m'
-AMARILLO='\033[38;5;220m'
-AZUL='\033[38;5;39m'
-ROJO='\033[1;31m'
-CIAN='\033[38;5;51m'
-FUCHSIA='\033[38;2;255;0;255m'
-AMARILLO_SUAVE='\033[38;2;255;204;0m'
-ROSA='\033[38;2;255;105;180m'
-ROSA_CLARO='\033[1;95m'
-NC='\033[0m'
 
 
 # Menú principal
+
+FUCHSIA="\033[38;2;255;0;255m"
+AMARILLO_SUAVE="\033[38;2;255;204;0m"
+ROSA="\033[38;2;255;105;180m"
+ROSA_CLARO="\033[1;95m"
+ROJO="\033[1;31m"
+NC="\033[0m"
+
+
 if [[ -t 0 ]]; then
     while true; do
         clear
@@ -952,9 +791,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-        echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
-        
-        echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
+        echo -e "${AMARILLO_SUAVE}9. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
@@ -966,9 +803,7 @@ if [[ -t 0 ]]; then
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) nuclear_eliminar ;;
-            
-            0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
+            9) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
