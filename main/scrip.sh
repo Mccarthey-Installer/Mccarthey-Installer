@@ -1030,7 +1030,7 @@ function configurar_banner_ssh() {
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
     echo -e "${AMARILLO}📝 Ingresa el mensaje para el banner (presiona Enter dos veces para confirmar).${NC}"
     echo -e "${AMARILLO}📌 Usa 'DESACTIVAR' para desactivar el banner.${NC}"
-    echo -e "${AMARILLO}📌 Ejemplo: Bienvenida 🌸 ¡Conéctate con estilo! 💖${NC}"
+    echo -e "${AMARILLO}📌 Ejemplo: ¡Bienvenida, reina! 🌟 Este es tu servidor SSH favorito 💖${NC}"
     echo
 
     declare -a LINEAS_BANNER
@@ -1041,6 +1041,11 @@ function configurar_banner_ssh() {
 
     BANNER_FILE="/etc/ssh_banner"
     SSHD_CONFIG="/etc/ssh/sshd_config"
+    HOT_PINK='\033[38;2;255;105;180m'
+    LILA='\033[38;2;221;160;221m'
+    TURQUESA='\033[38;2;64;224;208m'
+    LIGHT_PINK='\033[38;2;255;182;193m'
+    NC='\033[0m'
 
     if [[ ${#LINEAS_BANNER[@]} -eq 0 ]]; then
         echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
@@ -1051,7 +1056,7 @@ function configurar_banner_ssh() {
     # Verificar si se quiere desactivar el banner
     if [[ "${LINEAS_BANNER[0]}" == "DESACTIVAR" ]]; then
         if grep -q "^Banner" "$SSHD_CONFIG"; then
-            sed -i 's/^Banner.*/#Banner none/' "$SSHD_CONFIG" 2>/dev/null || {
+            sed -i 's|^Banner.*|#Banner none|' "$SSHD_CONFIG" 2>/dev/null || {
                 echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
                 read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
                 return
@@ -1070,14 +1075,14 @@ function configurar_banner_ssh() {
         return
     fi
 
-    # Crear el archivo del banner
+    # Crear el archivo del banner con colores RGB
     {
-        echo -e "${AZUL_SUAVE}════════════════════════════════════${NC}"
-        echo -e "${ROSA}🌸 ¡Bienvenida al servidor SSH! 💖${NC}"
+        printf "\033[38;2;64;224;208m════════════════════════════════════\033[0m\n"
+        printf "\033[38;2;255;105;180m🌸 ¡Bienvenida al servidor SSH! 💖\033[0m\n"
         for LINEA in "${LINEAS_BANNER[@]}"; do
-            echo -e "${PASTEL_PURPLE}$LINEA${NC}"
+            printf "\033[38;2;255;182;193m%s\033[0m\n" "$LINEA"
         done
-        echo -e "${AZUL_SUAVE}════════════════════════════════════${NC}"
+        printf "\033[38;2;64;224;208m════════════════════════════════════\033[0m\n"
     } > "$BANNER_FILE" 2>/dev/null || {
         echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
