@@ -587,7 +587,7 @@ function ver_registros() {
     clear
     echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
 
-    # Centrar texto en un ancho dado
+    # Función básica de centrado
     center_value() {
         local value="$1"
         local width="$2"
@@ -598,25 +598,32 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        printf "${AMARILLO}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
+        printf "${AMARILLO}%-3s %-12s %-12s %-15s %10s %-14s${NC}\n" \
             "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📱 Móviles"
-        echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
+        echo -e "${CIAN}-------------------------------------------------------------------------------${NC}"
 
         NUM=1
         FECHA_ACTUAL=$(date +%Y-%m-%d)
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
-                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
-                if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
-                    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ) / 86400 ))
-                    [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
-                    DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
-                else
-                    DURACION_CENTRADA=$(center_value "?" 10)
-                fi
+                # Formato de expiración (día/mes en español)
+                DIA=$(date -d "$EXPIRA_DATETIME" +"%d")
+                MES_ENG=$(date -d "$EXPIRA_DATETIME" +"%B")
+                declare -A MES_MAP=( ["January"]="enero" ["February"]="febrero" ["March"]="marzo" ["April"]="abril" ["May"]="mayo" \
+                                     ["June"]="junio" ["July"]="julio" ["August"]="agosto" ["September"]="septiembre" \
+                                     ["October"]="octubre" ["November"]="noviembre" ["December"]="diciembre" )
+                MES=${MES_MAP[$MES_ENG]}
+                FORMATO_EXPIRA="${DIA}/${MES}"
 
-                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
+                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+
+                # --- Cálculo especial de días restantes ---
+                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ) / 86400 - 1 ))
+                [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+
+                DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
+
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-15s %-10s %-14s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
@@ -632,6 +639,7 @@ function ver_registros() {
     echo -e "${CIAN}=====================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
