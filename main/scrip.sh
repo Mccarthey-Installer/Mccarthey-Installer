@@ -1101,6 +1101,37 @@ function configurar_banner_ssh() {
 }
 
 
+
+# Función checkuser
+function checkuser() {
+    USUARIO="$USER"
+    if [[ ! -f "$REGISTROS" ]]; then
+        return
+    fi
+    LINEA=$(grep "^$USUARIO\t" "$REGISTROS")
+    if [[ -z "$LINEA" ]]; then
+        return
+    fi
+    IFS=$'\t' read -r _USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN <<< "$LINEA"
+    if ! id "$USUARIO" &>/dev/null; then
+        return
+    fi
+    FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+    FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+    if [[ -z "$FECHA_EXPIRA_DIA" ]]; then
+        return
+    fi
+    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+    if [[ $DIAS_RESTANTES -lt 0 ]]; then
+        DIAS_RESTANTES=0
+    fi
+    if [[ $DIAS_RESTANTES -eq 0 ]]; then
+        # Mostrar mensaje en formato HTML, en una sola línea, sin procesar colores ANSI
+        echo "<h1> <font color=\"red\"> Estimado cliente, ahora te vence tu archivo por favor lo puedes renovar y seguir disfrutando de Internet Ilimitado 🔥🔥 </font>"
+    fi
+}
+
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -1133,6 +1164,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
         echo -e "${AMARILLO_SUAVE}10. 🎀 Configurar banner SSH${NC}"
+        echo -e "${AMARILLO_SUAVE}11. 🔍 Verificar estado de usuario${NC}"
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
@@ -1147,6 +1179,7 @@ if [[ -t 0 ]]; then
             8) mini_registro ;;
             9) nuclear_eliminar ;;
             10) configurar_banner_ssh ;;
+            11) checkuser ;;
             0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
