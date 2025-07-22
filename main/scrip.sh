@@ -390,21 +390,11 @@ function crear_usuario() {
         return
     fi
 
-    # Calcular fechas de expiración
-    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
-        userdel -r "$USUARIO" 2>/dev/null
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
-        userdel -r "$USUARIO" 2>/dev/null
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
+    # FECHA CALENDARIO REAL DE EXPIRACIÓN
+    EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
+    EXPIRA_DATETIME=$(date -d "$EXPIRA_FECHA 00:00" +"%Y-%m-%d %H:%M:%S")
 
-    # Establecer fecha de expiración
+    # Establecer fecha de expiración en el sistema
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
         echo -e "${ROJO}❌ Error configurando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
         userdel -r "$USUARIO" 2>/dev/null
@@ -412,7 +402,7 @@ function crear_usuario() {
         return
     fi
 
-    # Escribir en el archivo de registros con bloqueo
+    # Registrar en archivo (con bloqueo)
     {
         flock -x 200
         if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>/dev/null; then
@@ -587,18 +577,7 @@ function crear_multiples_usuarios() {
 
 function ver_registros() {
     clear
-    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
-
-    # Definir colores
-    AZUL_SUAVE='\033[38;5;45m'
-    SOFT_PINK='\033[38;5;211m'
-    PASTEL_BLUE='\033[38;5;153m'
-    LILAC='\033[38;5;183m'
-    SOFT_CORAL='\033[38;5;217m'
-    HOT_PINK='\033[38;5;198m'
-    PASTEL_PURPLE='\033[38;5;189m'
-    MINT_GREEN='\033[38;5;159m'
-    NC='\033[0m'
+    echo -e "${VIOLETA}===== 📋 REGISTROS =====${NC}"
 
     # Centrar texto en un ancho dado
     center_value() {
@@ -611,34 +590,41 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        # Cada columna con un color diferente
-        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
-            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
-        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
+        printf "${AMARILLO}%-3s %-12s %-12s %-12s %10s %-12s${NC}\n" \
+            "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📱 Móviles"
+        echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
 
         NUM=1
+        FECHA_ACTUAL=$(date +%Y-%m-%d)
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
-                DURACION_CENTRADA=$(center_value "$DURACION" 10)
-                # Cada columna con su propio color en las filas de datos
-                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+                if [[ -n "$FECHA_EXPIRA_DIA" ]]; then
+                    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ) / 86400 - 1 ))
+                    [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+                    DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
+                else
+                    DURACION_CENTRADA=$(center_value "?" 10)
+                fi
+
+                printf "${VERDE}%-3d ${AMARILLO}%-12s %-12s %-12s %-10s %-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
 
         if [[ $NUM -eq 1 ]]; then
-            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
+            echo -e "${ROJO}❌ No hay usuarios existentes en el sistema o los registros no son válidos.${NC}"
         fi
     else
-        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
+        echo -e "${ROJO}❌ No hay registros aún. El archivo '$REGISTROS' no existe.${NC}"
     fi
 
-    echo -e "${LILAC}=====================${NC}"
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+    echo -e "${CIAN}=====================${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 function eliminar_usuario() {
     clear
@@ -1101,8 +1087,6 @@ function configurar_banner_ssh() {
 }
 
 
-
-# Función checkuser
 function checkuser() {
     USUARIO="$USER"
     if [[ ! -f "$REGISTROS" ]]; then
@@ -1121,11 +1105,12 @@ function checkuser() {
     if [[ -z "$FECHA_EXPIRA_DIA" ]]; then
         return
     fi
+    # Mostrar el mensaje solo cuando hoy es igual o mayor a la fecha de expiración:
     if [[ $(date +%s) -ge $(date -d "$FECHA_EXPIRA_DIA" +%s) ]]; then
-        # Mostrar mensaje en formato HTML, en una sola línea, sin procesar colores ANSI
         echo "<h1> <font color=\"red\"> Estimado cliente, ahora te vence tu archivo por favor lo puedes renovar y seguir disfrutando de Internet Ilimitado 🔥🔥 </font>"
     fi
 }
+
 
 
 
