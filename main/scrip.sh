@@ -1022,6 +1022,35 @@ function nuclear_eliminar() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+function checkuser() {
+    USUARIO="$USER"
+    if [[ ! -f "$REGISTROS" ]]; then
+        return
+    fi
+    LINEA=$(grep "^$USUARIO\t" "$REGISTROS")
+    if [[ -z "$LINEA" ]]; then
+        return
+    fi
+    IFS=$'\t' read -r _USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN <<< "$LINEA"
+    if ! id "$USUARIO" &>/dev/null; then
+        return
+    fi
+
+    FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+    FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+    if [[ -z "$FECHA_EXPIRA_DIA" ]]; then
+        return
+    fi
+
+    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 - 1 ))
+    [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+
+    if [[ $DIAS_RESTANTES -eq 0 ]]; then
+        echo "<h1><font color=\"red\">Estimado cliente, ahora te vence tu archivo por favor lo puedes renovar y seguir disfrutando de Internet Ilimitado 🔥🔥</font></h1>"
+    fi
+}
+
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -1033,6 +1062,8 @@ FUCHSIA='\033[38;2;255;0;255m'
 AMARILLO_SUAVE='\033[38;2;255;204;0m'
 ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
+AZUL_SUAVE='\033[38;5;45m'
+PASTEL_PURPLE='\033[38;5;189m'
 NC='\033[0m'
 
 # Menú principal
@@ -1051,7 +1082,8 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
-        
+        echo -e "${AMARILLO_SUAVE}10. 🎀 Configurar banner SSH${NC}"
+        echo -e "${AMARILLO_SUAVE}11. 🔍 Verificar estado de usuario${NC}"
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
@@ -1065,7 +1097,8 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) nuclear_eliminar ;;
-            
+            10) configurar_banner_ssh ;;
+            11) checkuser ;;
             0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
