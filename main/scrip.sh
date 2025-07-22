@@ -316,7 +316,6 @@ function informacion_usuarios() {
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
 
-
 function crear_usuario() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR USUARIO SSH =====${NC}"
@@ -390,9 +389,14 @@ function crear_usuario() {
         return
     fi
 
-    # FECHA CALENDARIO REAL DE EXPIRACIÓN
-    EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
-    EXPIRA_DATETIME=$(date -d "$EXPIRA_FECHA 00:00" +"%Y-%m-%d %H:%M:%S")
+    # === Cálculo de expiración por calendario ===
+    if [[ "$DIAS" -eq 0 ]]; then
+        EXPIRA_FECHA=$(date -d "tomorrow" +"%Y-%m-%d")
+        EXPIRA_DATETIME=$(date -d "tomorrow 00:00" +"%Y-%m-%d %H:%M:%S")
+    else
+        EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
+        EXPIRA_DATETIME=$(date -d "+$((DIAS+1)) days 00:00" +"%Y-%m-%d %H:%M:%S")
+    fi
 
     # Establecer fecha de expiración en el sistema
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
@@ -429,6 +433,11 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+
+
+    
+    
 
 
 
