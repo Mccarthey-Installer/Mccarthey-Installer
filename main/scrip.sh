@@ -1232,7 +1232,6 @@ function ver_registros() {
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
 
-
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
@@ -1250,8 +1249,7 @@ function configurar_banner_ssh() {
             clear
             echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
             echo -e "${AMARILLO}📝 Por favor, digite su mensaje para el banner (una sola línea).${NC}"
-            echo -e "${AMARILLO}📌 Ejemplo: TE AMO CIELO ⛑️😘⛑️${NC}"
-            echo -e "${AMARILLO}📌 El mensaje se decorará en rosa encendido (#cf297c) con emoji 💕. Emojis permitidos: 🥰😅😁🙂😂😀🤣😚🤪🥲😛🥵🥶🥺😨😧😦🥹😮😯😭😞😣👾😎😇🤩😍🥰😀😃😄😁😆☺️🙃🫢🫣🤫🤔😏😒🫡💕⛑️😘💖🌹${NC}"
+            echo -e "${AMARILLO}📌 Ejemplo: TE AMO CIELO${NC}"
             echo
             read -r BANNER_TEXT
 
@@ -1261,32 +1259,34 @@ function configurar_banner_ssh() {
                 return
             fi
 
-            # Lista de emojis permitidos (Unicode seguro para SSH)
-            VALID_EMOJIS=("🥰" "😅" "😁" "🙂" "😂" "😀" "🤣" "😚" "🤪" "🥲" "😛" "🥵" "🥶" "🥺" "😨" "😧" "😦" "🥹" "😮" "😯" "😭" "😞" "😣" "👾" "😎" "😇" "🤩" "😍" "😀" "😃" "😄" "😁" "😆" "☺️" "🙃" "🫢" "🫣" "🤫" "🤔" "😏" "😒" "🫡" "💕" "⛑️" "😘" "💖" "🌹")
-            FORMATTED_BANNER="<h2><font color=\"#cf297c\">"
+            # Selección de color
+            clear
+            echo -e "${VIOLETA}===== 🎀 SELECCIONAR COLOR DEL BANNER =====${NC}"
+            echo -e "${AMARILLO}Selecciona un color para el banner:${NC}"
+            echo -e "${AMARILLO}1) Rosa fuerte${NC}"
+            echo -e "${AMARILLO}2) Rojo${NC}"
+            echo -e "${AMARILLO}3) Naranja${NC}"
+            echo -e "${AMARILLO}4) Cian${NC}"
+            echo -e "${AMARILLO}5) Rosa claro${NC}"
+            echo -e "${AMARILLO}6) Negro violeta${NC}"
+            echo
+            PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+            read -p "$PROMPT" COLOR_OP
 
-            # Dividir el texto en palabras y emojis
-            IFS=' ' read -ra WORDS <<< "$BANNER_TEXT"
+            case $COLOR_OP in
+                1) COLOR="#FF1493" ;; # Rosa fuerte
+                2) COLOR="Red" ;; # Rojo
+                3) COLOR="#FF8C00" ;; # Naranja
+                4) COLOR="#00FFFF" ;; # Cian
+                5) COLOR="#FF69B4" ;; # Rosa claro
+                6) COLOR="#4B0082" ;; # Negro violeta
+                *)
+                    echo -e "${ROJO}❌ ¡Color inválido! Usando Rosa fuerte por defecto.${NC}"
+                    COLOR="#FF1493" ;; # Rosa fuerte por defecto
+            esac
 
-            for WORD in "${WORDS[@]}"; do
-                # Verificar si la palabra es un emoji permitido
-                IS_EMOJI=false
-                for EMOJI in "${VALID_EMOJIS[@]}"; do
-                    if [[ "$WORD" == "$EMOJI" ]]; then
-                        IS_EMOJI=true
-                        break
-                    fi
-                done
-
-                if [[ "$IS_EMOJI" == true ]]; then
-                    # Emojis sin espacio adicional
-                    FORMATTED_BANNER+="$WORD"
-                else
-                    # Palabras con espacio
-                    FORMATTED_BANNER+="$WORD "
-                fi
-            done
-            FORMATTED_BANNER+="💕</font></h2>" # Añadir emoji romántico al final
+            # Formatear el banner con el color elegido
+            FORMATTED_BANNER="<h2><font color=\"$COLOR\">$BANNER_TEXT 💕</font></h2>"
 
             # Guardar el texto del banner con el formato
             echo "$FORMATTED_BANNER" > "$BANNER_FILE" 2>/dev/null || {
@@ -1346,6 +1346,8 @@ function configurar_banner_ssh() {
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             ;;
     esac
+}
+
 }
 
 # Colores y emojis
