@@ -977,60 +977,61 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
+
 function nuclear_eliminar() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
     read -p "👤 Ingresa los nombres de usuarios a eliminar (separados por espacio): " USUARIOS
     for USUARIO in $USUARIOS; do
-        echo -e "${AMARILLO}Procesando usuario: $USUARIO${NC}"
+        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        echo -e "${AMARILLO}Procesando usuario: $USUARIO_LIMPIO${NC}"
 
         # Paso 0: Intento inicial de eliminar con deluser, por si no tiene recursos abiertos
         echo -e "${ROJO}→ (0) Primer intento con deluser...${NC}"
-        sudo deluser "$USUARIO" 2>/dev/null
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
 
         # Paso 1: Bloquear usuario
-        if id "$USUARIO" &>/dev/null; then
+        if id "$USUARIO_LIMPIO" &>/dev/null; then
             echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
-            sudo usermod --lock "$USUARIO" 2>/dev/null
+            sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
         fi
 
         # Paso 2: Matar todos sus procesos
         echo -e "${ROJO}→ (2) Matando procesos del usuario...${NC}"
-        sudo kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
+        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
 
         # Paso 3: Eliminar del sistema con máxima fuerza
         echo -e "${ROJO}→ (3) Eliminando cuentas y directorios...${NC}"
-        sudo userdel --force "$USUARIO" 2>/dev/null
-        sudo deluser --remove-home "$USUARIO" 2>/dev/null
+        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
+        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
 
         # Paso 4: Eliminar carpeta huérfana
-        echo -e "${ROJO}→ (4) Eliminando carpeta /home/$USUARIO (si existe)...${NC}"
-        sudo rm -rf "/home/$USUARIO"
+        echo -e "${ROJO}→ (4) Eliminando carpeta /home/$USUARIO_LIMPIO (si existe)...${NC}"
+        sudo rm -rf "/home/$USUARIO_LIMPIO"
 
         # Paso 5: Limpiar sesión con loginctl
         echo -e "${ROJO}→ (5) Limpiando sesiones residuales...${NC}"
-        sudo loginctl kill-user "$USUARIO" 2>/dev/null
+        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
 
         # Paso 6: Segundo intento "por si acaso" con deluser para asegurar
         echo -e "${ROJO}→ (6) Segundo y último intento con deluser...${NC}"
-        sudo deluser "$USUARIO" 2>/dev/null
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
 
         # Paso 7: Borrar del registro y del historial personalizado
-        sed -i "/^$USUARIO\t/d" "$REGISTROS"
-        sed -i "/^$USUARIO|/d" "$HISTORIAL"
+        sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+        sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
 
         # Paso 8: Verificación final
-        if ! id "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado completamente y sin residuos.${NC}"
+        if ! id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y sin residuos.${NC}"
         else
-            echo -e "${ROJO}⚠️ Advertencia: El usuario $USUARIO aún existe. Verifica manualmente.${NC}"
+            echo -e "${ROJO}⚠️ Advertencia: El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
         fi
         echo
     done
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
 
 
 # Colores y emojis
