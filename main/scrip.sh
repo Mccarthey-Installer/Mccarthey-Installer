@@ -1263,26 +1263,28 @@ function configurar_banner_ssh() {
             clear
             echo -e "${VIOLETA}===== 🎀 SELECCIONAR COLOR DEL BANNER =====${NC}"
             echo -e "${AMARILLO}Selecciona un color para el banner:${NC}"
-            echo -e "${AMARILLO}1) Rosa fuerte${NC}"
-            echo -e "${AMARILLO}2) Rojo${NC}"
-            echo -e "${AMARILLO}3) Naranja${NC}"
-            echo -e "${AMARILLO}4) Cian${NC}"
-            echo -e "${AMARILLO}5) Rosa claro${NC}"
-            echo -e "${AMARILLO}6) Negro violeta${NC}"
+            echo -e "${AMARILLO}1) HotPink${NC}"
+            echo -e "${AMARILLO}2) Black${NC}"
+            echo -e "${AMARILLO}3) Turquoise${NC}"
+            echo -e "${AMARILLO}4) Purple${NC}"
+            echo -e "${AMARILLO}5) Yellow${NC}"
+            echo -e "${AMARILLO}6) DeepPink${NC}"
+            echo -e "${AMARILLO}7) Magenta${NC}"
             echo
             PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
             read -p "$PROMPT" COLOR_OP
 
             case $COLOR_OP in
-                1) COLOR="#FF1493" ;; # Rosa fuerte
-                2) COLOR="Red" ;; # Rojo
-                3) COLOR="#FF8C00" ;; # Naranja
-                4) COLOR="#00FFFF" ;; # Cian
-                5) COLOR="#FF69B4" ;; # Rosa claro
-                6) COLOR="#4B0082" ;; # Negro violeta
+                1) COLOR="#FF69B4" ;; # HotPink
+                2) COLOR="#000000" ;; # Black
+                3) COLOR="#40E0D0" ;; # Turquoise
+                4) COLOR="#800080" ;; # Purple
+                5) COLOR="#FFFF00" ;; # Yellow
+                6) COLOR="#FF1493" ;; # DeepPink
+                7) COLOR="#FF00FF" ;; # Magenta
                 *)
-                    echo -e "${ROJO}❌ ¡Color inválido! Usando Rosa fuerte por defecto.${NC}"
-                    COLOR="#FF1493" ;; # Rosa fuerte por defecto
+                    echo -e "${ROJO}❌ ¡Color inválido! Usando HotPink por defecto.${NC}"
+                    COLOR="#FF69B4" ;; # HotPink por defecto
             esac
 
             # Formatear el banner con el color elegido
