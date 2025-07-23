@@ -450,6 +450,7 @@ function crear_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
 function crear_multiples_usuarios() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
@@ -514,7 +515,8 @@ function crear_multiples_usuarios() {
 
     for LINEA in "${USUARIOS[@]}"; do
         read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
-        if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        if [[ -z "$USUARIO_LIMPIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
             echo -e "${ROJO}❌ Datos incompletos: $LINEA${NC}"
             [[ -n "$ERROR_LOG" ]] && echo "$(date): Datos incompletos: $LINEA" >> "$ERROR_LOG"
             ((FALLOS++))
@@ -522,75 +524,249 @@ function crear_multiples_usuarios() {
         fi
 
         if ! [[ "$DIAS" =~ ^[0-9]+$ ]] || ! [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$MOVILES" -gt 999 ]; then
-            echo -e "${ROJO}❌ Datos inválidos para $USUARIO (Días: $DIAS, Móviles: $MOVILES).${NC}"
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Datos inválidos para $USUARIO (Días: $DIAS, Móviles: $MOVILES)" >> "$ERROR_LOG"
+            echo -e "${ROJO}❌ Datos inválidos para $USUARIO_LIMPIO (Días: $DIAS, Móviles: $MOVILES).${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Datos inválidos para $USUARIO_LIMPIO (Días: $DIAS, Móviles: $MOVILES)" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. No se puede crear.${NC}"
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO' ya existe en el sistema" >> "$ERROR_LOG"
+        if id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO_LIMPIO' ya existe en el sistema. No se puede crear.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO_LIMPIO' ya existe en el sistema" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
-        if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
-            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. No se puede crear.${NC}"
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Nombre de usuario '$USUARIO' ya registrado en $REGISTROS" >> "$ERROR_LOG"
+        if grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO_LIMPIO' ya está registrado en $REGISTROS. No se puede crear.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Nombre de usuario '$USUARIO_LIMPIO' ya registrado en $REGISTROS" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
-        # Reservar línea en el registro primero
+        # Calcular fechas de expiración
         EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
         EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
 
+        # Reservar línea en el registro primero
         {
             flock -x 200
             # Re-checar condiciones de carrera
-            if id "$USUARIO" &>/dev/null || grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
-                echo -e "${ROJO}👤 $USUARIO ya existe en sistema o registros. Saltando.${NC}"
+            if id "$USUARIO_LIMPIO" &>/dev/null || grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+                echo -e "${ROJO}👤 $USUARIO_LIMPIO ya existe en sistema o registros. Saltando.${NC}"
                 exit 1
             fi
-            if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
-                echo -e "${ROJO}❌ Error escribiendo en $REGISTROS para $USUARIO.${NC}"
+            # Usar printf para formato consistente
+            if ! printf "%s\t%s\t%s\t%s días\t%s móviles\tNO\t\n" "$USUARIO_LIMPIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
+                echo -e "${ROJO}❌ Error escribiendo en $REGISTROS para $USUARIO_LIMPIO.${NC}"
+                exit 1
+            fi
+            # Verificar que la línea se escribió correctamente
+            if ! grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+                echo -e "${ROJO}❌ Error: La entrada para $USUARIO_LIMPIO no se escribió en $REGISTROS. Cancelando.${NC}"
                 exit 1
             fi
         } 200>"$REGISTROS.lock" || {
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error reservando registro para $USUARIO" >> "$ERROR_LOG"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error reservando registro para $USUARIO_LIMPIO" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         }
 
+        # Pequeño retardo para evitar conflictos con monitorear_conexiones
+        sleep 1
+
         # Crear usuario después de reservar registro
-        if ! useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"; then
-            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
-            echo -e "${ROJO}❌ Error creando usuario $USUARIO. Se revierte registro.${NC}"
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error creando usuario $USUARIO" >> "$ERROR_LOG"
+        if ! useradd -m -s /bin/bash "$USUARIO_LIMPIO" 2>>"$ERROR_LOG"; then
+            sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error creando usuario $USUARIO_LIMPIO. Se revierte registro.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error creando usuario $USUARIO_LIMPIO" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
-        if ! echo "$USUARIO:$CLAVE" | chpasswd 2>>"$ERROR_LOG"; then
-            userdel -r "$USUARIO" 2>/dev/null
-            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
-            echo -e "${ROJO}❌ Error estableciendo contraseña para $USUARIO. Se elimina usuario y registro.${NC}"
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error estableciendo contraseña para $USUARIO" >> "$ERROR_LOG"
+        if ! echo "$USUARIO_LIMPIO:$CLAVE" | chpasswd 2>>"$ERROR_LOG"; then
+            userdel -r "$USUARIO_LIMPIO" 2>/dev/null
+            sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error estableciendo contraseña para $USUARIO_LIMPIO. Se elimina usuario y registro.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error estableciendo contraseña para $USUARIO_LIMPIO" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
-        if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>>"$ERROR_LOG"; then
-            userdel -r "$USUARIO" 2>/dev/null
-            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
-            echo -e "${ROJO}❌ Error configurando expiración para $USUARIO. Se elimina usuario y registro.${NC}"
-            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error configurando expiración para $USUARIO" >> "$ERROR_LOG"
+        if ! usermod -e "$EXPIRA_FECHA" "$USUARIO_LIMPIO" 2>>"$ERROR_LOG"; then
+            userdel -r "$USUARIO_LIMPIO" 2>/dev/null
+            sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error configurando expiración para $USUARIO_LIMPIO. Se elimina usuario y registro.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error configurando expiración para $USUARIO_LIMPIO" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
-        echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
+        echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO creado exitosamente.${NC}"
+        ((EXITOS++))
+    done
+
+    echo -e "${CIAN}===== 📊 RESUMEN DE CREACIÓN =====${NC}"
+    echo -e "${VERDE}✅ Usuarios creados exitosamente: $EXITOS${NC}"
+    echo -e "${ROJO}❌ Usuarios con error: $FALLOS${NC}"
+    [[ -n "$ERROR_LOG" && $FALLOS -gt 0 ]] && echo -e "${AMARILLO}📝 Log de errores: $ERROR_LOG${NC}"
+
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
+
+function crear_multiples_usuarios() {
+    clear
+    echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
+    echo -e "${AMARILLO}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
+    echo -e "${AMARILLO}📋 Ejemplo: juan 123 5 4${NC}"
+    echo -e "${AMARILLO}✅ Presiona Enter dos veces para confirmar.${NC}"
+    echo
+
+    declare -a USUARIOS
+    while IFS= read -r LINEA; do
+        [[ -z "$LINEA" ]] && break
+        USUARIOS+=("$LINEA")
+    done
+
+    if [[ ${#USUARIOS[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se ingresaron usuarios.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    echo -e "${CIAN}===== 📋 USUARIOS A CREAR =====${NC}"
+    printf "${AMARILLO}%-15s %-15s %-15s %-15s${NC}\n" "👤 Usuario" "🔑 Clave" "⏳ Días" "📱 Móviles"
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    for LINEA in "${USUARIOS[@]}"; do
+        read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
+        if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+            echo -e "${ROJO}❌ Línea inválida: $LINEA${NC}"
+            continue
+        fi
+        printf "${VERDE}%-15s %-15s %-15s %-15s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES"
+    done
+    echo -e "${CIAN}===============================================================${NC}"
+    echo -e "${AMARILLO}✅ ¿Confirmar creación de estos usuarios? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    ERROR_LOG="/tmp/creacion_usuarios_$(date +%Y%m%d_%H%M%S).log"
+    touch "$ERROR_LOG" || {
+        echo -e "${ROJO}❌ No se pudo crear el archivo de log. Continuando sin registro de errores.${NC}"
+        ERROR_LOG=""
+    }
+
+    if [[ ! -f "$REGISTROS" ]]; then
+        touch "$REGISTROS" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            return
+        }
+    fi
+    if [[ ! -w "$REGISTROS" ]]; then
+        echo -e "${ROJO}❌ Error: No se puede escribir en $REGISTROS. Verifica permisos.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    EXITOS=0
+    FALLOS=0
+
+    for LINEA in "${USUARIOS[@]}"; do
+        read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
+        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        if [[ -z "$USUARIO_LIMPIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+            echo -e "${ROJO}❌ Datos incompletos: $LINEA${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Datos incompletos: $LINEA" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        if ! [[ "$DIAS" =~ ^[0-9]+$ ]] || ! [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$MOVILES" -gt 999 ]; then
+            echo -e "${ROJO}❌ Datos inválidos para $USUARIO_LIMPIO (Días: $DIAS, Móviles: $MOVILES).${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Datos inválidos para $USUARIO_LIMPIO (Días: $DIAS, Móviles: $MOVILES)" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        if id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO_LIMPIO' ya existe en el sistema. No se puede crear.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Usuario '$USUARIO_LIMPIO' ya existe en el sistema" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        if grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO_LIMPIO' ya está registrado en $REGISTROS. No se puede crear.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Nombre de usuario '$USUARIO_LIMPIO' ya registrado en $REGISTROS" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        # Calcular fechas de expiración
+        EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
+        EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
+
+        # Reservar línea en el registro primero
+        {
+            flock -x 200
+            # Re-checar condiciones de carrera
+            if id "$USUARIO_LIMPIO" &>/dev/null || grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+                echo -e "${ROJO}👤 $USUARIO_LIMPIO ya existe en sistema o registros. Saltando.${NC}"
+                exit 1
+            fi
+            # Usar printf para formato consistente
+            if ! printf "%s\t%s\t%s\t%s días\t%s móviles\tNO\t\n" "$USUARIO_LIMPIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
+                echo -e "${ROJO}❌ Error escribiendo en $REGISTROS para $USUARIO_LIMPIO.${NC}"
+                exit 1
+            fi
+            # Verificar que la línea se escribió correctamente
+            if ! grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+                echo -e "${ROJO}❌ Error: La entrada para $USUARIO_LIMPIO no se escribió en $REGISTROS. Cancelando.${NC}"
+                exit 1
+            fi
+        } 200>"$REGISTROS.lock" || {
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error reservando registro para $USUARIO_LIMPIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        }
+
+        # Pequeño retardo para evitar conflictos con monitorear_conexiones
+        sleep 1
+
+        # Crear usuario después de reservar registro
+        if ! useradd -m -s /bin/bash "$USUARIO_LIMPIO" 2>>"$ERROR_LOG"; then
+            sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error creando usuario $USUARIO_LIMPIO. Se revierte registro.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error creando usuario $USUARIO_LIMPIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        if ! echo "$USUARIO_LIMPIO:$CLAVE" | chpasswd 2>>"$ERROR_LOG"; then
+            userdel -r "$USUARIO_LIMPIO" 2>/dev/null
+            sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error estableciendo contraseña para $USUARIO_LIMPIO. Se elimina usuario y registro.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error estableciendo contraseña para $USUARIO_LIMPIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        if ! usermod -e "$EXPIRA_FECHA" "$USUARIO_LIMPIO" 2>>"$ERROR_LOG"; then
+            userdel -r "$USUARIO_LIMPIO" 2>/dev/null
+            sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error configurando expiración para $USUARIO_LIMPIO. Se elimina usuario y registro.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error configurando expiración para $USUARIO_LIMPIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        fi
+
+        echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO creado exitosamente.${NC}"
         ((EXITOS++))
     done
 
@@ -604,121 +780,119 @@ function crear_multiples_usuarios() {
 
 
 
-
 function eliminar_usuario() {
-clear
-echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
-if [[ ! -f $REGISTROS ]]; then
-    echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-    return
-fi
-
-echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"  
-echo -e "${CIAN}--------------------------${NC}"  
-NUM=1  
-declare -A USUARIOS_EXISTENTES  
-while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do  
-    if id "$USUARIO" &>/dev/null; then  
-        echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"  
-        USUARIOS_EXISTENTES[$NUM]="$USUARIO"  
-        NUM=$((NUM+1))  
-    fi  
-done < "$REGISTROS"  
-
-if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then  
-    echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"  
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
-    return  
-fi  
-
-echo  
-echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"  
-PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")  
-read -p "$PROMPT" INPUT_NUMEROS  
-if [[ "$INPUT_NUMEROS" == "0" ]]; then  
-    echo -e "${AZUL}🚫 Operación cancelada.${NC}"  
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
-    return  
-fi  
-
-read -ra NUMEROS <<< "$INPUT_NUMEROS"  
-declare -a USUARIOS_A_ELIMINAR  
-for NUMERO in "${NUMEROS[@]}"; do  
-    if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then  
-        USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")  
-    else  
-        echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"  
-    fi  
-done  
-
-if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then  
-    echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"  
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
-    return  
-fi  
-
-echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
-echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
-for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-    echo -e "${VERDE}$USUARIO${NC}"
-done
-echo -e "${CIAN}--------------------------${NC}"
-echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR de estos usuarios? (s/n)${NC}"
-read -p "" CONFIRMAR
-if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
-    echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-    return
-fi
-
-for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-    USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
-    echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
-
-    echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
-    sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
-
-    echo -e "${ROJO}→ (2) Matando procesos activos...${NC}"
-    sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
-    sleep 1
-
-    echo -e "${ROJO}→ (3) Eliminando con userdel --force...${NC}"
-    sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
-
-    echo -e "${ROJO}→ (4) Eliminando con deluser --remove-home...${NC}"
-    sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
-
-    echo -e "${ROJO}→ (5) Borrando carpeta huérfana en /home/$USUARIO_LIMPIO...${NC}"
-    sudo rm -rf "/home/$USUARIO_LIMPIO"
-
-    echo -e "${ROJO}→ (6) Limpiando sesión con loginctl...${NC}"
-    sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
-
-    echo -e "${ROJO}→ (7) Segunda pasada de limpieza...${NC}"
-    sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
-
-    echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
-    # Ahora busca el usuario seguido de cualquier espacio o tabulador
-    sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
-    sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
-
-    # Imprime para depuración
-    if grep -q "^$USUARIO_LIMPIO" "$REGISTROS"; then
-        echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato de ese archivo.${NC}"
+    clear
+    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
+    if [[ ! -f $REGISTROS ]]; then
+        echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
     fi
 
-    if ! id "$USUARIO_LIMPIO" &>/dev/null; then
-        echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente.${NC}"
-    else
-        echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún persiste. Verifica manualmente.${NC}"
+    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"  
+    echo -e "${CIAN}--------------------------${NC}"  
+    NUM=1  
+    declare -A USUARIOS_EXISTENTES  
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do  
+        if id "$USUARIO" &>/dev/null; then  
+            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"  
+            USUARIOS_EXISTENTES[$NUM]="$USUARIO"  
+            NUM=$((NUM+1))  
+        fi  
+    done < "$REGISTROS"  
+
+    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then  
+        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"  
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
+        return  
+    fi  
+
+    echo  
+    echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"  
+    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")  
+    read -p "$PROMPT" INPUT_NUMEROS  
+    if [[ "$INPUT_NUMEROS" == "0" ]]; then  
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"  
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
+        return  
+    fi  
+
+    read -ra NUMEROS <<< "$INPUT_NUMEROS"  
+    declare -a USUARIOS_A_ELIMINAR  
+    for NUMERO in "${NUMEROS[@]}"; do  
+        if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then  
+            USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")  
+        else  
+            echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"  
+        fi  
+    done  
+
+    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then  
+        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"  
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
+        return  
+    fi  
+
+    echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
+    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        echo -e "${VERDE}$USUARIO${NC}"
+    done
+    echo -e "${CIAN}--------------------------${NC}"
+    echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR de estos usuarios? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
     fi
 
-    echo -e "${CIAN}--------------------------------------${NC}"
-done
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
 
-echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
-read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
+        sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (2) Matando procesos activos...${NC}"
+        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
+        sleep 1
+
+        echo -e "${ROJO}→ (3) Eliminando con userdel --force...${NC}"
+        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (4) Eliminando con deluser --remove-home...${NC}"
+        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (5) Borrando carpeta huérfana en /home/$USUARIO_LIMPIO...${NC}"
+        sudo rm -rf "/home/$USUARIO_LIMPIO"
+
+        echo -e "${ROJO}→ (6) Limpiando sesión con loginctl...${NC}"
+        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (7) Segunda pasada de limpieza...${NC}"
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
+
+        echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
+        sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+        sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
+
+        # Verificación adicional
+        if grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+            echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato.${NC}"
+        fi
+
+        if ! id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente.${NC}"
+        else
+            echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún persiste. Verifica manualmente.${NC}"
+        fi
+
+        echo -e "${CIAN}--------------------------------------${NC}"
+    done
+
+    echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
 
@@ -943,7 +1117,65 @@ function mini_registro() {
     echo -e "${AMARILLO}TOTAL: $TOTAL_USUARIOS${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+function nuclear_eliminar() {
+    clear
+    echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
+    read -p "👤 Ingresa los nombres de usuarios a eliminar (separados por espacio): " USUARIOS
+    for USUARIO in $USUARIOS; do
+        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        echo -e "${AMARILLO}Procesando usuario: $USUARIO_LIMPIO${NC}"
 
+        # Paso 0: Intento inicial de eliminar con deluser, por si no tiene recursos abiertos
+        echo -e "${ROJO}→ (0) Primer intento con deluser...${NC}"
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 1: Bloquear usuario
+        if id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
+            sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
+        fi
+
+        # Paso 2: Matar todos sus procesos
+        echo -e "${ROJO}→ (2) Matando procesos del usuario...${NC}"
+        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
+
+        # Paso 3: Eliminar del sistema con máxima fuerza
+        echo -e "${ROJO}→ (3) Eliminando cuentas y directorios...${NC}"
+        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
+        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 4: Eliminar carpeta huérfana
+        echo -e "${ROJO}→ (4) Eliminando carpeta /home/$USUARIO_LIMPIO (si existe)...${NC}"
+        sudo rm -rf "/home/$USUARIO_LIMPIO"
+
+        # Paso 5: Limpiar sesión con loginctl
+        echo -e "${ROJO}→ (5) Limpiando sesiones residuales...${NC}"
+        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 6: Segundo intento "por si acaso" con deluser para asegurar
+        echo -e "${ROJO}→ (6) Segundo y último intento con deluser...${NC}"
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 7: Borrar del registro y del historial personalizado
+        echo -e "${ROJO}→ (7) Borrando del registro y del historial...${NC}"
+        sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+        sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
+
+        # Verificación adicional
+        if grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+            echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato.${NC}"
+        fi
+
+        # Paso 8: Verificación final
+        if ! id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y sin residuos.${NC}"
+        else
+            echo -e "${ROJO}⚠️ Advertencia: El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
+        fi
+        echo
+    done
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
 
 function ver_registros() {
     clear
@@ -998,61 +1230,6 @@ function ver_registros() {
 
     echo -e "${LILAC}=====================${NC}"
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
-}
-
-creo que tambien esta fallando xq se crea el usuario pero no lo muestra lo hagarra cuando el quiere
-function nuclear_eliminar() {
-    clear
-    echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
-    read -p "👤 Ingresa los nombres de usuarios a eliminar (separados por espacio): " USUARIOS
-    for USUARIO in $USUARIOS; do
-        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
-        echo -e "${AMARILLO}Procesando usuario: $USUARIO_LIMPIO${NC}"
-
-        # Paso 0: Intento inicial de eliminar con deluser, por si no tiene recursos abiertos
-        echo -e "${ROJO}→ (0) Primer intento con deluser...${NC}"
-        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
-
-        # Paso 1: Bloquear usuario
-        if id "$USUARIO_LIMPIO" &>/dev/null; then
-            echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
-            sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
-        fi
-
-        # Paso 2: Matar todos sus procesos
-        echo -e "${ROJO}→ (2) Matando procesos del usuario...${NC}"
-        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
-
-        # Paso 3: Eliminar del sistema con máxima fuerza
-        echo -e "${ROJO}→ (3) Eliminando cuentas y directorios...${NC}"
-        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
-        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
-
-        # Paso 4: Eliminar carpeta huérfana
-        echo -e "${ROJO}→ (4) Eliminando carpeta /home/$USUARIO_LIMPIO (si existe)...${NC}"
-        sudo rm -rf "/home/$USUARIO_LIMPIO"
-
-        # Paso 5: Limpiar sesión con loginctl
-        echo -e "${ROJO}→ (5) Limpiando sesiones residuales...${NC}"
-        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
-
-        # Paso 6: Segundo intento "por si acaso" con deluser para asegurar
-        echo -e "${ROJO}→ (6) Segundo y último intento con deluser...${NC}"
-        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
-
-        # Paso 7: Borrar del registro y del historial personalizado
-        sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
-        sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
-
-        # Paso 8: Verificación final
-        if ! id "$USUARIO_LIMPIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y sin residuos.${NC}"
-        else
-            echo -e "${ROJO}⚠️ Advertencia: El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
-        fi
-        echo
-    done
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
 
