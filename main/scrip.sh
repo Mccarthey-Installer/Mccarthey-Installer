@@ -317,6 +317,7 @@ function informacion_usuarios() {
 }
 
 
+
 function crear_usuario() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR USUARIO SSH =====${NC}"
@@ -375,55 +376,64 @@ function crear_usuario() {
         fi
     done
 
+    # Calcular fechas de expiración
+    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00" 2>/dev/null); then
+        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Cancelo.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
+        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Cancelo.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    # Escribe registro bajo flock ANTES de crear usuario local
+    {
+        flock -x 200
+        # Confirma que no haya sido creado por una carrera
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. Cancelando.${NC}"
+            exit 1
+        fi
+        if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
+            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Cancelando.${NC}"
+            exit 1
+        fi
+        if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>/dev/null; then
+            echo -e "${ROJO}❌ Error escribiendo en el registro para $USUARIO.${NC}"
+            exit 1
+        fi
+    } 200>"$REGISTROS.lock"
+    # Si el flock falla, aborta, no crea usuario
+
     # Crear usuario
     if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
-        echo -e "${ROJO}❌ Error creando usuario $USUARIO.${NC}"
+        sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+        echo -e "${ROJO}❌ Error creando usuario $USUARIO. Registro revertido.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
     # Establecer contraseña
     if ! echo "$USUARIO:$CLAVE" | chpasswd 2>/dev/null; then
-        echo -e "${ROJO}❌ Error estableciendo la contraseña para $USUARIO. Eliminando usuario...${NC}"
         userdel -r "$USUARIO" 2>/dev/null
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    # Calcular fechas de expiración
-    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
-        userdel -r "$USUARIO" 2>/dev/null
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
-        userdel -r "$USUARIO" 2>/dev/null
+        sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+        echo -e "${ROJO}❌ Error estableciendo la contraseña. Usuario y registro eliminados.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
     # Establecer fecha de expiración
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
-        echo -e "${ROJO}❌ Error configurando la fecha de expiración para $USUARIO. Eliminando usuario...${NC}"
         userdel -r "$USUARIO" 2>/dev/null
+        sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+        echo -e "${ROJO}❌ Error configurando expiración. Usuario y registro eliminados.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
     fi
 
-    # Escribir en el archivo de registros con bloqueo
-    {
-        flock -x 200
-        if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>/dev/null; then
-            echo -e "${ROJO}❌ Error escribiendo en el archivo de registros para $USUARIO. Eliminando usuario...${NC}"
-            userdel -r "$USUARIO" 2>/dev/null
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return
-        fi
-    } 200>"$REGISTROS.lock"
-
-    # Mostrar información del usuario creado
+    # Mostrar información del usuario creado (igual que antes)
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO${NC}"
@@ -439,8 +449,6 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
 
 function crear_multiples_usuarios() {
     clear
@@ -482,14 +490,12 @@ function crear_multiples_usuarios() {
         return
     fi
 
-    # Crear un log de errores
     ERROR_LOG="/tmp/creacion_usuarios_$(date +%Y%m%d_%H%M%S).log"
     touch "$ERROR_LOG" || {
         echo -e "${ROJO}❌ No se pudo crear el archivo de log. Continuando sin registro de errores.${NC}"
         ERROR_LOG=""
     }
 
-    # Verificar permisos de $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
         touch "$REGISTROS" 2>/dev/null || {
             echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
@@ -503,10 +509,9 @@ function crear_multiples_usuarios() {
         return
     fi
 
-    # Contador de éxitos y fallos
     EXITOS=0
     FALLOS=0
-    
+
     for LINEA in "${USUARIOS[@]}"; do
         read -r USUARIO CLAVE DIAS MOVILES <<< "$LINEA"
         if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
@@ -537,41 +542,53 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        # === Creación robusta con rollback ===
+        # Reservar línea en el registro primero
+        EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
+        EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
+
+        {
+            flock -x 200
+            # Re-checar condiciones de carrera
+            if id "$USUARIO" &>/dev/null || grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
+                echo -e "${ROJO}👤 $USUARIO ya existe en sistema o registros. Saltando.${NC}"
+                exit 1
+            fi
+            if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
+                echo -e "${ROJO}❌ Error escribiendo en $REGISTROS para $USUARIO.${NC}"
+                exit 1
+            fi
+        } 200>"$REGISTROS.lock" || {
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error reservando registro para $USUARIO" >> "$ERROR_LOG"
+            ((FALLOS++))
+            continue
+        }
+
+        # Crear usuario después de reservar registro
         if ! useradd -m -s /bin/bash "$USUARIO" 2>>"$ERROR_LOG"; then
-            echo -e "${ROJO}❌ Error creando usuario $USUARIO. Revisa $ERROR_LOG para más detalles.${NC}"
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error creando usuario $USUARIO. Se revierte registro.${NC}"
+            [[ -n "$ERROR_LOG" ]] && echo "$(date): Error creando usuario $USUARIO" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
         if ! echo "$USUARIO:$CLAVE" | chpasswd 2>>"$ERROR_LOG"; then
-            echo -e "${ROJO}❌ Error estableciendo la contraseña para $USUARIO. Eliminando usuario...${NC}"
             userdel -r "$USUARIO" 2>/dev/null
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error estableciendo contraseña para $USUARIO. Se elimina usuario y registro.${NC}"
             [[ -n "$ERROR_LOG" ]] && echo "$(date): Error estableciendo contraseña para $USUARIO" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
 
-        EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
-        EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
         if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>>"$ERROR_LOG"; then
-            echo -e "${ROJO}❌ Error configurando la expiración para $USUARIO. Eliminando usuario...${NC}"
             userdel -r "$USUARIO" 2>/dev/null
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+            echo -e "${ROJO}❌ Error configurando expiración para $USUARIO. Se elimina usuario y registro.${NC}"
             [[ -n "$ERROR_LOG" ]] && echo "$(date): Error configurando expiración para $USUARIO" >> "$ERROR_LOG"
             ((FALLOS++))
             continue
         fi
-
-        {
-            flock -x 200
-            if ! echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t${DIAS} días\t$MOVILES móviles\tNO\t" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
-                echo -e "${ROJO}❌ Error escribiendo en el archivo de registros para $USUARIO. Eliminando usuario...${NC}"
-                userdel -r "$USUARIO" 2>/dev/null
-                [[ -n "$ERROR_LOG" ]] && echo "$(date): Error escribiendo en registros para $USUARIO" >> "$ERROR_LOG"
-                ((FALLOS++))
-                continue
-            fi
-        } 200>"$REGISTROS.lock"
 
         echo -e "${VERDE}✅ Usuario $USUARIO creado exitosamente.${NC}"
         ((EXITOS++))
@@ -581,9 +598,12 @@ function crear_multiples_usuarios() {
     echo -e "${VERDE}✅ Usuarios creados exitosamente: $EXITOS${NC}"
     echo -e "${ROJO}❌ Usuarios con error: $FALLOS${NC}"
     [[ -n "$ERROR_LOG" && $FALLOS -gt 0 ]] && echo -e "${AMARILLO}📝 Log de errores: $ERROR_LOG${NC}"
-    
+
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+
+
 
 function ver_registros() {
     clear
