@@ -605,61 +605,6 @@ function crear_multiples_usuarios() {
 
 
 
-function ver_registros() {
-    clear
-    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
-
-    # Definir colores
-    AZUL_SUAVE='\033[38;5;45m'
-    SOFT_PINK='\033[38;5;211m'
-    PASTEL_BLUE='\033[38;5;153m'
-    LILAC='\033[38;5;183m'
-    SOFT_CORAL='\033[38;5;217m'
-    HOT_PINK='\033[38;5;198m'
-    PASTEL_PURPLE='\033[38;5;189m'
-    MINT_GREEN='\033[38;5;159m'
-    NC='\033[0m'
-
-    # Centrar texto en un ancho dado
-    center_value() {
-        local value="$1"
-        local width="$2"
-        local len=${#value}
-        local padding_left=$(( (width - len) / 2 ))
-        local padding_right=$(( width - len - padding_left ))
-        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
-    }
-
-    if [[ -f $REGISTROS ]]; then
-        # Cada columna con un color diferente
-        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
-            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
-        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
-
-        NUM=1
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
-                FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
-                DURACION_CENTRADA=$(center_value "$DURACION" 10)
-                # Cada columna con su propio color en las filas de datos
-                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
-                NUM=$((NUM+1))
-            fi
-        done < "$REGISTROS"
-
-        if [[ $NUM -eq 1 ]]; then
-            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
-        fi
-    else
-        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
-    fi
-
-    echo -e "${LILAC}=====================${NC}"
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
-}
-
 function eliminar_usuario() {
 clear
 echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
@@ -775,6 +720,8 @@ done
 echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
 read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+
 
 
 verificar_online() {
@@ -998,7 +945,62 @@ function mini_registro() {
 }
 
 
+function ver_registros() {
+    clear
+    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    # Centrar texto en un ancho dado
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+    }
+
+    if [[ -f $REGISTROS ]]; then
+        # Cada columna con un color diferente
+        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
+            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
+        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
+
+        NUM=1
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
+                FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
+                DURACION_CENTRADA=$(center_value "$DURACION" 10)
+                # Cada columna con su propio color en las filas de datos
+                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
+                NUM=$((NUM+1))
+            fi
+        done < "$REGISTROS"
+
+        if [[ $NUM -eq 1 ]]; then
+            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
+        fi
+    else
+        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
+    fi
+
+    echo -e "${LILAC}=====================${NC}"
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+}
+
+creo que tambien esta fallando xq se crea el usuario pero no lo muestra lo hagarra cuando el quiere
 function nuclear_eliminar() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
