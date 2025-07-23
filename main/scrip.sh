@@ -1348,7 +1348,6 @@ function configurar_banner_ssh() {
     esac
 }
 
-}
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
