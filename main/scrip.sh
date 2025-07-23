@@ -1236,91 +1236,103 @@ function ver_registros() {
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
-    echo -e "${AMARILLO}📝 Por favor, digite su mensaje para el banner (una sola línea).${NC}"
-    echo -e "${AMARILLO}📌 Usa 'DESACTIVAR' para desactivar el banner.${NC}"
-    echo -e "${AMARILLO}📌 Ejemplo: papa y mamá${NC}"
-    echo -e "${AMARILLO}📌 El mensaje se decorará automáticamente con colores y emojis 💕.${NC}"
+    echo -e "${AMARILLO}1) AGREGAR${NC}"
+    echo -e "${AMARILLO}2) ELIMINAR${NC}"
     echo
+    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+    read -p "$PROMPT" SUBOP
 
-    read -r BANNER_TEXT
     BANNER_FILE="/etc/ssh_banner"
     SSHD_CONFIG="/etc/ssh/sshd_config"
 
-    if [[ -z "$BANNER_TEXT" ]]; then
-        echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
+    case $SUBOP in
+        1)
+            clear
+            echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
+            echo -e "${AMARILLO}📝 Por favor, digite su mensaje para el banner (una sola línea).${NC}"
+            echo -e "${AMARILLO}📌 Ejemplo: mis clientes son los mejores${NC}"
+            echo -e "${AMARILLO}📌 El mensaje se decorará automáticamente con colores y emoji 💕.${NC}"
+            echo
+            read -r BANNER_TEXT
 
-    # Verificar si se quiere desactivar el banner
-    if [[ "$BANNER_TEXT" == "DESACTIVAR" ]]; then
-        if grep -q "^Banner" "$SSHD_CONFIG"; then
-            sed -i 's|^Banner.*|#Banner none|' "$SSHD_CONFIG" 2>/dev/null || {
-                echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+            if [[ -z "$BANNER_TEXT" ]]; then
+                echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
+                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                return
+            fi
+
+            # Dividir el texto en palabras para aplicar colores diferentes
+            IFS=' ' read -ra WORDS <<< "$BANNER_TEXT"
+            FORMATTED_BANNER="<h2>"
+            COLORS=("#FF1493" "Red" "#FF8C00" "#00FFFF" "#FF69B4") # Colores: Rosa fuerte, Rojo, Naranja, Cian, Rosa claro
+            COLOR_COUNT=${#COLORS[@]}
+            INDEX=0
+
+            for WORD in "${WORDS[@]}"; do
+                COLOR_INDEX=$((INDEX % COLOR_COUNT))
+                FORMATTED_BANNER+="<font color=\"${COLORS[$COLOR_INDEX]}\">$WORD </font>"
+                ((INDEX++))
+            done
+            FORMATTED_BANNER+="💕</h2>" # Añadir emoji romántico al final
+
+            # Guardar el texto del banner con el formato
+            echo "$FORMATTED_BANNER" > "$BANNER_FILE" 2>/dev/null || {
+                echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
                 read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
                 return
             }
-            rm -f "$BANNER_FILE" 2>/dev/null
+
+            # Configurar el banner en sshd_config
+            if grep -q "^Banner" "$SSHD_CONFIG"; then
+                sed -i "s|^Banner.*|Banner $BANNER_FILE|" "$SSHD_CONFIG" 2>/dev/null || {
+                    echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                    return
+                }
+            else
+                echo "Banner $BANNER_FILE" >> "$SSHD_CONFIG" 2>/dev/null || {
+                    echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                    return
+                }
+            fi
+
+            # Reiniciar el servicio SSH
             systemctl restart sshd >/dev/null 2>&1 || {
                 echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
                 read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
                 return
             }
-            echo -e "${VERDE}✅ Banner SSH desactivado exitosamente.${NC}"
-        else
-            echo -e "${AMARILLO}⚠️ El banner ya está desactivado.${NC}"
-        fi
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
 
-    # Dividir el texto en palabras para aplicar colores diferentes
-    IFS=' ' read -ra WORDS <<< "$BANNER_TEXT"
-    FORMATTED_BANNER=""
-    COLORS=("#FF1493" "Red" "#FF8C00" "#00FFFF" "#FF69B4") # Colores: Rosa fuerte, Rojo, Naranja, Cian, Rosa claro
-    COLOR_COUNT=${#COLORS[@]}
-    INDEX=0
-
-    for WORD in "${WORDS[@]}"; do
-        COLOR_INDEX=$((INDEX % COLOR_COUNT))
-        FORMATTED_BANNER+="<h2><font color=\"${COLORS[$COLOR_INDEX]}\">$WORD</font></h2>"
-        ((INDEX++))
-    done
-    FORMATTED_BANNER+="<h2>💕</h2>" # Añadir emoji romántico al final
-
-    # Guardar el texto del banner con el formato
-    echo "$FORMATTED_BANNER" > "$BANNER_FILE" 2>/dev/null || {
-        echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    }
-
-    # Configurar el banner en sshd_config
-    if grep -q "^Banner" "$SSHD_CONFIG"; then
-        sed -i "s|^Banner.*|Banner $BANNER_FILE|" "$SSHD_CONFIG" 2>/dev/null || {
-            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+            echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
+            echo -e "${CIAN}📜 Contenido del banner:${NC}"
+            cat "$BANNER_FILE"
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return
-        }
-    else
-        echo "Banner $BANNER_FILE" >> "$SSHD_CONFIG" 2>/dev/null || {
-            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+            ;;
+        2)
+            if grep -q "^Banner" "$SSHD_CONFIG"; then
+                sed -i 's|^Banner.*|#Banner none|' "$SSHD_CONFIG" 2>/dev/null || {
+                    echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                    return
+                }
+                rm -f "$BANNER_FILE" 2>/dev/null
+                systemctl restart sshd >/dev/null 2>&1 || {
+                    echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
+                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                    return
+                }
+                echo -e "${VERDE}✅ Banner SSH desactivado exitosamente.${NC}"
+            else
+                echo -e "${AMARILLO}⚠️ El banner ya está desactivado.${NC}"
+            fi
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return
-        }
-    fi
-
-    # Reiniciar el servicio SSH
-    systemctl restart sshd >/dev/null 2>&1 || {
-        echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    }
-
-    echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
-    echo -e "${CIAN}📜 Contenido del banner:${NC}"
-    cat "$BANNER_FILE"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            ;;
+        *)
+            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            ;;
+    esac
 }
 
 # Colores y emojis
