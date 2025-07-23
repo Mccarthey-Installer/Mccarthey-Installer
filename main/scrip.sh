@@ -1250,8 +1250,8 @@ function configurar_banner_ssh() {
             clear
             echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
             echo -e "${AMARILLO}📝 Por favor, digite su mensaje para el banner (una sola línea).${NC}"
-            echo -e "${AMARILLO}📌 Ejemplo: mis clientes son los mejores${NC}"
-            echo -e "${AMARILLO}📌 El mensaje se decorará automáticamente con colores y emoji 💕.${NC}"
+            echo -e "${AMARILLO}📌 Ejemplo: TE AMO CIELO ⛑️😘⛑️${NC}"
+            echo -e "${AMARILLO}📌 El mensaje se decorará en rosa encendido (#cf297c) con emoji 💕. Emojis permitidos: 🥰😅😁🙂😂😀🤣😚🤪🥲😛🥵🥶🥺😨😧😦🥹😮😯😭😞😣👾😎😇🤩😍🥰😀😃😄😁😆☺️🙃🫢🫣🤫🤔😏😒🫡💕⛑️😘💖🌹${NC}"
             echo
             read -r BANNER_TEXT
 
@@ -1261,19 +1261,32 @@ function configurar_banner_ssh() {
                 return
             fi
 
-            # Dividir el texto en palabras para aplicar colores diferentes
+            # Lista de emojis permitidos (Unicode seguro para SSH)
+            VALID_EMOJIS=("🥰" "😅" "😁" "🙂" "😂" "😀" "🤣" "😚" "🤪" "🥲" "😛" "🥵" "🥶" "🥺" "😨" "😧" "😦" "🥹" "😮" "😯" "😭" "😞" "😣" "👾" "😎" "😇" "🤩" "😍" "😀" "😃" "😄" "😁" "😆" "☺️" "🙃" "🫢" "🫣" "🤫" "🤔" "😏" "😒" "🫡" "💕" "⛑️" "😘" "💖" "🌹")
+            FORMATTED_BANNER="<h2><font color=\"#cf297c\">"
+
+            # Dividir el texto en palabras y emojis
             IFS=' ' read -ra WORDS <<< "$BANNER_TEXT"
-            FORMATTED_BANNER="<h2>"
-            COLORS=("#FF1493" "Red" "#FF8C00" "#00FFFF" "#FF69B4") # Colores: Rosa fuerte, Rojo, Naranja, Cian, Rosa claro
-            COLOR_COUNT=${#COLORS[@]}
-            INDEX=0
 
             for WORD in "${WORDS[@]}"; do
-                COLOR_INDEX=$((INDEX % COLOR_COUNT))
-                FORMATTED_BANNER+="<font color=\"${COLORS[$COLOR_INDEX]}\">$WORD </font>"
-                ((INDEX++))
+                # Verificar si la palabra es un emoji permitido
+                IS_EMOJI=false
+                for EMOJI in "${VALID_EMOJIS[@]}"; do
+                    if [[ "$WORD" == "$EMOJI" ]]; then
+                        IS_EMOJI=true
+                        break
+                    fi
+                done
+
+                if [[ "$IS_EMOJI" == true ]]; then
+                    # Emojis sin espacio adicional
+                    FORMATTED_BANNER+="$WORD"
+                else
+                    # Palabras con espacio
+                    FORMATTED_BANNER+="$WORD "
+                fi
             done
-            FORMATTED_BANNER+="💕</h2>" # Añadir emoji romántico al final
+            FORMATTED_BANNER+="💕</font></h2>" # Añadir emoji romántico al final
 
             # Guardar el texto del banner con el formato
             echo "$FORMATTED_BANNER" > "$BANNER_FILE" 2>/dev/null || {
