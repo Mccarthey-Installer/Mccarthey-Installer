@@ -1238,8 +1238,8 @@ function configurar_banner_ssh() {
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
     echo -e "${AMARILLO}📝 Por favor, digite su mensaje para el banner (una sola línea).${NC}"
     echo -e "${AMARILLO}📌 Usa 'DESACTIVAR' para desactivar el banner.${NC}"
-    echo -e "${AMARILLO}📌 Ejemplo: Este archivo es propiedad del Grupo de Diana & Kevins${NC}"
-    echo -e "${AMARILLO}📌 El mensaje se decorará automáticamente con colores y emojis.${NC}"
+    echo -e "${AMARILLO}📌 Ejemplo: papa y mamá${NC}"
+    echo -e "${AMARILLO}📌 El mensaje se decorará automáticamente con colores y emojis 💕.${NC}"
     echo
 
     read -r BANNER_TEXT
@@ -1274,10 +1274,21 @@ function configurar_banner_ssh() {
         return
     fi
 
-    # Formato predefinido con colores y emojis
-    FORMATTED_BANNER="<h2><font color=\"#FF1493\">${BANNER_TEXT}</font><h2><font color=\"Red\">⛅Grupo de Diana & Kevins🌈</font><h2><font color=\"#FF8C00\">😀Únete a nuestro Grupo</font> 🌸🌹💋🌻🌻🌻 https://t.me/+vcDy7gSy4So5YmJh"
+    # Dividir el texto en palabras para aplicar colores diferentes
+    IFS=' ' read -ra WORDS <<< "$BANNER_TEXT"
+    FORMATTED_BANNER=""
+    COLORS=("#FF1493" "Red" "#FF8C00" "#00FFFF" "#FF69B4") # Colores: Rosa fuerte, Rojo, Naranja, Cian, Rosa claro
+    COLOR_COUNT=${#COLORS[@]}
+    INDEX=0
 
-    # Guardar el texto del banner con el formato predefinido
+    for WORD in "${WORDS[@]}"; do
+        COLOR_INDEX=$((INDEX % COLOR_COUNT))
+        FORMATTED_BANNER+="<h2><font color=\"${COLORS[$COLOR_INDEX]}\">$WORD</font></h2>"
+        ((INDEX++))
+    done
+    FORMATTED_BANNER+="<h2>💕</h2>" # Añadir emoji romántico al final
+
+    # Guardar el texto del banner con el formato
     echo "$FORMATTED_BANNER" > "$BANNER_FILE" 2>/dev/null || {
         echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
