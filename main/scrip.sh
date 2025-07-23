@@ -641,113 +641,121 @@ function ver_registros() {
 }
 
 function eliminar_usuario() {
-    clear
-    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
-    if [[ ! -f $REGISTROS ]]; then
-        echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
-    echo -e "${CIAN}--------------------------${NC}"
-    NUM=1
-    declare -A USUARIOS_EXISTENTES
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
-            USUARIOS_EXISTENTES[$NUM]="$USUARIO"
-            NUM=$((NUM+1))
-        fi
-    done < "$REGISTROS"
-
-    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    echo
-    echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"
-    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
-    read -p "$PROMPT" INPUT_NUMEROS
-    if [[ "$INPUT_NUMEROS" == "0" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    read -ra NUMEROS <<< "$INPUT_NUMEROS"
-    declare -a USUARIOS_A_ELIMINAR
-    for NUMERO in "${NUMEROS[@]}"; do
-        if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then
-            USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")
-        else
-            echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"
-        fi
-    done
-
-    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
-    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        echo -e "${VERDE}$USUARIO${NC}"
-    done
-    echo -e "${CIAN}--------------------------${NC}"
-    echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR de estos usuarios? (s/n)${NC}"
-    read -p "" CONFIRMAR
-    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        echo -e "${ROJO}💣 Eliminando usuario: $USUARIO${NC}"
-
-        echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
-        sudo usermod --lock "$USUARIO" 2>/dev/null
-
-        echo -e "${ROJO}→ (2) Matando procesos activos...${NC}"
-        sudo kill -9 $(pgrep -u "$USUARIO") 2>/dev/null
-        sleep 1
-
-        echo -e "${ROJO}→ (3) Eliminando con userdel --force...${NC}"
-        sudo userdel --force "$USUARIO" 2>/dev/null
-
-        echo -e "${ROJO}→ (4) Eliminando con deluser --remove-home...${NC}"
-        sudo deluser --remove-home "$USUARIO" 2>/dev/null
-
-        echo -e "${ROJO}→ (5) Borrando carpeta huérfana en /home/$USUARIO...${NC}"
-        sudo rm -rf "/home/$USUARIO"
-
-        echo -e "${ROJO}→ (6) Limpiando sesión con loginctl...${NC}"
-        sudo loginctl kill-user "$USUARIO" 2>/dev/null
-
-        echo -e "${ROJO}→ (7) Segunda pasada de limpieza...${NC}"
-        sudo deluser "$USUARIO" 2>/dev/null
-
-        echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
-        sed -i "/^$USUARIO\t/d" "$REGISTROS"
-        sed -i "/^$USUARIO|/d" "$HISTORIAL"
-
-        if ! id "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO eliminado completamente.${NC}"
-        else
-            echo -e "${ROJO}⚠️ El usuario $USUARIO aún persiste. Verifica manualmente.${NC}"
-        fi
-
-        echo -e "${CIAN}--------------------------------------${NC}"
-    done
-
-    echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
+clear
+echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
+if [[ ! -f $REGISTROS ]]; then
+    echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    return
+fi
+
+echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"  
+echo -e "${CIAN}--------------------------${NC}"  
+NUM=1  
+declare -A USUARIOS_EXISTENTES  
+while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do  
+    if id "$USUARIO" &>/dev/null; then  
+        echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"  
+        USUARIOS_EXISTENTES[$NUM]="$USUARIO"  
+        NUM=$((NUM+1))  
+    fi  
+done < "$REGISTROS"  
+
+if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then  
+    echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"  
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
+    return  
+fi  
+
+echo  
+echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"  
+PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")  
+read -p "$PROMPT" INPUT_NUMEROS  
+if [[ "$INPUT_NUMEROS" == "0" ]]; then  
+    echo -e "${AZUL}🚫 Operación cancelada.${NC}"  
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
+    return  
+fi  
+
+read -ra NUMEROS <<< "$INPUT_NUMEROS"  
+declare -a USUARIOS_A_ELIMINAR  
+for NUMERO in "${NUMEROS[@]}"; do  
+    if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then  
+        USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")  
+    else  
+        echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"  
+    fi  
+done  
+
+if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then  
+    echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"  
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
+    return  
+fi  
+
+echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
+echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
+for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+    echo -e "${VERDE}$USUARIO${NC}"
+done
+echo -e "${CIAN}--------------------------${NC}"
+echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR de estos usuarios? (s/n)${NC}"
+read -p "" CONFIRMAR
+if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+    echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+    return
+fi
+
+for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+    USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+    echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
+
+    echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
+    sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
+
+    echo -e "${ROJO}→ (2) Matando procesos activos...${NC}"
+    sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
+    sleep 1
+
+    echo -e "${ROJO}→ (3) Eliminando con userdel --force...${NC}"
+    sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
+
+    echo -e "${ROJO}→ (4) Eliminando con deluser --remove-home...${NC}"
+    sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
+
+    echo -e "${ROJO}→ (5) Borrando carpeta huérfana en /home/$USUARIO_LIMPIO...${NC}"
+    sudo rm -rf "/home/$USUARIO_LIMPIO"
+
+    echo -e "${ROJO}→ (6) Limpiando sesión con loginctl...${NC}"
+    sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
+
+    echo -e "${ROJO}→ (7) Segunda pasada de limpieza...${NC}"
+    sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
+
+    echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
+    # Ahora busca el usuario seguido de cualquier espacio o tabulador
+    sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+    sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
+
+    # Imprime para depuración
+    if grep -q "^$USUARIO_LIMPIO" "$REGISTROS"; then
+        echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato de ese archivo.${NC}"
+    fi
+
+    if ! id "$USUARIO_LIMPIO" &>/dev/null; then
+        echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente.${NC}"
+    else
+        echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún persiste. Verifica manualmente.${NC}"
+    fi
+
+    echo -e "${CIAN}--------------------------------------${NC}"
+done
+
+echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
+read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 verificar_online() {
     clear
