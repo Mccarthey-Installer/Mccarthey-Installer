@@ -1249,7 +1249,7 @@ function configurar_banner_ssh() {
                 2) COLOR="#000000" ;; # Black
                 3) COLOR="#40E0D0" ;; # Turquoise
                 4) COLOR="#800080" ;; # Purple
-               5) COLOR="#FFFF00" ;; # Yellow
+               5) COLOR="#FFA500" ;; # Orange
                 6) COLOR="#FF1493" ;; # DeepPink
                 7) COLOR="#FF00FF" ;; # Magenta
                 *)
