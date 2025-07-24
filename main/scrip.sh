@@ -433,17 +433,22 @@ function crear_usuario() {
         return
     fi
 
-    # Añadir checkuser al ~/.bashrc del usuario
-    BASHRC="/home/$USUARIO_LIMPIO/.bashrc"
-    cat << 'EOF' >> "$BASHRC"
-# Checkuser: Mostrar mensaje si al usuario le queda un día de validez
-if [[ -t 0 && -n "$SSH_CONNECTION" ]]; then
+# Añadir checkuser al ~/.bashrc del usuario
+BASHRC="/home/$USUARIO_LIMPIO/.bashrc"
+cat << 'EOF' > "$BASHRC"
+# Checkuser: Mostrar mensaje un día antes de que expire la cuenta
+if [[ -t 0 && -n "$SSH_CONNECTION" && "$SHLVL" -eq 1 ]]; then
     REGISTROS="/root/registros.txt"
     USUARIO_ACTUAL=$(whoami)
-    if [[ -f "$REGISTROS" ]]; then
+    if [[ ! -r "$REGISTROS" ]]; then
+        echo -e "\033[38;5;196m⚠️ Error: No se puede leer $REGISTROS. Contacta al administrador.\033[0m"
+    else
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if [[ "$USUARIO" == "$USUARIO_ACTUAL" ]]; then
-                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+                if ! FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
+                    echo -e "\033[38;5;196m⚠️ Error calculando fecha de expiración. Contacta al administrador.\033[0m"
+                    break
+                fi
                 FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
                 DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
                 if [[ "$DIAS_RESTANTES" -eq 1 ]]; then
@@ -455,8 +460,8 @@ if [[ -t 0 && -n "$SSH_CONNECTION" ]]; then
     fi
 fi
 EOF
-    chown "$USUARIO_LIMPIO:$USUARIO_LIMPIO" "$BASHRC"
-    chmod 644 "$BASHRC"
+chown "$USUARIO_LIMPIO:$USUARIO_LIMPIO" "$BASHRC"
+chmod 644 "$BASHRC"
 
     # Mostrar información del usuario creado (igual que antes)
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
@@ -628,16 +633,21 @@ function crear_multiples_usuarios() {
         fi
 
         # Añadir checkuser al ~/.bashrc del usuario
-        BASHRC="/home/$USUARIO_LIMPIO/.bashrc"
-        cat << 'EOF' >> "$BASHRC"
-# Checkuser: Mostrar mensaje si al usuario le queda un día de validez
-if [[ -t 0 && -n "$SSH_CONNECTION" ]]; then
+BASHRC="/home/$USUARIO_LIMPIO/.bashrc"
+cat << 'EOF' > "$BASHRC"
+# Checkuser: Mostrar mensaje un día antes de que expire la cuenta
+if [[ -t 0 && -n "$SSH_CONNECTION" && "$SHLVL" -eq 1 ]]; then
     REGISTROS="/root/registros.txt"
     USUARIO_ACTUAL=$(whoami)
-    if [[ -f "$REGISTROS" ]]; then
+    if [[ ! -r "$REGISTROS" ]]; then
+        echo -e "\033[38;5;196m⚠️ Error: No se puede leer $REGISTROS. Contacta al administrador.\033[0m"
+    else
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if [[ "$USUARIO" == "$USUARIO_ACTUAL" ]]; then
-                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+                if ! FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
+                    echo -e "\033[38;5;196m⚠️ Error calculando fecha de expiración. Contacta al administrador.\033[0m"
+                    break
+                fi
                 FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
                 DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
                 if [[ "$DIAS_RESTANTES" -eq 1 ]]; then
@@ -649,8 +659,8 @@ if [[ -t 0 && -n "$SSH_CONNECTION" ]]; then
     fi
 fi
 EOF
-        chown "$USUARIO_LIMPIO:$USUARIO_LIMPIO" "$BASHRC"
-        chmod 644 "$BASHRC"
+chown "$USUARIO_LIMPIO:$USUARIO_LIMPIO" "$BASHRC"
+chmod 644 "$BASHRC"
 
         echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO creado exitosamente.${NC}"
         ((EXITOS++))
@@ -667,7 +677,6 @@ EOF
 
 
 
-        
 
 
 
@@ -1291,7 +1300,6 @@ EOF
     echo -e "${VERDE}✅ Actualización de checkuser completada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
