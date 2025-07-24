@@ -433,35 +433,7 @@ function crear_usuario() {
         return
     fi
 
-# Añadir checkuser al ~/.bashrc del usuario
-BASHRC="/home/$USUARIO_LIMPIO/.bashrc"
-cat << 'EOF' > "$BASHRC"
-# Checkuser: Mostrar mensaje un día antes de que expire la cuenta
-if [[ -t 0 && -n "$SSH_CONNECTION" && "$SHLVL" -eq 1 ]]; then
-    REGISTROS="/root/registros.txt"
-    USUARIO_ACTUAL=$(whoami)
-    if [[ ! -r "$REGISTROS" ]]; then
-        echo -e "\033[38;5;196m⚠️ Error: No se puede leer $REGISTROS. Contacta al administrador.\033[0m"
-    else
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if [[ "$USUARIO" == "$USUARIO_ACTUAL" ]]; then
-                if ! FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
-                    echo -e "\033[38;5;196m⚠️ Error calculando fecha de expiración. Contacta al administrador.\033[0m"
-                    break
-                fi
-                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-                if [[ "$DIAS_RESTANTES" -eq 1 ]]; then
-                    echo -e "\033[38;5;220mHola $USUARIO, mañana vence tu archivo. 🍁\033[0m"
-                fi
-                break
-            fi
-        done < "$REGISTROS"
-    fi
-fi
-EOF
-chown "$USUARIO_LIMPIO:$USUARIO_LIMPIO" "$BASHRC"
-chmod 644 "$BASHRC"
+
 
     # Mostrar información del usuario creado (igual que antes)
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
@@ -632,35 +604,7 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        # Añadir checkuser al ~/.bashrc del usuario
-BASHRC="/home/$USUARIO_LIMPIO/.bashrc"
-cat << 'EOF' > "$BASHRC"
-# Checkuser: Mostrar mensaje un día antes de que expire la cuenta
-if [[ -t 0 && -n "$SSH_CONNECTION" && "$SHLVL" -eq 1 ]]; then
-    REGISTROS="/root/registros.txt"
-    USUARIO_ACTUAL=$(whoami)
-    if [[ ! -r "$REGISTROS" ]]; then
-        echo -e "\033[38;5;196m⚠️ Error: No se puede leer $REGISTROS. Contacta al administrador.\033[0m"
-    else
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if [[ "$USUARIO" == "$USUARIO_ACTUAL" ]]; then
-                if ! FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
-                    echo -e "\033[38;5;196m⚠️ Error calculando fecha de expiración. Contacta al administrador.\033[0m"
-                    break
-                fi
-                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-                if [[ "$DIAS_RESTANTES" -eq 1 ]]; then
-                    echo -e "\033[38;5;220mHola $USUARIO, mañana vence tu archivo. 🍁\033[0m"
-                fi
-                break
-            fi
-        done < "$REGISTROS"
-    fi
-fi
-EOF
-chown "$USUARIO_LIMPIO:$USUARIO_LIMPIO" "$BASHRC"
-chmod 644 "$BASHRC"
+        
 
         echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO creado exitosamente.${NC}"
         ((EXITOS++))
@@ -1251,55 +1195,7 @@ function configurar_banner_ssh() {
 }
 
 
-function actualizar_checkuser_usuarios() {
-    clear
-    echo -e "${VIOLETA}===== 🔄 ACTUALIZAR CHECKUSER PARA USUARIOS EXISTENTES =====${NC}"
-    if [[ ! -f "$REGISTROS" ]]; then
-        echo -e "${ROJO}❌ No hay registros de usuarios.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
 
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-        if id "$USUARIO" &>/dev/null; then
-            BASHRC="/home/$USUARIO/.bashrc"
-            # Respaldar el .bashrc actual
-            cp "$BASHRC" "${BASHRC}.bak" 2>/dev/null
-            # Reemplazar o añadir el bloque de checkuser
-            cat << 'EOF' > "$BASHRC"
-# Checkuser: Mostrar mensaje un día antes de que expire la cuenta
-if [[ -t 0 && -n "$SSH_CONNECTION" && "$SHLVL" -eq 1 ]]; then
-    REGISTROS="/root/registros.txt"
-    USUARIO_ACTUAL=$(whoami)
-    if [[ ! -r "$REGISTROS" ]]; then
-        echo -e "\033[38;5;196m⚠️ Error: No se puede leer $REGISTROS. Contacta al administrador.\033[0m"
-    else
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if [[ "$USUARIO" == "$USUARIO_ACTUAL" ]]; then
-                if ! FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
-                    echo -e "\033[38;5;196m⚠️ Error calculando fecha de expiración. Contacta al administrador.\033[0m"
-                    break
-                fi
-                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-                if [[ "$DIAS_RESTANTES" -eq 1 ]]; then
-                    echo -e "\033[38;5;220mHola $USUARIO, mañana vence tu archivo. 🍁\033[0m"
-                fi
-                break
-            fi
-        done < "$REGISTROS"
-    fi
-fi
-EOF
-            chown "$USUARIO:$USUARIO" "$BASHRC"
-            chmod 644 "$BASHRC"
-            echo -e "${VERDE}✅ Actualizado .bashrc para $USUARIO.${NC}"
-        fi
-    done < "$REGISTROS"
-
-    echo -e "${VERDE}✅ Actualización de checkuser completada.${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
@@ -1331,7 +1227,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
         echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🔄 Actualizar checkuser para usuarios existentes${NC}"
+        
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
@@ -1346,7 +1242,7 @@ if [[ -t 0 ]]; then
             8) mini_registro ;;
             9) nuclear_eliminar ;;
             10) configurar_banner_ssh ;;
-            11) actualizar_checkuser_usuarios ;;
+            
             0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
