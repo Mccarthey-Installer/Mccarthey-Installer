@@ -353,10 +353,11 @@ function verificar_integridad_registros() {
 
 function eliminar_usuario() {
     clear
-    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
+    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR + LIMPIEZA DE LOGS) =====${NC}"
+
     if [[ ! -f $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros para eliminar (pero se puede proceder con usuarios del sistema).${NC}"
-        # No return para dejar que procese usuarios del sistema
+        # No se detiene aquí para permitir eliminación basada en usuarios del sistema
     fi
 
     echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
@@ -378,7 +379,7 @@ function eliminar_usuario() {
     fi
 
     echo
-    echo -e "${AMARILLO}🗑️ Ingrese los números o nombres de los usuarios a eliminar (separados por espacios)${NC}"
+    echo -e "${AMARILLO}🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios)${NC}"
     PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
     read -p "$PROMPT" INPUT_ENTRADA
     if [[ "$INPUT_ENTRADA" == "0" ]]; then
@@ -388,17 +389,17 @@ function eliminar_usuario() {
     fi
 
     read -ra ELEMENTOS <<< "$INPUT_ENTRADA"
-    declare -a USUARIOS_A_ELIMINAR
+    declare -a USUARIOS_A_ELIMINAR=()
     for ELEM in "${ELEMENTOS[@]}"; do
         if [[ "$ELEM" =~ ^[0-9]+$ ]]; then
-            # Entrada por número referida a $REGISTROS
+            # Entrada por número referida a registro
             if [[ -n "${USUARIOS_EXISTENTES[$ELEM]}" ]]; then
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$ELEM]}")
             else
                 echo -e "${ROJO}❌ Número inválido: $ELEM${NC}"
             fi
         else
-            # Entrada por nombre de usuario: verificamos si existe en sistema (no tanto en registros)
+            # Entrada por nombre, validar que exista en el sistema
             if id "$ELEM" &>/dev/null; then
                 USUARIOS_A_ELIMINAR+=("$ELEM")
             else
@@ -421,7 +422,7 @@ function eliminar_usuario() {
     echo -e "${CIAN}--------------------------${NC}"
     echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR de estos usuarios? (s/n)${NC}"
     read -p "" CONFIRMAR
-    if [[ $CONFIRMAR != "s" && $CONFIRMAR != "S" ]]; then
+    if [[ $CONFIRMAR != [sS] ]]; then
         echo -e "${AZUL}🚫 Operación cancelada.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
@@ -431,59 +432,85 @@ function eliminar_usuario() {
         USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
         echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
 
+        # Paso 1: Bloquear usuario
         echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
-        sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
-
+        sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null || true
+        
+        # Paso 2: Matar todos sus procesos
         echo -e "${ROJO}→ (2) Matando procesos activos...${NC}"
         sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null || true
         sleep 1
 
-        echo -e "${ROJO}→ (3) Eliminando con userdel --force...${NC}"
-        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
+        # Paso 3: Primer intento eliminación
+        echo -e "${ROJO}→ (3) Primer intento con userdel y deluser...${NC}"
+        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null || true
 
-        echo -e "${ROJO}→ (4) Eliminando con deluser --remove-home...${NC}"
-        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
+        # Paso 4: Borrar carpeta /home/usuario manualmente por si quedó huérfana
+        echo -e "${ROJO}→ (4) Borrando carpeta /home/$USUARIO_LIMPIO (si existe)...${NC}"
+        sudo rm -rf "/home/$USUARIO_LIMPIO" 2>/dev/null || true
 
-        echo -e "${ROJO}→ (5) Borrando carpeta huérfana en /home/$USUARIO_LIMPIO...${NC}"
-        sudo rm -rf "/home/$USUARIO_LIMPIO"
+        # Paso 5: Limpiar sesiones residuales
+        echo -e "${ROJO}→ (5) Limpiando sesiones residuales...${NC}"
+        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null || true
 
-        echo -e "${ROJO}→ (6) Limpiando sesión con loginctl...${NC}"
-        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
+        # Paso 6: Segundo intento eliminación "por si anda de terco"
+        echo -e "${ROJO}→ (6) Segundo intento con deluser...${NC}"
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
 
-        echo -e "${ROJO}→ (7) Segunda pasada de limpieza...${NC}"
-        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
-
-        echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
-
-        # Escapamos caracteres especiales para sed
+        # Paso 7: Eliminar usuario de registros e historial
+        echo -e "${ROJO}→ (7) Removiendo del registro e historial...${NC}"
         escaped_usuario=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[][\.*^$/]/\\&/g')
 
-        # Eliminamos la línea del usuario en $REGISTROS si existe
         if [[ -f $REGISTROS ]]; then
-            sed -i "/^${escaped_usuario}[[:space:]]/d" "$REGISTROS"
+          sed -i "/^${escaped_usuario}[[:space:]]/d" "$REGISTROS"
         fi
-        # Eliminamos línea del usuario en $HISTORIAL si existe
         if [[ -f $HISTORIAL ]]; then
-            sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
+          sed -i "/^${escaped_usuario}|/d" "$HISTORIAL"
         fi
 
-        # Verificación usando patrón escapado
-        if [[ -f $REGISTROS && $(grep -c "^${escaped_usuario}[[:space:]]" "$REGISTROS") -gt 0 ]]; then
-            echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato.${NC}"
+        # Paso 8: Limpiar historiales de shell comunes en home
+        echo -e "${ROJO}→ (8) Limpiando historiales de shell...${NC}"
+        HOME_DIR="/home/$USUARIO_LIMPIO"
+        if [[ -d "$HOME_DIR" ]]; then
+            sudo rm -f "$HOME_DIR/.bash_history" "$HOME_DIR/.zsh_history" "$HOME_DIR/.sh_history" "$HOME_DIR/.history" 2>/dev/null || true
+        fi
+        # Si el usuario es root, limpiar su historial también
+        if [[ "$USUARIO_LIMPIO" == "root" ]]; then
+            sudo rm -f /root/.bash_history 2>/dev/null || true
         fi
 
+        # Paso 9: Limpiar logs de autenticación comunes
+        echo -e "${ROJO}→ (9) Limpiando logs de autenticación...${NC}"
+        for LOGFILE in /var/log/auth.log /var/log/secure; do
+            if [[ -f "$LOGFILE" ]]; then
+                sudo sed -i "/$USUARIO_LIMPIO/d" "$LOGFILE" 2>/dev/null || true
+            fi
+        done
+
+Paso 9: tercer  intento eliminación "por si acaso"
+        echo -e "${ROJO}→ (10) Segundo intento con deluser...${NC}"
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
+        
+        # Paso 10: Verificaciones finales
         if ! id "$USUARIO_LIMPIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente.${NC}"
+            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y limpiado.${NC}"
         else
-            echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún persiste. Verifica manualmente.${NC}"
+            echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
         fi
 
+        if [[ -f $REGISTROS && $(grep -c "^${escaped_usuario}[[:space:]]" "$REGISTROS") -gt 0 ]]; then
+            echo -e "${ROJO}⚠️ $USUARIO_LIMPIO todavía aparece en $REGISTROS. Revisa permisos y formato.${NC}"
+        fi
+# Limpieza final del archivo de registros
+sed -i '/^[[:space:]]*$/d' "$REGISTROS"
         echo -e "${CIAN}--------------------------------------${NC}"
     done
 
-    echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
+    echo -e "${VERDE}✅ Eliminación nuclear y limpieza completa finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 
