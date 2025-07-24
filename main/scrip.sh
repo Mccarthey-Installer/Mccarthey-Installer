@@ -460,7 +460,7 @@ function eliminar_usuario() {
 
         # Eliminamos la línea del usuario en $REGISTROS si existe
         if [[ -f $REGISTROS ]]; then
-            sed -i "/^${escaped_usuario}\t/d" "$REGISTROS"
+            sed -i "/^${escaped_usuario}[[:space:]]/d" "$REGISTROS"
         fi
         # Eliminamos línea del usuario en $HISTORIAL si existe
         if [[ -f $HISTORIAL ]]; then
