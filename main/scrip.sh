@@ -318,7 +318,38 @@ function informacion_usuarios() {
 
 
 
+function verificar_integridad_registros() {
+    if [[ ! -f "$REGISTROS" ]]; then
+        return
+    fi
 
+    ELIMINADOS=0
+    TEMP_FILE=$(mktemp)
+
+    {
+        flock -x 200
+        while IFS=$'\t' read -r USUARIO CLAVE FECHA RESTO; do
+            if ! id "$USUARIO" &>/dev/null; then
+                echo -e "${ROJO}⚠️ Registro huérfano encontrado: $USUARIO no existe en el sistema. Limpiando...${NC}"
+                ((ELIMINADOS++))
+            else
+                # Mantener la línea si el usuario existe
+                echo -e "$USUARIO\t$CLAVE\t$FECHA\t$RESTO" >> "$TEMP_FILE"
+            fi
+        done < "$REGISTROS"
+
+        # Reemplazar el archivo original
+        mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error actualizando $REGISTROS después de limpiar.${NC}"
+            rm -f "$TEMP_FILE"
+            return 1
+        }
+    } 200>"$REGISTROS.lock"
+
+    if [[ $ELIMINADOS -gt 0 ]]; then
+        echo -e "${CIAN}📊 Resumen: $ELIMINADOS registros huérfanos eliminados.${NC}"
+    fi
+}
 
 
 
