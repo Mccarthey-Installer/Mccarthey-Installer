@@ -433,8 +433,6 @@ function crear_usuario() {
         return
     fi
 
-
-
     # Mostrar información del usuario creado (igual que antes)
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
@@ -604,8 +602,6 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        
-
         echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO creado exitosamente.${NC}"
         ((EXITOS++))
     done
@@ -617,8 +613,6 @@ function crear_multiples_usuarios() {
 
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
 
 
 
@@ -1076,126 +1070,6 @@ function ver_registros() {
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
 
-function configurar_banner_ssh() {
-    clear
-    echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
-    echo -e "${AMARILLO}1) AGREGAR${NC}"
-    echo -e "${AMARILLO}2) ELIMINAR${NC}"
-    echo
-    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
-    read -p "$PROMPT" SUBOP
-
-    BANNER_FILE="/etc/ssh_banner"
-    SSHD_CONFIG="/etc/ssh/sshd_config"
-
-    case $SUBOP in
-        1)
-            clear
-            echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
-            echo -e "${AMARILLO}📝 Por favor, digite su mensaje para el banner (una sola línea).${NC}"
-            echo -e "${AMARILLO}📌 Ejemplo: TE AMO CIELO${NC}"
-            echo
-            read -r BANNER_TEXT
-
-            if [[ -z "$BANNER_TEXT" ]]; then
-                echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            fi
-
-            # Selección de color
-            clear
-            echo -e "${VIOLETA}===== 🎀 SELECCIONAR COLOR DEL BANNER =====${NC}"
-            echo -e "${AMARILLO}Selecciona un color para el banner:${NC}"
-            echo -e "${AMARILLO}1) HotPink${NC}"
-            echo -e "${AMARILLO}2) Black${NC}"
-            echo -e "${AMARILLO}3) Turquoise${NC}"
-            echo -e "${AMARILLO}4) Purple${NC}"
-            echo -e "${AMARILLO}5) Yellow${NC}"
-            echo -e "${AMARILLO}6) DeepPink${NC}"
-            echo -e "${AMARILLO}7) Magenta${NC}"
-            echo
-            PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
-            read -p "$PROMPT" COLOR_OP
-
-            case $COLOR_OP in
-                1) COLOR="#FF69B4" ;; # HotPink
-                2) COLOR="#000000" ;; # Black
-                3) COLOR="#40E0D0" ;; # Turquoise
-                4) COLOR="#800080" ;; # Purple
-                5) COLOR="#FFFF00" ;; # Yellow
-                6) COLOR="#FF1493" ;; # DeepPink
-                7) COLOR="#FF00FF" ;; # Magenta
-                *)
-                    echo -e "${ROJO}❌ ¡Color inválido! Usando HotPink por defecto.${NC}"
-                    COLOR="#FF69B4" ;; # HotPink por defecto
-            esac
-
-            # Formatear el banner con el color elegido
-            FORMATTED_BANNER="<h2><font color=\"$COLOR\">$BANNER_TEXT 💕</font></h2>"
-
-            # Guardar el texto del banner con el formato
-            echo "$FORMATTED_BANNER" > "$BANNER_FILE" 2>/dev/null || {
-                echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            }
-
-            # Configurar el banner en sshd_config
-            if grep -q "^Banner" "$SSHD_CONFIG"; then
-                sed -i "s|^Banner.*|Banner $BANNER_FILE|" "$SSHD_CONFIG" 2>/dev/null || {
-                    echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
-                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                    return
-                }
-            else
-                echo "Banner $BANNER_FILE" >> "$SSHD_CONFIG" 2>/dev/null || {
-                    echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
-                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                    return
-                }
-            fi
-
-            # Reiniciar el servicio SSH
-            systemctl restart sshd >/dev/null 2>&1 || {
-                echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            }
-
-            echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
-            echo -e "${CIAN}📜 Contenido del banner:${NC}"
-            cat "$BANNER_FILE"
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            ;;
-        2)
-            if grep -q "^Banner" "$SSHD_CONFIG"; then
-                sed -i 's|^Banner.*|#Banner none|' "$SSHD_CONFIG" 2>/dev/null || {
-                    echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
-                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                    return
-                }
-                rm -f "$BANNER_FILE" 2>/dev/null
-                systemctl restart sshd >/dev/null 2>&1 || {
-                    echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
-                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                    return
-                }
-                echo -e "${VERDE}✅ Banner SSH desactivado exitosamente.${NC}"
-            else
-                echo -e "${AMARILLO}⚠️ El banner ya está desactivado.${NC}"
-            fi
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            ;;
-        *)
-            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            ;;
-    esac
-}
-
-
-
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
@@ -1226,7 +1100,6 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
         echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
-        echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
         
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
@@ -1241,11 +1114,9 @@ if [[ -t 0 ]]; then
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
             9) nuclear_eliminar ;;
-            10) configurar_banner_ssh ;;
             
             0) echo -e "${ROSA_CLARO}🚪 Saliendo...${NC}"; exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
 fi
-
