@@ -488,7 +488,7 @@ function eliminar_usuario() {
             fi
         done
 
-Paso 9: tercer  intento eliminación "por si acaso"
+#paso 10: tercer  intento eliminación "por si acaso"
         echo -e "${ROJO}→ (10) Segundo intento con deluser...${NC}"
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
         
