@@ -1097,34 +1097,20 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        # Encabezado con todas las columnas, incluyendo fecha de creación
-        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s ${AZUL_SUAVE}%-20s${NC}\n" \
-            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles" "📅 Creado"
-        echo -e "${LILAC}------------------------------------------------------------------------------------${NC}"
+        # Cada columna con un color diferente
+        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
+            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
+        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL FECHA_CREACION; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                # Reemplazar campos vacíos con "N/A"
-                USUARIO=${USUARIO:-"N/A"}
-                CLAVE=${CLAVE:-"N/A"}
-                EXPIRA_DATETIME=${EXPIRA_DATETIME:-"N/A"}
-                DURACION=${DURACION:-"N/A"}
-                MOVILES=${MOVILES:-"N/A"}
-                BLOQUEO_MANUAL=${BLOQUEO_MANUAL:-"N/A"}
-                FECHA_CREACION=${FECHA_CREACION:-"N/A"}
-
-                # Formatear fecha de expiración
-                if [[ "$EXPIRA_DATETIME" != "N/A" ]]; then
-                    FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
-                else
-                    FORMATO_EXPIRA="N/A"
-                fi
+                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
+                FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 DURACION_CENTRADA=$(center_value "$DURACION" 10)
-
-                # Mostrar fila con colores
-                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s ${AZUL_SUAVE}%-20s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES" "$FECHA_CREACION"
+                # Cada columna con su propio color en las filas de datos
+                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
@@ -1139,40 +1125,6 @@ function ver_registros() {
     echo -e "${LILAC}=====================${NC}"
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
-
-function verificar_integridad_registros() {
-    if [[ ! -f "$REGISTROS" ]]; then
-        return
-    fi
-
-    ELIMINADOS=0
-    TEMP_FILE=$(mktemp)
-
-    {
-        flock -x 200
-        while IFS=$'\t' read -r USUARIO CLAVE FECHA RESTO; do
-            if ! id "$USUARIO" &>/dev/null; then
-                echo -e "${ROJO}⚠️ Registro huérfano encontrado: $USUARIO no existe en el sistema. Limpiando...${NC}"
-                ((ELIMINADOS++))
-            else
-                # Mantener la línea si el usuario existe
-                echo -e "$USUARIO\t$CLAVE\t$FECHA\t$RESTO" >> "$TEMP_FILE"
-            fi
-        done < "$REGISTROS"
-
-        # Reemplazar el archivo original
-        mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null || {
-            echo -e "${ROJO}❌ Error actualizando $REGISTROS después de limpiar.${NC}"
-            rm -f "$TEMP_FILE"
-            return 1
-        }
-    } 200>"$REGISTROS.lock"
-
-    if [[ $ELIMINADOS -gt 0 ]]; then
-        echo -e "${CIAN}📊 Resumen: $ELIMINADOS registros huérfanos eliminados.${NC}"
-    fi
-}
-
 
 
 # Colores y emojis
