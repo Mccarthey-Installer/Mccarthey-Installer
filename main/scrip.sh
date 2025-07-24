@@ -355,27 +355,26 @@ function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
     if [[ ! -f $REGISTROS ]]; then
-        echo -e "${ROJO}❌ No hay registros para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
+        echo -e "${ROJO}❌ No hay registros para eliminar (pero se puede proceder con usuarios del sistema).${NC}"
+        # No return para dejar que procese usuarios del sistema
     fi
 
     echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
     echo -e "${CIAN}--------------------------${NC}"
     NUM=1
     declare -A USUARIOS_EXISTENTES
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
-            USUARIOS_EXISTENTES[$NUM]="$USUARIO"
-            NUM=$((NUM+1))
-        fi
-    done < "$REGISTROS"
+    if [[ -f $REGISTROS ]]; then
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
+                USUARIOS_EXISTENTES[$NUM]="$USUARIO"
+                NUM=$((NUM+1))
+            fi
+        done < "$REGISTROS"
+    fi
 
     if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
+        echo -e "${AZUL}ℹ️ No hay usuarios en registros, pero puede ingresar nombres de usuarios del sistema para eliminar.${NC}"
     fi
 
     echo
@@ -392,18 +391,18 @@ function eliminar_usuario() {
     declare -a USUARIOS_A_ELIMINAR
     for ELEM in "${ELEMENTOS[@]}"; do
         if [[ "$ELEM" =~ ^[0-9]+$ ]]; then
-            # Entrada por número
+            # Entrada por número referida a $REGISTROS
             if [[ -n "${USUARIOS_EXISTENTES[$ELEM]}" ]]; then
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$ELEM]}")
             else
                 echo -e "${ROJO}❌ Número inválido: $ELEM${NC}"
             fi
         else
-            # Entrada por nombre de usuario
+            # Entrada por nombre de usuario: verificamos si existe en sistema (no tanto en registros)
             if id "$ELEM" &>/dev/null; then
                 USUARIOS_A_ELIMINAR+=("$ELEM")
             else
-                echo -e "${ROJO}❌ Usuario inválido o no existe: $ELEM${NC}"
+                echo -e "${ROJO}❌ Usuario inválido o no existe en el sistema: $ELEM${NC}"
             fi
         fi
     done
@@ -456,16 +455,20 @@ function eliminar_usuario() {
 
         echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
 
-        # Escapamos caracteres especiales en nombre de usuario para sed
+        # Escapamos caracteres especiales para sed
         escaped_usuario=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[][\.*^$/]/\\&/g')
 
-        # Eliminamos la línea en $REGISTROS (usuario seguido de tabulador)
-        sed -i "/^${escaped_usuario}\t/d" "$REGISTROS"
-        # Eliminamos línea en $HISTORIAL (usuario seguido de |)
-        sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
+        # Eliminamos la línea del usuario en $REGISTROS si existe
+        if [[ -f $REGISTROS ]]; then
+            sed -i "/^${escaped_usuario}\t/d" "$REGISTROS"
+        fi
+        # Eliminamos línea del usuario en $HISTORIAL si existe
+        if [[ -f $HISTORIAL ]]; then
+            sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
+        fi
 
-        # Verificación consistente usando escaped_usuario
-        if grep -q "^${escaped_usuario}[[:space:]]" "$REGISTROS"; then
+        # Verificación usando patrón escapado
+        if [[ -f $REGISTROS && $(grep -c "^${escaped_usuario}[[:space:]]" "$REGISTROS") -gt 0 ]]; then
             echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato.${NC}"
         fi
 
@@ -481,6 +484,7 @@ function eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
 
 
 verificar_online() {
