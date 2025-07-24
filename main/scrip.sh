@@ -351,9 +351,6 @@ function verificar_integridad_registros() {
     fi
 }
 
-
-
-
 function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO (MODO NUCLEAR) =====${NC}"
@@ -363,49 +360,59 @@ function eliminar_usuario() {
         return
     fi
 
-    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"  
-    echo -e "${CIAN}--------------------------${NC}"  
-    NUM=1  
-    declare -A USUARIOS_EXISTENTES  
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do  
-        if id "$USUARIO" &>/dev/null; then  
-            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"  
-            USUARIOS_EXISTENTES[$NUM]="$USUARIO"  
-            NUM=$((NUM+1))  
-        fi  
-    done < "$REGISTROS"  
+    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
+    echo -e "${CIAN}--------------------------${NC}"
+    NUM=1
+    declare -A USUARIOS_EXISTENTES
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
+            USUARIOS_EXISTENTES[$NUM]="$USUARIO"
+            NUM=$((NUM+1))
+        fi
+    done < "$REGISTROS"
 
-    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then  
-        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"  
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
-        return  
-    fi  
+    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No hay usuarios existentes en el sistema para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-    echo  
-    echo -e "${AMARILLO}🗑️ Ingrese los números de los usuarios a eliminar (separados por espacios)${NC}"  
-    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")  
-    read -p "$PROMPT" INPUT_NUMEROS  
-    if [[ "$INPUT_NUMEROS" == "0" ]]; then  
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"  
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
-        return  
-    fi  
+    echo
+    echo -e "${AMARILLO}🗑️ Ingrese los números o nombres de los usuarios a eliminar (separados por espacios)${NC}"
+    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
+    read -p "$PROMPT" INPUT_ENTRADA
+    if [[ "$INPUT_ENTRADA" == "0" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-    read -ra NUMEROS <<< "$INPUT_NUMEROS"  
-    declare -a USUARIOS_A_ELIMINAR  
-    for NUMERO in "${NUMEROS[@]}"; do  
-        if [[ -n "${USUARIOS_EXISTENTES[$NUMERO]}" ]]; then  
-            USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$NUMERO]}")  
-        else  
-            echo -e "${ROJO}❌ Número inválido: $NUMERO${NC}"  
-        fi  
-    done  
+    read -ra ELEMENTOS <<< "$INPUT_ENTRADA"
+    declare -a USUARIOS_A_ELIMINAR
+    for ELEM in "${ELEMENTOS[@]}"; do
+        if [[ "$ELEM" =~ ^[0-9]+$ ]]; then
+            # Entrada por número
+            if [[ -n "${USUARIOS_EXISTENTES[$ELEM]}" ]]; then
+                USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$ELEM]}")
+            else
+                echo -e "${ROJO}❌ Número inválido: $ELEM${NC}"
+            fi
+        else
+            # Entrada por nombre de usuario
+            if id "$ELEM" &>/dev/null; then
+                USUARIOS_A_ELIMINAR+=("$ELEM")
+            else
+                echo -e "${ROJO}❌ Usuario inválido o no existe: $ELEM${NC}"
+            fi
+        fi
+    done
 
-    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then  
-        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"  
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"  
-        return  
-    fi  
+    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
     echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
     echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
@@ -429,7 +436,7 @@ function eliminar_usuario() {
         sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
 
         echo -e "${ROJO}→ (2) Matando procesos activos...${NC}"
-        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
+        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null || true
         sleep 1
 
         echo -e "${ROJO}→ (3) Eliminando con userdel --force...${NC}"
@@ -448,11 +455,17 @@ function eliminar_usuario() {
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
 
         echo -e "${ROJO}→ (8) Removiendo del registro e historial...${NC}"
-        sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
+
+        # Escapamos caracteres especiales en nombre de usuario para sed
+        escaped_usuario=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[][\.*^$/]/\\&/g')
+
+        # Eliminamos la línea en $REGISTROS (usuario seguido de tabulador)
+        sed -i "/^${escaped_usuario}\t/d" "$REGISTROS"
+        # Eliminamos línea en $HISTORIAL (usuario seguido de |)
         sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
 
-        # Verificación adicional
-        if grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
+        # Verificación consistente usando escaped_usuario
+        if grep -q "^${escaped_usuario}[[:space:]]" "$REGISTROS"; then
             echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato.${NC}"
         fi
 
@@ -468,8 +481,6 @@ function eliminar_usuario() {
     echo -e "${VERDE}✅ Eliminación nuclear finalizada.${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
-
-
 
 
 verificar_online() {
