@@ -1199,13 +1199,6 @@ function configurar_banner_ssh() {
     BANNER_FILE="/etc/ssh_banner"
     SSHD_CONFIG="/etc/ssh/sshd_config"
 
-    # Verificar permisos de escritura en SSHD_CONFIG
-    if [[ ! -w "$SSHD_CONFIG" ]]; then
-        echo -e "${ROJO}❌ Error: No se puede escribir en $SSHD_CONFIG. Verifica permisos.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
     case $SUBOP in
         1)
             clear
@@ -1276,28 +1269,9 @@ function configurar_banner_ssh() {
                 }
             fi
 
-            # Verificar sintaxis de sshd_config
-            sshd -t >/dev/null 2>&1 || {
-                echo -e "${ROJO}❌ Error en la sintaxis de $SSHD_CONFIG. Revirtiendo cambios.${NC}"
-                sed -i "s|^Banner $BANNER_FILE.*|#Banner none|" "$SSHD_CONFIG" 2>/dev/null
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            }
-
-            # Detectar el nombre correcto del servicio SSH
-            if systemctl is-active --quiet ssh; then
-                SERVICE_NAME="ssh"
-            elif systemctl is-active --quiet sshd; then
-                SERVICE_NAME="sshd"
-            else
-                echo -e "${ROJO}❌ No se encontró el servicio SSH ('ssh' o 'sshd'). Verifica si está instalado y activo.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            fi
-
             # Reiniciar el servicio SSH
-            systemctl restart "$SERVICE_NAME" >/dev/null 2>&1 || {
-                echo -e "${ROJO}❌ Error al reiniciar el servicio SSH ($SERVICE_NAME). Verifica manualmente con 'systemctl status $SERVICE_NAME' o 'journalctl -xe'.${NC}"
+            systemctl restart sshd >/dev/null 2>&1 || {
+                echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
                 read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
                 return
             }
@@ -1315,29 +1289,8 @@ function configurar_banner_ssh() {
                     return
                 }
                 rm -f "$BANNER_FILE" 2>/dev/null
-
-                # Verificar sintaxis de sshd_config
-                sshd -t >/dev/null 2>&1 || {
-                    echo -e "${ROJO}❌ Error en la sintaxis de $SSHD_CONFIG. Revirtiendo cambios.${NC}"
-                    echo "Banner $BANNER_FILE" >> "$SSHD_CONFIG" 2>/dev/null
-                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                    return
-                }
-
-                # Detectar el nombre correcto del servicio SSH
-                if systemctl is-active --quiet ssh; then
-                    SERVICE_NAME="ssh"
-                elif systemctl is-active --quiet sshd; then
-                    SERVICE_NAME="sshd"
-                else
-                    echo -e "${ROJO}❌ No se encontró el servicio SSH ('ssh' o 'sshd'). Verifica si está instalado y activo.${NC}"
-                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                    return
-                }
-
-                # Reiniciar el servicio SSH
-                systemctl restart "$SERVICE_NAME" >/dev/null 2>&1 || {
-                    echo -e "${ROJO}❌ Error al reiniciar el servicio SSH ($SERVICE_NAME). Verifica manualmente con 'systemctl status $SERVICE_NAME' o 'journalctl -xe'.${NC}"
+                systemctl restart sshd >/dev/null 2>&1 || {
+                    echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
                     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
                     return
                 }
@@ -1353,7 +1306,6 @@ function configurar_banner_ssh() {
             ;;
     esac
 }
-
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
