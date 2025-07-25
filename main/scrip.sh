@@ -914,6 +914,7 @@ function crear_usuario() {
             exit 1
         fi
     } 200>"$REGISTROS.lock"
+    # Si el flock falla, aborta, no crea usuario
 
     # Crear usuario
     if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
@@ -941,18 +942,6 @@ function crear_usuario() {
         return
     fi
 
-    # Actualizar sshd_config para el banner dinámico
-    USUARIOS_SSH=$(awk -F'\t' '{if (system("id " $1 " >/dev/null 2>&1") == 0) printf "%s,", $1}' "$REGISTROS" | sed 's/,$//')
-    sed -i "/^Match User /d" /etc/ssh/sshd_config
-    sed -i "/^    ForceCommand /d" /etc/ssh/sshd_config
-    if [[ -n "$USUARIOS_SSH" ]]; then
-        echo "Match User $USUARIOS_SSH" >> /etc/ssh/sshd_config
-        echo "    ForceCommand /usr/local/bin/checkuser_banner.sh; \$SHELL" >> /etc/ssh/sshd_config
-    fi
-    systemctl restart sshd >/dev/null 2>&1 || {
-        echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
-    }
-
     # Mostrar información del usuario creado
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
@@ -974,7 +963,6 @@ function crear_usuario() {
     verificar_integridad_registros
 }
 
-    
 function crear_multiples_usuarios() {
     clear
     echo -e "${VIOLETA}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
@@ -1317,70 +1305,6 @@ function configurar_banner_ssh() {
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             ;;
     esac
-}
-
-
-function checkuser() {
-    # Obtener el nombre del usuario actual
-    USUARIO=$(whoami)
-    REGISTROS="/root/registros.txt"
-    FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-
-    # Colores para el mensaje (usando códigos ANSI compatibles con clientes SSH)
-    VIOLETA='\033[38;5;141m'
-    AMARILLO='\033[38;5;220m'
-    ROJO='\033[38;5;196m'
-    NC='\033[0m'
-
-    # Verificar si existe el archivo de registros
-    if [[ ! -f "$REGISTROS" ]]; then
-        echo -e "${ROJO}❌ No se encontró el archivo de registros.$NC"
-        return
-    fi
-
-    # Buscar la línea del usuario en registros.txt
-    LINEA=$(grep "^$USUARIO[[:space:]]" "$REGISTROS")
-    if [[ -z "$LINEA" ]]; then
-        echo -e "${ROJO}❌ No se encontró el usuario '$USUARIO' en los registros.$NC"
-        return
-    fi
-
-    # Extraer la fecha de expiración
-    IFS=$'\t' read -r _ _ EXPIRA_DATETIME DURACION _ _ _ <<< "$LINEA"
-
-    # Calcular días restantes
-    if [[ -n "$EXPIRA_DATETIME" ]]; then
-        FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
-        if [[ $? -eq 0 ]]; then
-            DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-            if (( DIAS_RESTANTES < 0 )); then
-                DIAS_RESTANTES=0
-            fi
-        else
-            echo -e "${ROJO}❌ Error al calcular la fecha de expiración para '$USUARIO'.$NC"
-            return
-        fi
-    else
-        echo -e "${ROJO}❌ Fecha de expiración no válida para '$USUARIO'.$NC"
-        return
-    fi
-
-    # Crear el mensaje según los días restantes
-    if [[ $DIAS_RESTANTES -gt 1 ]]; then
-        MENSAJE="🌟 ¡Bienvenid@, $USUARIO! Te quedan $DIAS_RESTANTES días de conexión. 🚀"
-        COLOR_MENSAJE="${AMARILLO}"
-    elif [[ $DIAS_RESTANTES -eq 1 ]]; then
-        MENSAJE="🌟 ¡Bienvenid@, $USUARIO! Te queda 1 día de conexión. ⏳"
-        COLOR_MENSAJE="${AMARILLO}"
-    else
-        MENSAJE="⚠️ ¡Bienvenid@, $USUARIO! ¡Tu conexión vence HOY! 📅"
-        COLOR_MENSAJE="${ROJO}"
-    fi
-
-    # Mostrar el mensaje formateado para el cliente SSH
-    echo -e "${VIOLETA}════════════════════════════════════════════${NC}"
-    echo -e "${COLOR_MENSAJE}${MENSAJE}${NC}"
-    echo -e "${VIOLETA}════════════════════════════════════════════${NC}"
 }
 
 # Colores y emojis
