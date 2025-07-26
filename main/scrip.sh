@@ -325,32 +325,42 @@ function verificar_integridad_registros() {
     fi
 
     ELIMINADOS=0
-    TEMP_FILE=$(mktemp)
+    TEMP_FILE=$(mktemp --tmpdir="$(dirname "$REGISTROS")")
 
     {
+        # Bloqueo exclusivo para evitar condiciones de carrera
         flock -x 200
-        while IFS=$'\t' read -r USUARIO CLAVE FECHA RESTO; do
+
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if [[ -z "$USUARIO" ]]; then
+                # Línea vacía o mal formada, saltar
+                continue
+            fi
+
             if ! id "$USUARIO" &>/dev/null; then
-                echo -e "${ROJO}⚠️ Registro huérfano encontrado: $USUARIO no existe en el sistema. Limpiando...${NC}"
+                echo -e "${ROJO}⚠️ Registro huérfano encontrado: '$USUARIO' no existe en el sistema. Limpiando...${NC}"
                 ((ELIMINADOS++))
             else
-                # Mantener la línea si el usuario existe
-                echo -e "$USUARIO\t$CLAVE\t$FECHA\t$RESTO" >> "$TEMP_FILE"
+                # Reescribir la línea preservando todos los campos con tabs
+                printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                    "$USUARIO" "$CLAVE" "$EXPIRA_DATETIME" "$DURACION" "$MOVILES" "$BLOQUEO_MANUAL" "$PRIMER_LOGIN" >> "$TEMP_FILE"
             fi
         done < "$REGISTROS"
 
-        # Reemplazar el archivo original
+        # Reemplazar archivo original con el limpio
         mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null || {
             echo -e "${ROJO}❌ Error actualizando $REGISTROS después de limpiar.${NC}"
             rm -f "$TEMP_FILE"
             return 1
         }
+
     } 200>"$REGISTROS.lock"
 
     if [[ $ELIMINADOS -gt 0 ]]; then
         echo -e "${CIAN}📊 Resumen: $ELIMINADOS registros huérfanos eliminados.${NC}"
     fi
 }
+
 
 function eliminar_usuario() {
     clear
