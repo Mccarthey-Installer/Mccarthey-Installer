@@ -3,6 +3,7 @@ export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
 timedatectl set-timezone America/El_Salvador
 
+
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
@@ -32,7 +33,7 @@ fi'
 
 configurar_autoejecucion
 
-# Función para monitorear conexiones
+# Función para monitorear conexiones y actualizar PRIMER_LOGIN y el historial
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=10
@@ -48,7 +49,7 @@ function monitorear_conexiones() {
         cp "$REGISTROS" "$TEMP_FILE"
         > "$TEMP_FILE.new"
 
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
@@ -61,63 +62,84 @@ function monitorear_conexiones() {
                 # Verificar si el usuario está bloqueado en /etc/shadow
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
-                # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
-                while read -r pid stat comm; do
-                    case "$stat" in
-                        *Z*) # Zombie
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                            ;;
-                        *D*) # Uninterruptible sleep
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                            ;;
-                        *T*) # Stopped
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                            ;;
-                        *S*) # Sleeping
-                            if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
-                                PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
-                                if [[ -z "$PORTS" ]]; then
+                # SOLO si el bloqueo no es manual
+                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                    # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
+                    # Elimina procesos Z (zombie), D (uninterruptible), T (stopped), S (sleep/desconectado), R (running no ssh/dropbear)
+                    while read -r pid stat comm; do
+                        case "$stat" in
+                            *Z*) # Zombie
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                ;;
+                            *D*) # Uninterruptible sleep
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                ;;
+                            *T*) # Stopped
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                ;;
+                            *S*) # Sleeping - revisa conexión real con ss
+                                if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
+                                    # Si está dormido, pero no tiene conexión activa, elimínalo
+                                    PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
+                                    if [[ -z "$PORTS" ]]; then
+                                        kill -9 "$pid" 2>/dev/null
+                                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    fi
+                                else
+                                    # No es sshd/dropbear, elimínalo siempre
                                     kill -9 "$pid" 2>/dev/null
-                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
                                 fi
-                            else
-                                kill -9 "$pid" 2>/dev/null
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                            fi
-                            ;;
-                        *R*) # Running
-                            if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
-                                kill -9 "$pid" 2>/dev/null
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                            fi
-                            ;;
-                    esac
-                done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
+                                ;;
+                            *R*) # Running - si no es sshd/dropbear, mátalo
+                                if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
+                                    kill -9 "$pid" 2>/dev/null
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                fi
+                                ;;
+                        esac
+                    done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
+                    
+                    # --- CONTROL DE SESIONES: CIERRA SOLO LAS EXTRAS ---
+                    # Recolecta y ordena sesiones sshd y dropbear por antigüedad
+                    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+                    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
 
-                # --- CONTROL DE SESIONES: CIERRA SOLO LAS EXTRAS ---
-                PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-                PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-                PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
-                mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
-                    START=$(ps -p "$pid" -o lstart= 2>/dev/null)
-                    echo "$pid:$START"
-                done | sort -t: -k2 | awk -F: '{print $1}')
+                    # Mezcla ambos tipos y ordénalos por antigüedad
+                    PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
+                    # Si por algún motivo faltan espacios, vuelve a ordenarlos bien
+                    mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
+                        START=$(ps -p "$pid" -o lstart= 2>/dev/null)
+                        echo "$pid:$START"
+                    done | sort -t: -k2 | awk -F: '{print $1}')
 
-                TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-                if (( TOTAL_CONEX > MOVILES_NUM )); then
-                    for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
-                        kill -9 "$PID" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
-                    done
+                    TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
+
+                    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+                    if (( TOTAL_CONEX > MOVILES_NUM )); then
+                        # Conserva solo las primeras MOVILES_NUM, mata el resto
+                        for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
+                            kill -9 "$PID" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
+                        done
+                    fi
                 fi
 
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES" >> "$TEMP_FILE newcomer
+                # === ACTUALIZAR PRIMER_LOGIN ===
+                NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
+                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
+                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
+                    NEW_PRIMER_LOGIN=""
+                fi
+
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
             else
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES" >> "$TEMP_FILE.new"
+                # Usuario no existe en sistema, copia línea igual
+                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
             fi
         done < "$TEMP_FILE"
 
@@ -125,7 +147,7 @@ function monitorear_conexiones() {
         rm -f "$TEMP_FILE"
 
         # === REGISTRO DE HISTORIAL DE CONEXIONES ===
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             TMP_STATUS="/tmp/status_${USUARIO}.tmp"
             CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
             CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
@@ -172,12 +194,13 @@ else
 fi
 
 function barra_sistema() {
-    BLANCO="\e[97m"
-    AZUL="\e[94m"
-    MAGENTA="\e[95m"
-    ROJO="\e[91m"
-    AMARILLO="\e[93m"
-    NC="\e[0m"
+    # Definimos colores explícitos (sin verde)
+    BLANCO="\e[97m"   # Blanco brillante
+    AZUL="\e[94m"     # Azul claro
+    MAGENTA="\e[95m"  # Magenta
+    ROJO="\e[91m"     # Rojo claro
+    AMARILLO="\e[93m" # Amarillo brillante
+    NC="\e[0m"        # Sin color
 
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
@@ -219,7 +242,7 @@ function barra_sistema() {
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
     if [[ -f $REGISTROS ]]; then
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
@@ -236,6 +259,7 @@ function barra_sistema() {
         SO_NAME=$(uname -o)
     fi
 
+    # Salida con colores explícitos y emojis chidos
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}⚡ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
@@ -245,11 +269,13 @@ function barra_sistema() {
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
 
+    # MOSTRAR USUARIOS CON 0 DÍAS (EXPIRAN HOY)
     if [[ -f $REGISTROS ]]; then
         USUARIOS_0DIAS=""
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                if [[ "$EXPIRA_DATETIME" == "$FECHA_ACTUAL_DIA" ]]; then
+                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+                if [[ "$FECHA_EXPIRA_DIA" == "$FECHA_ACTUAL_DIA" ]]; then
                     USUARIOS_0DIAS+="${BLANCO}$USUARIO 0 días    ${NC}"
                 fi
             fi
@@ -261,7 +287,6 @@ function barra_sistema() {
         fi
     fi
 }
-
 # Función para mostrar historial de conexiones
 ROSADO='\033[38;5;218m'
 LILA='\033[38;5;135m'
@@ -280,6 +305,7 @@ function informacion_usuarios() {
     echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
 
     tac "$HISTORIAL" | awk -F'|' '!v[$1]++' | tac | while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
+        # Formatear fechas: dd/mes hh:mm AM/PM (mes en español, AM/PM en MAYÚSCULA)
         CONECTO_FMT=$(date -d "$CONECTO" +"%d/%B %I:%M %p" 2>/dev/null | \
             sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$CONECTO")
         DESCONECTO_FMT=$(date -d "$DESCONECTO" +"%d/%B %I:%M %p" 2>/dev/null | \
@@ -291,6 +317,8 @@ function informacion_usuarios() {
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
 
+
+
 function verificar_integridad_registros() {
     if [[ ! -f "$REGISTROS" ]]; then
         return
@@ -300,30 +328,39 @@ function verificar_integridad_registros() {
     TEMP_FILE=$(mktemp --tmpdir="$(dirname "$REGISTROS")")
 
     {
+        # Bloqueo exclusivo para evitar condiciones de carrera
         flock -x 200
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if [[ -z "$USUARIO" ]]; then
+                # Línea vacía o mal formada, saltar
                 continue
             fi
+
             if ! id "$USUARIO" &>/dev/null; then
                 echo -e "${ROJO}⚠️ Registro huérfano encontrado: '$USUARIO' no existe en el sistema. Limpiando...${NC}"
                 ((ELIMINADOS++))
             else
-                printf '%s\t%s\t%s\t%s\t%s\n' \
-                    "$USUARIO" "$CLAVE" "$EXPIRA_DATETIME" "$DURACION" "$MOVILES" >> "$TEMP_FILE"
+                # Reescribir la línea preservando todos los campos con tabs
+                printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                    "$USUARIO" "$CLAVE" "$EXPIRA_DATETIME" "$DURACION" "$MOVILES" "$BLOQUEO_MANUAL" "$PRIMER_LOGIN" >> "$TEMP_FILE"
             fi
         done < "$REGISTROS"
+
+        # Reemplazar archivo original con el limpio
         mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null || {
             echo -e "${ROJO}❌ Error actualizando $REGISTROS después de limpiar.${NC}"
             rm -f "$TEMP_FILE"
             return 1
         }
+
     } 200>"$REGISTROS.lock"
 
     if [[ $ELIMINADOS -gt 0 ]]; then
         echo -e "${CIAN}📊 Resumen: $ELIMINADOS registros huérfanos eliminados.${NC}"
     fi
 }
+
 
 function eliminar_usuario() {
     clear
@@ -338,7 +375,7 @@ function eliminar_usuario() {
     NUM=1
     declare -A USUARIOS_EXISTENTES
     if [[ -f $REGISTROS ]]; then
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
                 USUARIOS_EXISTENTES[$NUM]="$USUARIO"
@@ -401,25 +438,33 @@ function eliminar_usuario() {
 
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
         USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        # Sanitiza el nombre del usuario ANTES de pasarlo al awk por si meten cosas ocultas
         USUARIO_ESCAPADO=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[^a-zA-Z0-9._-]//g')
 
         echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
+
+        # Bloquear usuario
         sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null || true
+        # Matar procesos
         sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null || true
         sleep 1
+        # Eliminar cuenta y home
         sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null || true
         sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null || true
         sudo rm -rf "/home/$USUARIO_LIMPIO" 2>/dev/null || true
         sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null || true
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
 
+        # Eliminar del registro: AWK (blinda unicode y formatos raros)
         if [[ -f $REGISTROS ]]; then
             awk -v user="$USUARIO_ESCAPADO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > /tmp/registros.tmp && mv /tmp/registros.tmp "$REGISTROS"
         fi
+        # Eliminar del historial personalizado
         if [[ -f $HISTORIAL ]]; then
             sed -i "/^$USUARIO_ESCAPADO|/Id" "$HISTORIAL"
         fi
 
+        # Limpiar historiales de shell
         HOME_DIR="/home/$USUARIO_LIMPIO"
         if [[ -d "$HOME_DIR" ]]; then
             sudo rm -f "$HOME_DIR/.bash_history" "$HOME_DIR/.zsh_history" "$HOME_DIR/.sh_history" "$HOME_DIR/.history" 2>/dev/null || true
@@ -428,25 +473,32 @@ function eliminar_usuario() {
             sudo rm -f /root/.bash_history 2>/dev/null || true
         fi
 
+        # Limpiar logs de autenticación estándar
         for LOGFILE in /var/log/auth.log /var/log/secure; do
             if [[ -f "$LOGFILE" ]]; then
                 sudo sed -i "/$USUARIO_ESCAPADO/Id" "$LOGFILE" 2>/dev/null || true
             fi
         done
 
+        # Intento adicional por si el usuario da guerra
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
+
+        # BONUS: Advertencia si aún queda en registros tras limpieza ultra
         if [[ -f $REGISTROS ]]; then
             if grep -q "^$USUARIO_ESCAPADO[[:space:]]" "$REGISTROS"; then
                 echo -e "${ROJO}⚡️⚡️⚡️  $USUARIO_LIMPIO sigue apareciendo en $REGISTROS después del intento. Revisión necesaria.${NC}"
             fi
         fi
 
+        # Limpieza final de líneas vacías en registros
         sed -i '/^[[:space:]]*$/d' "$REGISTROS"
+
         if ! id "$USUARIO_LIMPIO" &>/dev/null; then
             echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y limpiado.${NC}"
         else
             echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
         fi
+
         echo -e "${CIAN}--------------------------------------${NC}"
     done
 
@@ -454,10 +506,17 @@ function eliminar_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-function verificar_online() {
+
+
+
+
+
+verificar_online() {
     clear
+    # Usar colores globales en lugar de redefinirlos
     ANARANJADO='\033[38;5;208m'
-    AZUL_SUAVE='\033[38;5;45m'
+    AZUL_SUAVE='\033[38;5;45m'  # Color aplicado solo en DETALLES
+    NC='\033[0m'
 
     declare -A month_map=(
         ["Jan"]="Enero" ["Feb"]="Febrero" ["Mar"]="Marzo" ["Apr"]="Abril"
@@ -482,7 +541,7 @@ function verificar_online() {
     TOTAL_USUARIOS=0
     INACTIVOS=0
 
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
             ((TOTAL_USUARIOS++))
             ESTADO="0"
@@ -503,7 +562,28 @@ function verificar_online() {
                     ESTADO="🟢 $CONEXIONES"
                     COLOR_ESTADO="${VERDE}"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
-                    DETALLES="⏰ Conectado actualmente"
+
+                    if [[ -n "$PRIMER_LOGIN" ]]; then
+                        START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
+                        if [[ $? -eq 0 && -n "$START" ]]; then
+                            CURRENT=$(date +%s)
+                            ELAPSED_SEC=$((CURRENT - START))
+                            D=$((ELAPSED_SEC / 86400))
+                            H=$(( (ELAPSED_SEC % 86400) / 3600 ))
+                            M=$(( (ELAPSED_SEC % 3600) / 60 ))
+                            S=$((ELAPSED_SEC % 60 ))
+                            if [[ $D -gt 0 ]]; then
+                                DETALLES="⏰ $D días %02d:%02d:%02d"
+                                DETALLES=$(printf "$DETALLES" $H $M $S)
+                            else
+                                DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                            fi
+                        else
+                            DETALLES="⏰ Tiempo no disponible"
+                        fi
+                    else
+                        DETALLES="⏰ Tiempo no disponible"
+                    fi
                 else
                     ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
@@ -546,12 +626,12 @@ function bloquear_desbloquear_usuario() {
     fi
 
     echo -e "${CIAN}===== 📋 USUARIOS REGISTRADOS =====${NC}"
-    printf "${AMARILLO}%-5s %-15s %-15s %-15s %-15s${NC}\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "⏳ Duración"
+    printf "${AMARILLO}%-5s %-15s %-15s %-22s %-15s %-15s${NC}\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "⏳ Duración" "🔐 Estado"
     echo -e "${CIAN}--------------------------------------------------------------------------${NC}"
     mapfile -t LINEAS < "$REGISTROS"
     INDEX=1
     for LINEA in "${LINEAS[@]}"; do
-        IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES <<< "$LINEA"
+        IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN <<< "$LINEA"
         if id "$USUARIO" &>/dev/null; then
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 ESTADO="🔒 BLOQUEADO"
@@ -560,8 +640,9 @@ function bloquear_desbloquear_usuario() {
                 ESTADO="🟢 ACTIVO"
                 COLOR_ESTADO="${VERDE}"
             fi
-            printf "${AMARILLO}%-5s %-15s %-15s %-15s %-15s ${COLOR_ESTADO}%-15s${NC}\n" \
-                "$INDEX" "$USUARIO" "$CLAVE" "$EXPIRA_DATETIME" "$DURACION" "$ESTADO"
+            FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y-%m-%d %I:%M %p" 2>/dev/null || echo "$EXPIRA_DATETIME")
+            printf "${AMARILLO}%-5s %-15s %-15s %-22s %-15s ${COLOR_ESTADO}%-15s${NC}\n" \
+                "$INDEX" "$USUARIO" "$CLAVE" "$FECHA_FORMAT" "$DURACION" "$ESTADO"
         fi
         ((INDEX++))
     done
@@ -570,7 +651,7 @@ function bloquear_desbloquear_usuario() {
 
     read -p "$(echo -e ${AMARILLO}👤 Digite el número del usuario: ${NC})" NUM
     USUARIO_LINEA="${LINEAS[$((NUM-1))]}"
-    IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES <<< "$USUARIO_LINEA"
+    IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN <<< "$USUARIO_LINEA"
 
     if [[ -z "$USUARIO" || ! $(id -u "$USUARIO" 2>/dev/null) ]]; then
         echo -e "${ROJO}❌ Número inválido o el usuario ya no existe en el sistema.${NC}"
@@ -601,9 +682,11 @@ function bloquear_desbloquear_usuario() {
         usermod -L "$USUARIO"
         pkill -u "$USUARIO" sshd
         pkill -u "$USUARIO" dropbear
+        sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tSÍ\t$PRIMER_LOGIN/" "$REGISTROS"
         echo -e "${VERDE}🔒 Usuario '$USUARIO' bloqueado exitosamente y sesiones SSH/Dropbear terminadas.${NC}"
     else
         usermod -U "$USUARIO"
+        sed -i "/^$USUARIO\t/ s/\t[^\t]*\t[^\t]*$/\tNO\t$PRIMER_LOGIN/" "$REGISTROS"
         echo -e "${VERDE}🔓 Usuario '$USUARIO' desbloqueado exitosamente.${NC}"
     fi
 
@@ -614,6 +697,7 @@ function mini_registro() {
     clear
     echo -e "${VIOLETA}===== 📋 MINI REGISTRO =====${NC}"
 
+    # Verificar integridad de registros al inicio
     verificar_integridad_registros
 
     if [[ ! -f "$REGISTROS" ]]; then
@@ -622,6 +706,7 @@ function mini_registro() {
         return
     fi
 
+    # Definir colores (reutilizando los de ver_registros para consistencia)
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -632,6 +717,7 @@ function mini_registro() {
     MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
 
+    # Centrar texto en un ancho dado
     center_value() {
         local value="$1"
         local width="$2"
@@ -641,19 +727,22 @@ function mini_registro() {
         printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
     }
 
+    # Imprimir encabezado
     printf "${SOFT_CORAL}%-15s ${PASTEL_BLUE}%-15s ${LILAC}%10s ${SOFT_PINK}%-15s${NC}\n" \
         "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
     echo -e "${LILAC}--------------------------------------------${NC}"
 
     TOTAL_USUARIOS=0
 
-    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+    while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL FECHA_CREACION; do
         if id "$USUARIO" &>/dev/null; then
+            # Reemplazar campos vacíos con "N/A"
             USUARIO=${USUARIO:-"N/A"}
             CLAVE=${CLAVE:-"N/A"}
             EXPIRA_DATETIME=${EXPIRA_DATETIME:-"N/A"}
             MOVILES=${MOVILES:-"N/A"}
 
+            # Calcular días restantes
             if [[ "$EXPIRA_DATETIME" != "N/A" ]] && FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
                 FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
                 DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
@@ -664,12 +753,14 @@ function mini_registro() {
                 DIAS_RESTANTES="N/A"
             fi
 
+            # Extraer número de móviles
             if [[ "$MOVILES" =~ ^[0-9]+[[:space:]]*móviles$ ]]; then
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
             else
                 MOVILES_NUM="N/A"
             fi
 
+            # Imprimir fila
             DIAS_RESTANTES_CENTRADO=$(center_value "$DIAS_RESTANTES" 10)
             printf "${SOFT_CORAL}%-15s ${PASTEL_BLUE}%-15s ${LILAC}%10s ${SOFT_PINK}%-15s${NC}\n" \
                 "$USUARIO" "$CLAVE" "$DIAS_RESTANTES_CENTRADO" "$MOVILES_NUM"
@@ -682,6 +773,7 @@ function mini_registro() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
 function nuclear_eliminar() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
@@ -690,27 +782,48 @@ function nuclear_eliminar() {
         USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
         echo -e "${AMARILLO}Procesando usuario: $USUARIO_LIMPIO${NC}"
 
+        # Paso 0: Intento inicial de eliminar con deluser, por si no tiene recursos abiertos
         echo -e "${ROJO}→ (0) Primer intento con deluser...${NC}"
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
-        echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
-        sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 1: Bloquear usuario
+        if id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${ROJO}→ (1) Bloqueando usuario...${NC}"
+            sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null
+        fi
+
+        # Paso 2: Matar todos sus procesos
         echo -e "${ROJO}→ (2) Matando procesos del usuario...${NC}"
         sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null
+
+        # Paso 3: Eliminar del sistema con máxima fuerza
         echo -e "${ROJO}→ (3) Eliminando cuentas y directorios...${NC}"
         sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null
         sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 4: Eliminar carpeta huérfana
         echo -e "${ROJO}→ (4) Eliminando carpeta /home/$USUARIO_LIMPIO (si existe)...${NC}"
         sudo rm -rf "/home/$USUARIO_LIMPIO"
+
+        # Paso 5: Limpiar sesión con loginctl
         echo -e "${ROJO}→ (5) Limpiando sesiones residuales...${NC}"
         sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 6: Segundo intento "por si acaso" con deluser para asegurar
         echo -e "${ROJO}→ (6) Segundo y último intento con deluser...${NC}"
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null
+
+        # Paso 7: Borrar del registro y del historial personalizado
         echo -e "${ROJO}→ (7) Borrando del registro y del historial...${NC}"
         sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
         sed -i "/^$USUARIO_LIMPIO|/d" "$HISTORIAL"
+
+        # Verificación adicional
         if grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
             echo -e "${ROJO}⚠️ $USUARIO_LIMPIO sigue en $REGISTROS. Revisa el formato.${NC}"
         fi
+
+        # Paso 8: Verificación final
         if ! id "$USUARIO_LIMPIO" &>/dev/null; then
             echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y sin residuos.${NC}"
         else
@@ -721,10 +834,12 @@ function nuclear_eliminar() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
 function crear_usuario() {
     clear
     echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH =====${NC}"
 
+    # Verificar permisos de $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
         touch "$REGISTROS" 2>/dev/null || {
             echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
@@ -738,6 +853,7 @@ function crear_usuario() {
         return 1
     fi
 
+    # Leer nombre del usuario y verificar si ya existe
     while true; do
         read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
         if [[ -z "$USUARIO" ]]; then
@@ -762,6 +878,7 @@ function crear_usuario() {
         return 1
     fi
 
+    # Validar días
     while true; do
         read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
         if [[ "$DIAS" =~ ^[0-9]+$ ]] && [ "$DIAS" -ge 0 ]; then
@@ -771,6 +888,7 @@ function crear_usuario() {
         fi
     done
 
+    # Validar móviles
     while true; do
         read -p "$(echo -e ${AMARILLO}📱 ¿Cuántos móviles? ${NC})" MOVILES
         if [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$MOVILES" -le 999 ]; then
@@ -780,26 +898,32 @@ function crear_usuario() {
         fi
     done
 
-    EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d" 2>/dev/null)
-    if [[ $? -ne 0 ]]; then
+    # Calcular fechas de expiración
+    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00" 2>/dev/null); then
         echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Cancelo.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return 1
     fi
-    EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null)
-    if [[ $? -ne 0 ]]; then
+    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
         echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Cancelo.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return 1
     fi
 
+    # Obtener fecha de creación
+    FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
+
+    # Variable para controlar el éxito de la escritura en el registro
     REGISTRO_EXITOSO=false
+
+    # Escribe registro bajo flock ANTES de crear usuario local
     {
         flock -x 200 || {
             echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo para $REGISTROS. Cancelo.${NC}"
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             return 1
         }
+        # Confirma que no haya sido creado por una carrera
         if id "$USUARIO" &>/dev/null; then
             echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. Cancelando.${NC}"
             return 1
@@ -808,9 +932,12 @@ function crear_usuario() {
             echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Cancelando.${NC}"
             return 1
         fi
-        REGISTRO_LINEA="$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS días\t$MOVILES móviles\n"
+        # Construir la línea de registro
+        REGISTRO_LINEA="$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS días\t$MOVILES móviles\tNO\t$FECHA_CREACION\n"
         if printf "%b" "$REGISTRO_LINEA" >> "$REGISTROS" 2>/dev/null; then
+            # Forzar flush del buffer al disco
             sync
+            # Verificar que la línea se escribió correctamente
             if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
                 REGISTRO_EXITOSO=true
             else
@@ -823,13 +950,16 @@ function crear_usuario() {
         fi
     } 200>"$REGISTROS.lock"
 
+    # Verificar si el registro fue exitoso antes de continuar
     if [[ "$REGISTRO_EXITOSO" != "true" ]]; then
         echo -e "${ROJO}❌ No se pudo registrar el usuario en $REGISTROS. Operación cancelada.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return 1
     fi
 
+    # Crear usuario solo si el registro fue exitoso
     if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
+        # Limpiar el registro si falla
         {
             flock -x 200
             sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS" 2>/dev/null
@@ -840,6 +970,7 @@ function crear_usuario() {
         return 1
     fi
 
+    # Establecer contraseña
     if ! echo "$USUARIO:$CLAVE" | chpasswd 2>/dev/null; then
         userdel -r "$USUARIO" 2>/dev/null
         {
@@ -852,6 +983,7 @@ function crear_usuario() {
         return 1
     fi
 
+    # Establecer fecha de expiración
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
         userdel -r "$USUARIO" 2>/dev/null
         {
@@ -864,22 +996,26 @@ function crear_usuario() {
         return 1
     fi
 
+    # Mostrar información del usuario creado
     FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO${NC}"
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$CLAVE${NC}"
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$FECHA_FORMAT${NC}"
     echo -e "${AZUL}📱 Móviles permitidos: ${AMARILLO}$MOVILES${NC}"
+    echo -e "${AZUL}📅 Creado: ${AMARILLO}$FECHA_CREACION${NC}"
     echo
     echo -e "${CIAN}===== 📝 REGISTRO CREADO =====${NC}"
-    printf "${AMARILLO}%-15s %-20s %-15s %-15s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Duración" "📱 Móviles"
+    printf "${AMARILLO}%-15s %-20s %-15s %-15s %-20s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Duración" "📱 Móviles" "📅 Creado"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    printf "${VERDE}%-15s %-20s %-15s %-15s${NC}\n" "$USUARIO:$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES"
+    printf "${VERDE}%-15s %-20s %-15s %-15s %-20s${NC}\n" "$USUARIO:$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES" "$FECHA_CREACION"
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 
+    # Verificar integridad de registros
     verificar_integridad_registros
 }
+
 
 function crear_multiples_usuarios() {
     clear
@@ -974,19 +1110,25 @@ function crear_multiples_usuarios() {
             continue
         fi
 
-        EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d" 2>/dev/null)
-        EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null)
+        # Calcular fechas de expiración
+        EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d %H:%M:%S")
+        EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d")
+        FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
 
+        # Reservar línea en el registro primero
         {
             flock -x 200
+            # Re-checar condiciones de carrera
             if id "$USUARIO_LIMPIO" &>/dev/null || grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
                 echo -e "${ROJO}👤 $USUARIO_LIMPIO ya existe en sistema o registros. Saltando.${NC}"
                 exit 1
             fi
-            if ! printf "%s\t%s\t%s\t%s días\t%s móviles\n" "$USUARIO_LIMPIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
+            # Usar printf para formato consistente
+            if ! printf "%s\t%s\t%s\t%s días\t%s móviles\tNO\t%s\n" "$USUARIO_LIMPIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" "$FECHA_CREACION" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
                 echo -e "${ROJO}❌ Error escribiendo en $REGISTROS para $USUARIO_LIMPIO.${NC}"
                 exit 1
             fi
+            # Verificar que la línea se escribió correctamente
             if ! grep -q "^$USUARIO_LIMPIO[[:space:]]" "$REGISTROS"; then
                 echo -e "${ROJO}❌ Error: La entrada para $USUARIO_LIMPIO no se escribió en $REGISTROS. Cancelando.${NC}"
                 exit 1
@@ -997,8 +1139,10 @@ function crear_multiples_usuarios() {
             continue
         }
 
+        # Pequeño retardo para evitar conflictos con monitorear_conexiones
         sleep 1
 
+        # Crear usuario después de reservar registro
         if ! useradd -m -s /bin/bash "$USUARIO_LIMPIO" 2>>"$ERROR_LOG"; then
             sed -i "/^$USUARIO_LIMPIO[[:space:]]/d" "$REGISTROS"
             echo -e "${ROJO}❌ Error creando usuario $USUARIO_LIMPIO. Se revierte registro.${NC}"
@@ -1036,13 +1180,16 @@ function crear_multiples_usuarios() {
 
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 
+    # Verificar integridad de registros
     verificar_integridad_registros
 }
+
 
 function ver_registros() {
     clear
     echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
+    # Definir colores
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -1053,6 +1200,7 @@ function ver_registros() {
     MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
 
+    # Centrar texto en un ancho dado
     center_value() {
         local value="$1"
         local width="$2"
@@ -1063,16 +1211,19 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
+        # Cada columna con un color diferente
         printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
             "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
         echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
+                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
                 DURACION_CENTRADA=$(center_value "$DURACION" 10)
-                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
+                # Cada columna con su propio color en las filas de datos
+                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
@@ -1088,6 +1239,7 @@ function ver_registros() {
     echo -e "${LILAC}=====================${NC}"
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
+
 
 function configurar_banner_ssh() {
     clear
