@@ -331,7 +331,7 @@ function verificar_integridad_registros() {
         # Bloqueo exclusivo para evitar condiciones de carrera
         flock -x 200
 
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if [[ -z "$USUARIO" ]]; then
                 # Línea vacía o mal formada, saltar
                 continue
@@ -933,7 +933,7 @@ function crear_usuario() {
             return 1
         fi
         # Construir la línea de registro
-        REGISTRO_LINEA="$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS días\t$MOVILES móviles\n"
+        REGISTRO_LINEA="$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS días\t$MOVILES móviles\tNO\t$FECHA_CREACION\n"
         if printf "%b" "$REGISTRO_LINEA" >> "$REGISTROS" 2>/dev/null; then
             # Forzar flush del buffer al disco
             sync
@@ -1124,7 +1124,7 @@ function crear_multiples_usuarios() {
                 exit 1
             fi
             # Usar printf para formato consistente
-            if ! printf "%s\t%s\t%s\t%s días\t%s móviles\n" "$USUARIO_LIMPIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
+            if ! printf "%s\t%s\t%s\t%s días\t%s móviles\tNO\t%s\n" "$USUARIO_LIMPIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" "$FECHA_CREACION" >> "$REGISTROS" 2>>"$ERROR_LOG"; then
                 echo -e "${ROJO}❌ Error escribiendo en $REGISTROS para $USUARIO_LIMPIO.${NC}"
                 exit 1
             fi
@@ -1217,7 +1217,7 @@ function ver_registros() {
         echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
