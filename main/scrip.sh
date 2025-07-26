@@ -325,6 +325,7 @@ function verificar_integridad_registros() {
     fi
 }
 
+
 function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 =====${NC}"
@@ -338,7 +339,7 @@ function eliminar_usuario() {
     NUM=1
     declare -A USUARIOS_EXISTENTES
     if [[ -f $REGISTROS ]]; then
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES; do
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
                 USUARIOS_EXISTENTES[$NUM]="$USUARIO"
@@ -369,7 +370,7 @@ function eliminar_usuario() {
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$ELEM]}")
             else
                 echo -e "${ROJO}❌ Número inválido: $ELEM${NC}"
-            fio
+            fi
         else
             if id "$ELEM" &>/dev/null; then
                 USUARIOS_A_ELIMINAR+=("$ELEM")
@@ -401,25 +402,33 @@ function eliminar_usuario() {
 
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
         USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        # Sanitiza el nombre del usuario ANTES de pasarlo al awk por si meten cosas ocultas
         USUARIO_ESCAPADO=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[^a-zA-Z0-9._-]//g')
 
         echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
+
+        # Bloquear usuario
         sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null || true
+        # Matar procesos
         sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null || true
         sleep 1
+        # Eliminar cuenta y home
         sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null || true
         sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null || true
         sudo rm -rf "/home/$USUARIO_LIMPIO" 2>/dev/null || true
         sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null || true
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
 
+        # Eliminar del registro: AWK (blinda unicode y formatos raros)
         if [[ -f $REGISTROS ]]; then
             awk -v user="$USUARIO_ESCAPADO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > /tmp/registros.tmp && mv /tmp/registros.tmp "$REGISTROS"
         fi
+        # Eliminar del historial personalizado
         if [[ -f $HISTORIAL ]]; then
             sed -i "/^$USUARIO_ESCAPADO|/Id" "$HISTORIAL"
         fi
 
+        # Limpiar historiales de shell
         HOME_DIR="/home/$USUARIO_LIMPIO"
         if [[ -d "$HOME_DIR" ]]; then
             sudo rm -f "$HOME_DIR/.bash_history" "$HOME_DIR/.zsh_history" "$HOME_DIR/.sh_history" "$HOME_DIR/.history" 2>/dev/null || true
@@ -428,31 +437,40 @@ function eliminar_usuario() {
             sudo rm -f /root/.bash_history 2>/dev/null || true
         fi
 
+        # Limpiar logs de autenticación estándar
         for LOGFILE in /var/log/auth.log /var/log/secure; do
             if [[ -f "$LOGFILE" ]]; then
                 sudo sed -i "/$USUARIO_ESCAPADO/Id" "$LOGFILE" 2>/dev/null || true
             fi
         done
 
+        # Intento adicional por si el usuario da guerra
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
+
+        # BONUS: Advertencia si aún queda en registros tras limpieza ultra
         if [[ -f $REGISTROS ]]; then
             if grep -q "^$USUARIO_ESCAPADO[[:space:]]" "$REGISTROS"; then
                 echo -e "${ROJO}⚡️⚡️⚡️  $USUARIO_LIMPIO sigue apareciendo en $REGISTROS después del intento. Revisión necesaria.${NC}"
             fi
         fi
 
+        # Limpieza final de líneas vacías en registros
         sed -i '/^[[:space:]]*$/d' "$REGISTROS"
+
         if ! id "$USUARIO_LIMPIO" &>/dev/null; then
             echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y limpiado.${NC}"
         else
             echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
         fi
+
         echo -e "${CIAN}--------------------------------------${NC}"
     done
 
     echo -e "${VERDE}✅ Eliminación nuclear y limpieza completa (SATÁN ESTÁ ORGULLOSO).${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+
 
 function verificar_online() {
     clear
