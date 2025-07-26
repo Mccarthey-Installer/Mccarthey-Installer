@@ -897,28 +897,47 @@ function crear_usuario() {
     # Obtener fecha de creación
     FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
 
+    # Variable para controlar el éxito de la escritura en el registro
+    REGISTRO_EXITOSO=false
+
     # Escribe registro bajo flock ANTES de crear usuario local
     {
         flock -x 200
         # Confirma que no haya sido creado por una carrera
         if id "$USUARIO" &>/dev/null; then
             echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. Cancelando.${NC}"
-            exit 1
+            return 1
         fi
         if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
             echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Cancelando.${NC}"
-            exit 1
+            return 1
         fi
-        if ! printf "%s\t%s\t%s\t%s días\t%s móviles\tNO\t%s\n" "$USUARIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" "$FECHA_CREACION" >> "$REGISTROS" 2>/dev/null; then
+        if printf "%s\t%s\t%s\t%s días\t%s móviles\tNO\t%s\n" "$USUARIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" "$FECHA_CREACION" >> "$REGISTROS" 2>/dev/null; then
+            # Forzar flush del buffer al disco
+            sync
+            REGISTRO_EXITOSO=true
+            return 0
+        else
             echo -e "${ROJO}❌ Error escribiendo en el registro para $USUARIO.${NC}"
-            exit 1
+            return 1
         fi
     } 200>"$REGISTROS.lock"
-    # Si el flock falla, aborta, no crea usuario
 
-    # Crear usuario
+    # Verificar si el registro fue exitoso antes de continuar
+    if [[ "$REGISTRO_EXITOSO" != "true" ]]; then
+        echo -e "${ROJO}❌ No se pudo registrar el usuario en $REGISTROS. Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    # Crear usuario solo si el registro fue exitoso
     if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
-        sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+        # Si falla la creación del usuario, limpiar el registro
+        {
+            flock -x 200
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+            sync
+        } 200>"$REGISTROS.lock"
         echo -e "${ROJO}❌ Error creando usuario $USUARIO. Registro revertido.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
@@ -927,7 +946,11 @@ function crear_usuario() {
     # Establecer contraseña
     if ! echo "$USUARIO:$CLAVE" | chpasswd 2>/dev/null; then
         userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+        {
+            flock -x 200
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+            sync
+        } 200>"$REGISTROS.lock"
         echo -e "${ROJO}❌ Error estableciendo la contraseña. Usuario y registro eliminados.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
@@ -936,7 +959,11 @@ function crear_usuario() {
     # Establecer fecha de expiración
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
         userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+        {
+            flock -x 200
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
+            sync
+        } 200>"$REGISTROS.lock"
         echo -e "${ROJO}❌ Error configurando expiración. Usuario y registro eliminados.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return
