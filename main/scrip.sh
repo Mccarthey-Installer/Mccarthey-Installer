@@ -265,7 +265,7 @@ function barra_sistema() {
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🚀 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}🌸 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}══════════════════════════════════════════════════${NC}"
 
@@ -825,10 +825,9 @@ function nuclear_eliminar() {
 }
 
 
-
-    function crear_usuario() {
+function crear_usuario() {
     clear
-    echo -e "${VIOLETA}===== 🆕 CREAR USUARIO SSH =====${NC}"
+    echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH =====${NC}"
 
     # Verificar permisos de $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
@@ -1006,6 +1005,7 @@ function nuclear_eliminar() {
     # Verificar integridad de registros
     verificar_integridad_registros
 }
+
 
 function crear_multiples_usuarios() {
     clear
