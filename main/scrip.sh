@@ -835,9 +835,14 @@ function nuclear_eliminar() {
 }
 
 
-function crear_usuario() {
+
+
+    
+                    
+
+    function crear_usuario() {
     clear
-    echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH 🤩 =====${NC}"
+    echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH =====${NC}"
 
     # Verificar permisos de $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
@@ -956,19 +961,19 @@ function crear_usuario() {
                 fi
 
                 # Añadir la nueva línea
-                echo -e "$REGISTRO_LINEA" >> "$TEMP_FILE" || {
+                if ! echo -e "$REGISTRO_LINEA" >> "$TEMP_FILE" 2>/dev/null; then
                     echo -e "${ROJO}❌ Error escribiendo en archivo temporal (intento $intentos/$max_intentos).${NC}"
                     rm -f "$TEMP_FILE"
                     return 1
-                }
+                fi
 
                 # Validar contenido del archivo temporal
-                if ! grep -w "^$USUARIO" "$TEMP_FILE" | grep -q "$CLAVE"; then
+                if ! grep -w "^$USUARIO" "$TEMP_FILE" | grep -q "$CLAVE" 2>/dev/null; then
                     echo -e "${ROJO}❌ Validación falló en archivo temporal (intento $intentos/$max_intentos).${NC}"
                     rm -f "$TEMP_FILE"
                     sleep 0.5
                     continue
-                }
+                fi
 
                 # Crear respaldo
                 cp "$REGISTROS" "${REGISTROS}.bak.$$" 2>/dev/null
@@ -977,7 +982,7 @@ function crear_usuario() {
                 if mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null; then
                     sync
                     # Verificación triple
-                    if [[ -f "$REGISTROS" ]] && [[ -r "$REGISTROS" ]] && grep -w "^$USUARIO" "$REGISTROS" | grep -q "$CLAVE"; then
+                    if [[ -f "$REGISTROS" ]] && [[ -r "$REGISTROS" ]] && grep -w "^$USUARIO" "$REGISTROS" | grep -q "$CLAVE" 2>/dev/null; then
                         registro_confirmado=true
                         rm -f "${REGISTROS}.bak.$$" 2>/dev/null
                         echo -e "${VERDE}✅ Registro confirmado (intento $intentos/$max_intentos).${NC}"
