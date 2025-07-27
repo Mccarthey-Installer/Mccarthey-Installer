@@ -837,7 +837,7 @@ function nuclear_eliminar() {
 
 function crear_usuario() {
     clear
-    echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH =====${NC}"
+    echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH 🤩=====${NC}"
 
     # Verificar permisos de $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
@@ -853,7 +853,7 @@ function crear_usuario() {
         return 1
     fi
 
-    # Leer nombre del usuario y verificar si ya existe
+    # Leer nombre del usuario y verificar si ya existe en el sistema
     while true; do
         read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
         if [[ -z "$USUARIO" ]]; then
@@ -862,10 +862,6 @@ function crear_usuario() {
         fi
         if id "$USUARIO" &>/dev/null; then
             echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. No se puede crear.${NC}"
-            continue
-        fi
-        if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
-            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Elige otro nombre.${NC}"
             continue
         fi
         break
@@ -913,53 +909,110 @@ function crear_usuario() {
     # Obtener fecha de creación
     FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
 
-    # Variable para controlar el éxito de la escritura en el registro
-    REGISTRO_EXITOSO=false
+    # Función para garantizar el registro
+    garantizar_registro() {
+        local intentos=0
+        local max_intentos=5
+        local registro_confirmado=false
 
-    # Escribe registro bajo flock ANTES de crear usuario local
-    {
-        flock -x 200 || {
-            echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo para $REGISTROS. Cancelo.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return 1
-        }
-        # Confirma que no haya sido creado por una carrera
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. Cancelando.${NC}"
-            return 1
-        fi
-        if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
-            echo -e "${ROJO}👤 El nombre de usuario '$USUARIO' ya está registrado en $REGISTROS. Cancelando.${NC}"
-            return 1
-        fi
-        # Construir la línea de registro
-        REGISTRO_LINEA="$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS días\t$MOVILES móviles\tNO\t$FECHA_CREACION\n"
-        if printf "%b" "$REGISTRO_LINEA" >> "$REGISTROS" 2>/dev/null; then
-            # Forzar flush del buffer al disco
-            sync
-            # Verificar que la línea se escribió correctamente
-            if grep -w "^$USUARIO" "$REGISTROS" &>/dev/null; then
-                REGISTRO_EXITOSO=true
-            else
-                echo -e "${ROJO}❌ Error: La línea no se escribió correctamente en $REGISTROS.${NC}"
-                return 1
-            fi
-        else
-            echo -e "${ROJO}❌ Error escribiendo en el registro para $USUARIO.${NC}"
-            return 1
-        fi
-    } 200>"$REGISTROS.lock"
+        echo -e "${AMARILLO}🔄 Registrando usuario en $REGISTROS...${NC}"
 
-    # Verificar si el registro fue exitoso antes de continuar
-    if [[ "$REGISTRO_EXITOSO" != "true" ]]; then
+        while [[ $intentos -lt $max_intentos ]] && [[ "$registro_confirmado" != "true" ]]; do
+            intentos=$((intentos + 1))
+            {
+                flock -x 200 || {
+                    echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo (intento $intentos/$max_intentos).${NC}"
+                    [[ $intentos -eq $max_intentos ]] && return 1
+                    sleep 0.5
+                    continue
+                }
+
+                # Construir la línea de registro
+                REGISTRO_LINEA="$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS días\t$MOVILES móviles\tNO\t$FECHA_CREACION"
+
+                # Crear archivo temporal
+                TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || {
+                    echo -e "${ROJO}❌ Error creando archivo temporal (intento $intentos/$max_intentos).${NC}"
+                    return 1
+                }
+
+                # Verificar legibilidad de $REGISTROS
+                if [[ ! -r "$REGISTROS" ]]; then
+                    echo -e "${ROJO}❌ No se puede leer $REGISTROS (intento $intentos/$max_intentos).${NC}"
+                    rm -f "$TEMP_FILE"
+                    return 1
+                fi
+
+                # Copiar líneas, excluyendo la del usuario si existe
+                if ! grep -v "^$USUARIO[[:space:]]" "$REGISTROS" > "$TEMP_FILE" 2>/dev/null; then
+                    if [[ -s "$REGISTROS" ]]; then
+                        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || {
+                            echo -e "${ROJO}❌ Error copiando $REGISTROS (intento $intentos/$max_intentos).${NC}"
+                            rm -f "$TEMP_FILE"
+                            return 1
+                        }
+                        sed -i "/^$USUARIO[[:space:]]/d" "$TEMP_FILE" 2>/dev/null
+                    fi
+                fi
+
+                # Añadir la nueva línea
+                echo -e "$REGISTRO_LINEA" >> "$TEMP_FILE" || {
+                    echo -e "${ROJO}❌ Error escribiendo en archivo temporal (intento $intentos/$max_intentos).${NC}"
+                    rm -f "$TEMP_FILE"
+                    return 1
+                }
+
+                # Validar contenido del archivo temporal
+                if ! grep -w "^$USUARIO" "$TEMP_FILE" | grep -q "$CLAVE"; then
+                    echo -e "${ROJO}❌ Validación falló en archivo temporal (intento $intentos/$max_intentos).${NC}"
+                    rm -f "$TEMP_FILE"
+                    sleep 0.5
+                    continue
+                }
+
+                # Crear respaldo
+                cp "$REGISTROS" "${REGISTROS}.bak.$$" 2>/dev/null
+
+                # Reemplazar archivo original
+                if mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null; then
+                    sync
+                    # Verificación triple
+                    if [[ -f "$REGISTROS" ]] && [[ -r "$REGISTROS" ]] && grep -w "^$USUARIO" "$REGISTROS" | grep -q "$CLAVE"; then
+                        registro_confirmado=true
+                        rm -f "${REGISTROS}.bak.$$" 2>/dev/null
+                        echo -e "${VERDE}✅ Registro confirmado (intento $intentos/$max_intentos).${NC}"
+                    else
+                        echo -e "${AMARILLO}⚠️ Verificación post-escritura falló (intento $intentos/$max_intentos). Reintentando...${NC}"
+                        [[ -f "${REGISTROS}.bak.$$" ]] && mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
+                        sleep 0.5
+                    fi
+                else
+                    echo -e "${ROJO}❌ Error reemplazando archivo (intento $intentos/$max_intentos).${NC}"
+                    rm -f "$TEMP_FILE" 2>/dev/null
+                    [[ -f "${REGISTROS}.bak.$$" ]] && mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
+                    sleep 0.5
+                fi
+            } 200>"$REGISTROS.lock"
+        done
+
+        rm -f "${REGISTROS}.bak.$$" 2>/dev/null
+
+        if [[ "$registro_confirmado" != "true" ]]; then
+            echo -e "${ROJO}❌ No se pudo garantizar el registro después de $max_intentos intentos.${NC}"
+            return 1
+        fi
+        return 0
+    }
+
+    # Registrar antes de crear el usuario
+    if ! garantizar_registro; then
         echo -e "${ROJO}❌ No se pudo registrar el usuario en $REGISTROS. Operación cancelada.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return 1
     fi
 
-    # Crear usuario solo si el registro fue exitoso
+    # Crear usuario
     if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
-        # Limpiar el registro si falla
         {
             flock -x 200
             sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS" 2>/dev/null
@@ -1016,6 +1069,7 @@ function crear_usuario() {
     verificar_integridad_registros
 }
 
+   
 
 function crear_multiples_usuarios() {
     clear
