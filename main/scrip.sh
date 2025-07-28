@@ -39,140 +39,203 @@ function monitorear_conexiones() {
     INTERVALO=10
 
     while true; do
-        if [[ ! -f $REGISTROS ]]; then
+        if [[ ! -f "$REGISTROS" ]]; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
             sleep "$INTERVALO"
             continue
         fi
 
-        TEMP_FILE=$(mktemp)
-        cp "$REGISTROS" "$TEMP_FILE"
-        > "$TEMP_FILE.new"
+        {
+            # Intentar adquirir el bloqueo con tiempo de espera
+            if ! flock -x -w 5 200; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): No se pudo adquirir el bloqueo después de 5s." >> "$LOG"
+                sleep "$INTERVALO"
+                continue
+            fi
 
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                # Contar conexiones SSH y Dropbear
+            TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || {
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$LOG"
+                sleep "$INTERVALO"
+                continue
+            }
+            TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || {
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal nuevo." >> "$LOG"
+                rm -f "$TEMP_FILE"
+                sleep "$INTERVALO"
+                continue
+            }
+
+            cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || {
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." >> "$LOG"
+                rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"
+                sleep "$INTERVALO"
+                continue
+            }
+
+            > "$TEMP_FILE_NEW"
+
+            while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+                if id "$USUARIO" &>/dev/null; then
+                    # Contar conexiones SSH y Dropbear
+                    CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                    CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                    CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+
+                    # Extraer número de móviles permitido
+                    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+
+                    # Verificar si el usuario está bloqueado en /etc/shadow
+                    ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
+
+                    # SOLO si el bloqueo no es manual
+                    if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
+                        # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
+                        while read -r pid stat comm; do
+                            case "$stat" in
+                                *Z*) # Zombie
+                                    kill -9 "$pid" 2>/dev/null
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    ;;
+                                *D*) # Uninterruptible sleep
+                                    kill -9 "$pid" 2>/dev/null
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    ;;
+                                *T*) # Stopped
+                                    kill -9 "$pid" 2>/dev/null
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    ;;
+                                *S*) # Sleeping
+                                    if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
+                                        PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
+                                        if [[ -z "$PORTS" ]]; then
+                                            kill -9 "$pid" 2>/dev/null
+                                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                        fi
+                                    else
+                                        kill -9 "$pid" 2>/dev/null
+                                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    fi
+                                    ;;
+                                *R*) # Running
+                                    if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
+                                        kill -9 "$pid" 2>/dev/null
+                                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
+                                    fi
+                                    ;;
+                            esac
+                        done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
+
+                        # --- CONTROL DE SESIONES ---
+                        PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+                        PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+
+                        PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
+                        mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
+                            START=$(ps -p "$pid" -o lstart= 2>/dev/null)
+                            echo "$pid:$START"
+                        done | sort -t: -k2 | awk -F: '{print $1}')
+
+                        TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
+
+                        if (( TOTAL_CONEX > MOVILES_NUM )); then
+                            for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
+                                kill -9 "$PID" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
+                            done
+                        fi
+                    fi
+
+                    # Actualizar PRIMER_LOGIN
+                    NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
+                    if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
+                        NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                    elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
+                        NEW_PRIMER_LOGIN=""
+                    fi
+
+                    echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE_NEW"
+                else
+                    echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE_NEW"
+                fi
+            done < "$TEMP_FILE"
+
+            # Crear respaldo
+            cp "$REGISTROS" "${REGISTROS}.bak.$$" 2>/dev/null || {
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando respaldo de $REGISTROS." >> "$LOG"
+                rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"
+                sleep "$INTERVALO"
+                continue
+            }
+
+            # Reemplazar archivo original
+            if mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null; then
+                sync
+                sleep 0.1
+                # Verificación triple
+                local verify_attempts=3
+                local verified=false
+                for ((i=1; i<=verify_attempts; i++)); do
+                    if [[ -f "$REGISTROS" ]] && [[ -r "$REGISTROS" ]] && grep -w "^$USUARIO" "$REGISTROS" | grep -q "$CLAVE" 2>/dev/null; then
+                        verified=true
+                        break
+                    fi
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificación $i/$verify_attempts falló para $USUARIO." >> "$LOG"
+                    sleep 0.1
+                done
+
+                if [[ "$verified" != "true" ]]; then
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificación post-escritura falló para $USUARIO después de $verify_attempts intentos." >> "$LOG"
+                    [[ -f "${REGISTROS}.bak.$$" ]] && mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
+                    rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"
+                    sleep "$INTERVALO"
+                    continue
+                fi
+            else
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error reemplazando $REGISTROS." >> "$LOG"
+                [[ -f "${REGISTROS}.bak.$$" ]] && mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
+                rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"
+                sleep "$INTERVALO"
+                continue
+            fi
+
+            rm -f "$TEMP_FILE" "$TEMP_FILE_NEW" "${REGISTROS}.bak.$$"
+        } 200>"$REGISTROS.lock"
+
+        # Registro de historial de conexiones
+        {
+            if ! flock -x -w 5 200; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): No se pudo adquirir el bloqueo para historial." >> "$LOG"
+                sleep "$INTERVALO"
+                continue
+            fi
+
+            while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+                TMP_STATUS="/tmp/status_${USUARIO}.tmp"
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
-                # Extraer número de móviles permitido
-                MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
-
-                # Verificar si el usuario está bloqueado en /etc/shadow
-                ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
-
-                # SOLO si el bloqueo no es manual
-                if [[ "$BLOQUEO_MANUAL" != "SÍ" ]]; then
-                    # --- LIMPIEZA DE PROCESOS PROBLEMÁTICOS ---
-                    # Elimina procesos Z (zombie), D (uninterruptible), T (stopped), S (sleep/desconectado), R (running no ssh/dropbear)
-                    while read -r pid stat comm; do
-                        case "$stat" in
-                            *Z*) # Zombie
-                                kill -9 "$pid" 2>/dev/null
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                                ;;
-                            *D*) # Uninterruptible sleep
-                                kill -9 "$pid" 2>/dev/null
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso D colgado (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                                ;;
-                            *T*) # Stopped
-                                kill -9 "$pid" 2>/dev/null
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso detenido (PID $pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                                ;;
-                            *S*) # Sleeping - revisa conexión real con ss
-                                if [[ "$comm" == "sshd" || "$comm" == "dropbear" ]]; then
-                                    # Si está dormido, pero no tiene conexión activa, elimínalo
-                                    PORTS=$(ss -tp | grep "$pid," | grep -E 'ESTAB|ESTABLISHED')
-                                    if [[ -z "$PORTS" ]]; then
-                                        kill -9 "$pid" 2>/dev/null
-                                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping sin conexión ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                                    fi
-                                else
-                                    # No es sshd/dropbear, elimínalo siempre
-                                    kill -9 "$pid" 2>/dev/null
-                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso sleeping no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                                fi
-                                ;;
-                            *R*) # Running - si no es sshd/dropbear, mátalo
-                                if [[ "$comm" != "sshd" && "$comm" != "dropbear" ]]; then
-                                    kill -9 "$pid" 2>/dev/null
-                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso running no-sshd ($pid, $comm) de '$USUARIO' eliminado." >> "$LOG"
-                                fi
-                                ;;
-                        esac
-                    done < <(ps -u "$USUARIO" -o pid=,stat=,comm=)
-                    
-                    # --- CONTROL DE SESIONES: CIERRA SOLO LAS EXTRAS ---
-                    # Recolecta y ordena sesiones sshd y dropbear por antigüedad
-                    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-                    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-
-                    # Mezcla ambos tipos y ordénalos por antigüedad
-                    PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
-                    # Si por algún motivo faltan espacios, vuelve a ordenarlos bien
-                    mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
-                        START=$(ps -p "$pid" -o lstart= 2>/dev/null)
-                        echo "$pid:$START"
-                    done | sort -t: -k2 | awk -F: '{print $1}')
-
-                    TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
-
-                    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-                    if (( TOTAL_CONEX > MOVILES_NUM )); then
-                        # Conserva solo las primeras MOVILES_NUM, mata el resto
-                        for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
-                            kill -9 "$PID" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada automáticamente por exceso de conexiones." >> "$LOG"
-                        done
+                if [[ $CONEXIONES -gt 0 ]]; then
+                    if [[ ! -f "$TMP_STATUS" ]]; then
+                        date +"%Y-%m-%d %H:%M:%S" > "$TMP_STATUS"
+                    fi
+                else
+                    if [[ -f "$TMP_STATUS" ]]; then
+                        HORA_CONEXION=$(cat "$TMP_STATUS")
+                        HORA_DESCONECCION=$(date +"%Y-%m-%d %H:%M:%S")
+                        SEC_CON=$(date -d "$HORA_CONEXION" +%s)
+                        SEC_DES=$(date -d "$HORA_DESCONECCION" +%s)
+                        DURACION_SEC=$((SEC_DES - SEC_CON))
+                        HORAS=$((DURACION_SEC / 3600))
+                        MINUTOS=$(( (DURACION_SEC % 3600) / 60 ))
+                        SEGUNDOS=$((DURACION_SEC % 60))
+                        DURACION_FORMAT=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
+                        echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONECCION|$DURACION_FORMAT" >> "$HISTORIAL"
+                        rm -f "$TMP_STATUS"
                     fi
                 fi
-
-                # === ACTUALIZAR PRIMER_LOGIN ===
-                NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
-                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
-                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    NEW_PRIMER_LOGIN=""
-                fi
-
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$NEW_PRIMER_LOGIN" >> "$TEMP_FILE.new"
-            else
-                # Usuario no existe en sistema, copia línea igual
-                echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DURACION\t$MOVILES\t$BLOQUEO_MANUAL\t$PRIMER_LOGIN" >> "$TEMP_FILE.new"
-            fi
-        done < "$TEMP_FILE"
-
-        mv "$TEMP_FILE.new" "$REGISTROS"
-        rm -f "$TEMP_FILE"
-
-        # === REGISTRO DE HISTORIAL DE CONEXIONES ===
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            TMP_STATUS="/tmp/status_${USUARIO}.tmp"
-            CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-            CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
-            CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-
-            if [[ $CONEXIONES -gt 0 ]]; then
-                if [[ ! -f $TMP_STATUS ]]; then
-                    date +"%Y-%m-%d %H:%M:%S" > "$TMP_STATUS"
-                fi
-            else
-                if [[ -f $TMP_STATUS ]]; then
-                    HORA_CONEXION=$(cat "$TMP_STATUS")
-                    HORA_DESCONECCION=$(date +"%Y-%m-%d %H:%M:%S")
-                    SEC_CON=$(date -d "$HORA_CONEXION" +%s)
-                    SEC_DES=$(date -d "$HORA_DESCONECCION" +%s)
-                    DURACION_SEC=$((SEC_DES - SEC_CON))
-                    HORAS=$((DURACION_SEC / 3600))
-                    MINUTOS=$(( (DURACION_SEC % 3600) / 60 ))
-                    SEGUNDOS=$((DURACION_SEC % 60))
-                    DURACION_FORMAT=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
-                    echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONECCION|$DURACION_FORMAT" >> "$HISTORIAL"
-                    rm -f "$TMP_STATUS"
-                fi
-            fi
-        done < "$REGISTROS"
+            done < "$REGISTROS"
+        } 200>"$HISTORIAL.lock"
 
         sleep "$INTERVALO"
     done
@@ -192,6 +255,9 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p $(cat "$PIDFILE") >/dev/null 2>&1; then
 else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
+                    
+                  
+
 
 function barra_sistema() {
     # Definimos colores explícitos (sin verde)
