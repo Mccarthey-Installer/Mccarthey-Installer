@@ -1417,12 +1417,6 @@ function crear_multiples_usuarios() {
     verificar_integridad_registros
 }
 
-
-    
-
-        
-
-
 function ver_registros() {
     clear
     echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
@@ -1449,24 +1443,43 @@ function ver_registros() {
     }
 
     if [[ -f $REGISTROS ]]; then
-        # Cada columna con un color diferente
+        # Encabezado con colores
         printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
-            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏰ Días' 10)" "📲 Móviles"
+            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📲 Móviles"
         echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
         while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
-                # EXTRAER EL CAMPO DE DÍAS REGISTRADO, SIN CALCULAR NADA
+                # Formatear la fecha de expiración
                 FORMATO_EXPIRA=$(date -d "$EXPIRA_DATETIME" +"%d/%B" | awk '{print $1 "/" tolower($2)}')
-                DURACION_CENTRADA=$(center_value "$DURACION" 10)
-                # Cada columna con su propio color en las filas de datos
+
+                # Calcular días restantes reales
+                if FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
+                    FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+                    DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+                    [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+                else
+                    DIAS_RESTANTES="N/A"
+                fi
+
+                DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
+
+                # Limpiar campo móviles
+                if [[ "$MOVILES" =~ ^[0-9]+[[:space:]]*móviles$ ]]; then
+                    MOVILES_NUM=$(echo "$MOVILES" | grep -oE '^[0-9]+')
+                else
+                    MOVILES_NUM="$MOVILES"
+                fi
+
+                # Imprimir fila con colores
                 printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
-                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES_NUM"
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
 
+        # Si no se mostró ningún usuario válido
         if [[ $NUM -eq 1 ]]; then
             echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
         fi
@@ -1477,6 +1490,12 @@ function ver_registros() {
     echo -e "${LILAC}=====================${NC}"
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
+    
+
+        
+
+
+
 
 
 function configurar_banner_ssh() {
