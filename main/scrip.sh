@@ -254,7 +254,7 @@ fi
 
 function crear_usuario() {
     clear
-    echo -e "${ROJO}===== 🤩 CREAR USUARIO SSH =====${NC}"
+    echo -e "${ROJO}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
     # Verificar si se puede escribir $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
@@ -950,6 +950,7 @@ function mini_registro() {
     echo -e "${LILAC}--------------------------------------------${NC}"
 
     TOTAL_USUARIOS=0
+    LOG="/var/log/monitoreo_conexiones.log"
 
     while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL FECHA_CREACION; do
         if id "$USUARIO" &>/dev/null; then
@@ -957,7 +958,7 @@ function mini_registro() {
             USUARIO=${USUARIO:-"N/A"}
             CLAVE=${CLAVE:-"N/A"}
             EXPIRA_DATETIME=${EXPIRA_DATETIME:-"N/A"}
-            MOVILES=${MOVILES:-"N/A"}
+            MOVILES=${MOVILES:-"1"}  # Valor por defecto si MOVILES está vacío
 
             # Calcular días restantes
             if [[ "$EXPIRA_DATETIME" != "N/A" ]] && FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null); then
@@ -971,10 +972,16 @@ function mini_registro() {
             fi
 
             # Extraer número de móviles
-            if [[ "$MOVILES" =~ ^[0-9]+[[:space:]]*móviles$ ]]; then
+            if [[ "$MOVILES" =~ ^[0-9]+$ ]]; then
+                # Si MOVILES es solo un número, usarlo directamente
+                MOVILES_NUM="$MOVILES"
+            elif [[ "$MOVILES" =~ ^[0-9]+[[:space:]]*móviles$ ]]; then
+                # Si MOVILES tiene el formato "X móviles", extraer el número
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+')
             else
-                MOVILES_NUM="N/A"
+                # Registrar error en el log y usar valor por defecto
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Formato inválido en campo MOVILES ('$MOVILES') para usuario '$USUARIO' en $REGISTROS." >> "$LOG"
+                MOVILES_NUM="1"
             fi
 
             # Imprimir fila
