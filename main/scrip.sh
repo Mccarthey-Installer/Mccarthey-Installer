@@ -900,246 +900,120 @@ function nuclear_eliminar() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-
-
-
-    
-                    
-
-    function crear_usuario() {
+function crear_usuario() {
     clear
     echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH =====${NC}"
 
-    # Verificar permisos de $REGISTROS
+    # Verificar si se puede escribir $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
         touch "$REGISTROS" 2>/dev/null || {
-            echo -e "${ROJO}❌ Error: No se pudo crear el archivo $REGISTROS. Verifica permisos.${NC}"
+            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos.${NC}"
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             return 1
         }
     fi
     if [[ ! -w "$REGISTROS" ]]; then
-        echo -e "${ROJO}❌ Error: No se puede escribir en $REGISTROS. Verifica permisos.${NC}"
+        echo -e "${ROJO}❌ No se puede escribir en $REGISTROS. Revisa permisos.${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return 1
     fi
 
-    # Leer nombre del usuario y verificar si ya existe en el sistema
+    # Leer nombre del usuario
     while true; do
         read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
-        if [[ -z "$USUARIO" ]]; then
-            echo -e "${ROJO}❌ Por favor, ingresa un nombre de usuario válido.${NC}"
+        [[ -z "$USUARIO" ]] && echo -e "${ROJO}❌ Ingresa un nombre válido.${NC}" && continue
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}⚠️ El usuario '$USUARIO' ya existe en el sistema.${NC}"
             continue
         fi
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}👤 El usuario '$USUARIO' ya existe en el sistema. No se puede crear.${NC}"
+        if grep -qw "^$USUARIO" "$REGISTROS"; then
+            echo -e "${ROJO}⚠️ Ya existe un registro con ese nombre en $REGISTROS.${NC}"
             continue
         fi
         break
     done
 
     read -p "$(echo -e ${AMARILLO}🔑 Contraseña: ${NC})" CLAVE
-    if [[ -z "$CLAVE" ]]; then
-        echo -e "${ROJO}❌ La contraseña no puede estar vacía.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
+    [[ -z "$CLAVE" ]] && echo -e "${ROJO}❌ La contraseña no puede estar vacía.${NC}" && return 1
 
-    # Validar días
+    # Días de validez
     while true; do
         read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
-        if [[ "$DIAS" =~ ^[0-9]+$ ]] && [ "$DIAS" -ge 0 ]; then
-            break
-        else
-            echo -e "${ROJO}Por favor, ingresa un número válido de días (0 o más).${NC}"
-        fi
+        [[ "$DIAS" =~ ^[0-9]+$ && "$DIAS" -ge 0 ]] && break
+        echo -e "${ROJO}❌ Ingresa un número válido (0 o más).${NC}"
     done
 
-    # Validar móviles
+    # Número de móviles
     while true; do
         read -p "$(echo -e ${AMARILLO}📱 ¿Cuántos móviles? ${NC})" MOVILES
-        if [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ ]] && [ "$MOVILES" -le 999 ]; then
-            break
-        else
-            echo -e "${ROJO}Por favor, ingresa un número del 1 al 999.${NC}"
-        fi
+        [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ && "$MOVILES" -le 999 ]] && break
+        echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
     done
 
-    # Calcular fechas de expiración
-    if ! EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Cancelo.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-    if ! EXPIRA_FECHA=$(date -d "+$((DIAS + 1)) days" +"%Y-%m-%d" 2>/dev/null); then
-        echo -e "${ROJO}❌ Error calculando la fecha de expiración para $USUARIO. Cancelo.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Obtener fecha de creación
+    # Fechas
+    EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00")
+    EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
     FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
 
-    # Función para garantizar el registro
-    garantizar_registro() {
-        local intentos=0
-        local max_intentos=5
-        local registro_confirmado=false
-
-        echo -e "${AMARILLO}🔄 Registrando usuario en $REGISTROS...${NC}"
-
-        while [[ $intentos -lt $max_intentos ]] && [[ "$registro_confirmado" != "true" ]]; do
-            intentos=$((intentos + 1))
-            {
-                flock -x 200 || {
-                    echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo (intento $intentos/$max_intentos).${NC}"
-                    [[ $intentos -eq $max_intentos ]] && return 1
-                    sleep 0.5
-                    continue
-                }
-
-                # Construir la línea de registro
-                REGISTRO_LINEA="$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS días\t$MOVILES móviles\tNO\t$FECHA_CREACION"
-
-                # Crear archivo temporal
-                TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || {
-                    echo -e "${ROJO}❌ Error creando archivo temporal (intento $intentos/$max_intentos).${NC}"
-                    return 1
-                }
-
-                # Verificar legibilidad de $REGISTROS
-                if [[ ! -r "$REGISTROS" ]]; then
-                    echo -e "${ROJO}❌ No se puede leer $REGISTROS (intento $intentos/$max_intentos).${NC}"
-                    rm -f "$TEMP_FILE"
-                    return 1
-                fi
-
-                # Copiar líneas, excluyendo la del usuario si existe
-                if ! grep -v "^$USUARIO[[:space:]]" "$REGISTROS" > "$TEMP_FILE" 2>/dev/null; then
-                    if [[ -s "$REGISTROS" ]]; then
-                        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || {
-                            echo -e "${ROJO}❌ Error copiando $REGISTROS (intento $intentos/$max_intentos).${NC}"
-                            rm -f "$TEMP_FILE"
-                            return 1
-                        }
-                        sed -i "/^$USUARIO[[:space:]]/d" "$TEMP_FILE" 2>/dev/null
-                    fi
-                fi
-
-                # Añadir la nueva línea
-                if ! echo -e "$REGISTRO_LINEA" >> "$TEMP_FILE" 2>/dev/null; then
-                    echo -e "${ROJO}❌ Error escribiendo en archivo temporal (intento $intentos/$max_intentos).${NC}"
-                    rm -f "$TEMP_FILE"
-                    return 1
-                fi
-
-                # Validar contenido del archivo temporal
-                if ! grep -w "^$USUARIO" "$TEMP_FILE" | grep -q "$CLAVE" 2>/dev/null; then
-                    echo -e "${ROJO}❌ Validación falló en archivo temporal (intento $intentos/$max_intentos).${NC}"
-                    rm -f "$TEMP_FILE"
-                    sleep 0.5
-                    continue
-                fi
-
-                # Crear respaldo
-                cp "$REGISTROS" "${REGISTROS}.bak.$$" 2>/dev/null
-
-                # Reemplazar archivo original
-                if mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null; then
-                    sync
-                    # Verificación triple
-                    if [[ -f "$REGISTROS" ]] && [[ -r "$REGISTROS" ]] && grep -w "^$USUARIO" "$REGISTROS" | grep -q "$CLAVE" 2>/dev/null; then
-                        registro_confirmado=true
-                        rm -f "${REGISTROS}.bak.$$" 2>/dev/null
-                        echo -e "${VERDE}✅ Registro confirmado (intento $intentos/$max_intentos).${NC}"
-                    else
-                        echo -e "${AMARILLO}⚠️ Verificación post-escritura falló (intento $intentos/$max_intentos). Reintentando...${NC}"
-                        [[ -f "${REGISTROS}.bak.$$" ]] && mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
-                        sleep 0.5
-                    fi
-                else
-                    echo -e "${ROJO}❌ Error reemplazando archivo (intento $intentos/$max_intentos).${NC}"
-                    rm -f "$TEMP_FILE" 2>/dev/null
-                    [[ -f "${REGISTROS}.bak.$$" ]] && mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
-                    sleep 0.5
-                fi
-            } 200>"$REGISTROS.lock"
-        done
-
-        rm -f "${REGISTROS}.bak.$$" 2>/dev/null
-
-        if [[ "$registro_confirmado" != "true" ]]; then
-            echo -e "${ROJO}❌ No se pudo garantizar el registro después de $max_intentos intentos.${NC}"
-            return 1
-        fi
-        return 0
-    }
-
-    # Registrar antes de crear el usuario
-    if ! garantizar_registro; then
-        echo -e "${ROJO}❌ No se pudo registrar el usuario en $REGISTROS. Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
+    # Agregar al REGISTRO (append con protección)
+    {
+        flock -x 200
+        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS\t$MOVILES\tNO\t$FECHA_CREACION" >> "$REGISTROS"
+    } 200>"$REGISTROS.lock"
 
     # Crear usuario
-    if ! useradd -m -s /bin/bash "$USUARIO" 2>/dev/null; then
+    if ! useradd -m -s /bin/bash "$USUARIO"; then
         {
             flock -x 200
-            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS" 2>/dev/null
-            sync
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
         } 200>"$REGISTROS.lock"
-        echo -e "${ROJO}❌ Error creando usuario $USUARIO. Registro revertido.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
         return 1
     fi
 
     # Establecer contraseña
-    if ! echo "$USUARIO:$CLAVE" | chpasswd 2>/dev/null; then
+    if ! echo "$USUARIO:$CLAVE" | chpasswd; then
         userdel -r "$USUARIO" 2>/dev/null
         {
             flock -x 200
-            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS" 2>/dev/null
-            sync
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
         } 200>"$REGISTROS.lock"
-        echo -e "${ROJO}❌ Error estableciendo la contraseña. Usuario y registro eliminados.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        echo -e "${ROJO}❌ Falló el cambio de contraseña. Registro revertido.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
         return 1
     fi
 
-    # Establecer fecha de expiración
-    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO" 2>/dev/null; then
+    # Fecha de expiración
+    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
         userdel -r "$USUARIO" 2>/dev/null
         {
             flock -x 200
-            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS" 2>/dev/null
-            sync
+            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
         } 200>"$REGISTROS.lock"
-        echo -e "${ROJO}❌ Error configurando expiración. Usuario y registro eliminados.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
         return 1
     fi
 
-    # Mostrar información del usuario creado
-    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%Y/%B/%d" | awk '{print $1 "/" tolower($2) "/" $3}')
-    echo -e "${VERDE}✅ Usuario creado exitosamente:${NC}"
-    echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO${NC}"
-    echo -e "${AZUL}🔑 Clave: ${AMARILLO}$CLAVE${NC}"
-    echo -e "${AZUL}📅 Expira: ${AMARILLO}$FECHA_FORMAT${NC}"
-    echo -e "${AZUL}📱 Móviles permitidos: ${AMARILLO}$MOVILES${NC}"
-    echo -e "${AZUL}📅 Creado: ${AMARILLO}$FECHA_CREACION${NC}"
+    # Mostrar resultado
+    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
     echo
-    echo -e "${CIAN}===== 📝 REGISTRO CREADO =====${NC}"
-    printf "${AMARILLO}%-15s %-20s %-15s %-15s %-20s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Duración" "📱 Móviles" "📅 Creado"
+    echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
+    echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO"
+    echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE"
+    echo -e "${AZUL}📅 Expira:  ${AMARILLO}$FECHA_FORMAT"
+    echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$MOVILES"
+    echo -e "${AZUL}📅 Creado:  ${AMARILLO}$FECHA_CREACION"
+
+    echo
+    echo -e "${CIAN}===== 📝 RESUMEN DE REGISTRO =====${NC}"
+    printf "${AMARILLO}%-15s %-20s %-15s %-15s %-20s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Días" "📱 Móviles" "📅 Creado"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
     printf "${VERDE}%-15s %-20s %-15s %-15s %-20s${NC}\n" "$USUARIO:$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES" "$FECHA_CREACION"
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-
-    # Verificar integridad de registros
-    verificar_integridad_registros
 }
-
 
 function crear_multiples_usuarios() {
     clear
