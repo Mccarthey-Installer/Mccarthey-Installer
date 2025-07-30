@@ -902,7 +902,7 @@ function nuclear_eliminar() {
 
 function crear_usuario() {
     clear
-    echo -e "${ROJO}===== 🆕 CREAR USUARIO SSH =====${NC}"
+    echo -e "${ROJO}===== 🤩 CREAR USUARIO SSH =====${NC}"
 
     # Verificar si se puede escribir $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
