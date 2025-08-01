@@ -36,7 +36,7 @@ configurar_autoejecucion
 # Función para monitorear conexiones y actualizar PRIMER_LOGIN y el historial
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=30  # Aumentado a 30 segundos para reducir conflictos
+    INTERVALO=5  # Aumentado a 5 segundos para reducir conflictos
 
     while true; do
         if [[ ! -f "$REGISTROS" ]]; then
@@ -1415,11 +1415,6 @@ function ver_registros() {
     
 
         
-
-
-
-
-
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
@@ -1460,18 +1455,26 @@ function configurar_banner_ssh() {
             echo -e "${AMARILLO}5) Orange${NC}"
             echo -e "${AMARILLO}6) DeepPink${NC}"
             echo -e "${AMARILLO}7) Magenta${NC}"
+            echo -e "${AMARILLO}8) Lime${NC}"
+            echo -e "${AMARILLO}9) Blue${NC}"
+            echo -e "${AMARILLO}10) Teal${NC}"
+            echo -e "${AMARILLO}11) Aqua${NC}"
             echo
             PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
             read -p "$PROMPT" COLOR_OP
 
             case $COLOR_OP in
-                1) COLOR="#FF69B4" ;; # HotPink
-                2) COLOR="#000000" ;; # Black
-                3) COLOR="#40E0D0" ;; # Turquoise
-                4) COLOR="#800080" ;; # Purple
-                5) COLOR="#FFA500" ;; # Orange
-                6) COLOR="#FF1493" ;; # DeepPink
-                7) COLOR="#FF00FF" ;; # Magenta
+                1) COLOR="#FF69B4" ;;  # HotPink
+                2) COLOR="#000000" ;;  # Black
+                3) COLOR="#40E0D0" ;;  # Turquoise
+                4) COLOR="#800080" ;;  # Purple
+                5) COLOR="#FFA500" ;;  # Orange
+                6) COLOR="#FF1493" ;;  # DeepPink
+                7) COLOR="#FF00FF" ;;  # Magenta
+                8) COLOR="#00FF00" ;;  # Lime
+                9) COLOR="#0000FF" ;;  # Blue (corregido)
+                10) COLOR="#008080" ;; # Teal
+                11) COLOR="#00FFFF" ;; # Aqua (corregido)
                 *)
                     echo -e "${ROJO}❌ ¡Color inválido! Usando HotPink por defecto.${NC}"
                     COLOR="#FF69B4" ;; # HotPink por defecto
@@ -1540,6 +1543,12 @@ function configurar_banner_ssh() {
     esac
 }
 
+
+
+
+
+
+                
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
