@@ -1413,8 +1413,6 @@ function ver_registros() {
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
     
-
-        
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
@@ -1431,64 +1429,74 @@ function configurar_banner_ssh() {
         1)
             clear
             echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
-            echo -e "${AMARILLO}📝 Por favor, digite su mensaje para el banner (una sola línea).${NC}"
-            echo -e "${AMARILLO}📌 Ejemplo: TE AMO CIELO${NC}"
-            echo -e "${AMARILLO}📌 Nota: Escribe todo en una línea, sin presionar Enter hasta terminar.${NC}"
+            echo -e "${AMARILLO}📝 Pega o escribe tu banner en formato HTML (puedes incluir colores, emojis, etc.).${NC}"
+            echo -e "${AMARILLO}📌 Usa 'FIN' en una línea sola para terminar.${NC}"
+            echo -e "${AMARILLO}📌 Ejemplo: <h2><font color=\"Red\">⛅ ESTAS USANDO UNA VPS PREMIUM 🌈</font></h2>${NC}"
+            echo -e "${AMARILLO}📌 Nota: Los saltos de línea dentro de una entrada serán corregidos automáticamente.${NC}"
             echo
-            PROMPT=$(echo -e "${ROSA}➡️ Mensaje: ${NC}")
-            read -r BANNER_TEXT
 
-            if [[ -z "$BANNER_TEXT" ]]; then
-                echo -e "${ROJO}❌ No se ingresó ningún mensaje.${NC}"
+            # Arreglos para almacenar las líneas del banner y el texto limpio
+            declare -a BANNER_LINES
+            declare -a PLAIN_TEXT_LINES
+            LINE_COUNT=0
+            TEMP_LINE=""
+
+            # Leer el banner línea por línea
+            while true; do
+                PROMPT=$(echo -e "${ROSA}➡️ Línea $((LINE_COUNT + 1)) (o escribe 'FIN' para terminar): ${NC}")
+                read -r INPUT_LINE
+                if [[ "$INPUT_LINE" == "FIN" ]]; then
+                    # Guardar la última línea acumulada si existe
+                    if [[ -n "$TEMP_LINE" ]]; then
+                        # Eliminar saltos de línea y espacios extra
+                        CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
+                        BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
+                        # Extraer texto limpio para la vista previa
+                        PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
+                        PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
+                        ((LINE_COUNT++))
+                    fi
+                    break
+                fi
+
+                # Acumular la línea en TEMP_LINE
+                TEMP_LINE="$TEMP_LINE$INPUT_LINE"
+
+                # Verificar si la línea contiene una etiqueta de cierre </h2> o </font>
+                if [[ "$INPUT_LINE" =~ \</(h2|font)\> ]]; then
+                    # Eliminar saltos de línea y espacios extra
+                    CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
+                    if [[ -z "$CLEAN_LINE" ]]; then
+                        echo -e "${ROJO}❌ La línea no puede estar vacía. Intenta de nuevo.${NC}"
+                        TEMP_LINE=""
+                        continue
+                    fi
+                    BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
+                    # Extraer texto limpio para la vista previa
+                    PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
+                    PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
+                    ((LINE_COUNT++))
+                    TEMP_LINE=""
+                fi
+            done
+
+            if [[ $LINE_COUNT -eq 0 ]]; then
+                echo -e "${ROJO}❌ No se ingresaron líneas válidas para el banner.${NC}"
                 read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
                 return
             fi
 
-            # Selección de color
-            clear
-            echo -e "${VIOLETA}===== 🎀 SELECCIONAR COLOR DEL BANNER =====${NC}"
-            echo -e "${AMARILLO}Selecciona un color para el banner:${NC}"
-            echo -e "${AMARILLO}1) HotPink${NC}"
-            echo -e "${AMARILLO}2) Black${NC}"
-            echo -e "${AMARILLO}3) Turquoise${NC}"
-            echo -e "${AMARILLO}4) Purple${NC}"
-            echo -e "${AMARILLO}5) Orange${NC}"
-            echo -e "${AMARILLO}6) DeepPink${NC}"
-            echo -e "${AMARILLO}7) Magenta${NC}"
-            echo -e "${AMARILLO}8) Lime${NC}"
-            echo -e "${AMARILLO}9) Blue${NC}"
-            echo -e "${AMARILLO}10) Teal${NC}"
-            echo -e "${AMARILLO}11) Aqua${NC}"
-            echo
-            PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
-            read -p "$PROMPT" COLOR_OP
+            # Crear el archivo del banner con el contenido HTML corregido
+            :
 
-            case $COLOR_OP in
-                1) COLOR="#FF69B4" ;;  # HotPink
-                2) COLOR="#000000" ;;  # Black
-                3) COLOR="#40E0D0" ;;  # Turquoise
-                4) COLOR="#800080" ;;  # Purple
-                5) COLOR="#FFA500" ;;  # Orange
-                6) COLOR="#FF1493" ;;  # DeepPink
-                7) COLOR="#FF00FF" ;;  # Magenta
-                8) COLOR="#00FF00" ;;  # Lime
-                9) COLOR="#0000FF" ;;  # Blue (corregido)
-                10) COLOR="#008080" ;; # Teal
-                11) COLOR="#00FFFF" ;; # Aqua (corregido)
-                *)
-                    echo -e "${ROJO}❌ ¡Color inválido! Usando HotPink por defecto.${NC}"
-                    COLOR="#FF69B4" ;; # HotPink por defecto
-            esac
-
-            # Formatear el banner con el color elegido
-            FORMATTED_BANNER="<h2><font color=\"$COLOR\">$BANNER_TEXT 💕</font></h2>"
-
-            # Guardar el texto del banner con el formato
-            echo "$FORMATTED_BANNER" > "$BANNER_FILE" 2>/dev/null || {
-                echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-                return
-            }
+ > "$BANNER_FILE"  # Limpiar el archivo
+            for ((i=0; i<LINE_COUNT; i++)); do
+                echo "${BANNER_LINES[$i]}" >> "$BANNER_FILE" 2>/dev/null || {
+                    echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
+                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                    return
+                }
+            done
 
             # Configurar el banner en sshd_config
             if grep -q "^Banner" "$SSHD_CONFIG"; then
@@ -1513,8 +1521,10 @@ function configurar_banner_ssh() {
             }
 
             echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
-            echo -e "${CIAN}📜 Contenido del banner:${NC}"
-            cat "$BANNER_FILE"
+            echo -e "${CIAN}📜 Vista previa del banner (sin etiquetas HTML):${NC}"
+            for ((i=0; i<LINE_COUNT; i++)); do
+                echo -e "${PLAIN_TEXT_LINES[$i]}"
+            done
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             ;;
         2)
@@ -1542,12 +1552,10 @@ function configurar_banner_ssh() {
             ;;
     esac
 }
+        
 
 
-
-
-
-
+            
                 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
