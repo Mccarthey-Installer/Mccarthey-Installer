@@ -1414,7 +1414,6 @@ function ver_registros() {
 }
     
 
-
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
@@ -1433,8 +1432,9 @@ function configurar_banner_ssh() {
             echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
             echo -e "${AMARILLO}📝 Pega o escribe tu banner en formato HTML (puedes incluir colores, emojis, etc.).${NC}"
             echo -e "${AMARILLO}📌 Presiona Enter dos veces (línea vacía) para terminar.${NC}"
-            echo -e "${AMARILLO}📌 Ejemplo: <h2><font color=\"Red\">⛅ ESTAS USANDO UNA VPS PREMIUM 🌈</font></h2>${NC}"
+            echo -e "${AMARILLO}📌 Ejemplo: <h2><font color=\"Red\">⛅ ESTÁS USANDO UNA VPS PREMIUM 🌈</font></h2>${NC}"
             echo -e "${AMARILLO}📌 Nota: Los saltos de línea dentro de una entrada serán corregidos automáticamente.${NC}"
+            echo -e "${AMARILLO}📌 Asegúrate de que tu cliente SSH (ej. PuTTY) esté configurado para UTF-8 y soporte HTML.${NC}"
             echo
 
             # Arreglos para almacenar las líneas del banner y el texto limpio
@@ -1495,11 +1495,12 @@ function configurar_banner_ssh() {
             # Mostrar vista previa y pedir confirmación
             clear
             echo -e "${VIOLETA}===== 🎀 VISTA PREVIA DEL BANNER =====${NC}"
-            echo -e "${CIAN}📜 Así se verá el banner (sin etiquetas HTML):${NC}"
+            echo -e "${CIAN}📜 Así se verá el banner (sin etiquetas HTML, colores y emojis dependen del cliente SSH):${NC}"
             for ((i=0; i<LINE_COUNT; i++)); do
                 echo -e "${PLAIN_TEXT_LINES[$i]}"
             done
             echo
+            echo -e "${AMARILLO}⚠️ Nota: Asegúrate de que tu cliente SSH (ej. PuTTY) use UTF-8 para ver emojis y soporte HTML para colores.${NC}"
             PROMPT=$(echo -e "${ROSA}➡️ ¿Confirmar y guardar el banner? (s/n): ${NC}")
             read -p "$PROMPT" CONFIRM
             if [[ "$CONFIRM" != "s" && "$CONFIRM" != "S" ]]; then
@@ -1508,8 +1509,9 @@ function configurar_banner_ssh() {
                 return
             fi
 
-            # Crear el archivo del banner con el contenido HTML corregido
+            # Crear el archivo del banner con codificación UTF-8
             : > "$BANNER_FILE"  # Limpiar el archivo
+            printf '\xEF\xBB\xBF' > "$BANNER_FILE"  # Agregar BOM para UTF-8
             for ((i=0; i<LINE_COUNT; i++)); do
                 echo "${BANNER_LINES[$i]}" >> "$BANNER_FILE" 2>/dev/null || {
                     echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
@@ -1533,6 +1535,15 @@ function configurar_banner_ssh() {
                 }
             fi
 
+            # Configurar el servidor SSH para aceptar UTF-8
+            if ! grep -q "^AcceptEnv LANG LC_*" "$SSHD_CONFIG"; then
+                echo "AcceptEnv LANG LC_*" >> "$SSHD_CONFIG" 2>/dev/null || {
+                    echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG para UTF-8. Verifica permisos.${NC}"
+                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                    return
+                }
+            fi
+
             # Reiniciar el servicio SSH
             systemctl restart sshd >/dev/null 2>&1 || {
                 echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
@@ -1545,6 +1556,7 @@ function configurar_banner_ssh() {
             for ((i=0; i<LINE_COUNT; i++)); do
                 echo -e "${PLAIN_TEXT_LINES[$i]}"
             done
+            echo -e "${AMARILLO}⚠️ Nota: Configura tu cliente SSH (ej. PuTTY) con UTF-8 para ver emojis y verifica soporte HTML para colores.${NC}"
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             ;;
         2)
@@ -1573,6 +1585,8 @@ function configurar_banner_ssh() {
     esac
 }
 
+
+            
 
             
                 
