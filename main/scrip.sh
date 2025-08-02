@@ -1413,6 +1413,8 @@ function ver_registros() {
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
     
+
+
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
@@ -1430,7 +1432,7 @@ function configurar_banner_ssh() {
             clear
             echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
             echo -e "${AMARILLO}📝 Pega o escribe tu banner en formato HTML (puedes incluir colores, emojis, etc.).${NC}"
-            echo -e "${AMARILLO}📌 Usa 'FIN' en una línea sola para terminar.${NC}"
+            echo -e "${AMARILLO}📌 Presiona Enter dos veces (línea vacía) para terminar.${NC}"
             echo -e "${AMARILLO}📌 Ejemplo: <h2><font color=\"Red\">⛅ ESTAS USANDO UNA VPS PREMIUM 🌈</font></h2>${NC}"
             echo -e "${AMARILLO}📌 Nota: Los saltos de línea dentro de una entrada serán corregidos automáticamente.${NC}"
             echo
@@ -1440,31 +1442,36 @@ function configurar_banner_ssh() {
             declare -a PLAIN_TEXT_LINES
             LINE_COUNT=0
             TEMP_LINE=""
+            PREVIOUS_EMPTY=false
 
             # Leer el banner línea por línea
             while true; do
-                PROMPT=$(echo -e "${ROSA}➡️ Línea $((LINE_COUNT + 1)) (o escribe 'FIN' para terminar): ${NC}")
+                PROMPT=$(echo -e "${ROSA}➡️ Línea $((LINE_COUNT + 1)): ${NC}")
                 read -r INPUT_LINE
-                if [[ "$INPUT_LINE" == "FIN" ]]; then
-                    # Guardar la última línea acumulada si existe
-                    if [[ -n "$TEMP_LINE" ]]; then
-                        # Eliminar saltos de línea y espacios extra
-                        CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
-                        BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
-                        # Extraer texto limpio para la vista previa
-                        PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
-                        PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
-                        ((LINE_COUNT++))
+
+                # Verificar si es una línea vacía (Enter)
+                if [[ -z "$INPUT_LINE" ]]; then
+                    if [[ "$PREVIOUS_EMPTY" == true ]]; then
+                        # Dos Enters consecutivos, terminar entrada
+                        if [[ -n "$TEMP_LINE" ]]; then
+                            # Guardar la última línea acumulada
+                            CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
+                            BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
+                            PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
+                            PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
+                            ((LINE_COUNT++))
+                        fi
+                        break
                     fi
-                    break
+                    PREVIOUS_EMPTY=true
+                    continue
                 fi
 
-                # Acumular la línea en TEMP_LINE
+                PREVIOUS_EMPTY=false
                 TEMP_LINE="$TEMP_LINE$INPUT_LINE"
 
                 # Verificar si la línea contiene una etiqueta de cierre </h2> o </font>
                 if [[ "$INPUT_LINE" =~ \</(h2|font)\> ]]; then
-                    # Eliminar saltos de línea y espacios extra
                     CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
                     if [[ -z "$CLEAN_LINE" ]]; then
                         echo -e "${ROJO}❌ La línea no puede estar vacía. Intenta de nuevo.${NC}"
@@ -1472,7 +1479,6 @@ function configurar_banner_ssh() {
                         continue
                     fi
                     BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
-                    # Extraer texto limpio para la vista previa
                     PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
                     PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
                     ((LINE_COUNT++))
@@ -1486,10 +1492,24 @@ function configurar_banner_ssh() {
                 return
             fi
 
-            # Crear el archivo del banner con el contenido HTML corregido
-            :
+            # Mostrar vista previa y pedir confirmación
+            clear
+            echo -e "${VIOLETA}===== 🎀 VISTA PREVIA DEL BANNER =====${NC}"
+            echo -e "${CIAN}📜 Así se verá el banner (sin etiquetas HTML):${NC}"
+            for ((i=0; i<LINE_COUNT; i++)); do
+                echo -e "${PLAIN_TEXT_LINES[$i]}"
+            done
+            echo
+            PROMPT=$(echo -e "${ROSA}➡️ ¿Confirmar y guardar el banner? (s/n): ${NC}")
+            read -p "$PROMPT" CONFIRM
+            if [[ "$CONFIRM" != "s" && "$CONFIRM" != "S" ]]; then
+                echo -e "${AMARILLO}⚠️ Configuración de banner cancelada.${NC}"
+                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                return
+            fi
 
- > "$BANNER_FILE"  # Limpiar el archivo
+            # Crear el archivo del banner con el contenido HTML corregido
+            : > "$BANNER_FILE"  # Limpiar el archivo
             for ((i=0; i<LINE_COUNT; i++)); do
                 echo "${BANNER_LINES[$i]}" >> "$BANNER_FILE" 2>/dev/null || {
                     echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
@@ -1521,7 +1541,7 @@ function configurar_banner_ssh() {
             }
 
             echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
-            echo -e "${CIAN}📜 Vista previa del banner (sin etiquetas HTML):${NC}"
+            echo -e "${CIAN}📜 Contenido final del banner:${NC}"
             for ((i=0; i<LINE_COUNT; i++)); do
                 echo -e "${PLAIN_TEXT_LINES[$i]}"
             done
@@ -1552,7 +1572,6 @@ function configurar_banner_ssh() {
             ;;
     esac
 }
-        
 
 
             
