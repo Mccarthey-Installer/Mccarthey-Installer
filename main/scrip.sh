@@ -1,4 +1,6 @@
-#!/bin/bash
+
+
+    #!/bin/bash
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
 timedatectl set-timezone America/El_Salvador
@@ -6,8 +8,8 @@ timedatectl set-timezone America/El_Salvador
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
-BANNER_DIR="/etc/ssh_banners"  # Directorio para banners por usuario
-BANNER_FILE="/etc/ssh_banner"  # Banner global
+BANNER_FILE="/etc/ssh_banner"  # Banner global personalizado
+BANNER_SCRIPT="/etc/ssh_banner.sh"  # Script dinámico para el banner
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -18,71 +20,486 @@ CIAN='\033[38;5;51m'
 ROSA='\033[38;2;255;105;180m'
 NC='\033[0m'
 
-# Crear directorio para banners por usuario si no existe
-mkdir -p "$BANNER_DIR" 2>/dev/null
-chmod 755 "$BANNER_DIR"
+# Crear el script dinámico para el banner SSH
+function configurar_banner_script() {
+    cat << 'EOF' > "$BANNER_SCRIPT"
+#!/bin/bash
+# Script dinámico para generar banner SSH por usuario
 
-# Función para generar el banner dinámico por usuario
-function generar_banner_usuario() {
-    local USUARIO="$1"
-    local CLAVE="$2"
-    local EXPIRA_DATETIME="$3"
-    local DIAS="$4"
-    local MOVILES="$5"
-    local FECHA_CREACION="$6"
+# Configurar codificación UTF-8
+printf '\xEF\xBB\xBF'
 
-    local USER_BANNER_FILE="$BANNER_DIR/${USUARIO}_banner"
+# Obtener el usuario que se conecta
+USUARIO="${SSH_USER:-$USER}"
+if [[ -z "$USUARIO" ]]; then
+    USUARIO=$(whoami)
+fi
 
-    # Calcular días restantes
-    if [[ -n "$EXPIRA_DATETIME" ]]; then
-        FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
-        FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-        DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-        [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
-    else
-        DIAS_RESTANTES="N/A"
-    fi
+REGISTROS="/root/registros.txt"
+BANNER_FILE="/etc/ssh_banner"
 
-    # Formatear fecha de vencimiento
-    FECHA_VENCIMIENTO=$(date -d "$EXPIRA_DATETIME" +"%d de %B" 2>/dev/null | \
-        sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/')
+# Buscar información del usuario en registros.txt
+if [[ -f "$REGISTROS" ]]; then
+    LINEA=$(grep "^$USUARIO[[:space:]]" "$REGISTROS")
+    if [[ -n "$LINEA" ]]; then
+        IFS=$'\t' read -r _USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL FECHA_CREACION <<< "$LINEA"
+        
+        # Calcular días restantes
+        if [[ -n "$EXPIRA_DATETIME" ]]; then
+            FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
+            FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+            DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+            [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+        else
+            DIAS_RESTANTES="N/A"
+        fi
 
-    # Crear contenido del banner dinámico
-    {
-        printf '\xEF\xBB\xBF'  # BOM para UTF-8
+        # Formatear fecha de vencimiento
+        FECHA_VENCIMIENTO=$(date -d "$EXPIRA_DATETIME" +"%d de %B" 2>/dev/null | \
+            sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/')
+
+        # Generar banner dinámico
         echo "<h2><font color=\"Blue\">👤 Usuário: $USUARIO (Premium)</font></h2>"
         echo "<h2><font color=\"Green\">⏳ Vence: $DIAS_RESTANTES dia$( [[ $DIAS_RESTANTES -ne 1 ]] && echo "s" )</font></h2>"
         echo "<h2><font color=\"Purple\">📱 Limite: $MOVILES</font></h2>"
         echo "<h2><font color=\"Red\">📆 Vencimiento $FECHA_VENCIMIENTO</font></h2>"
-        echo ""  # Línea vacía para separar
-        # Agregar el banner global si existe
-        [[ -f "$BANNER_FILE" ]] && cat "$BANNER_FILE"
-    } > "$USER_BANNER_FILE" 2>/dev/null || {
-        echo -e "${ROJO}❌ Error al crear el banner para $USUARIO en $USER_BANNER_FILE. Verifica permisos.${NC}"
+        echo ""
+    else
+        echo "<h2><font color=\"Red\">⚠️ Usuário no registrado en el sistema</font></h2>"
+    fi
+else
+    echo "<h2><font color=\"Red\">⚠️ No se encontraron registros</font></h2>"
+fi
+
+# Agregar banner global si existe
+if [[ -f "$BANNER_FILE" ]]; then
+    cat "$BANNER_FILE"
+fi
+EOF
+
+    # Establecer permisos ejecutables
+    chmod 755 "$BANNER_SCRIPT" 2>/dev/null || {
+        echo -e "${ROJO}❌ Error al establecer permisos para $BANNER_SCRIPT.${NC}"
+        return 1
+    }
+    chown root:root "$BANNER_SCRIPT" 2>/dev/null
+
+    # Configurar /etc/ssh/sshd_config para usar el script dinámico
+    SSHD_CONFIG="/etc/ssh/sshd_config"
+    if grep -q "^Banner" "$SSHD_CONFIG"; then
+        sed -i "s|^Banner.*|Banner $BANNER_SCRIPT|" "$SSHD_CONFIG" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+            return 1
+        }
+    else
+        echo "Banner $BANNER_SCRIPT" >> "$SSHD_CONFIG" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
+            return 1
+        }
+    fi
+
+    # Asegurar soporte para UTF-8
+    if ! grep -q "^AcceptEnv LANG LC_*" "$SSHD_CONFIG"; then
+        echo "AcceptEnv LANG LC_*" >> "$SSHD_CONFIG" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error al configurar UTF-8 en $SSHD_CONFIG.${NC}"
+            return 1
+        }
+    fi
+
+    # Reiniciar el servicio SSH
+    systemctl restart sshd >/dev/null 2>&1 || {
+        echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
         return 1
     }
 
-    # Establecer permisos
-    chmod 644 "$USER_BANNER_FILE" 2>/dev/null
-    chown root:root "$USER_BANNER_FILE" 2>/dev/null
+    echo -e "${VERDE}✅ Script de banner dinámico configurado en $BANNER_SCRIPT.${NC}"
+}
 
-    # Configurar ~/.bashrc para mostrar el banner al conectar
-    local USER_HOME="/home/$USUARIO"
-    local BASHRC="$USER_HOME/.bashrc"
-    if [[ -d "$USER_HOME" ]]; then
-        echo "cat $USER_BANNER_FILE" >> "$BASHRC" 2>/dev/null || {
-            echo -e "${ROJO}❌ Error al modificar $BASHRC para $USUARIO. Verifica permisos.${NC}"
+# Función modificada para crear usuario
+function crear_usuario() {
+    clear
+    echo -e "${ROJO}===== 🤪 CREAR USUARIO SSH =====${NC}"
+
+    # Verificar si se puede escribir $REGISTROS
+    if [[ ! -f "$REGISTROS" ]]; then
+        touch "$REGISTROS" 2>/dev/null || {
+            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             return 1
         }
-        chmod 644 "$BASHRC" 2>/dev/null
-        chown "$USUARIO:$USUARIO" "$BASHRC" 2>/dev/null
-    else
-        echo -e "${ROJO}❌ El directorio $USER_HOME no existe para $USUARIO.${NC}"
+    fi
+    if [[ ! -w "$REGISTROS" ]]; then
+        echo -e "${ROJO}❌ No se puede escribir en $REGISTROS. Revisa permisos.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return 1
     fi
 
-    return 0
+    # Leer nombre del usuario
+    while true; do
+        read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
+        [[ -z "$USUARIO" ]] && echo -e "${ROJO}❌ Ingresa un nombre válido.${NC}" && continue
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}⚠️ El usuario '$USUARIO' ya existe en el sistema.${NC}"
+            continue
+        fi
+        if grep -qw "^$USUARIO" "$REGISTROS"; then
+            echo -e "${ROJO}⚠️ Ya existe un registro con ese nombre en $REGISTROS.${NC}"
+            continue
+        fi
+        break
+    done
+
+    read -p "$(echo -e ${AMARILLO}🔑 Contraseña: ${NC})" CLAVE
+    [[ -z "$CLAVE" ]] && echo -e "${ROJO}❌ La contraseña no puede estar vacía.${NC}" && return 1
+
+    # Días de validez
+    while true; do
+        read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
+        [[ "$DIAS" =~ ^[0-9]+$ && "$DIAS" -ge 0 ]] && break
+        echo -e "${ROJO}❌ Ingresa un número válido (0 o más).${NC}"
+    done
+
+    # Número de móviles
+    while true; do
+        read -p "$(echo -e ${AMARILLO}📱 ¿Cuántos móviles? ${NC})" MOVILES
+        [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ && "$MOVILES" -le 999 ]] && break
+        echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
+    done
+
+    # Fechas
+    EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00")
+    EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
+    FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
+
+    # Crear usuario en el sistema
+    if ! useradd -m -s /bin/bash "$USUARIO"; then
+        echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
+        return 1
+    fi
+
+    # Establecer contraseña
+    if ! echo "$USUARIO:$CLAVE" | chpasswd; then
+        userdel -r "$USUARIO" 2>/dev/null
+        echo -e "${ROJO}❌ Falló el cambio de contraseña. Usuario eliminado.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
+        return 1
+    fi
+
+    # Establecer fecha de expiración
+    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
+        userdel -r "$USUARIO" 2>/dev/null
+        echo -e "${ROJO}❌ Error configurando expiración. Usuario eliminado.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
+        return 1
+    fi
+
+    # Agregar al REGISTRO con bloqueo
+    {
+        if ! flock -x -w 10 200; then
+            userdel -r "$USUARIO" 2>/dev/null
+            echo -e "${ROJO}❌ Error: No se pudo escribir en $REGISTROS debido a un bloqueo. Usuario eliminado.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
+            return 1
+        fi
+
+        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS\t$MOVILES\tNO\t$FECHA_CREACION" >> "$REGISTROS"
+        sync
+        sleep 0.2
+
+        # Verificar que el registro se escribió
+        if ! grep -qw "^$USUARIO" "$REGISTROS"; then
+            userdel -r "$USUARIO" 2>/dev/null
+            echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Usuario eliminado.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
+            return 1
+        fi
+    } 200>"$REGISTROS.lock"
+
+    # Configurar el script dinámico si no existe
+    if [[ ! -f "$BANNER_SCRIPT" ]]; then
+        configurar_banner_script
+    fi
+
+    # Mostrar resultado
+    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
+    echo
+    echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
+    echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO"
+    echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE"
+    echo -e "${AZUL}📅 Expira:  ${AMARILLO}$FECHA_FORMAT"
+    echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$MOVILES"
+    echo -e "${AZUL}📅 Creado:  ${AMARILLO}$FECHA_CREACION"
+    echo -e "${AZUL}🎨 Banner dinámico configurado para conexiones SSH (incluye HTTP Injector)${NC}"
+
+    echo
+    echo -e "${CIAN}===== 📝 RESUMEN DE REGISTRO =====${NC}"
+    printf "${AMARILLO}%-15s %-20s %-15s %-15s %-20s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Días" "📱 Móviles" "📅 Creado"
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    printf "${VERDE}%-15s %-20s %-15s %-15s %-20s${NC}\n" "$USUARIO:$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES" "$FECHA_CREACION"
+    echo -e "${CIAN}===============================================================${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
+
+# Modificar eliminar_usuario para no manejar banners por usuario
+function eliminar_usuario() {
+    clear
+    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 =====${NC}"
+
+    if [[ ! -f $REGISTROS ]]; then
+        echo -e "${ROJO}❌ No hay registros para eliminar (pero igual se procede con usuarios del sistema).${NC}"
+    fi
+
+    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
+    echo -e "${CIAN}--------------------------${NC}"
+    NUM=1
+    declare -A USUARIOS_EXISTENTES
+    if [[ -f $REGISTROS ]]; then
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
+                USUARIOS_EXISTENTES[$NUM]="$USUARIO"
+                NUM=$((NUM+1))
+            fi
+        done < "$REGISTROS"
+    fi
+
+    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
+        echo -e "${AZUL}ℹ️ No hay usuarios en registros, pero puede ingresar nombres de usuarios del sistema para eliminar.${NC}"
+    fi
+
+    echo
+    echo -e "${AMARILLO}🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios)${NC}"
+    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
+    read -p "$PROMPT" INPUT_ENTRADA
+    if [[ "$INPUT_ENTRADA" == "0" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    read -ra ELEMENTOS <<< "$INPUT_ENTRADA"
+    declare -a USUARIOS_A_ELIMINAR=()
+    for ELEM in "${ELEMENTOS[@]}"; do
+        if [[ "$ELEM" =~ ^[0-9]+$ ]]; then
+            if [[ -n "${USUARIOS_EXISTENTES[$ELEM]}" ]]; then
+                USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$ELEM]}")
+            else
+                echo -e "${ROJO}❌ Número inválido: $ELEM${NC}"
+            fi
+        else
+            if id "$ELEM" &>/dev/null; then
+                USUARIOS_A_ELIMINAR+=("$ELEM")
+            else
+                echo -e "${ROJO}❌ Usuario inválido o no existe en el sistema: $ELEM${NC}"
+            fi
+        fi
+    done
+
+    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
+    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        echo -e "${VERDE}$USUARIO${NC}"
+    done
+    echo -e "${CIAN}--------------------------${NC}"
+    echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR NIVEL DIABLO? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != [sS] ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        USUARIO_ESCAPADO=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[^a-zA-Z0-9._-]//g')
+
+        echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
+
+        # Bloquear usuario
+        sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null || true
+        # Matar procesos
+        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null || true
+        sleep 1
+        # Eliminar cuenta y home
+        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo rm -rf "/home/$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
+
+        # Eliminar del registro
+        if [[ -f $REGISTROS ]]; then
+            awk -v user="$USUARIO_ESCAPADO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > /tmp/registros.tmp && mv /tmp/registros.tmp "$REGISTROS"
+        fi
+        # Eliminar del historial
+        if [[ -f $HISTORIAL ]]; then
+            sed -i "/^$USUARIO_ESCAPADO|/Id" "$HISTORIAL"
+        fi
+
+        # Limpiar historiales de shell
+        HOME_DIR="/home/$USUARIO_LIMPIO"
+        if [[ -d "$HOME_DIR" ]]; then
+            sudo rm -f "$HOME_DIR/.bash_history" "$HOME_DIR/.zsh_history" "$HOME_DIR/.sh_history" "$HOME_DIR/.history" 2>/dev/null || true
+        fi
+        if [[ "$USUARIO_LIMPIO" == "root" ]]; then
+            sudo rm -f /root/.bash_history 2>/dev/null || true
+        fi
+
+        # Limpiar logs de autenticación
+        for LOGFILE in /var/log/auth.log /var/log/secure; do
+            if [[ -f "$LOGFILE" ]]; then
+                sudo sed -i "/$USUARIO_ESCAPADO/Id" "$LOGFILE" 2>/dev/null || true
+            fi
+        done
+
+        # Verificación final
+        if ! id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y limpiado.${NC}"
+        else
+            echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
+        fi
+
+        echo -e "${CIAN}--------------------------------------${NC}"
+    done
+
+    echo -e "${VERDE}✅ Eliminación nuclear y limpieza completa (SATÁN ESTÁ ORGULLOSO).${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+}
+
+# Modificar configurar_banner_ssh para mantener compatibilidad
+function configurar_banner_ssh() {
+    clear
+    echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
+    echo -e "${AMARILLO}1) AGREGAR${NC}"
+    echo -e "${AMARILLO}2) ELIMINAR${NC}"
+    echo
+    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+    read -p "$PROMPT" SUBOP
+
+    case $SUBOP in
+        1)
+            clear
+            echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
+            echo -e "${AMARILLO}📝 Pega o escribe tu banner en formato HTML (puedes incluir colores, emojis, etc.).${NC}"
+            echo -e "${AMARILLO}📌 Presiona Enter dos veces (línea vacía) para terminar.${NC}"
+            echo -e "${AMARILLO}📌 Ejemplo: <h2><font color=\"Red\">⛅ ESTÁS USANDO UNA VPS PREMIUM 🌈</font></h2>${NC}"
+            echo -e "${AMARILLO}📌 Nota: Los saltos de línea dentro de una entrada serán corregidos automáticamente.${NC}"
+            echo -e "${AMARILLO}📌 Asegúrate de que tu cliente SSH (ej. HTTP Injector) esté configurado para UTF-8 y soporte HTML.${NC}"
+            echo
+
+            declare -a BANNER_LINES
+            declare -a PLAIN_TEXT_LINES
+            LINE_COUNT=0
+            TEMP_LINE=""
+            PREVIOUS_EMPTY=false
+
+            while true; do
+                PROMPT=$(echo -e "${ROSA}➡️ Línea $((LINE_COUNT + 1)): ${NC}")
+                read -r INPUT_LINE
+
+                if [[ -z "$INPUT_LINE" ]]; then
+                    if [[ "$PREVIOUS_EMPTY" == true ]]; then
+                        if [[ -n "$TEMP_LINE" ]]; then
+                            CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
+                            BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
+                            PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
+                            PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
+                            ((LINE_COUNT++))
+                        fi
+                        break
+                    fi
+                    PREVIOUS_EMPTY=true
+                    continue
+                fi
+
+                PREVIOUS_EMPTY=false
+                TEMP_LINE="$TEMP_LINE$INPUT_LINE"
+
+                if [[ "$INPUT_LINE" =~ \</(h2|font)\> ]]; then
+                    CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
+                    if [[ -z "$CLEAN_LINE" ]]; then
+                        echo -e "${ROJO}❌ La línea no puede estar vacía. Intenta de nuevo.${NC}"
+                        TEMP_LINE=""
+                        continue
+                    fi
+                    BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
+                    PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
+                    PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
+                    ((LINE_COUNT++))
+                    TEMP_LINE=""
+                fi
+            done
+
+            if [[ $LINE_COUNT -eq 0 ]]; then
+                echo -e "${ROJO}❌ No se ingresaron líneas válidas para el banner.${NC}"
+                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                return
+            fi
+
+            clear
+            echo -e "${VIOLETA}===== 🎀 VISTA PREVIA DEL BANNER =====${NC}"
+            echo -e "${CIAN}📜 Así se verá el banner (sin etiquetas HTML, colores y emojis dependen del cliente SSH):${NC}"
+            for ((i=0; i<LINE_COUNT; i++)); do
+                echo -e "${PLAIN_TEXT_LINES[$i]}"
+            done
+            echo
+            echo -e "${AMARILLO}⚠️ Nota: Asegúrate de que tu cliente SSH (ej. HTTP Injector) use UTF-8 para ver emojis y soporte HTML para colores.${NC}"
+            PROMPT=$(echo -e "${ROSA}➡️ ¿Confirmar y guardar el banner? (s/n): ${NC}")
+            read -p "$PROMPT" CONFIRM
+            if [[ "$CONFIRM" != "s" && "$CONFIRM" != "S" ]]; then
+                echo -e "${AMARILLO}⚠️ Configuración de banner cancelada.${NC}"
+                read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                return
+            fi
+
+            : > "$BANNER_FILE"
+            printf '\xEF\xBB\xBF' > "$BANNER_FILE"
+            for ((i=0; i<LINE_COUNT; i++)); do
+                echo "${BANNER_LINES[$i]}" >> "$BANNER_FILE" 2>/dev/null || {
+                    echo -e "${ROJO}❌ Error al crear el archivo $BANNER_FILE. Verifica permisos.${NC}"
+                    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+                    return
+                }
+            done
+
+            # Configurar el script dinámico si no está configurado
+            if [[ ! -f "$BANNER_SCRIPT" ]]; then
+                configurar_banner_script
+            fi
+
+            echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
+            echo -e "${CIAN}📜 Contenido final del banner:${NC}"
+            for ((i=0; i<LINE_COUNT; i++)); do
+                echo -e "${PLAIN_TEXT_LINES[$i]}"
+            done
+            echo -e "${AMARILLO}⚠️ Nota: Configura tu cliente SSH (ej. HTTP Injector) con UTF-8 para ver emojis y verifica soporte HTML para colores.${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            ;;
+        2)
+            if [[ -f "$BANNER_FILE" ]]; then
+                rm -f "$BANNER_FILE" 2>/dev/null
+                echo -e "${VERDE}✅ Banner global eliminado. El banner dinámico seguirá mostrando información del usuario.${NC}"
+            else
+                echo -e "${AMARILLO}⚠️ El banner global ya está desactivado.${NC}"
+            fi
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            ;;
+        *)
+            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+            ;;
+    esac
+}
+
+# El resto de las funciones (monitorear_conexiones, verificar_integridad_registros, etc.) permanecen sin cambios
+# Incluye aquí las demás funciones del script original si es necesario
 
 # Función para configurar la autoejecución en ~/.bashrc
 function configurar_autoejecucion() {
@@ -511,280 +928,10 @@ function informacion_usuarios() {
 }
 
 
-# Función modificada para crear usuario
-function crear_usuario() {
-    clear
-    echo -e "${ROJO}===== 🤪 CREAR USUARIO SSH =====${NC}"
-
-    # Verificar si se puede escribir $REGISTROS
-    if [[ ! -f "$REGISTROS" ]]; then
-        touch "$REGISTROS" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return 1
-        }
-    fi
-    if [[ ! -w "$REGISTROS" ]]; then
-        echo -e "${ROJO}❌ No se puede escribir en $REGISTROS. Revisa permisos.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Leer nombre del usuario
-    while true; do
-        read -p "$(echo -e ${AMARILLO}👤 Nombre del usuario: ${NC})" USUARIO
-        [[ -z "$USUARIO" ]] && echo -e "${ROJO}❌ Ingresa un nombre válido.${NC}" && continue
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}⚠️ El usuario '$USUARIO' ya existe en el sistema.${NC}"
-            continue
-        fi
-        if grep -qw "^$USUARIO" "$REGISTROS"; then
-            echo -e "${ROJO}⚠️ Ya existe un registro con ese nombre en $REGISTROS.${NC}"
-            continue
-        fi
-        break
-    done
-
-    read -p "$(echo -e ${AMARILLO}🔑 Contraseña: ${NC})" CLAVE
-    [[ -z "$CLAVE" ]] && echo -e "${ROJO}❌ La contraseña no puede estar vacía.${NC}" && return 1
-
-    # Días de validez
-    while true; do
-        read -p "$(echo -e ${AMARILLO}📅 Días de validez: ${NC})" DIAS
-        [[ "$DIAS" =~ ^[0-9]+$ && "$DIAS" -ge 0 ]] && break
-        echo -e "${ROJO}❌ Ingresa un número válido (0 o más).${NC}"
-    done
-
-    # Número de móviles
-    while true; do
-        read -p "$(echo -e ${AMARILLO}📱 ¿Cuántos móviles? ${NC})" MOVILES
-        [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ && "$MOVILES" -le 999 ]] && break
-        echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
-    done
-
-    # Fechas
-    EXPIRA_DATETIME=$(date -d "+$DIAS days" +"%Y-%m-%d 00:00:00")
-    EXPIRA_FECHA=$(date -d "+$((DIAS+1)) days" +"%Y-%m-%d")
-    FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
-
-    # Crear usuario en el sistema
-    if ! useradd -m -s /bin/bash "$USUARIO"; then
-        echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-        return 1
-    fi
-
-    # Establecer contraseña
-    if ! echo "$USUARIO:$CLAVE" | chpasswd; then
-        userdel -r "$USUARIO" 2>/dev/null
-        echo -e "${ROJO}❌ Falló el cambio de contraseña. Usuario eliminado.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-        return 1
-    fi
-
-    # Establecer fecha de expiración
-    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
-        userdel -r "$USUARIO" 2>/dev/null
-        echo -e "${ROJO}❌ Error configurando expiración. Usuario eliminado.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-        return 1
-    fi
-
-    # Agregar al REGISTRO con bloqueo
-    {
-        if ! flock -x -w 10 200; then
-            userdel -r "$USUARIO" 2>/dev/null
-            echo -e "${ROJO}❌ Error: No se pudo escribir en $REGISTROS debido a un bloqueo. Usuario eliminado.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-            return 1
-        fi
-
-        echo -e "$USUARIO\t$CLAVE\t$EXPIRA_DATETIME\t$DIAS\t$MOVILES\tNO\t$FECHA_CREACION" >> "$REGISTROS"
-        sync
-        sleep 0.2
-
-        # Verificar que el registro se escribió
-        if ! grep -qw "^$USUARIO" "$REGISTROS"; then
-            userdel -r "$USUARIO" 2>/dev/null
-            echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Usuario eliminado.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-            return 1
-        fi
-    } 200>"$REGISTROS.lock"
-
-    # Generar banner dinámico para el usuario
-    if ! generar_banner_usuario "$USUARIO" "$CLAVE" "$EXPIRA_DATETIME" "$DIAS" "$MOVILES" "$FECHA_CREACION"; then
-        userdel -r "$USUARIO" 2>/dev/null
-        {
-            flock -x -w 10 200
-            sed -i "/^$USUARIO[[:space:]]/d" "$REGISTROS"
-            sync
-        } 200>"$REGISTROS.lock"
-        echo -e "${ROJO}❌ Error generando banner para $USUARIO. Usuario y registro eliminados.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-        return 1
-    fi
-
-    # Mostrar resultado
-    FECHA_FORMAT=$(date -d "$EXPIRA_DATETIME" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
-    echo
-    echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
-    echo -e "${AZUL}👤 Usuario: ${AMARILLO}$USUARIO"
-    echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE"
-    echo -e "${AZUL}📅 Expira:  ${AMARILLO}$FECHA_FORMAT"
-    echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$MOVILES"
-    echo -e "${AZUL}📅 Creado:  ${AMARILLO}$FECHA_CREACION"
-    echo -e "${AZUL}🎨 Banner personalizado creado en: ${AMARILLO}$BANNER_DIR/${USUARIO}_banner${NC}"
-
-    echo
-    echo -e "${CIAN}===== 📝 RESUMEN DE REGISTRO =====${NC}"
-    printf "${AMARILLO}%-15s %-20s %-15s %-15s %-20s${NC}\n" "👤 Usuario" "📅 Expira" "⏳ Días" "📱 Móviles" "📅 Creado"
-    echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    printf "${VERDE}%-15s %-20s %-15s %-15s %-20s${NC}\n" "$USUARIO:$CLAVE" "$FECHA_FORMAT" "${DIAS} días" "$MOVILES" "$FECHA_CREACION"
-    echo -e "${CIAN}===============================================================${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
-
-# Modificar eliminar_usuario para limpiar banners personalizados
-function eliminar_usuario() {
-    clear
-    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 =====${NC}"
-
-    if [[ ! -f $REGISTROS ]]; then
-        echo -e "${ROJO}❌ No hay registros para eliminar (pero igual se procede con usuarios del sistema).${NC}"
-    fi
-
-    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
-    echo -e "${CIAN}--------------------------${NC}"
-    NUM=1
-    declare -A USUARIOS_EXISTENTES
-    if [[ -f $REGISTROS ]]; then
-        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
-                USUARIOS_EXISTENTES[$NUM]="$USUARIO"
-                NUM=$((NUM+1))
-            fi
-        done < "$REGISTROS"
-    fi
-
-    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
-        echo -e "${AZUL}ℹ️ No hay usuarios en registros, pero puede ingresar nombres de usuarios del sistema para eliminar.${NC}"
-    fi
-
-    echo
-    echo -e "${AMARILLO}🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios)${NC}"
-    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
-    read -p "$PROMPT" INPUT_ENTRADA
-    if [[ "$INPUT_ENTRADA" == "0" ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    read -ra ELEMENTOS <<< "$INPUT_ENTRADA"
-    declare -a USUARIOS_A_ELIMINAR=()
-    for ELEM in "${ELEMENTOS[@]}"; do
-        if [[ "$ELEM" =~ ^[0-9]+$ ]]; then
-            if [[ -n "${USUARIOS_EXISTENTES[$ELEM]}" ]]; then
-                USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$ELEM]}")
-            else
-                echo -e "${ROJO}❌ Número inválido: $ELEM${NC}"
-            fi
-        else
-            if id "$ELEM" &>/dev/null; then
-                USUARIOS_A_ELIMINAR+=("$ELEM")
-            else
-                echo -e "${ROJO}❌ Usuario inválido o no existe en el sistema: $ELEM${NC}"
-            fi
-        fi
-    done
-
-    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
-        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
-    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        echo -e "${VERDE}$USUARIO${NC}"
-    done
-    echo -e "${CIAN}--------------------------${NC}"
-    echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR NIVEL DIABLO? (s/n)${NC}"
-    read -p "" CONFIRMAR
-    if [[ $CONFIRMAR != [sS] ]]; then
-        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return
-    fi
-
-    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
-        USUARIO_ESCAPADO=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[^a-zA-Z0-9._-]//g')
-
-        echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
-
-        # Bloquear usuario
-        sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null || true
-        # Matar procesos
-        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null || true
-        sleep 1
-        # Eliminar cuenta y home
-        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null || true
-        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null || true
-        sudo rm -rf "/home/$USUARIO_LIMPIO" 2>/dev/null || true
-        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null || true
-        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
-
-        # Eliminar banner personalizado
-        rm -f "$BANNER_DIR/${USUARIO_LIMPIO}_banner" 2>/dev/null
-
-        # Eliminar del registro
-        if [[ -f $REGISTROS ]]; then
-            awk -v user="$USUARIO_ESCAPADO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > /tmp/registros.tmp && mv /tmp/registros.tmp "$REGISTROS"
-        fi
-        # Eliminar del historial
-        if [[ -f $HISTORIAL ]]; then
-            sed -i "/^$USUARIO_ESCAPADO|/Id" "$HISTORIAL"
-        fi
-
-        # Limpiar historiales de shell
-        HOME_DIR="/home/$USUARIO_LIMPIO"
-        if [[ -d "$HOME_DIR" ]]; then
-            sudo rm -f "$HOME_DIR/.bash_history" "$HOME_DIR/.zsh_history" "$HOME_DIR/.sh_history" "$HOME_DIR/.history" 2>/dev/null || true
-        fi
-        if [[ "$USUARIO_LIMPIO" == "root" ]]; then
-            sudo rm -f /root/.bash_history 2>/dev/null || true
-        fi
-
-        # Limpiar logs de autenticación
-        for LOGFILE in /var/log/auth.log /var/log/secure; do
-            if [[ -f "$LOGFILE" ]]; then
-                sudo sed -i "/$USUARIO_ESCAPADO/Id" "$LOGFILE" 2>/dev/null || true
-            fi
-        done
-
-        # Verificación final
-        if ! id "$USUARIO_LIMPIO" &>/dev/null; then
-            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y limpiado.${NC}"
-        else
-            echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
-        fi
-
-        echo -e "${CIAN}--------------------------------------${NC}"
-    done
-
-    echo -e "${VERDE}✅ Eliminación nuclear y limpieza completa (SATÁN ESTÁ ORGULLOSO).${NC}"
-    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-}
- 
 
 
 
-
-
+    
 
 verificar_online() {
     clear
