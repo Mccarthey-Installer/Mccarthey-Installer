@@ -79,7 +79,7 @@ function generar_banner_usuario() {
     else
         echo -e "${ROJO}❌ El directorio $USER_HOME no existe para $USUARIO.${NC}"
         return 1
-    }
+    fi
 
     return 0
 }
