@@ -1,6 +1,5 @@
 
-
-    #!/bin/bash
+#!/bin/bash
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
 timedatectl set-timezone America/El_Salvador
@@ -9,7 +8,8 @@ REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
 PIDFILE="/var/run/monitorear_conexiones.pid"
 BANNER_FILE="/etc/ssh_banner"  # Banner global personalizado
-BANNER_SCRIPT="/etc/ssh_banner.sh"  # Script dinámico para el banner
+BANNER_DIR="/tmp/ssh_banners"  # Directorio temporal para banners por usuario
+AUTH_SCRIPT="/etc/ssh/auth_banner.sh"  # Script para generar banner dinámico
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -20,11 +20,15 @@ CIAN='\033[38;5;51m'
 ROSA='\033[38;2;255;105;180m'
 NC='\033[0m'
 
-# Crear el script dinámico para el banner SSH
-function configurar_banner_script() {
-    cat << 'EOF' > "$BANNER_SCRIPT"
+# Crear directorio temporal para banners por usuario
+mkdir -p "$BANNER_DIR" 2>/dev/null
+chmod 755 "$BANNER_DIR"
+
+# Crear script de autenticación para generar banners dinámicos
+function configurar_auth_script() {
+    cat << 'EOF' > "$AUTH_SCRIPT"
 #!/bin/bash
-# Script dinámico para generar banner SSH por usuario
+# Script para generar banner dinámico por usuario durante autenticación SSH
 
 # Configurar codificación UTF-8
 printf '\xEF\xBB\xBF'
@@ -32,15 +36,17 @@ printf '\xEF\xBB\xBF'
 # Obtener el usuario que se conecta
 USUARIO="${SSH_USER:-$USER}"
 if [[ -z "$USUARIO" ]]; then
-    USUARIO=$(whoami)
+    USUARIO=$(whoami 2>/dev/null || echo "desconocido")
 fi
 
 REGISTROS="/root/registros.txt"
 BANNER_FILE="/etc/ssh_banner"
+BANNER_DIR="/tmp/ssh_banners"
+USER_BANNER="$BANNER_DIR/$USUARIO"
 
-# Buscar información del usuario en registros.txt
+# Crear banner dinámico
 if [[ -f "$REGISTROS" ]]; then
-    LINEA=$(grep "^$USUARIO[[:space:]]" "$REGISTROS")
+    LINEA=$(grep "^$USUARIO[[:space:]]" "$REGISTROS" 2>/dev/null)
     if [[ -n "$LINEA" ]]; then
         IFS=$'\t' read -r _USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL FECHA_CREACION <<< "$LINEA"
         
@@ -59,40 +65,60 @@ if [[ -f "$REGISTROS" ]]; then
             sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/')
 
         # Generar banner dinámico
-        echo "<h2><font color=\"Blue\">👤 Usuário: $USUARIO (Premium)</font></h2>"
-        echo "<h2><font color=\"Green\">⏳ Vence: $DIAS_RESTANTES dia$( [[ $DIAS_RESTANTES -ne 1 ]] && echo "s" )</font></h2>"
-        echo "<h2><font color=\"Purple\">📱 Limite: $MOVILES</font></h2>"
-        echo "<h2><font color=\"Red\">📆 Vencimiento $FECHA_VENCIMIENTO</font></h2>"
-        echo ""
+        {
+            echo -e "[Server Message]\n"
+            echo -e "👤 Usuário: $_USUARIO (Premium)"
+            echo -e "⏳ Vence: $DIAS_RESTANTES dia$( [[ $DIAS_RESTANTES -ne 1 ]] && echo "s" )"
+            echo -e "📱 Limite: $MOVILES"
+            echo -e "📆 Vencimiento: $FECHA_VENCIMIENTO"
+            echo -e "\n"
+            # Opcional: Uso de recursos
+            if command -v ps &>/dev/null && command -v grep &>/dev/null; then
+                CPU_USAGE=$(ps -u "$_USUARIO" -o %cpu --no-headers | awk '{s+=$1} END {print s}' 2>/dev/null)
+                MEM_USAGE=$(ps -u "$_USUARIO" -o %mem --no-headers | awk '{s+=$1} END {print s}' 2>/dev/null)
+                [[ -n "$CPU_USAGE" ]] && echo -e "💻 Uso CPU: ${CPU_USAGE}%"
+                [[ -n "$MEM_USAGE" ]] && echo -e "🧠 Uso Memoria: ${MEM_USAGE}%"
+            fi
+            echo -e "\n"
+            # Agregar banner global si existe
+            if [[ -f "$BANNER_FILE" ]]; then
+                cat "$BANNER_FILE"
+            fi
+        } > "$USER_BANNER" 2>/dev/null
     else
-        echo "<h2><font color=\"Red\">⚠️ Usuário no registrado en el sistema</font></h2>"
+        echo -e "[Server Message]\n⚠️ Usuário no registrado en el sistema" > "$USER_BANNER" 2>/dev/null
     fi
 else
-    echo "<h2><font color=\"Red\">⚠️ No se encontraron registros</font></h2>"
+    echo -e "[Server Message]\n⚠️ No se encontraron registros" > "$USER_BANNER" 2>/dev/null
 fi
 
-# Agregar banner global si existe
-if [[ -f "$BANNER_FILE" ]]; then
-    cat "$BANNER_FILE"
-fi
+# Establecer permisos para el banner
+chmod 644 "$USER_BANNER" 2>/dev/null
+chown root:root "$USER_BANNER" 2>/dev/null
+
+# Mostrar el banner
+cat "$USER_BANNER" 2>/dev/null
+
+# Continuar con la sesión SSH
+exec "$SSH_ORIGINAL_COMMAND" || exec /bin/bash
 EOF
 
     # Establecer permisos ejecutables
-    chmod 755 "$BANNER_SCRIPT" 2>/dev/null || {
-        echo -e "${ROJO}❌ Error al establecer permisos para $BANNER_SCRIPT.${NC}"
+    chmod 755 "$AUTH_SCRIPT" 2>/dev/null || {
+        echo -e "${ROJO}❌ Error al establecer permisos para $AUTH_SCRIPT.${NC}"
         return 1
     }
-    chown root:root "$BANNER_SCRIPT" 2>/dev/null
+    chown root:root "$AUTH_SCRIPT" 2>/dev/null
 
-    # Configurar /etc/ssh/sshd_config para usar el script dinámico
+    # Configurar /etc/ssh/sshd_config para usar el script de autenticación
     SSHD_CONFIG="/etc/ssh/sshd_config"
-    if grep -q "^Banner" "$SSHD_CONFIG"; then
-        sed -i "s|^Banner.*|Banner $BANNER_SCRIPT|" "$SSHD_CONFIG" 2>/dev/null || {
+    if ! grep -q "^ForceCommand" "$SSHD_CONFIG"; then
+        echo "ForceCommand $AUTH_SCRIPT" >> "$SSHD_CONFIG" 2>/dev/null || {
             echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
             return 1
         }
     else
-        echo "Banner $BANNER_SCRIPT" >> "$SSHD_CONFIG" 2>/dev/null || {
+        sed -i "s|^ForceCommand.*|ForceCommand $AUTH_SCRIPT|" "$SSHD_CONFIG" 2>/dev/null || {
             echo -e "${ROJO}❌ Error al modificar $SSHD_CONFIG. Verifica permisos.${NC}"
             return 1
         }
@@ -106,16 +132,24 @@ EOF
         }
     fi
 
+    # Desactivar directiva Banner si está presente
+    if grep -q "^Banner" "$SSHD_CONFIG"; then
+        sed -i "s|^Banner.*|#Banner none|" "$SSHD_CONFIG" 2>/dev/null || {
+            echo -e "${ROJO}❌ Error al desactivar Banner en $SSHD_CONFIG. Verifica permisos.${NC}"
+            return 1
+        }
+    fi
+
     # Reiniciar el servicio SSH
     systemctl restart sshd >/dev/null 2>&1 || {
         echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
         return 1
     }
 
-    echo -e "${VERDE}✅ Script de banner dinámico configurado en $BANNER_SCRIPT.${NC}"
+    echo -e "${VERDE}✅ Script de banner dinámico configurado en $AUTH_SCRIPT.${NC}"
 }
 
-# Función modificada para crear usuario
+# Función para crear usuario
 function crear_usuario() {
     clear
     echo -e "${ROJO}===== 🤪 CREAR USUARIO SSH =====${NC}"
@@ -216,9 +250,9 @@ function crear_usuario() {
         fi
     } 200>"$REGISTROS.lock"
 
-    # Configurar el script dinámico si no existe
-    if [[ ! -f "$BANNER_SCRIPT" ]]; then
-        configurar_banner_script
+    # Configurar el script de autenticación si no existe
+    if [[ ! -f "$AUTH_SCRIPT" ]]; then
+        configurar_auth_script
     fi
 
     # Mostrar resultado
@@ -241,7 +275,7 @@ function crear_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-# Modificar eliminar_usuario para no manejar banners por usuario
+# Función para eliminar usuario
 function eliminar_usuario() {
     clear
     echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 =====${NC}"
@@ -334,6 +368,9 @@ function eliminar_usuario() {
         sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null || true
         sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
 
+        # Eliminar banner dinámico
+        rm -f "$BANNER_DIR/$USUARIO_LIMPIO" 2>/dev/null
+
         # Eliminar del registro
         if [[ -f $REGISTROS ]]; then
             awk -v user="$USUARIO_ESCAPADO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > /tmp/registros.tmp && mv /tmp/registros.tmp "$REGISTROS"
@@ -373,7 +410,7 @@ function eliminar_usuario() {
     read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
-# Modificar configurar_banner_ssh para mantener compatibilidad
+# Función para configurar banner SSH
 function configurar_banner_ssh() {
     clear
     echo -e "${VIOLETA}===== 🎀 CONFIGURAR BANNER SSH =====${NC}"
@@ -387,11 +424,10 @@ function configurar_banner_ssh() {
         1)
             clear
             echo -e "${VIOLETA}===== 🎀 AGREGAR BANNER SSH =====${NC}"
-            echo -e "${AMARILLO}📝 Pega o escribe tu banner en formato HTML (puedes incluir colores, emojis, etc.).${NC}"
+            echo -e "${AMARILLO}📝 Pega o escribe tu banner (puedes incluir emojis, texto plano).${NC}"
             echo -e "${AMARILLO}📌 Presiona Enter dos veces (línea vacía) para terminar.${NC}"
-            echo -e "${AMARILLO}📌 Ejemplo: <h2><font color=\"Red\">⛅ ESTÁS USANDO UNA VPS PREMIUM 🌈</font></h2>${NC}"
-            echo -e "${AMARILLO}📌 Nota: Los saltos de línea dentro de una entrada serán corregidos automáticamente.${NC}"
-            echo -e "${AMARILLO}📌 Asegúrate de que tu cliente SSH (ej. HTTP Injector) esté configurado para UTF-8 y soporte HTML.${NC}"
+            echo -e "${AMARILLO}📌 Ejemplo: ❤️Jehová es mi pastor 🐑✨; nada me faltará 🙌💖.${NC}"
+            echo -e "${AMARILLO}📌 Nota: Los emojis requieren UTF-8 en el cliente (ej. HTTP Injector).${NC}"
             echo
 
             declare -a BANNER_LINES
@@ -409,8 +445,7 @@ function configurar_banner_ssh() {
                         if [[ -n "$TEMP_LINE" ]]; then
                             CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
                             BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
-                            PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
-                            PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
+                            PLAIN_TEXT_LINES[$LINE_COUNT]="$CLEAN_LINE"
                             ((LINE_COUNT++))
                         fi
                         break
@@ -421,20 +456,11 @@ function configurar_banner_ssh() {
 
                 PREVIOUS_EMPTY=false
                 TEMP_LINE="$TEMP_LINE$INPUT_LINE"
-
-                if [[ "$INPUT_LINE" =~ \</(h2|font)\> ]]; then
-                    CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
-                    if [[ -z "$CLEAN_LINE" ]]; then
-                        echo -e "${ROJO}❌ La línea no puede estar vacía. Intenta de nuevo.${NC}"
-                        TEMP_LINE=""
-                        continue
-                    fi
-                    BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
-                    PLAIN_TEXT=$(echo "$CLEAN_LINE" | sed -e 's/<[^>]*>//g' -e 's/&nbsp;/ /g')
-                    PLAIN_TEXT_LINES[$LINE_COUNT]="$PLAIN_TEXT"
-                    ((LINE_COUNT++))
-                    TEMP_LINE=""
-                fi
+                CLEAN_LINE=$(echo "$TEMP_LINE" | tr -d '\n' | tr -s ' ')
+                BANNER_LINES[$LINE_COUNT]="$CLEAN_LINE"
+                PLAIN_TEXT_LINES[$LINE_COUNT]="$CLEAN_LINE"
+                ((LINE_COUNT++))
+                TEMP_LINE=""
             done
 
             if [[ $LINE_COUNT -eq 0 ]]; then
@@ -445,12 +471,12 @@ function configurar_banner_ssh() {
 
             clear
             echo -e "${VIOLETA}===== 🎀 VISTA PREVIA DEL BANNER =====${NC}"
-            echo -e "${CIAN}📜 Así se verá el banner (sin etiquetas HTML, colores y emojis dependen del cliente SSH):${NC}"
+            echo -e "${CIAN}📜 Así se verá el banner en HTTP Injector:${NC}"
             for ((i=0; i<LINE_COUNT; i++)); do
                 echo -e "${PLAIN_TEXT_LINES[$i]}"
             done
             echo
-            echo -e "${AMARILLO}⚠️ Nota: Asegúrate de que tu cliente SSH (ej. HTTP Injector) use UTF-8 para ver emojis y soporte HTML para colores.${NC}"
+            echo -e "${AMARILLO}⚠️ Nota: Asegúrate de que HTTP Injector use UTF-8 para ver emojis.${NC}"
             PROMPT=$(echo -e "${ROSA}➡️ ¿Confirmar y guardar el banner? (s/n): ${NC}")
             read -p "$PROMPT" CONFIRM
             if [[ "$CONFIRM" != "s" && "$CONFIRM" != "S" ]]; then
@@ -469,9 +495,9 @@ function configurar_banner_ssh() {
                 }
             done
 
-            # Configurar el script dinámico si no está configurado
-            if [[ ! -f "$BANNER_SCRIPT" ]]; then
-                configurar_banner_script
+            # Configurar el script de autenticación si no está configurado
+            if [[ ! -f "$AUTH_SCRIPT" ]]; then
+                configurar_auth_script
             fi
 
             echo -e "${VERDE}✅ Banner SSH configurado exitosamente en $BANNER_FILE.${NC}"
@@ -479,7 +505,7 @@ function configurar_banner_ssh() {
             for ((i=0; i<LINE_COUNT; i++)); do
                 echo -e "${PLAIN_TEXT_LINES[$i]}"
             done
-            echo -e "${AMARILLO}⚠️ Nota: Configura tu cliente SSH (ej. HTTP Injector) con UTF-8 para ver emojis y verifica soporte HTML para colores.${NC}"
+            echo -e "${AMARILLO}⚠️ Nota: Configura HTTP Injector con UTF-8 para ver emojis.${NC}"
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             ;;
         2)
@@ -497,6 +523,10 @@ function configurar_banner_ssh() {
             ;;
     esac
 }
+
+
+    
+                
 
 # El resto de las funciones (monitorear_conexiones, verificar_integridad_registros, etc.) permanecen sin cambios
 # Incluye aquí las demás funciones del script original si es necesario
