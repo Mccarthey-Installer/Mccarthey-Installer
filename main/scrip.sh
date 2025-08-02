@@ -1,4 +1,3 @@
-
 #!/bin/bash
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
@@ -34,7 +33,7 @@ function configurar_auth_script() {
 printf '\xEF\xBB\xBF'
 
 # Obtener el usuario que se conecta
-USUARIO="${SSH_USER:-$USER}"
+USUARIO="${PAM_USER:-${SSH_USER:-$USER}}"
 if [[ -z "$USUARIO" ]]; then
     USUARIO=$(whoami 2>/dev/null || echo "desconocido")
 fi
@@ -100,7 +99,11 @@ chown root:root "$USER_BANNER" 2>/dev/null
 cat "$USER_BANNER" 2>/dev/null
 
 # Continuar con la sesión SSH
-exec "$SSH_ORIGINAL_COMMAND" || exec /bin/bash
+if [[ -n "$SSH_ORIGINAL_COMMAND" ]]; then
+    exec $SSH_ORIGINAL_COMMAND
+else
+    exec /bin/bash
+fi
 EOF
 
     # Establecer permisos ejecutables
@@ -140,6 +143,9 @@ EOF
         }
     fi
 
+    # Eliminar script antiguo si existe
+    rm -f /etc/ssh_banner.sh 2>/dev/null
+
     # Reiniciar el servicio SSH
     systemctl restart sshd >/dev/null 2>&1 || {
         echo -e "${ROJO}❌ Error al reiniciar el servicio SSH. Verifica manualmente.${NC}"
@@ -148,6 +154,14 @@ EOF
 
     echo -e "${VERDE}✅ Script de banner dinámico configurado en $AUTH_SCRIPT.${NC}"
 }
+
+# Las funciones crear_usuario, eliminar_usuario y configurar_banner_ssh se mantienen igual que en tu versión, solo asegúrate de incluirlas en el script.
+
+# Llamar a configurar_auth_script al iniciar el script para asegurar que esté configurado
+configurar_auth_script
+
+
+    
 
 # Función para crear usuario
 function crear_usuario() {
