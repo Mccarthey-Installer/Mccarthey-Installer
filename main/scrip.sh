@@ -579,17 +579,20 @@ function informacion_usuarios() {
 
 
 
- 
 
 function eliminar_usuario() {
+    clear
+    echo "🗑️ ELIMINAR USUARIOS"
+    echo "===================="
+
     # Verificar privilegios de root
     if [[ $EUID -ne 0 ]]; then
         echo "🚫 Error: Se requieren privilegios de root."
-        read -p "Presiona Enter para continuar..."
+        read -p "Presiona Enter para volver al menú..."
         return 1
     fi
 
-    # Listar usuarios disponibles
+    # Listar usuarios únicos
     if [[ ! -f "$REGISTROS" ]]; then
         echo "⚠️ Advertencia: No existe $REGISTROS, buscando usuarios del sistema."
     fi
@@ -597,40 +600,44 @@ function eliminar_usuario() {
     echo "👤 Usuarios disponibles:"
     echo "N   Nombre"
     declare -A USUARIOS_MAP
+    declare -A UNIQUE_USERS
     NUM=1
+
+    # Obtener usuarios de REGISTROS sin duplicados
     if [[ -f "$REGISTROS" ]]; then
         while IFS=$'\t' read -r USUARIO _; do
-            if [[ -n "$USUARIO" ]]; then
+            if [[ -n "$USUARIO" && ! -v UNIQUE_USERS[$USUARIO] ]]; then
                 echo "$NUM   $USUARIO"
                 USUARIOS_MAP[$NUM]="$USUARIO"
+                UNIQUE_USERS[$USUARIO]=1
                 NUM=$((NUM+1))
             fi
         done < "$REGISTROS"
     fi
 
-    # Añadir usuarios del sistema (UID >= 1000)
+    # Añadir usuarios del sistema (UID >= 1000) sin duplicados
     while IFS=: read -r username _ uid _ _ _ _; do
-        if [[ $uid -ge 1000 && $uid -lt 65534 ]]; then
-            if ! [[ -v USUARIOS_MAP[$username] ]]; then
-                echo "$NUM   $username"
-                USUARIOS_MAP[$NUM]="$username"
-                NUM=$((NUM+1))
-            fi
+        if [[ $uid -ge 1000 && $uid -lt 65534 && ! -v UNIQUE_USERS[$username] ]]; then
+            echo "$NUM   $username"
+            USUARIOS_MAP[$NUM]="$username"
+            UNIQUE_USERS[$username]=1
+            NUM=$((NUM+1))
         fi
     done < /etc/passwd
 
     if [[ ${#USUARIOS_MAP[@]} -eq 0 ]]; then
         echo "🚫 Error: No hay usuarios para eliminar."
-        read -p "Presiona Enter para continuar..."
+        read -p "Presiona Enter para volver al menú..."
         return 1
     fi
 
     # Solicitar nombres o números
+    echo
     echo "🗑️ Ingresa nombres o números de usuarios a eliminar (separados por espacios, 0 para cancelar):"
     read -r INPUT
     if [[ "$INPUT" == "0" ]]; then
         echo "🚫 Eliminación cancelada."
-        read -p "Presiona Enter para continuar..."
+        read -p "Presiona Enter para volver al menú..."
         return 1
     fi
 
@@ -650,11 +657,12 @@ function eliminar_usuario() {
 
     if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
         echo "🚫 Error: No se seleccionaron usuarios válidos."
-        read -p "Presiona Enter para continuar..."
+        read -p "Presiona Enter para volver al menú..."
         return 1
     fi
 
     # Mostrar resumen y confirmar
+    echo
     echo "🗑️ Usuarios a eliminar:"
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
         echo "  - $USUARIO"
@@ -758,7 +766,9 @@ function eliminar_usuario() {
 }
 
 function verificar_eliminacion() {
-    echo "🔍 Verificación post-eliminación:"
+    clear
+    echo "🔍 VERIFICACIÓN POST-ELIMINACIÓN"
+    echo "=============================="
     echo "  👤 Usuarios restantes:"
     awk -F: '$3 >= 1000 && $3 < 65534 {print "    - " $1 " (UID: " $3 ")"}' /etc/passwd
     echo "  🗑️ Archivos huérfanos:"
@@ -776,9 +786,7 @@ function verificar_eliminacion() {
         echo "    - $PIDFILE no existe"
     fi
     read -p "Presiona Enter para volver al menú..."
-}  
-
-        
+}
 
 
         
