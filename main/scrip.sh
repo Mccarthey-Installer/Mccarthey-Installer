@@ -576,10 +576,7 @@ function informacion_usuarios() {
 }
 
 
-# Rutas proporcionadas
-REGISTROS="/root/registros.txt"
-HISTORIAL="/root/historial_conexiones.txt"
-PIDFILE="/var/run/monitorear_conexiones.pid"
+
 
 # Colores alegres y femeninos
 ROSADO="\e[95m"
@@ -657,7 +654,7 @@ function eliminar_usuario() {
             INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | tr -d '[:space:]\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
             if [[ "$INPUT_SANITIZADO" =~ ^[0-9]+$ && -n "${USUARIOS_MAP[$INPUT_SANITIZADO]}" ]]; then
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_MAP[$INPUT_SANITIZADO]}")
-            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}\b[[:space:]]" "$REGISTROS" >/dev/null 2>&1 ); then
+            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1 ); then
                 USUARIOS_A_ELIMINAR+=("$INPUT_SANITIZADO")
             else
                 echo -e "${TURQUESA}🚫 Datos incorrectos: '$INPUT_SANITIZADO' no es un usuario válido ni un número de la lista.${RESET}"
@@ -761,8 +758,8 @@ function eliminar_usuario() {
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                sed -i -E "/^${USUARIO}\b[[:space:]]/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
-                if ! grep -E "^${USUARIO}\b[[:space:]]" "$REGISTROS" >/dev/null 2>&1; then
+                sed -i -E "/^${USUARIO}([[:space:]]|$)/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
+                if ! grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
                     echo -e "${BLANCO}  ✅ '$USUARIO' eliminado de $REGISTROS.${RESET}"
                 else
                     echo -e "${TURQUESA}  🚫 Error: '$USUARIO' aún existe en $REGISTROS.${RESET}"
@@ -780,7 +777,7 @@ function eliminar_usuario() {
             # Fase 7: Verificación estricta
             echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
             EXISTS_IN_REGISTROS=0
-            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO}\b[[:space:]]" "$REGISTROS" >/dev/null 2>&1; then
+            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
                 EXISTS_IN_REGISTROS=1
             fi
             if id "$USUARIO" &>/dev/null; then
@@ -816,9 +813,7 @@ function eliminar_usuario() {
         read -p "Presiona Enter para volver al menú principal..."
         return 0
     done
-}              
-                
-
+}
                 
 
 verificar_online() {
