@@ -577,27 +577,17 @@ function informacion_usuarios() {
 
 
 
+
+
+ 
+
 function eliminar_usuario() {
     # Verificar privilegios de root
     if [[ $EUID -ne 0 ]]; then
         echo "🚫 Error: Se requieren privilegios de root."
+        read -p "Presiona Enter para continuar..."
         return 1
     fi
-
-    # Verificar si se proporcionaron argumentos
-    if [[ $# -eq 0 ]]; then
-        echo "🚫 Error: Debe proporcionar nombres o números de usuarios."
-        echo "Uso: $0 <nombre|número> [nombre|número ...]"
-        return 1
-    fi
-
-    # Crear backup
-    BACKUP_DIR="/tmp/user_deletion_backup_$(date +%Y%m%d_%H%M%S)"
-    mkdir -p "$BACKUP_DIR"
-    [[ -f "$REGISTROS" ]] && cp "$REGISTROS" "$BACKUP_DIR/registros_backup.txt"
-    [[ -f "$HISTORIAL" ]] && cp "$HISTORIAL" "$BACKUP_DIR/historial_conexiones_backup.txt"
-    [[ -f "$PIDFILE" ]] && cp "$PIDFILE" "$BACKUP_DIR/monitorear_conexiones_pid_backup.txt"
-    echo "📁 Backup creado en: $BACKUP_DIR"
 
     # Listar usuarios disponibles
     if [[ ! -f "$REGISTROS" ]]; then
@@ -631,13 +621,24 @@ function eliminar_usuario() {
 
     if [[ ${#USUARIOS_MAP[@]} -eq 0 ]]; then
         echo "🚫 Error: No hay usuarios para eliminar."
+        read -p "Presiona Enter para continuar..."
         return 1
     fi
 
-    # Procesar entrada (nombres o números)
+    # Solicitar nombres o números
+    echo "🗑️ Ingresa nombres o números de usuarios a eliminar (separados por espacios, 0 para cancelar):"
+    read -r INPUT
+    if [[ "$INPUT" == "0" ]]; then
+        echo "🚫 Eliminación cancelada."
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    # Procesar entrada
     declare -a USUARIOS_A_ELIMINAR
-    for INPUT in "$@"; do
-        INPUT_SANITIZADO=$(echo "$INPUT" | tr -d '\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
+    read -ra INPUT_ARRAY <<< "$INPUT"
+    for INPUT_ITEM in "${INPUT_ARRAY[@]}"; do
+        INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | tr -d '\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
         if [[ "$INPUT_SANITIZADO" =~ ^[0-9]+$ && -n "${USUARIOS_MAP[$INPUT_SANITIZADO]}" ]]; then
             USUARIOS_A_ELIMINAR+=("${USUARIOS_MAP[$INPUT_SANITIZADO]}")
         elif id "$INPUT_SANITIZADO" &>/dev/null || grep -qi "^$INPUT_SANITIZADO" "$REGISTROS" 2>/dev/null; then
@@ -649,6 +650,7 @@ function eliminar_usuario() {
 
     if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
         echo "🚫 Error: No se seleccionaron usuarios válidos."
+        read -p "Presiona Enter para continuar..."
         return 1
     fi
 
@@ -659,6 +661,14 @@ function eliminar_usuario() {
     done
     echo "⚠️ Presiona Enter para confirmar la eliminación (Ctrl+C para cancelar):"
     read
+
+    # Crear backup
+    BACKUP_DIR="/tmp/user_deletion_backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+    [[ -f "$REGISTROS" ]] && cp "$REGISTROS" "$BACKUP_DIR/registros_backup.txt"
+    [[ -f "$HISTORIAL" ]] && cp "$HISTORIAL" "$BACKUP_DIR/historial_conexiones_backup.txt"
+    [[ -f "$PIDFILE" ]] && cp "$PIDFILE" "$BACKUP_DIR/monitorear_conexiones_pid_backup.txt"
+    echo "📁 Backup creado en: $BACKUP_DIR"
 
     # Procesar eliminación
     for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
@@ -744,6 +754,7 @@ function eliminar_usuario() {
     sync
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
     echo "✅ Eliminación completada. Backup en: $BACKUP_DIR"
+    read -p "Presiona Enter para volver al menú..."
 }
 
 function verificar_eliminacion() {
@@ -764,11 +775,10 @@ function verificar_eliminacion() {
     else
         echo "    - $PIDFILE no existe"
     fi
-}
+    read -p "Presiona Enter para volver al menú..."
+}  
 
-# Ejecutar con argumentos
-eliminar_usuario "$@"
-verificar_eliminacion
+        
 
 
         
