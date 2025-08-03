@@ -577,10 +577,11 @@ function informacion_usuarios() {
 
 
 
+# Rutas proporcionadas
+REGISTROS="/root/registros.txt"
+HISTORIAL="/root/historial_conexiones.txt"
+PIDFILE="/var/run/monitorear_conexiones.pid"
 
-
-                
-                
 # Colores alegres y femeninos
 ROSADO="\e[95m"
 MORADO="\e[35m"
@@ -629,13 +630,14 @@ function eliminar_usuario() {
             cat "$REGISTROS" | while IFS= read -r line; do
                 echo -e "${BLANCO}  - $line${RESET}"
             done
-            # Filtrar líneas vacías y duplicados
-            while IFS=$'\t' read -r USUARIO _; do
-                USUARIO=$(echo "$USUARIO" | tr -d '[:space:]\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
-                if [[ -n "$USUARIO" && ! -v UNIQUE_USERS[$USUARIO] ]]; then
+            # Leer nombres de usuario preservando espacios
+            while IFS=$'\t' read -r line; do
+                # Extraer el nombre de usuario hasta el primer tabulador o fin de línea
+                USUARIO=$(echo "$line" | awk '{print $1}')
+                if [[ -n "$USUARIO" && ! -v UNIQUE_USERS["$USUARIO"] ]]; then
                     echo -e "${BLANCO}$NUM   $USUARIO${RESET}"
                     USUARIOS_MAP[$NUM]="$USUARIO"
-                    UNIQUE_USERS[$USUARIO]=1
+                    UNIQUE_USERS["$USUARIO"]=1
                     NUM=$((NUM+1))
                 fi
             done < <(grep -v '^[[:space:]]*$' "$REGISTROS" | sort -u)
@@ -643,10 +645,10 @@ function eliminar_usuario() {
 
         # Añadir usuarios del sistema (UID >= 1000) sin duplicados
         while IFS=: read -r username _ uid _ _ _ _; do
-            if [[ $uid -ge 1000 && $uid -lt 65534 && ! -v UNIQUE_USERS[$username] ]]; then
+            if [[ $uid -ge 1000 && $uid -lt 65534 && ! -v UNIQUE_USERS["$username"] ]]; then
                 echo -e "${BLANCO}$NUM   $username${RESET}"
                 USUARIOS_MAP[$NUM]="$username"
-                UNIQUE_USERS[$username]=1
+                UNIQUE_USERS["$username"]=1
                 NUM=$((NUM+1))
             fi
         done < /etc/passwd
@@ -671,7 +673,7 @@ function eliminar_usuario() {
         declare -a USUARIOS_A_ELIMINAR
         read -ra INPUT_ARRAY <<< "$INPUT"
         for INPUT_ITEM in "${INPUT_ARRAY[@]}"; do
-            INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | tr -d '[:space:]\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
+            INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | sed 's/[^a-zA-Z0-9._- ]//g')
             if [[ "$INPUT_SANITIZADO" =~ ^[0-9]+$ && -n "${USUARIOS_MAP[$INPUT_SANITIZADO]}" ]]; then
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_MAP[$INPUT_SANITIZADO]}")
             elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1 ); then
@@ -786,8 +788,10 @@ function eliminar_usuario() {
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                sed -i -E "/^${USUARIO}([[:space:]]|$)/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
-                if ! grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
+                # Escapar espacios en el nombre de usuario para la regex
+                USUARIO_ESCAPED=$(echo "$USUARIO" | sed 's/ /\\ /g')
+                sed -i -E "/^${USUARIO_ESCAPED}([[:space:]]|$)/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
+                if ! grep -E "^${USUARIO_ESCAPED}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
                     echo -e "${BLANCO}  ✅ '$USUARIO' eliminado de $REGISTROS.${RESET}"
                 else
                     echo -e "${TURQUESA}  🚫 Error: '$USUARIO' aún existe en $REGISTROS.${RESET}"
@@ -809,7 +813,7 @@ function eliminar_usuario() {
             # Fase 7: Verificación estricta
             echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
             EXISTS_IN_REGISTROS=0
-            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
+            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO_ESCAPED}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
                 EXISTS_IN_REGISTROS=1
             fi
             if id "$USUARIO" &>/dev/null; then
@@ -853,6 +857,13 @@ function eliminar_usuario() {
         return 0
     done
 }
+
+                
+                
+
+        
+                        
+                
                 
 
 verificar_online() {
