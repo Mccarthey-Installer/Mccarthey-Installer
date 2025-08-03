@@ -578,206 +578,154 @@ function informacion_usuarios() {
 
 
 
-        
-# Rutas proporcionadas
-REGISTROS="/root/registros.txt"
-HISTORIAL="/root/historial_conexiones.txt"
-PIDFILE="/var/run/monitorear_conexiones.pid"
-
-# Colores alegres y femeninos
-ROSADO="\e[95m"
-MORADO="\e[35m"
-TURQUESA="\e[36m"
-BLANCO="\e[97m"
-RESET="\e[0m"
-
 function eliminar_usuario() {
-    while true; do
-        clear
-        echo -e "${ROSADO}🗑️ SUBMENÚ: ELIMINAR USUARIOS${RESET}"
-        echo -e "${MORADO}==============================${RESET}"
+    clear
+    echo -e "${VIOLETA}===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 =====${NC}"
 
-        # Verificar privilegios de root
-        if [[ $EUID -ne 0 ]]; then
-            echo -e "${TURQUESA}🚫 Error: Se requieren privilegios de root.${RESET}"
-            read -p "Presiona Enter para volver al menú principal..."
-            return 0
-        fi
+    if [[ ! -f $REGISTROS ]]; then
+        echo -e "${ROJO}❌ No hay registros para eliminar (pero igual se procede con usuarios del sistema).${NC}"
+    fi
 
-        # Verificar permisos de /root/registros.txt
-        if [[ -f "$REGISTROS" ]]; then
-            ls -l "$REGISTROS" | grep -q "^-rw" || {
-                echo -e "${TURQUESA}⚠️ Advertencia: Corrigiendo permisos de $REGISTROS...${RESET}"
-                chmod 644 "$REGISTROS" 2>/dev/null || {
-                    echo -e "${TURQUESA}🚫 Error: No se pudo corregir permisos de $REGISTROS.${RESET}"
-                    read -p "Presiona Enter para volver al menú principal..."
-                    return 0
-                }
-            }
-        fi
-
-        # Verificar si otro proceso está usando /root/registros.txt
-        if [[ -f "$REGISTROS" ]] && lsof "$REGISTROS" >/dev/null 2>&1; then
-            echo -e "${TURQUESA}⚠️ Advertencia: $REGISTROS está siendo usado por otro proceso:${RESET}"
-            lsof "$REGISTROS" | while IFS= read -r line; do
-                echo -e "${BLANCO}  - $line${RESET}"
-            done
-            echo -e "${TURQUESA}⚠️ Esto podría causar que los usuarios eliminados reaparezcan. Considera detener estos procesos con 'kill -9 <PID>'.${RESET}"
-        fi
-
-        # Listar usuarios únicos
-        echo -e "${BLANCO}👤 Usuarios disponibles:${RESET}"
-        echo -e "${BLANCO}N   Nombre${RESET}"
-        declare -A USUARIOS_MAP
-        declare -A UNIQUE_USERS
-        declare -A NAME_TO_FULLNAME
-        NUM=1
-
-        if [[ -f "$REGISTROS" ]]; then
-            while IFS=$'\t' read -r USUARIO _; do
-                if [[ -n "$USUARIO" && ! -v UNIQUE_USERS["$USUARIO"] ]]; then
-                    echo -e "${BLANCO}$NUM   $USUARIO${RESET}"
-                    USUARIOS_MAP[$NUM]="$USUARIO"
-                    UNIQUE_USERS["$USUARIO"]=1
-                    NAME_TO_FULLNAME["$USUARIO"]="$USUARIO"
-                    USUARIO_SANITIZED=$(echo "$USUARIO" | tr -d '[:space:]')
-                    NAME_TO_FULLNAME["$USUARIO_SANITIZED"]="$USUARIO"
-                    NUM=$((NUM+1))
-                fi
-            done < <(grep -v '^[[:space:]]*$' "$REGISTROS" | sort -u)
-        fi
-
-        while IFS=: read -r username _ uid _ _ _ _; do
-            if [[ $uid -ge 1000 && $uid -lt 65534 && ! -v UNIQUE_USERS["$username"] ]]; then
-                echo -e "${BLANCO}$NUM   $username${RESET}"
-                USUARIOS_MAP[$NUM]="$username"
-                UNIQUE_USERS["$username"]=1
-                NAME_TO_FULLNAME["$username"]="$username"
+    echo -e "${AMARILLO}Nº\t👤 Usuario${NC}"
+    echo -e "${CIAN}--------------------------${NC}"
+    NUM=1
+    declare -A USUARIOS_EXISTENTES
+    if [[ -f $REGISTROS ]]; then
+        while IFS=$'\t' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                echo -e "${VERDE}${NUM}\t${AMARILLO}$USUARIO${NC}"
+                USUARIOS_EXISTENTES[$NUM]="$USUARIO"
                 NUM=$((NUM+1))
             fi
-        done < /etc/passwd
+        done < "$REGISTROS"
+    fi
 
-        if [[ ${#USUARIOS_MAP[@]} -eq 0 ]]; then
-            echo -e "${TURQUESA}🚫 Error: No hay usuarios para eliminar.${RESET}"
-            read -p "Presiona Enter para volver al menú principal..."
-            return 0
-        fi
+    if [[ ${#USUARIOS_EXISTENTES[@]} -eq 0 ]]; then
+        echo -e "${AZUL}ℹ️ No hay usuarios en registros, pero puede ingresar nombres de usuarios del sistema para eliminar.${NC}"
+    fi
 
-        echo
-        echo -e "${ROSADO}🗑️ Ingresa nombres o números de usuarios a eliminar (separados por espacios, 0 para volver al menú principal):${RESET}"
-        read -r INPUT
-        if [[ "$INPUT" == "0" ]]; then
-            echo -e "${TURQUESA}🚫 Eliminación cancelada.${RESET}"
-            read -p "Presiona Enter para volver al menú principal..."
-            return 0
-        fi
+    echo
+    echo -e "${AMARILLO}🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios)${NC}"
+    PROMPT=$(echo -e "${AMARILLO}   (0 para cancelar): ${NC}")
+    read -p "$PROMPT" INPUT_ENTRADA
+    if [[ "$INPUT_ENTRADA" == "0" ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
 
-        declare -a USUARIOS_A_ELIMINAR
-        read -ra INPUT_ARRAY <<< "$INPUT"
-        for INPUT_ITEM in "${INPUT_ARRAY[@]}"; do
-            INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | sed 's/[^a-zA-Z0-9._-]//g')
-            if [[ "$INPUT_SANITIZADO" =~ ^[0-9]+$ && -n "${USUARIOS_MAP[$INPUT_SANITIZADO]}" ]]; then
-                USUARIOS_A_ELIMINAR+=("${USUARIOS_MAP[$INPUT_SANITIZADO]}")
-            elif [[ -n "${NAME_TO_FULLNAME[$INPUT_SANITIZADO]}" ]]; then
-                USUARIOS_A_ELIMINAR+=("${NAME_TO_FULLNAME[$INPUT_SANITIZADO]}")
-            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}\t" "$REGISTROS" >/dev/null 2>&1 ); then
-                USUARIOS_A_ELIMINAR+=("$INPUT_SANITIZADO")
+    read -ra ELEMENTOS <<< "$INPUT_ENTRADA"
+    declare -a USUARIOS_A_ELIMINAR=()
+    for ELEM in "${ELEMENTOS[@]}"; do
+        if [[ "$ELEM" =~ ^[0-9]+$ ]]; then
+            if [[ -n "${USUARIOS_EXISTENTES[$ELEM]}" ]]; then
+                USUARIOS_A_ELIMINAR+=("${USUARIOS_EXISTENTES[$ELEM]}")
             else
-                echo -e "${TURQUESA}🚫 Datos incorrectos: '$INPUT_SANITIZADO' no es un usuario válido ni un número de la lista.${RESET}"
-                read -p "Presiona Enter para volver al menú principal..."
-                return 0
+                echo -e "${ROJO}❌ Número inválido: $ELEM${NC}"
             fi
-        done
-
-        if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
-            echo -e "${TURQUESA}🚫 Datos incorrectos: No se seleccionaron usuarios válidos.${RESET}"
-            read -p "Presiona Enter para volver al menú principal..."
-            return 0
-        fi
-
-        echo
-        echo -e "${MORADO}🗑️ Usuarios a eliminar:${RESET}"
-        for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-            echo -e "${BLANCO}  - $USUARIO${RESET}"
-        done
-        echo -e "${ROSADO}⚠️ Presiona Enter para confirmar la eliminación (0 para volver al menú principal):${RESET}"
-        read CONFIRM
-        if [[ "$CONFIRM" == "0" ]]; then
-            echo -e "${TURQUESA}🚫 Eliminación cancelada.${RESET}"
-            read -p "Presiona Enter para volver al menú principal..."
-            return 0
-        fi
-
-        # Crear backup
-        BACKUP_DIR="/tmp/user_deletion_backup_$(date +%Y%m%d_%H%M%S)"
-        mkdir -p "$BACKUP_DIR"
-        [[ -f "$REGISTROS" ]] && cp "$REGISTROS" "$BACKUP_DIR/registros_backup.txt"
-        [[ -f "$HISTORIAL" ]] && cp "$HISTORIAL" "$BACKUP_DIR/historial_conexiones_backup.txt"
-        [[ -f "$PIDFILE" ]] && cp "$PIDFILE" "$BACKUP_DIR/monitorear_conexiones_pid_backup.txt"
-        echo -e "${TURQUESA}📁 Backup creado en: $BACKUP_DIR${RESET}"
-
-        # Sanitizar antes de modificar
-        if [[ -f "$REGISTROS" ]]; then
-            echo -e "${TURQUESA}🧹 Sanitizando $REGISTROS...${RESET}"
-            sed -i 's/\r$//' "$REGISTROS"
-            sed -i 's/[[:space:]]*$//' "$REGISTROS"
-            sed -i '/^[[:space:]]*$/d' "$REGISTROS"
-        fi
-
-        # Desbloquear para permitir modificaciones
-        if [[ -f "$REGISTROS" ]]; then
-            chattr -i "$REGISTROS" 2>/dev/null || true
-        fi
-
-        for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-            echo -e "${MORADO}🗑️ Eliminando usuario: $USUARIO${RESET}"
-
-            EXISTS_IN_SYSTEM=0
-            id "$USUARIO" &>/dev/null && EXISTS_IN_SYSTEM=1
-
-            if [[ $EXISTS_IN_SYSTEM -eq 1 ]]; then
-                echo -e "${BLANCO}  🔪 Terminando procesos...${RESET}"
-                pkill -u "$USUARIO"
-                pkill -9 -u "$USUARIO"
-                [[ -f "$PIDFILE" ]] && rm -f "$PIDFILE"
-                userdel -r "$USUARIO" 2>/dev/null || {
-                    sed -i "/^$USUARIO:/d" /etc/passwd
-                    sed -i "/^$USUARIO:/d" /etc/shadow
-                    sed -i "/^$USUARIO:/d" /etc/group
-                }
+        else
+            if id "$ELEM" &>/dev/null; then
+                USUARIOS_A_ELIMINAR+=("$ELEM")
+            else
+                echo -e "${ROJO}❌ Usuario inválido o no existe en el sistema: $ELEM${NC}"
             fi
-
-            HOME_DIR="/home/$USUARIO"
-            [[ -d "$HOME_DIR" ]] && rm -rf "$HOME_DIR"
-            rm -rf "/tmp/$USUARIO"* "/var/tmp/$USUARIO"* "/var/spool/mail/$USUARIO" "/var/mail/$USUARIO"
-
-            crontab -u "$USUARIO" -r 2>/dev/null
-            find /var/spool/cron/crontabs -user "$USUARIO" -exec rm -f {} \; 2>/dev/null
-            at -r $(atq | grep "$USUARIO" | awk '{print $1}') 2>/dev/null
-
-            # Limpiar LOGS y REGISTROS
-            USUARIO_ESCAPED=$(echo "$USUARIO" | sed 's/[][\.*^$/]/\\&/g')
-            [[ -f "$REGISTROS" ]] && sed -i -E "/^${USUARIO_ESCAPED}\t/d" "$REGISTROS"
-            [[ -f "$HISTORIAL" ]] && sed -i "/^$USUARIO|/d" "$HISTORIAL"
-            for LOG in /var/log/auth.log /var/log/secure /var/log/syslog /var/log/messages; do
-                [[ -f "$LOG" ]] && sed -i "/$USUARIO/d" "$LOG"
-            done
-        done
-
-        # Limpieza final
-        echo -e "${MORADO}🧹 Limpieza final...${RESET}"
-        [[ -f "$REGISTROS" ]] && sed -i '/^[[:space:]]*$/d' "$REGISTROS"
-        [[ -f "$HISTORIAL" ]] && sed -i '/^[[:space:]]*$/d' "$HISTORIAL"
-        [[ -s "$REGISTROS" ]] || rm -f "$REGISTROS"
-        [[ -s "$HISTORIAL" ]] || rm -f "$HISTORIAL"
-
-        echo -e "${TURQUESA}✅ Eliminación completada. Backup en: $BACKUP_DIR${RESET}"
-
-        read -p "Presiona Enter para volver al menú principal..."
-        return 0
+        fi
     done
+
+    if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
+        echo -e "${ROJO}❌ No se seleccionaron usuarios válidos para eliminar.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    echo -e "${CIAN}===== 💣 USUARIOS A ELIMINAR =====${NC}"
+    echo -e "${AMARILLO}👤 Usuarios seleccionados:${NC}"
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        echo -e "${VERDE}$USUARIO${NC}"
+    done
+    echo -e "${CIAN}--------------------------${NC}"
+    echo -e "${AMARILLO}✅ ¿Confirmar eliminación NUCLEAR NIVEL DIABLO? (s/n)${NC}"
+    read -p "" CONFIRMAR
+    if [[ $CONFIRMAR != [sS] ]]; then
+        echo -e "${AZUL}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+        USUARIO_LIMPIO=$(echo "$USUARIO" | tr -d '\r\n')
+        # Sanitiza el nombre del usuario ANTES de pasarlo al awk por si meten cosas ocultas
+        USUARIO_ESCAPADO=$(printf '%s' "$USUARIO_LIMPIO" | sed 's/[^a-zA-Z0-9._-]//g')
+
+        echo -e "${ROJO}💣 Eliminando usuario: $USUARIO_LIMPIO${NC}"
+
+        # Bloquear usuario
+        sudo usermod --lock "$USUARIO_LIMPIO" 2>/dev/null || true
+        # Matar procesos
+        sudo kill -9 $(pgrep -u "$USUARIO_LIMPIO") 2>/dev/null || true
+        sleep 1
+        # Eliminar cuenta y home
+        sudo userdel --force "$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo deluser --remove-home "$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo rm -rf "/home/$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo loginctl kill-user "$USUARIO_LIMPIO" 2>/dev/null || true
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
+
+        # Eliminar del registro: AWK (blinda unicode y formatos raros)
+        if [[ -f $REGISTROS ]]; then
+            awk -v user="$USUARIO_ESCAPADO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > /tmp/registros.tmp && mv /tmp/registros.tmp "$REGISTROS"
+        fi
+        # Eliminar del historial personalizado
+        if [[ -f $HISTORIAL ]]; then
+            sed -i "/^$USUARIO_ESCAPADO|/Id" "$HISTORIAL"
+        fi
+
+        # Limpiar historiales de shell
+        HOME_DIR="/home/$USUARIO_LIMPIO"
+        if [[ -d "$HOME_DIR" ]]; then
+            sudo rm -f "$HOME_DIR/.bash_history" "$HOME_DIR/.zsh_history" "$HOME_DIR/.sh_history" "$HOME_DIR/.history" 2>/dev/null || true
+        fi
+        if [[ "$USUARIO_LIMPIO" == "root" ]]; then
+            sudo rm -f /root/.bash_history 2>/dev/null || true
+        fi
+
+        # Limpiar logs de autenticación estándar
+        for LOGFILE in /var/log/auth.log /var/log/secure; do
+            if [[ -f "$LOGFILE" ]]; then
+                sudo sed -i "/$USUARIO_ESCAPADO/Id" "$LOGFILE" 2>/dev/null || true
+            fi
+        done
+
+        # Intento adicional por si el usuario da guerra
+        sudo deluser "$USUARIO_LIMPIO" 2>/dev/null || true
+
+        # BONUS: Advertencia si aún queda en registros tras limpieza ultra
+        if [[ -f $REGISTROS ]]; then
+            if grep -q "^$USUARIO_ESCAPADO[[:space:]]" "$REGISTROS"; then
+                echo -e "${ROJO}⚡️⚡️⚡️  $USUARIO_LIMPIO sigue apareciendo en $REGISTROS después del intento. Revisión necesaria.${NC}"
+            fi
+        fi
+
+        # Limpieza final de líneas vacías en registros
+        sed -i '/^[[:space:]]*$/d' "$REGISTROS"
+
+        if ! id "$USUARIO_LIMPIO" &>/dev/null; then
+            echo -e "${VERDE}✅ Usuario $USUARIO_LIMPIO eliminado completamente y limpiado.${NC}"
+        else
+            echo -e "${ROJO}⚠️ El usuario $USUARIO_LIMPIO aún existe. Verifica manualmente.${NC}"
+        fi
+
+        echo -e "${CIAN}--------------------------------------${NC}"
+    done
+
+    echo -e "${VERDE}✅ Eliminación nuclear y limpieza completa (SATÁN ESTÁ ORGULLOSO).${NC}"
+    read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
 }
 
+
+
+
+            
                 
 
 verificar_online() {
