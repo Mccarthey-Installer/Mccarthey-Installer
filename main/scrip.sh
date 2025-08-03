@@ -577,6 +577,9 @@ function informacion_usuarios() {
 
 
 
+
+        
+
 # Colores alegres y femeninos
 ROSADO="\e[95m"
 MORADO="\e[35m"
@@ -726,11 +729,6 @@ function eliminar_usuario() {
             sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null # Eliminar líneas vacías
         fi
 
-        # Bloquear escrituras temporales en /root/registros.txt
-        if [[ -f "$REGISTROS" ]]; then
-            chattr +i "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}⚠️ Advertencia: No se pudo bloquear $REGISTROS contra escrituras.${RESET}"
-        fi
-
         # Procesar eliminación
         for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
             echo -e "${MORADO}🗑️ Eliminando usuario: $USUARIO${RESET}"
@@ -798,8 +796,6 @@ function eliminar_usuario() {
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                # Desbloquear archivo para escritura
-                chattr -i "$REGISTROS" 2>/dev/null || true
                 # Escapar caracteres especiales en el nombre de usuario
                 USUARIO_ESCAPED=$(echo "$USUARIO" | sed 's/[][\.*^$/]/\\&/g')
                 sed -i -E "/^${USUARIO_ESCAPED}\t/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
@@ -812,19 +808,13 @@ function eliminar_usuario() {
                         echo -e "${BLANCO}  - $line${RESET}"
                     done
                 fi
-                # Volver a bloquear archivo
-                chattr +i "$REGISTROS" 2>/dev/null || true
             fi
             if [[ -f "$HISTORIAL" ]]; then
-                chattr -i "$HISTORIAL" 2>/dev/null || true
                 sed -i "/^$USUARIO|/d" "$HISTORIAL" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $HISTORIAL.${RESET}"
-                chattr +i "$HISTORIAL" 2>/dev/null || true
             fi
             for LOGFILE in /var/log/auth.log /var/log/secure /var/log/syslog /var/log/messages; do
                 if [[ -f "$LOGFILE" ]]; then
-                    chattr -i "$LOGFILE" 2>/dev/null || true
                     sed -i "/$USUARIO/d" "$LOGFILE" 2>/dev/null || true
-                    chattr +i "$LOGFILE" 2>/dev/null || true
                 fi
             done
 
@@ -848,7 +838,6 @@ function eliminar_usuario() {
         # Limpieza final
         echo -e "${MORADO}🧹 Limpieza final...${RESET}"
         if [[ -f "$REGISTROS" ]]; then
-            chattr -i "$REGISTROS" 2>/dev/null || true
             sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo limpiar líneas vacías de $REGISTROS.${RESET}"
             if [[ ! -s "$REGISTROS" ]]; then
                 rm -f "$REGISTROS" 2>/dev/null
@@ -856,16 +845,13 @@ function eliminar_usuario() {
             fi
             sync
             echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-            chattr +i "$REGISTROS" 2>/dev/null || true
         fi
         if [[ -f "$HISTORIAL" ]]; then
-            chattr -i "$HISTORIAL" 2>/dev/null || true
             sed -i '/^[[:space:]]*$/d' "$HISTORIAL" 2>/dev/null || true
             if [[ ! -s "$HISTORIAL" ]]; then
                 rm -f "$HISTORIAL" 2>/dev/null
                 echo -e "${BLANCO}  ✅ $HISTORIAL estaba vacío y fue eliminado.${RESET}"
             fi
-            chattr +i "$HISTORIAL" 2>/dev/null || true
         fi
         echo -e "${TURQUESA}✅ Eliminación completada. Backup en: $BACKUP_DIR${RESET}"
 
@@ -886,10 +872,6 @@ function eliminar_usuario() {
         return 0
     done
 }
-                
-
-            
-            
                 
 
 verificar_online() {
