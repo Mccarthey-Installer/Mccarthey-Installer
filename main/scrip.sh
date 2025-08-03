@@ -578,34 +578,40 @@ function informacion_usuarios() {
 
 
 
+# Colores alegres y femeninos
+ROSADO="\e[95m"
+MORADO="\e[35m"
+TURQUESA="\e[36m"
+BLANCO="\e[97m"
+RESET="\e[0m"
 
 function eliminar_usuario() {
     while true; do
         clear
-        echo "🗑️ SUBMENÚ: ELIMINAR USUARIOS"
-        echo "=============================="
+        echo -e "${ROSADO}🗑️ SUBMENÚ: ELIMINAR USUARIOS${RESET}"
+        echo -e "${MORADO}==============================${RESET}"
 
         # Verificar privilegios de root
         if [[ $EUID -ne 0 ]]; then
-            echo "🚫 Error: Se requieren privilegios de root."
+            echo -e "${TURQUESA}🚫 Error: Se requieren privilegios de root.${RESET}"
             read -p "Presiona Enter para volver al menú principal..."
             return 0
         fi
 
         # Listar usuarios únicos
         if [[ ! -f "$REGISTROS" ]]; then
-            echo "⚠️ Advertencia: No existe $REGISTROS, buscando usuarios del sistema."
+            echo -e "${TURQUESA}⚠️ Advertencia: No existe $REGISTROS, buscando usuarios del sistema.${RESET}"
         fi
 
-        echo "👤 Usuarios disponibles:"
-        echo "N   Nombre"
+        echo -e "${ROJO}👤 Usuarios disponibles:${RESET}"
+        echo -e "${BLANCO}N   Nombre${RESET}"
         declare -A USUARIOS_MAP
         declare -A UNIQUE_USERS
         NUM=1
         if [[ -f "$REGISTROS" ]]; then
             while IFS=$'\t' read -r USUARIO _; do
                 if [[ -n "$USUARIO" && ! -v UNIQUE_USERS[$USUARIO] ]]; then
-                    echo "$NUM   $USUARIO"
+                    echo -e "${BLANCO}$NUM   $USUARIO${RESET}"
                     USUARIOS_MAP[$NUM]="$USUARIO"
                     UNIQUE_USERS[$USUARIO]=1
                     NUM=$((NUM+1))
@@ -616,7 +622,7 @@ function eliminar_usuario() {
         # Añadir usuarios del sistema (UID >= 1000) sin duplicados
         while IFS=: read -r username _ uid _ _ _ _; do
             if [[ $uid -ge 1000 && $uid -lt 65534 && ! -v UNIQUE_USERS[$username] ]]; then
-                echo "$NUM   $username"
+                echo -e "${BLANCO}$NUM   $username${RESET}"
                 USUARIOS_MAP[$NUM]="$username"
                 UNIQUE_USERS[$username]=1
                 NUM=$((NUM+1))
@@ -624,17 +630,17 @@ function eliminar_usuario() {
         done < /etc/passwd
 
         if [[ ${#USUARIOS_MAP[@]} -eq 0 ]]; then
-            echo "🚫 Error: No hay usuarios para eliminar."
+            echo -e "${TURQUESA}🚫 Error: No hay usuarios para eliminar.${RESET}"
             read -p "Presiona Enter para volver al menú principal..."
             return 0
         fi
 
         # Solicitar nombres o números
         echo
-        echo "🗑️ Ingresa nombres o números de usuarios a eliminar (separados por espacios, 0 para volver al menú principal):"
+        echo -e "${ROSADO}🗑️ Ingresa nombres o números de usuarios a eliminar (separados por espacios, 0 para volver al menú principal):${RESET}"
         read -r INPUT
         if [[ "$INPUT" == "0" ]]; then
-            echo "🚫 Eliminación cancelada."
+            echo -e "${TURQUESA}🚫 Eliminación cancelada.${RESET}"
             read -p "Presiona Enter para volver al menú principal..."
             return 0
         fi
@@ -649,26 +655,31 @@ function eliminar_usuario() {
             elif id "$INPUT_SANITIZADO" &>/dev/null || grep -qi "^$INPUT_SANITIZADO" "$REGISTROS" 2>/dev/null; then
                 USUARIOS_A_ELIMINAR+=("$INPUT_SANITIZADO")
             else
-                echo "🚫 Datos incorrectos: '$INPUT_SANITIZADO' no es un usuario válido ni un número de la lista."
+                echo -e "${TURQUESA}🚫 Datos incorrectos: '$INPUT_SANITIZADO' no es un usuario válido ni un número de la lista.${RESET}"
                 read -p "Presiona Enter para volver al menú principal..."
                 return 0
             fi
         done
 
         if [[ ${#USUARIOS_A_ELIMINAR[@]} -eq 0 ]]; then
-            echo "🚫 Datos incorrectos: No se seleccionaron usuarios válidos."
+            echo -e "${TURQUESA}🚫 Datos incorrectos: No se seleccionaron usuarios válidos.${RESET}"
             read -p "Presiona Enter para volver al menú principal..."
             return 0
         fi
 
         # Mostrar resumen y confirmar
         echo
-        echo "🗑️ Usuarios a eliminar:"
+        echo -e "${MORADO}🗑️ Usuarios a eliminar:${RESET}"
         for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-            echo "  - $USUARIO"
+            echo -e "${BLANCO}  - $USUARIO${RESET}"
         done
-        echo "⚠️ Presiona Enter para confirmar la eliminación (Ctrl+C para volver al menú principal):"
-        read
+        echo -e "${ROSADO}⚠️ Presiona Enter para confirmar la eliminación (0 para volver al menú principal):${RESET}"
+        read CONFIRM
+        if [[ "$CONFIRM" == "0" ]]; then
+            echo -e "${TURQUESA}🚫 Eliminación cancelada.${RESET}"
+            read -p "Presiona Enter para volver al menú principal..."
+            return 0
+        fi
 
         # Crear backup
         BACKUP_DIR="/tmp/user_deletion_backup_$(date +%Y%m%d_%H%M%S)"
@@ -676,18 +687,18 @@ function eliminar_usuario() {
         [[ -f "$REGISTROS" ]] && cp "$REGISTROS" "$BACKUP_DIR/registros_backup.txt"
         [[ -f "$HISTORIAL" ]] && cp "$HISTORIAL" "$BACKUP_DIR/historial_conexiones_backup.txt"
         [[ -f "$PIDFILE" ]] && cp "$PIDFILE" "$BACKUP_DIR/monitorear_conexiones_pid_backup.txt"
-        echo "📁 Backup creado en: $BACKUP_DIR"
+        echo -e "${TURQUESA}📁 Backup creado en: $BACKUP_DIR${RESET}"
 
         # Procesar eliminación
         for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
-            echo "🗑️ Eliminando usuario: $USUARIO"
+            echo -e "${MORADO}🗑️ Eliminando usuario: $USUARIO${RESET}"
 
             # Verificar si el usuario existe en el sistema
             if ! id "$USUARIO" &>/dev/null; then
-                echo "  ⚠️ Advertencia: '$USUARIO' no existe en el sistema."
+                echo -e "${TURQUESA}  ⚠️ Advertencia: '$USUARIO' no existe en el sistema.${RESET}"
             else
                 # Fase 1: Terminar procesos
-                echo "  🔪 Terminando procesos..."
+                echo -e "${BLANCO}  🔪 Terminando procesos...${RESET}"
                 pkill -u "$USUARIO" 2>/dev/null || true
                 sleep 1
                 pkill -9 -u "$USUARIO" 2>/dev/null || true
@@ -695,13 +706,13 @@ function eliminar_usuario() {
                     PID=$(cat "$PIDFILE" 2>/dev/null)
                     if [[ -n "$PID" ]] && ps -p "$PID" -u | grep -q "$USUARIO"; then
                         kill -9 "$PID" 2>/dev/null || true
-                        echo "  ✅ Proceso de monitoreo (PID $PID) terminado."
+                        echo -e "${BLANCO}  ✅ Proceso de monitoreo (PID $PID) terminado.${RESET}"
                     fi
-                    rm -f "$PIDFILE" 2>/dev/null && echo "  ✅ Archivo PID $PIDFILE eliminado."
+                    rm -f "$PIDFILE" 2>/dev/null && echo -e "${BLANCO}  ✅ Archivo PID $PIDFILE eliminado.${RESET}"
                 fi
 
                 # Fase 2: Eliminar directorio home y archivos
-                echo "  🗂️ Eliminando directorio home y archivos..."
+                echo -e "${BLANCO}  🗂️ Eliminando directorio home y archivos...${RESET}"
                 HOME_DIR="/home/$USUARIO"
                 if [[ -d "$HOME_DIR" ]]; then
                     find "$HOME_DIR" -type f -exec shred -fz -n 1 {} \; 2>/dev/null || true
@@ -712,13 +723,13 @@ function eliminar_usuario() {
                 done
 
                 # Fase 3: Eliminar tareas programadas
-                echo "  ⏰ Eliminando crontabs y tareas..."
+                echo -e "${BLANCO}  ⏰ Eliminando crontabs y tareas...${RESET}"
                 crontab -u "$USUARIO" -r 2>/dev/null || true
                 find /var/spool/cron/crontabs -user "$USUARIO" -exec rm -f {} \; 2>/dev/null || true
                 at -r $(atq | grep "$USUARIO" | awk '{print $1}') 2>/dev/null || true
 
                 # Fase 4: Eliminar usuario del sistema
-                echo "  👤 Eliminando usuario del sistema..."
+                echo -e "${BLANCO}  👤 Eliminando usuario del sistema...${RESET}"
                 userdel --force --remove "$USUARIO" 2>/dev/null || true
                 sed -i "/^$USUARIO:/d" /etc/passwd /etc/shadow /etc/group 2>/dev/null || true
 
@@ -726,12 +737,12 @@ function eliminar_usuario() {
                 GROUP=$(getent passwd "$USUARIO" | cut -d: -f4 2>/dev/null)
                 if [[ -n "$GROUP" ]] && getent group "$GROUP" >/dev/null && [[ -z $(getent group "$GROUP" | cut -d: -f4) ]]; then
                     groupdel "$GROUP" 2>/dev/null || true
-                    echo "  ✅ Grupo primario $GROUP eliminado."
+                    echo -e "${BLANCO}  ✅ Grupo primario $GROUP eliminado.${RESET}"
                 fi
             fi
 
             # Fase 6: Limpiar registros y logs
-            echo "  📜 Limpiando registros y logs..."
+            echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
                 awk -v user="$USUARIO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS"
             fi
@@ -745,23 +756,23 @@ function eliminar_usuario() {
             done
 
             # Fase 7: Verificación
-            echo "  🔍 Verificando eliminación..."
+            echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
             if id "$USUARIO" &>/dev/null; then
-                echo "  🚫 Error: No se pudo eliminar '$USUARIO' del sistema."
+                echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' del sistema.${RESET}"
             elif [[ -d "/home/$USUARIO" ]]; then
-                echo "  🚫 Error: El directorio home '/home/$USUARIO' aún existe."
+                echo -e "${TURQUESA}  🚫 Error: El directorio home '/home/$USUARIO' aún existe.${RESET}"
             else
-                echo "  ✅ Éxito: '$USUARIO' eliminado completamente."
+                echo -e "${BLANCO}  ✅ Éxito: '$USUARIO' eliminado completamente.${RESET}"
             fi
         done
 
         # Limpieza final
-        echo "🧹 Limpieza final..."
+        echo -e "${MORADO}🧹 Limpieza final...${RESET}"
         [[ -f "$REGISTROS" ]] && sed -i '/^[[:space:]]*$/d' "$REGISTROS"
         [[ -f "$HISTORIAL" ]] && sed -i '/^[[:space:]]*$/d' "$HISTORIAL"
         sync
         echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-        echo "✅ Eliminación completada. Backup en: $BACKUP_DIR"
+        echo -e "${TURQUESA}✅ Eliminación completada. Backup en: $BACKUP_DIR${RESET}"
         read -p "Presiona Enter para volver al menú principal..."
         return 0
     done
@@ -769,52 +780,28 @@ function eliminar_usuario() {
 
 function verificar_eliminacion() {
     clear
-    echo "🔍 SUBMENÚ: VERIFICACIÓN POST-ELIMINACIÓN"
-    echo "======================================"
-    echo "  👤 Usuarios restantes:"
+    echo -e "${ROSADO}🔍 SUBMENÚ: VERIFICACIÓN POST-ELIMINACIÓN${RESET}"
+    echo -e "${MORADO}======================================${RESET}"
+    echo -e "${BLANCO}  👤 Usuarios restantes:${RESET}"
     awk -F: '$3 >= 1000 && $3 < 65534 {print "    - " $1 " (UID: " $3 ")"}' /etc/passwd
-    echo "  🗑️ Archivos huérfanos:"
+    echo -e "${BLANCO}  🗑️ Archivos huérfanos:${RESET}"
     find / -nouser 2>/dev/null | while read file; do
-        echo "    - $file"
+        echo -e "${BLANCO}    - $file${RESET}"
     done
-    echo "  📁 Directorios home residuales:"
+    echo -e "${BLANCO}  📁 Directorios home residuales:${RESET}"
     find /home -maxdepth 1 -type d -not -name "home" 2>/dev/null | while read dir; do
-        echo "    - $dir"
+        echo -e "${BLANCO}    - $dir${RESET}"
     done
-    echo "  🔧 Estado del archivo PID:"
+    echo -e "${BLANCO}  🔧 Estado del archivo PID:${RESET}"
     if [[ -f "$PIDFILE" ]]; then
-        echo "    - $PIDFILE existe con PID $(cat "$PIDFILE" 2>/dev/null)"
+        echo -e "${BLANCO}    - $PIDFILE existe con PID $(cat "$PIDFILE" 2>/dev/null)${RESET}"
     else
-        echo "    - $PIDFILE no existe"
+        echo -e "${BLANCO}    - $PIDFILE no existe${RESET}"
     fi
     read -p "Presiona Enter para volver al menú principal..."
 }
 
 
-        
-
-function verificar_eliminacion() {
-    clear
-    echo "🔍 VERIFICACIÓN POST-ELIMINACIÓN"
-    echo "=============================="
-    echo "  👤 Usuarios restantes:"
-    awk -F: '$3 >= 1000 && $3 < 65534 {print "    - " $1 " (UID: " $3 ")"}' /etc/passwd
-    echo "  🗑️ Archivos huérfanos:"
-    find / -nouser 2>/dev/null | while read file; do
-        echo "    - $file"
-    done
-    echo "  📁 Directorios home residuales:"
-    find /home -maxdepth 1 -type d -not -name "home" 2>/dev/null | while read dir; do
-        echo "    - $dir"
-    done
-    echo "  🔧 Estado del archivo PID:"
-    if [[ -f "$PIDFILE" ]]; then
-        echo "    - $PIDFILE existe con PID $(cat "$PIDFILE" 2>/dev/null)"
-    else
-        echo "    - $PIDFILE no existe"
-    fi
-    read -p "Presiona Enter para volver al menú..."
-}
 
 
         
