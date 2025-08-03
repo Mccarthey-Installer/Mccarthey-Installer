@@ -578,6 +578,9 @@ function informacion_usuarios() {
 
 
 
+
+                
+                
 # Colores alegres y femeninos
 ROSADO="\e[95m"
 MORADO="\e[35m"
@@ -598,6 +601,18 @@ function eliminar_usuario() {
             return 0
         fi
 
+        # Verificar permisos de /root/registros.txt
+        if [[ -f "$REGISTROS" ]]; then
+            ls -l "$REGISTROS" | grep -q "^-rw" || {
+                echo -e "${TURQUESA}⚠️ Advertencia: Corrigiendo permisos de $REGISTROS...${RESET}"
+                chmod 644 "$REGISTROS" 2>/dev/null || {
+                    echo -e "${TURQUESA}🚫 Error: No se pudo corregir permisos de $REGISTROS.${RESET}"
+                    read -p "Presiona Enter para volver al menú principal..."
+                    return 0
+                }
+            }
+        fi
+
         # Listar usuarios únicos
         if [[ ! -f "$REGISTROS" ]]; then
             echo -e "${TURQUESA}⚠️ Advertencia: No existe $REGISTROS, buscando usuarios del sistema.${RESET}"
@@ -609,9 +624,14 @@ function eliminar_usuario() {
         declare -A UNIQUE_USERS
         NUM=1
         if [[ -f "$REGISTROS" ]]; then
+            # Mostrar contenido de /root/registros.txt para depuración
+            echo -e "${TURQUESA}📜 Contenido actual de $REGISTROS:${RESET}"
+            cat "$REGISTROS" | while IFS= read -r line; do
+                echo -e "${BLANCO}  - $line${RESET}"
+            done
             # Filtrar líneas vacías y duplicados
             while IFS=$'\t' read -r USUARIO _; do
-                USUARIO=$(echo "$USUARIO" | tr -d '[:space:]\r\n')
+                USUARIO=$(echo "$USUARIO" | tr -d '[:space:]\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
                 if [[ -n "$USUARIO" && ! -v UNIQUE_USERS[$USUARIO] ]]; then
                     echo -e "${BLANCO}$NUM   $USUARIO${RESET}"
                     USUARIOS_MAP[$NUM]="$USUARIO"
@@ -691,6 +711,14 @@ function eliminar_usuario() {
         [[ -f "$PIDFILE" ]] && cp "$PIDFILE" "$BACKUP_DIR/monitorear_conexiones_pid_backup.txt" 2>/dev/null
         echo -e "${TURQUESA}📁 Backup creado en: $BACKUP_DIR${RESET}"
 
+        # Sanitizar /root/registros.txt antes de eliminar
+        if [[ -f "$REGISTROS" ]]; then
+            echo -e "${TURQUESA}🧹 Sanitizando $REGISTROS...${RESET}"
+            sed -i 's/\r$//' "$REGISTROS" 2>/dev/null # Eliminar \r de Windows
+            sed -i 's/[[:space:]]*$//' "$REGISTROS" 2>/dev/null # Eliminar espacios finales
+            sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null # Eliminar líneas vacías
+        fi
+
         # Procesar eliminación
         for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
             echo -e "${MORADO}🗑️ Eliminando usuario: $USUARIO${RESET}"
@@ -763,6 +791,10 @@ function eliminar_usuario() {
                     echo -e "${BLANCO}  ✅ '$USUARIO' eliminado de $REGISTROS.${RESET}"
                 else
                     echo -e "${TURQUESA}  🚫 Error: '$USUARIO' aún existe en $REGISTROS.${RESET}"
+                    echo -e "${TURQUESA}📜 Contenido de $REGISTROS después de intentar eliminar:${RESET}"
+                    cat "$REGISTROS" | while IFS= read -r line; do
+                        echo -e "${BLANCO}  - $line${RESET}"
+                    done
                 fi
             fi
             if [[ -f "$HISTORIAL" ]]; then
@@ -810,6 +842,13 @@ function eliminar_usuario() {
         sync
         echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
         echo -e "${TURQUESA}✅ Eliminación completada. Backup en: $BACKUP_DIR${RESET}"
+        # Mostrar contenido final de /root/registros.txt para depuración
+        if [[ -f "$REGISTROS" ]]; then
+            echo -e "${TURQUESA}📜 Contenido final de $REGISTROS:${RESET}"
+            cat "$REGISTROS" | while IFS= read -r line; do
+                echo -e "${BLANCO}  - $line${RESET}"
+            done
+        fi
         read -p "Presiona Enter para volver al menú principal..."
         return 0
     done
