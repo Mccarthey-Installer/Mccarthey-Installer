@@ -576,7 +576,10 @@ function informacion_usuarios() {
 }
 
 
-
+# Rutas proporcionadas
+REGISTROS="/root/registros.txt"
+HISTORIAL="/root/historial_conexiones.txt"
+PIDFILE="/var/run/monitorear_conexiones.pid"
 
 # Colores alegres y femeninos
 ROSADO="\e[95m"
@@ -654,7 +657,7 @@ function eliminar_usuario() {
             INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | tr -d '[:space:]\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
             if [[ "$INPUT_SANITIZADO" =~ ^[0-9]+$ && -n "${USUARIOS_MAP[$INPUT_SANITIZADO]}" ]]; then
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_MAP[$INPUT_SANITIZADO]}")
-            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1 ); then
+            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}\b[[:space:]]" "$REGISTROS" >/dev/null 2>&1 ); then
                 USUARIOS_A_ELIMINAR+=("$INPUT_SANITIZADO")
             else
                 echo -e "${TURQUESA}🚫 Datos incorrectos: '$INPUT_SANITIZADO' no es un usuario válido ni un número de la lista.${RESET}"
@@ -716,26 +719,9 @@ function eliminar_usuario() {
                     rm -f "$PIDFILE" 2>/dev/null && echo -e "${BLANCO}  ✅ Archivo PID $PIDFILE eliminado.${RESET}"
                 fi
 
-                # Fase 2: Eliminar directorio home y archivos
-                echo -e "${BLANCO}  🗂️ Eliminando directorio home y archivos...${RESET}"
-                HOME_DIR="/home/$USUARIO"
-                if [[ -d "$HOME_DIR" ]]; then
-                    find "$HOME_DIR" -type f -exec shred -fz -n 1 {} \; 2>/dev/null || true
-                    rm -rf "$HOME_DIR" 2>/dev/null || true
-                fi
-                for dir in "/var/mail/$USUARIO" "/var/spool/mail/$USUARIO" "/tmp/$USUARIO"* "/var/tmp/$USUARIO"*; do
-                    [[ -e "$dir" ]] && rm -rf "$dir" 2>/dev/null || true
-                done
-
-                # Fase 3: Eliminar tareas programadas
-                echo -e "${BLANCO}  ⏰ Eliminando crontabs y tareas...${RESET}"
-                crontab -u "$USUARIO" -r 2>/dev/null || true
-                find /var/spool/cron/crontabs -user "$USUARIO" -exec rm -f {} \; 2>/dev/null || true
-                at -r $(atq | grep "$USUARIO" | awk '{print $1}') 2>/dev/null || true
-
-                # Fase 4: Eliminar usuario del sistema
+                # Fase 2: Eliminar usuario del sistema
                 echo -e "${BLANCO}  👤 Eliminando usuario del sistema...${RESET}"
-                userdel --force --remove "$USUARIO"
+                userdel -r "$USUARIO" 2>/dev/null
                 if [[ $? -ne 0 ]]; then
                     echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar el usuario '$USUARIO' con userdel, intentando eliminación manual...${RESET}"
                     sed -i "/^${USUARIO}:/d" /etc/passwd 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de /etc/passwd.${RESET}"
@@ -745,7 +731,7 @@ function eliminar_usuario() {
                     echo -e "${BLANCO}  ✅ Usuario '$USUARIO' eliminado del sistema con userdel.${RESET}"
                 fi
 
-                # Fase 5: Eliminar grupo primario
+                # Fase 3: Eliminar grupo primario
                 GROUP=$(getent passwd "$USUARIO" | cut -d: -f4 2>/dev/null)
                 if [[ -n "$GROUP" ]] && getent group "$GROUP" >/dev/null && [[ -z $(getent group "$GROUP" | cut -d: -f4) ]]; then
                     groupdel "$GROUP" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar el grupo primario $GROUP.${RESET}"
@@ -755,11 +741,28 @@ function eliminar_usuario() {
                 echo -e "${TURQUESA}  ⚠️ Advertencia: '$USUARIO' no existe en el sistema, limpiando registros...${RESET}"
             fi
 
+            # Fase 4: Limpiar directorio home y archivos
+            echo -e "${BLANCO}  🗂️ Eliminando directorio home y archivos...${RESET}"
+            HOME_DIR="/home/$USUARIO"
+            if [[ -d "$HOME_DIR" ]]; then
+                find "$HOME_DIR" -type f -exec shred -fz -n 1 {} \; 2>/dev/null || true
+                rm -rf "$HOME_DIR" 2>/dev/null || true
+            fi
+            for dir in "/var/mail/$USUARIO" "/var/spool/mail/$USUARIO" "/tmp/$USUARIO"* "/var/tmp/$USUARIO"*; do
+                [[ -e "$dir" ]] && rm -rf "$dir" 2>/dev/null || true
+            done
+
+            # Fase 5: Eliminar tareas programadas
+            echo -e "${BLANCO}  ⏰ Eliminando crontabs y tareas...${RESET}"
+            crontab -u "$USUARIO" -r 2>/dev/null || true
+            find /var/spool/cron/crontabs -user "$USUARIO" -exec rm -f {} \; 2>/dev/null || true
+            at -r $(atq | grep "$USUARIO" | awk '{print $1}') 2>/dev/null || true
+
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                sed -i "/^${USUARIO}\([[:space:]]\|$\)/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
-                if ! grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
+                sed -i -E "/^${USUARIO}\b[[:space:]]/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
+                if ! grep -E "^${USUARIO}\b[[:space:]]" "$REGISTROS" >/dev/null 2>&1; then
                     echo -e "${BLANCO}  ✅ '$USUARIO' eliminado de $REGISTROS.${RESET}"
                 else
                     echo -e "${TURQUESA}  🚫 Error: '$USUARIO' aún existe en $REGISTROS.${RESET}"
@@ -777,7 +780,7 @@ function eliminar_usuario() {
             # Fase 7: Verificación estricta
             echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
             EXISTS_IN_REGISTROS=0
-            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
+            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO}\b[[:space:]]" "$REGISTROS" >/dev/null 2>&1; then
                 EXISTS_IN_REGISTROS=1
             fi
             if id "$USUARIO" &>/dev/null; then
@@ -813,7 +816,7 @@ function eliminar_usuario() {
         read -p "Presiona Enter para volver al menú principal..."
         return 0
     done
-}
+}              
                 
 
                 
