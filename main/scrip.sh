@@ -578,11 +578,6 @@ function informacion_usuarios() {
 
 
 
-
-                
-
-
-
 # Colores alegres y femeninos
 ROSADO="\e[95m"
 MORADO="\e[35m"
@@ -691,9 +686,9 @@ function eliminar_usuario() {
         # Crear backup
         BACKUP_DIR="/tmp/user_deletion_backup_$(date +%Y%m%d_%H%M%S)"
         mkdir -p "$BACKUP_DIR"
-        [[ -f "$REGISTROS" ]] && cp "$REGISTROS" "$BACKUP_DIR/registros_backup.txt"
-        [[ -f "$HISTORIAL" ]] && cp "$HISTORIAL" "$BACKUP_DIR/historial_conexiones_backup.txt"
-        [[ -f "$PIDFILE" ]] && cp "$PIDFILE" "$BACKUP_DIR/monitorear_conexiones_pid_backup.txt"
+        [[ -f "$REGISTROS" ]] && cp "$REGISTROS" "$BACKUP_DIR/registros_backup.txt" 2>/dev/null
+        [[ -f "$HISTORIAL" ]] && cp "$HISTORIAL" "$BACKUP_DIR/historial_conexiones_backup.txt" 2>/dev/null
+        [[ -f "$PIDFILE" ]] && cp "$PIDFILE" "$BACKUP_DIR/monitorear_conexiones_pid_backup.txt" 2>/dev/null
         echo -e "${TURQUESA}📁 Backup creado en: $BACKUP_DIR${RESET}"
 
         # Procesar eliminación
@@ -740,14 +735,21 @@ function eliminar_usuario() {
 
                 # Fase 4: Eliminar usuario del sistema
                 echo -e "${BLANCO}  👤 Eliminando usuario del sistema...${RESET}"
-                userdel --force --remove "$USUARIO" 2>/dev/null || true
-                sed -i "/^$USUARIO:/d" /etc/passwd /etc/shadow /etc/group 2>/dev/null || true
+                userdel --force --remove "$USUARIO"
+                if [[ $? -ne 0 ]]; then
+                    echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar el usuario '$USUARIO' con userdel, intentando eliminación manual...${RESET}"
+                    sed -i "/^${USUARIO}:/d" /etc/passwd 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de /etc/passwd.${RESET}"
+                    sed -i "/^${USUARIO}:/d" /etc/shadow 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de /etc/shadow.${RESET}"
+                    sed -i "/^${USUARIO}:/d" /etc/group 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de /etc/group.${RESET}"
+                else
+                    echo -e "${BLANCO}  ✅ Usuario '$USUARIO' eliminado del sistema con userdel.${RESET}"
+                fi
 
                 # Fase 5: Eliminar grupo primario
                 GROUP=$(getent passwd "$USUARIO" | cut -d: -f4 2>/dev/null)
                 if [[ -n "$GROUP" ]] && getent group "$GROUP" >/dev/null && [[ -z $(getent group "$GROUP" | cut -d: -f4) ]]; then
-                    groupdel "$GROUP" 2>/dev/null || true
-                    echo -e "${BLANCO}  ✅ Grupo primario $GROUP eliminado.${RESET}"
+                    groupdel "$GROUP" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar el grupo primario $GROUP.${RESET}"
+                    [[ $? -eq 0 ]] && echo -e "${BLANCO}  ✅ Grupo primario $GROUP eliminado.${RESET}"
                 fi
             else
                 echo -e "${TURQUESA}  ⚠️ Advertencia: '$USUARIO' no existe en el sistema, limpiando registros...${RESET}"
@@ -756,17 +758,15 @@ function eliminar_usuario() {
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                # Usar sed para eliminar la línea con el usuario exacto
-                sed -i "/^${USUARIO}\([[:space:]]\|$\)/d" "$REGISTROS" 2>/dev/null || true
-                # Verificar si la eliminación falló
-                if grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
-                    echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
-                else
+                sed -i "/^${USUARIO}\([[:space:]]\|$\)/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
+                if ! grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
                     echo -e "${BLANCO}  ✅ '$USUARIO' eliminado de $REGISTROS.${RESET}"
+                else
+                    echo -e "${TURQUESA}  🚫 Error: '$USUARIO' aún existe en $REGISTROS.${RESET}"
                 fi
             fi
             if [[ -f "$HISTORIAL" ]]; then
-                sed -i "/^$USUARIO|/d" "$HISTORIAL" 2>/dev/null || true
+                sed -i "/^$USUARIO|/d" "$HISTORIAL" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $HISTORIAL.${RESET}"
             fi
             for LOGFILE in /var/log/auth.log /var/log/secure /var/log/syslog /var/log/messages; do
                 if [[ -f "$LOGFILE" ]]; then
@@ -774,28 +774,27 @@ function eliminar_usuario() {
                 fi
             done
 
-            # Fase 7: Verificación
+            # Fase 7: Verificación estricta
             echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
             EXISTS_IN_REGISTROS=0
             if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
                 EXISTS_IN_REGISTROS=1
             fi
-            if [[ $EXISTS_IN_SYSTEM -eq 1 || $EXISTS_IN_REGISTROS -eq 1 || -d "/home/$USUARIO" ]]; then
+            if id "$USUARIO" &>/dev/null; then
+                echo -e "${TURQUESA}  🚫 Error: '$USUARIO' aún existe según 'id' tras la eliminación.${RESET}"
+            elif [[ $EXISTS_IN_REGISTROS -eq 1 || -d "/home/$USUARIO" ]]; then
                 echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' completamente."
-                [[ $EXISTS_IN_SYSTEM -eq 1 ]] && echo -e "${TURQUESA}      - '$USUARIO' aún existe en el sistema.${RESET}"
                 [[ $EXISTS_IN_REGISTROS -eq 1 ]] && echo -e "${TURQUESA}      - '$USUARIO' aún existe en $REGISTROS.${RESET}"
                 [[ -d "/home/$USUARIO" ]] && echo -e "${TURQUESA}      - El directorio home '/home/$USUARIO' aún existe.${RESET}"
             else
-                echo -e "${BLANCO}  ✅ Éxito: '$USUARIO' eliminado completamente.${RESET}"
+                echo -e "${BLANCO}  ✅ Confirmación: '$USUARIO' ya no existe en el sistema ni en los registros.${RESET}"
             fi
         done
 
         # Limpieza final
         echo -e "${MORADO}🧹 Limpieza final...${RESET}"
         if [[ -f "$REGISTROS" ]]; then
-            # Eliminar líneas vacías y espacios residuales
-            sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null || true
-            # Verificar si el archivo está vacío y eliminarlo si es necesario
+            sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo limpiar líneas vacías de $REGISTROS.${RESET}"
             if [[ ! -s "$REGISTROS" ]]; then
                 rm -f "$REGISTROS" 2>/dev/null
                 echo -e "${BLANCO}  ✅ $REGISTROS estaba vacío y fue eliminado.${RESET}"
@@ -815,32 +814,9 @@ function eliminar_usuario() {
         return 0
     done
 }
+                
 
-function verificar_eliminacion() {
-    clear
-    echo -e "${ROSADO}🔍 SUBMENÚ: VERIFICACIÓN POST-ELIMINACIÓN${RESET}"
-    echo -e "${MORADO}======================================${RESET}"
-    echo -e "${BLANCO}  👤 Usuarios restantes:${RESET}"
-    awk -F: '$3 >= 1000 && $3 < 65534 {print "    - " $1 " (UID: " $3 ")"}' /etc/passwd
-    echo -e "${BLANCO}  🗑️ Archivos huérfanos:${RESET}"
-    find / -nouser 2>/dev/null | while read file; do
-        echo -e "${BLANCO}    - $file${RESET}"
-    done
-    echo -e "${BLANCO}  📁 Directorios home residuales:${RESET}"
-    find /home -maxdepth 1 -type d -not -name "home" 2>/dev/null | while read dir; do
-        echo -e "${BLANCO}    - $dir${RESET}"
-    done
-    echo -e "${BLANCO}  🔧 Estado del archivo PID:${RESET}"
-    if [[ -f "$PIDFILE" ]]; then
-        echo -e "${BLANCO}    - $PIDFILE existe con PID $(cat "$PIDFILE" 2>/dev/null)${RESET}"
-    else
-        echo -e "${BLANCO}    - $PIDFILE no existe${RESET}"
-    fi
-    read -p "Presiona Enter para volver al menú principal..."
-}
-
-
-        
+                
 
 verificar_online() {
     clear
