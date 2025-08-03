@@ -578,6 +578,11 @@ function informacion_usuarios() {
 
 
 
+
+                
+
+
+
 # Colores alegres y femeninos
 ROSADO="\e[95m"
 MORADO="\e[35m"
@@ -603,7 +608,7 @@ function eliminar_usuario() {
             echo -e "${TURQUESA}⚠️ Advertencia: No existe $REGISTROS, buscando usuarios del sistema.${RESET}"
         fi
 
-        echo -e "${ROJO}👤 Usuarios disponibles:${RESET}"
+        echo -e "${BLANCO}👤 Usuarios disponibles:${RESET}"
         echo -e "${BLANCO}N   Nombre${RESET}"
         declare -A USUARIOS_MAP
         declare -A UNIQUE_USERS
@@ -611,13 +616,14 @@ function eliminar_usuario() {
         if [[ -f "$REGISTROS" ]]; then
             # Filtrar líneas vacías y duplicados
             while IFS=$'\t' read -r USUARIO _; do
+                USUARIO=$(echo "$USUARIO" | tr -d '[:space:]\r\n')
                 if [[ -n "$USUARIO" && ! -v UNIQUE_USERS[$USUARIO] ]]; then
                     echo -e "${BLANCO}$NUM   $USUARIO${RESET}"
                     USUARIOS_MAP[$NUM]="$USUARIO"
                     UNIQUE_USERS[$USUARIO]=1
                     NUM=$((NUM+1))
                 fi
-            done < <(grep -v '^[[:space:]]*$' "$REGISTROS")
+            done < <(grep -v '^[[:space:]]*$' "$REGISTROS" | sort -u)
         fi
 
         # Añadir usuarios del sistema (UID >= 1000) sin duplicados
@@ -650,10 +656,10 @@ function eliminar_usuario() {
         declare -a USUARIOS_A_ELIMINAR
         read -ra INPUT_ARRAY <<< "$INPUT"
         for INPUT_ITEM in "${INPUT_ARRAY[@]}"; do
-            INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | tr -d '\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
+            INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | tr -d '[:space:]\r\n' | sed 's/[^a-zA-Z0-9._-]//g')
             if [[ "$INPUT_SANITIZADO" =~ ^[0-9]+$ && -n "${USUARIOS_MAP[$INPUT_SANITIZADO]}" ]]; then
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_MAP[$INPUT_SANITIZADO]}")
-            elif id "$INPUT_SANITIZADO" &>/dev/null || grep -qi "^$INPUT_SANITIZADO" "$REGISTROS" 2>/dev/null; then
+            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1 ); then
                 USUARIOS_A_ELIMINAR+=("$INPUT_SANITIZADO")
             else
                 echo -e "${TURQUESA}🚫 Datos incorrectos: '$INPUT_SANITIZADO' no es un usuario válido ni un número de la lista.${RESET}"
@@ -750,7 +756,14 @@ function eliminar_usuario() {
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                grep -vi "^$USUARIO" "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS" || true
+                # Usar sed para eliminar la línea con el usuario exacto
+                sed -i "/^${USUARIO}\([[:space:]]\|$\)/d" "$REGISTROS" 2>/dev/null || true
+                # Verificar si la eliminación falló
+                if grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
+                    echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
+                else
+                    echo -e "${BLANCO}  ✅ '$USUARIO' eliminado de $REGISTROS.${RESET}"
+                fi
             fi
             if [[ -f "$HISTORIAL" ]]; then
                 sed -i "/^$USUARIO|/d" "$HISTORIAL" 2>/dev/null || true
@@ -764,7 +777,7 @@ function eliminar_usuario() {
             # Fase 7: Verificación
             echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
             EXISTS_IN_REGISTROS=0
-            if [[ -f "$REGISTROS" ]] && grep -qi "^$USUARIO" "$REGISTROS" 2>/dev/null; then
+            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
                 EXISTS_IN_REGISTROS=1
             fi
             if [[ $EXISTS_IN_SYSTEM -eq 1 || $EXISTS_IN_REGISTROS -eq 1 || -d "/home/$USUARIO" ]]; then
@@ -780,10 +793,20 @@ function eliminar_usuario() {
         # Limpieza final
         echo -e "${MORADO}🧹 Limpieza final...${RESET}"
         if [[ -f "$REGISTROS" ]]; then
-            grep -v '^[[:space:]]*$' "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS" || true
+            # Eliminar líneas vacías y espacios residuales
+            sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null || true
+            # Verificar si el archivo está vacío y eliminarlo si es necesario
+            if [[ ! -s "$REGISTROS" ]]; then
+                rm -f "$REGISTROS" 2>/dev/null
+                echo -e "${BLANCO}  ✅ $REGISTROS estaba vacío y fue eliminado.${RESET}"
+            fi
         fi
         if [[ -f "$HISTORIAL" ]]; then
             sed -i '/^[[:space:]]*$/d' "$HISTORIAL" 2>/dev/null || true
+            if [[ ! -s "$HISTORIAL" ]]; then
+                rm -f "$HISTORIAL" 2>/dev/null
+                echo -e "${BLANCO}  ✅ $HISTORIAL estaba vacío y fue eliminado.${RESET}"
+            fi
         fi
         sync
         echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
@@ -816,9 +839,6 @@ function verificar_eliminacion() {
     read -p "Presiona Enter para volver al menú principal..."
 }
 
-# 
-                
-                
 
         
 
