@@ -614,6 +614,15 @@ function eliminar_usuario() {
             }
         fi
 
+        # Verificar si otro proceso está usando /root/registros.txt
+        if [[ -f "$REGISTROS" ]] && lsof "$REGISTROS" >/dev/null 2>&1; then
+            echo -e "${TURQUESA}⚠️ Advertencia: $REGISTROS está siendo usado por otro proceso:${RESET}"
+            lsof "$REGISTROS" | while IFS= read -r line; do
+                echo -e "${BLANCO}  - $line${RESET}"
+            done
+            echo -e "${TURQUESA}⚠️ Esto podría causar que los usuarios eliminados reaparezcan.${RESET}"
+        fi
+
         # Listar usuarios únicos
         if [[ ! -f "$REGISTROS" ]]; then
             echo -e "${TURQUESA}⚠️ Advertencia: No existe $REGISTROS, buscando usuarios del sistema.${RESET}"
@@ -623,21 +632,19 @@ function eliminar_usuario() {
         echo -e "${BLANCO}N   Nombre${RESET}"
         declare -A USUARIOS_MAP
         declare -A UNIQUE_USERS
+        declare -A NAME_TO_FULLNAME
         NUM=1
         if [[ -f "$REGISTROS" ]]; then
-            # Mostrar contenido de /root/registros.txt para depuración
-            echo -e "${TURQUESA}📜 Contenido actual de $REGISTROS:${RESET}"
-            cat "$REGISTROS" | while IFS= read -r line; do
-                echo -e "${BLANCO}  - $line${RESET}"
-            done
-            # Leer nombres de usuario preservando espacios
-            while IFS=$'\t' read -r line; do
-                # Extraer el nombre de usuario hasta el primer tabulador o fin de línea
-                USUARIO=$(echo "$line" | awk '{print $1}')
+            # Leer nombres de usuario (primer campo, antes del tabulador)
+            while IFS=$'\t' read -r USUARIO _; do
                 if [[ -n "$USUARIO" && ! -v UNIQUE_USERS["$USUARIO"] ]]; then
                     echo -e "${BLANCO}$NUM   $USUARIO${RESET}"
                     USUARIOS_MAP[$NUM]="$USUARIO"
                     UNIQUE_USERS["$USUARIO"]=1
+                    NAME_TO_FULLNAME["$USUARIO"]="$USUARIO"
+                    # Mapear nombre con espacios eliminados
+                    USUARIO_SANITIZED=$(echo "$USUARIO" | tr -d '[:space:]')
+                    NAME_TO_FULLNAME["$USUARIO_SANITIZED"]="$USUARIO"
                     NUM=$((NUM+1))
                 fi
             done < <(grep -v '^[[:space:]]*$' "$REGISTROS" | sort -u)
@@ -649,6 +656,7 @@ function eliminar_usuario() {
                 echo -e "${BLANCO}$NUM   $username${RESET}"
                 USUARIOS_MAP[$NUM]="$username"
                 UNIQUE_USERS["$username"]=1
+                NAME_TO_FULLNAME["$username"]="$username"
                 NUM=$((NUM+1))
             fi
         done < /etc/passwd
@@ -673,10 +681,12 @@ function eliminar_usuario() {
         declare -a USUARIOS_A_ELIMINAR
         read -ra INPUT_ARRAY <<< "$INPUT"
         for INPUT_ITEM in "${INPUT_ARRAY[@]}"; do
-            INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | sed 's/[^a-zA-Z0-9._- ]//g')
+            INPUT_SANITIZADO=$(echo "$INPUT_ITEM" | sed 's/[^a-zA-Z0-9._-]//g')
             if [[ "$INPUT_SANITIZADO" =~ ^[0-9]+$ && -n "${USUARIOS_MAP[$INPUT_SANITIZADO]}" ]]; then
                 USUARIOS_A_ELIMINAR+=("${USUARIOS_MAP[$INPUT_SANITIZADO]}")
-            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1 ); then
+            elif [[ -n "${NAME_TO_FULLNAME[$INPUT_SANITIZADO]}" ]]; then
+                USUARIOS_A_ELIMINAR+=("${NAME_TO_FULLNAME[$INPUT_SANITIZADO]}")
+            elif id "$INPUT_SANITIZADO" &>/dev/null || ( [[ -f "$REGISTROS" ]] && grep -E "^${INPUT_SANITIZADO}\t" "$REGISTROS" >/dev/null 2>&1 ); then
                 USUARIOS_A_ELIMINAR+=("$INPUT_SANITIZADO")
             else
                 echo -e "${TURQUESA}🚫 Datos incorrectos: '$INPUT_SANITIZADO' no es un usuario válido ni un número de la lista.${RESET}"
@@ -788,10 +798,10 @@ function eliminar_usuario() {
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                # Escapar espacios en el nombre de usuario para la regex
-                USUARIO_ESCAPED=$(echo "$USUARIO" | sed 's/ /\\ /g')
-                sed -i -E "/^${USUARIO_ESCAPED}([[:space:]]|$)/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
-                if ! grep -E "^${USUARIO_ESCAPED}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
+                # Escapar caracteres especiales en el nombre de usuario
+                USUARIO_ESCAPED=$(echo "$USUARIO" | sed 's/[][\.*^$/]/\\&/g')
+                sed -i -E "/^${USUARIO_ESCAPED}\t/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
+                if ! grep -E "^${USUARIO_ESCAPED}\t" "$REGISTROS" >/dev/null 2>&1; then
                     echo -e "${BLANCO}  ✅ '$USUARIO' eliminado de $REGISTROS.${RESET}"
                 else
                     echo -e "${TURQUESA}  🚫 Error: '$USUARIO' aún existe en $REGISTROS.${RESET}"
@@ -813,7 +823,7 @@ function eliminar_usuario() {
             # Fase 7: Verificación estricta
             echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
             EXISTS_IN_REGISTROS=0
-            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO_ESCAPED}([[:space:]]|$)" "$REGISTROS" >/dev/null 2>&1; then
+            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO_ESCAPED}\t" "$REGISTROS" >/dev/null 2>&1; then
                 EXISTS_IN_REGISTROS=1
             fi
             if id "$USUARIO" &>/dev/null; then
@@ -835,6 +845,9 @@ function eliminar_usuario() {
                 rm -f "$REGISTROS" 2>/dev/null
                 echo -e "${BLANCO}  ✅ $REGISTROS estaba vacío y fue eliminado.${RESET}"
             fi
+            # Forzar sincronización
+            sync
+            echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
         fi
         if [[ -f "$HISTORIAL" ]]; then
             sed -i '/^[[:space:]]*$/d' "$HISTORIAL" 2>/dev/null || true
@@ -843,27 +856,15 @@ function eliminar_usuario() {
                 echo -e "${BLANCO}  ✅ $HISTORIAL estaba vacío y fue eliminado.${RESET}"
             fi
         fi
-        sync
-        echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
         echo -e "${TURQUESA}✅ Eliminación completada. Backup en: $BACKUP_DIR${RESET}"
-        # Mostrar contenido final de /root/registros.txt para depuración
-        if [[ -f "$REGISTROS" ]]; then
-            echo -e "${TURQUESA}📜 Contenido final de $REGISTROS:${RESET}"
-            cat "$REGISTROS" | while IFS= read -r line; do
-                echo -e "${BLANCO}  - $line${RESET}"
-            done
-        fi
         read -p "Presiona Enter para volver al menú principal..."
         return 0
     done
 }
 
-                
-                
+            
 
-        
-                        
-                
+       
                 
 
 verificar_online() {
