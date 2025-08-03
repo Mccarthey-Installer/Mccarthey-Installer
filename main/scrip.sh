@@ -575,8 +575,6 @@ function informacion_usuarios() {
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
 
-
-
 # Rutas proporcionadas
 REGISTROS="/root/registros.txt"
 HISTORIAL="/root/historial_conexiones.txt"
@@ -620,7 +618,7 @@ function eliminar_usuario() {
             lsof "$REGISTROS" | while IFS= read -r line; do
                 echo -e "${BLANCO}  - $line${RESET}"
             done
-            echo -e "${TURQUESA}⚠️ Esto podría causar que los usuarios eliminados reaparezcan.${RESET}"
+            echo -e "${TURQUESA}⚠️ Esto podría causar que los usuarios eliminados reaparezcan. Considera detener estos procesos con 'kill -9 <PID>'.${RESET}"
         fi
 
         # Listar usuarios únicos
@@ -731,6 +729,11 @@ function eliminar_usuario() {
             sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null # Eliminar líneas vacías
         fi
 
+        # Bloquear escrituras temporales en /root/registros.txt
+        if [[ -f "$REGISTROS" ]]; then
+            chattr +i "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}⚠️ Advertencia: No se pudo bloquear $REGISTROS contra escrituras.${RESET}"
+        fi
+
         # Procesar eliminación
         for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
             echo -e "${MORADO}🗑️ Eliminando usuario: $USUARIO${RESET}"
@@ -798,6 +801,8 @@ function eliminar_usuario() {
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
+                # Desbloquear archivo para escritura
+                chattr -i "$REGISTROS" 2>/dev/null || true
                 # Escapar caracteres especiales en el nombre de usuario
                 USUARIO_ESCAPED=$(echo "$USUARIO" | sed 's/[][\.*^$/]/\\&/g')
                 sed -i -E "/^${USUARIO_ESCAPED}\t/d" "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $REGISTROS.${RESET}"
@@ -810,13 +815,19 @@ function eliminar_usuario() {
                         echo -e "${BLANCO}  - $line${RESET}"
                     done
                 fi
+                # Volver a bloquear archivo
+                chattr +i "$REGISTROS" 2>/dev/null || true
             fi
             if [[ -f "$HISTORIAL" ]]; then
+                chattr -i "$HISTORIAL" 2>/dev/null || true
                 sed -i "/^$USUARIO|/d" "$HISTORIAL" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' de $HISTORIAL.${RESET}"
+                chattr +i "$HISTORIAL" 2>/dev/null || true
             fi
             for LOGFILE in /var/log/auth.log /var/log/secure /var/log/syslog /var/log/messages; do
                 if [[ -f "$LOGFILE" ]]; then
+                    chattr -i "$LOGFILE" 2>/dev/null || true
                     sed -i "/$USUARIO/d" "$LOGFILE" 2>/dev/null || true
+                    chattr +i "$LOGFILE" 2>/dev/null || true
                 fi
             done
 
@@ -840,31 +851,48 @@ function eliminar_usuario() {
         # Limpieza final
         echo -e "${MORADO}🧹 Limpieza final...${RESET}"
         if [[ -f "$REGISTROS" ]]; then
+            chattr -i "$REGISTROS" 2>/dev/null || true
             sed -i '/^[[:space:]]*$/d' "$REGISTROS" 2>/dev/null || echo -e "${TURQUESA}  🚫 Error: No se pudo limpiar líneas vacías de $REGISTROS.${RESET}"
             if [[ ! -s "$REGISTROS" ]]; then
                 rm -f "$REGISTROS" 2>/dev/null
                 echo -e "${BLANCO}  ✅ $REGISTROS estaba vacío y fue eliminado.${RESET}"
             fi
-            # Forzar sincronización
             sync
             echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+            chattr +i "$REGISTROS" 2>/dev/null || true
         fi
         if [[ -f "$HISTORIAL" ]]; then
+            chattr -i "$HISTORIAL" 2>/dev/null || true
             sed -i '/^[[:space:]]*$/d' "$HISTORIAL" 2>/dev/null || true
             if [[ ! -s "$HISTORIAL" ]]; then
                 rm -f "$HISTORIAL" 2>/dev/null
                 echo -e "${BLANCO}  ✅ $HISTORIAL estaba vacío y fue eliminado.${RESET}"
             fi
+            chattr +i "$HISTORIAL" 2>/dev/null || true
         fi
         echo -e "${TURQUESA}✅ Eliminación completada. Backup en: $BACKUP_DIR${RESET}"
+
+        # Verificación final para detectar reaparición
+        for USUARIO in "${USUARIOS_A_ELIMINAR[@]}"; do
+            USUARIO_ESCAPED=$(echo "$USUARIO" | sed 's/[][\.*^$/]/\\&/g')
+            sleep 1
+            if [[ -f "$REGISTROS" ]] && grep -E "^${USUARIO_ESCAPED}\t" "$REGISTROS" >/dev/null 2>&1; then
+                echo -e "${TURQUESA}🚫 Error: '$USUARIO' reapareció en $REGISTROS después de la eliminación.${RESET}"
+                echo -e "${TURQUESA}📜 Contenido de $REGISTROS:${RESET}"
+                cat "$REGISTROS" | while IFS= read -r line; do
+                    echo -e "${BLANCO}  - $line${RESET}"
+                done
+                echo -e "${TURQUESA}⚠️ Revisa procesos con 'lsof /root/registros.txt' o crontabs con 'crontab -l'.${RESET}"
+            fi
+        done
         read -p "Presiona Enter para volver al menú principal..."
         return 0
     done
 }
+                
 
             
-
-       
+            
                 
 
 verificar_online() {
