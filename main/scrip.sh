@@ -609,6 +609,7 @@ function eliminar_usuario() {
         declare -A UNIQUE_USERS
         NUM=1
         if [[ -f "$REGISTROS" ]]; then
+            # Filtrar líneas vacías y duplicados
             while IFS=$'\t' read -r USUARIO _; do
                 if [[ -n "$USUARIO" && ! -v UNIQUE_USERS[$USUARIO] ]]; then
                     echo -e "${BLANCO}$NUM   $USUARIO${RESET}"
@@ -616,7 +617,7 @@ function eliminar_usuario() {
                     UNIQUE_USERS[$USUARIO]=1
                     NUM=$((NUM+1))
                 fi
-            done < "$REGISTROS"
+            done < <(grep -v '^[[:space:]]*$' "$REGISTROS")
         fi
 
         # Añadir usuarios del sistema (UID >= 1000) sin duplicados
@@ -694,10 +695,13 @@ function eliminar_usuario() {
             echo -e "${MORADO}🗑️ Eliminando usuario: $USUARIO${RESET}"
 
             # Verificar si el usuario existe en el sistema
-            if ! id "$USUARIO" &>/dev/null; then
-                echo -e "${TURQUESA}  ⚠️ Advertencia: '$USUARIO' no existe en el sistema.${RESET}"
-            else
-                # Fase 1: Terminar procesos
+            EXISTS_IN_SYSTEM=0
+            if id "$USUARIO" &>/dev/null; then
+                EXISTS_IN_SYSTEM=1
+            fi
+
+            # Fase 1: Terminar procesos (solo si existe en el sistema)
+            if [[ $EXISTS_IN_SYSTEM -eq 1 ]]; then
                 echo -e "${BLANCO}  🔪 Terminando procesos...${RESET}"
                 pkill -u "$USUARIO" 2>/dev/null || true
                 sleep 1
@@ -739,15 +743,17 @@ function eliminar_usuario() {
                     groupdel "$GROUP" 2>/dev/null || true
                     echo -e "${BLANCO}  ✅ Grupo primario $GROUP eliminado.${RESET}"
                 fi
+            else
+                echo -e "${TURQUESA}  ⚠️ Advertencia: '$USUARIO' no existe en el sistema, limpiando registros...${RESET}"
             fi
 
             # Fase 6: Limpiar registros y logs
             echo -e "${BLANCO}  📜 Limpiando registros y logs...${RESET}"
             if [[ -f "$REGISTROS" ]]; then
-                awk -v user="$USUARIO" 'BEGIN{IGNORECASE=1} $1 != user {print}' "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS"
+                grep -vi "^$USUARIO" "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS" || true
             fi
             if [[ -f "$HISTORIAL" ]]; then
-                sed -i "/^$USUARIO|/d" "$HISTORIAL"
+                sed -i "/^$USUARIO|/d" "$HISTORIAL" 2>/dev/null || true
             fi
             for LOGFILE in /var/log/auth.log /var/log/secure /var/log/syslog /var/log/messages; do
                 if [[ -f "$LOGFILE" ]]; then
@@ -757,10 +763,15 @@ function eliminar_usuario() {
 
             # Fase 7: Verificación
             echo -e "${BLANCO}  🔍 Verificando eliminación...${RESET}"
-            if id "$USUARIO" &>/dev/null; then
-                echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' del sistema.${RESET}"
-            elif [[ -d "/home/$USUARIO" ]]; then
-                echo -e "${TURQUESA}  🚫 Error: El directorio home '/home/$USUARIO' aún existe.${RESET}"
+            EXISTS_IN_REGISTROS=0
+            if [[ -f "$REGISTROS" ]] && grep -qi "^$USUARIO" "$REGISTROS" 2>/dev/null; then
+                EXISTS_IN_REGISTROS=1
+            fi
+            if [[ $EXISTS_IN_SYSTEM -eq 1 || $EXISTS_IN_REGISTROS -eq 1 || -d "/home/$USUARIO" ]]; then
+                echo -e "${TURQUESA}  🚫 Error: No se pudo eliminar '$USUARIO' completamente."
+                [[ $EXISTS_IN_SYSTEM -eq 1 ]] && echo -e "${TURQUESA}      - '$USUARIO' aún existe en el sistema.${RESET}"
+                [[ $EXISTS_IN_REGISTROS -eq 1 ]] && echo -e "${TURQUESA}      - '$USUARIO' aún existe en $REGISTROS.${RESET}"
+                [[ -d "/home/$USUARIO" ]] && echo -e "${TURQUESA}      - El directorio home '/home/$USUARIO' aún existe.${RESET}"
             else
                 echo -e "${BLANCO}  ✅ Éxito: '$USUARIO' eliminado completamente.${RESET}"
             fi
@@ -768,8 +779,12 @@ function eliminar_usuario() {
 
         # Limpieza final
         echo -e "${MORADO}🧹 Limpieza final...${RESET}"
-        [[ -f "$REGISTROS" ]] && sed -i '/^[[:space:]]*$/d' "$REGISTROS"
-        [[ -f "$HISTORIAL" ]] && sed -i '/^[[:space:]]*$/d' "$HISTORIAL"
+        if [[ -f "$REGISTROS" ]]; then
+            grep -v '^[[:space:]]*$' "$REGISTROS" > "${REGISTROS}.tmp" && mv "${REGISTROS}.tmp" "$REGISTROS" || true
+        fi
+        if [[ -f "$HISTORIAL" ]]; then
+            sed -i '/^[[:space:]]*$/d' "$HISTORIAL" 2>/dev/null || true
+        fi
         sync
         echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
         echo -e "${TURQUESA}✅ Eliminación completada. Backup en: $BACKUP_DIR${RESET}"
@@ -801,8 +816,9 @@ function verificar_eliminacion() {
     read -p "Presiona Enter para volver al menú principal..."
 }
 
-
-
+# 
+                
+                
 
         
 
