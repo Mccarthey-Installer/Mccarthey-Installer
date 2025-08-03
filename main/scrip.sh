@@ -575,10 +575,7 @@ function informacion_usuarios() {
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
 
-# Rutas proporcionadas
-REGISTROS="/root/registros.txt"
-HISTORIAL="/root/historial_conexiones.txt"
-PIDFILE="/var/run/monitorear_conexiones.pid"
+
 
 # Colores alegres y femeninos
 ROSADO="\e[95m"
