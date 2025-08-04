@@ -1,1 +1,31 @@
+#!/bin/bash
+export TZ="America/El_Salvador"
+export LANG=es_ES.UTF-8
+timedatectl set-timezone America/El_Salvador
 
+REGISTROS="/root/reg.txt"
+HISTORIAL="/root/log.txt"
+PIDFILE="/var/run/mon.pid"
+
+VIOLETA='\033[38;5;141m'
+VERDE='\033[38;5;42m'
+AMARILLO='\033[38;5;220m'
+AZUL='\033[38;5;39m'
+ROJO='\033[38;5;196m'
+CIAN='\033[38;5;51m'
+NC='\033[0m'
+
+# Función para configurar la autoejecución en ~/.bashrc
+function configurar_autoejecucion() {
+    BASHRC="/root/.bashrc"
+    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
+    export IN_PANEL=1
+    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/espacios)
+    unset IN_PANEL
+fi'
+
+    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
+        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
+        echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
+    fi
+}
