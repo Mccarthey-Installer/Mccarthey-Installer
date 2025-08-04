@@ -229,39 +229,20 @@ else
     echo -e "${AMARILLO}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
 
-
-    function crear_usuario() {
+function crear_usuario() {
     clear
     echo -e "${ROJO}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
-    # Verificar si se puede escribir en $REGISTROS
+    # Verificar si se puede escribir $REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
         touch "$REGISTROS" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos o espacio en disco.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-            return 1
-        }
-        chmod 600 "$REGISTROS" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo establecer permisos en $REGISTROS.${NC}"
+            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos.${NC}"
             read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
             return 1
         }
     fi
     if [[ ! -w "$REGISTROS" ]]; then
         echo -e "${ROJO}❌ No se puede escribir en $REGISTROS. Revisa permisos.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Verificar espacio en disco
-    df -h /root | tail -n 1 | grep -q '[0-9]' || {
-        echo -e "${ROJO}❌ Error: No se puede verificar el espacio en disco para /root.${NC}"
-        read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
-        return 1
-    }
-    AVAILABLE_SPACE=$(df -k /root | tail -n 1 | awk '{print $4}')
-    if [[ "$AVAILABLE_SPACE" -lt 1024 ]]; then
-        echo -e "${ROJO}❌ Espacio en disco insuficiente en /root ($AVAILABLE_SPACE KB disponibles).${NC}"
         read -p "$(echo -e ${AZUL}Presiona Enter para continuar...${NC})"
         return 1
     fi
@@ -305,78 +286,20 @@ fi
 
     # Agregar al REGISTRO con bloqueo y verificación
     {
-        # Intentar adquirir el bloqueo con un timeout mayor (20 segundos) y reintentos
-        local intentos=0
-        local max_intentos=3
-        local lock_acquired=false
-        while [[ $intentos -lt $max_intentos ]]; do
-            if flock -x -w 20 200; then
-                lock_acquired=true
-                break
-            fi
-            ((intentos++))
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Intento $intentos/$max_intentos: No se pudo adquirir el bloqueo para $REGISTROS." >> "/var/log/monitoreo_conexiones.log"
-            sleep 1
-        done
-        if [[ "$lock_acquired" != "true" ]]; then
-            echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo para $REGISTROS después de $max_intentos intentos.${NC}"
+        if ! flock -x -w 10 200; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): No se pudo adquirir el bloqueo para $REGISTROS al crear usuario '$USUARIO'." >> "/var/log/monitoreo_conexiones.log"
+            echo -e "${ROJO}❌ Error: No se pudo escribir en $REGISTROS debido a un bloqueo. Intenta de nuevo.${NC}"
             read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
             return 1
         fi
 
-        # Crear archivo temporal en el mismo directorio que REGISTROS
-        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || {
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal para $REGISTROS." >> "/var/log/monitoreo_conexiones.log"
-            echo -e "${ROJO}❌ Error: No se pudo crear archivo temporal.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-            return 1
-        }
+        echo "${USUARIO}:${CLAVE}:${EXPIRA_DATETIME}:${DIAS}:${MOVILES}:NO:${FECHA_CREACION}" >> "$REGISTROS"
+        sync
+        sleep 0.2
 
-        # Copiar contenido actual y agregar nuevo registro
-        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || {
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS a $TEMP_FILE." >> "/var/log/monitoreo_conexiones.log"
-            rm -f "$TEMP_FILE"
-            echo -e "${ROJO}❌ Error: No se pudo copiar $REGISTROS.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-            return 1
-        }
-
-        echo "${USUARIO}:${CLAVE}:${EXPIRA_DATETIME}:${DIAS}:${MOVILES}:NO:${FECHA_CREACION}" >> "$TEMP_FILE" || {
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error escribiendo en $TEMP_FILE." >> "/var/log/monitoreo_conexiones.log"
-            rm -f "$TEMP_FILE"
-            echo -e "${ROJO}❌ Error: Falló la escritura en el archivo temporal.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-            return 1
-        }
-
-        # Crear respaldo antes de mover
-        cp "$REGISTROS" "${REGISTROS}.bak.$$" 2>/dev/null || {
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando respaldo de $REGISTROS." >> "/var/log/monitoreo_conexiones.log"
-            rm -f "$TEMP_FILE"
-            echo -e "${ROJO}❌ Error: No se pudo crear respaldo de $REGISTROS.${NC}"
-            read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-            return 1
-        }
-
-        # Mover archivo temporal a REGISTROS
-        if mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null; then
-            sync
-            sleep 0.2
-            # Verificar que el registro se escribió correctamente
-            if ! grep -qw "^$USUARIO:" "$REGISTROS"; then
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "/var/log/monitoreo_conexiones.log"
-                mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
-                rm -f "$TEMP_FILE"
-                echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Registro revertido.${NC}"
-                read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
-                return 1
-            fi
-            rm -f "${REGISTROS}.bak.$$"
-        else
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error moviendo $TEMP_FILE a $REGISTROS." >> "/var/log/monitoreo_conexiones.log"
-            mv "${REGISTROS}.bak.$$" "$REGISTROS" 2>/dev/null
-            rm -f "$TEMP_FILE"
-            echo -e "${ROJO}❌ Error: No se pudo reemplazar $REGISTROS.${NC}"
+        if ! grep -qw "^$USUARIO:" "$REGISTROS"; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "/var/log/monitoreo_conexiones.log"
+            echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
             read -p "$(echo -e ${AZUL}Presiona Enter...${NC})"
             return 1
         fi
