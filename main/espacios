@@ -268,6 +268,84 @@ function ver_registros() {
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
 
+function eliminar_usuario() {
+    clear
+    echo -e "${HOT_PINK}===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 =====${NC}"
+
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ No hay registros disponibles. 📂${NC}"
+        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        return 1
+    fi
+
+    echo -e "${PASTEL_BLUE}Nº      👤 Usuario${NC}"
+    echo -e "${LILAC}--------------------------${NC}"
+
+    contador=1
+    declare -A user_map
+    while IFS=':' read -r usuario clave expira dias moviles creado; do
+        if id "$usuario" &>/dev/null; then
+            printf "${SOFT_CORAL}%-7d ${AMARILLO}%s${NC}\n" "$contador" "$usuario"
+            user_map[$contador]="$usuario"
+            ((contador++))
+        fi
+    done < "$REGISTROS"
+
+    if [[ $contador -eq 1 ]]; then
+        echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema. 💔${NC}"
+        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        return 1
+    fi
+
+    echo
+    read -p "$(echo -e ${MINT_GREEN}🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios)\n   (0 para cancelar): ${NC})" input
+
+    if [[ "$input" == "0" ]]; then
+        echo -e "${PASTEL_PURPLE}🚫 Operación cancelada.${NC}"
+        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        return 0
+    fi
+
+    usuarios_a_eliminar=()
+    for item in $input; do
+        if [[ "$item" =~ ^[0-9]+$ ]] && [[ -n "${user_map[$item]}" ]]; then
+            usuarios_a_eliminar+=("${user_map[$item]}")
+        elif id "$item" &>/dev/null && grep -qw "^$item:" "$REGISTROS"; then
+            usuarios_a_eliminar+=("$item")
+        fi
+    done
+
+    if [[ ${#usuarios_a_eliminar[@]} -eq 0 ]]; then
+        echo -e "${HOT_PINK}❌ Ningún usuario válido seleccionado. 💔${NC}"
+        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        return 1
+    fi
+
+    for usuario in "${usuarios_a_eliminar[@]}"; do
+        if userdel -r "$usuario" 2>/dev/null; then
+            sed -i "/^$usuario:/d" "$REGISTROS"
+            sync
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario $usuario eliminado exitosamente." >> "$HISTORIAL"
+            echo -e "${MINT_GREEN}✅ Usuario $usuario eliminado correctamente.${NC}"
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):Error al eliminar usuario $usuario del sistema." >> "$HISTORIAL"
+            echo -e "${HOT_PINK}❌ Error al eliminar usuario $usuario. 💔${NC}"
+        fi
+    done
+
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+}
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
