@@ -532,6 +532,7 @@ function crear_multiples_usuarios() {
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
        
+
 function nuclear_eliminar() {
     clear
     echo -e "${HOT_PINK}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
@@ -545,6 +546,7 @@ function nuclear_eliminar() {
     HOT_PINK='\033[38;5;198m'
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
+    AMARILLO='\033[38;5;220m'
     NC='\033[0m'
 
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
@@ -594,13 +596,26 @@ function nuclear_eliminar() {
     fi
 
     echo
-    read -p "$(echo -e "${PASTEL_PURPLE}Confirmar con un Enter${NC}")"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para confirmar la eliminación...${NC}")"
 
     eliminados=""
     for usuario in "${usuarios_a_eliminar[@]}"; do
+        # Cerrar sesiones activas del usuario con loginctl
+        sesiones=$(loginctl list-sessions --no-legend | awk -v u="$usuario" '$3 == u {print $1}')
+        for sesion in $sesiones; do
+            loginctl terminate-session "$sesion"
+        done
+
+        # Breve pausa para asegurar cierre de sesiones
+        sleep 1
+
+        # Eliminar usuario forzadamente
         userdel -r -f "$usuario" 2>/dev/null
+
+        # Eliminar registro en archivo
         sed -i "/^$usuario:/d" "$REGISTROS" 2>/dev/null
         sync
+
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario $usuario eliminado completamente (modo nuclear)." >> "$HISTORIAL" 2>/dev/null
         eliminados+="$usuario "
     done
@@ -614,6 +629,7 @@ function nuclear_eliminar() {
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
 
+    
 
        function verificar_online() {
     clear
