@@ -347,9 +347,10 @@ function eliminar_usuario() {
 
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
+
 function crear_multiples_usuarios() {
     clear
-    echo -e "${AZUL_SUAVE}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
 
     # Definir colores
     AZUL_SUAVE='\033[38;5;45m'
@@ -362,6 +363,7 @@ function crear_multiples_usuarios() {
     MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
 
+    echo -e "${AZUL_SUAVE}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
     echo -e "${PASTEL_BLUE}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
     echo -e "${PASTEL_BLUE}📋 Ejemplo: lucy 123 5 4${NC}"
     echo -e "${MINT_GREEN}✅ Presiona Enter dos veces para confirmar.${NC}"
@@ -373,7 +375,7 @@ function crear_multiples_usuarios() {
 
     if [ ${#usuarios[@]} -eq 0 ]; then
         echo -e "${HOT_PINK}❌ No se ingresaron usuarios. 💔${NC}"
-        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 1
     fi
 
@@ -406,16 +408,16 @@ function crear_multiples_usuarios() {
 
     if [ ${#usuarios_validos[@]} -eq 0 ]; then
         echo -e "${HOT_PINK}❌ No hay usuarios válidos para crear. 💔${NC}"
-        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 1
     fi
 
     echo -e "${LILAC}===============================================================${NC}"
-    read -p "$(echo -e ${MINT_GREEN}✅ ¿Confirmar creación de estos usuarios? (s/n): ${NC})" confirmacion
+    read -p "$(echo -e "${MINT_GREEN}✅ ¿Confirmar creación de estos usuarios? (s/n): ${NC}")" confirmacion
 
     if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
         echo -e "${PASTEL_PURPLE}🚫 Operación cancelada. ✨${NC}"
-        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 0
     fi
 
@@ -470,8 +472,10 @@ function crear_multiples_usuarios() {
     echo -e "${AZUL_SUAVE}===== 📊 RESUMEN DE CREACIÓN =====${NC}"
     echo -e "${MINT_GREEN}✅ Usuarios creados exitosamente: $creados${NC}"
     echo -e "${HOT_PINK}❌ Usuarios con error: $errores${NC}"
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
+        
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
