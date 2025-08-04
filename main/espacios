@@ -475,7 +475,63 @@ function crear_multiples_usuarios() {
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
 
-        
+ function mini_registro() {
+    clear
+
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    echo -e "${AZUL_SUAVE}===== 📋 MINI REGISTRO =====${NC}"
+
+    # Centrar texto en un ancho dado
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+    }
+
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ No hay registros disponibles. 📂${NC}"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+        return 1
+    fi
+
+    # Encabezado con colores
+    printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
+        "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
+    echo -e "${LILAC}--------------------------------------------${NC}"
+
+    contador=0
+    while IFS=':' read -r usuario clave expira dias moviles creado; do
+        if id "$usuario" &>/dev/null; then
+            # Extraer días numéricos
+            dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
+            printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+                "$usuario" "$clave" "$(center_value "$dias_num" 10)" "$moviles"
+            ((contador++))
+        fi
+    done < "$REGISTROS"
+
+    if [[ $contador -eq 0 ]]; then
+        echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema. 💔${NC}"
+    fi
+
+    echo -e "${LILAC}============================================${NC}"
+    echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+}
+       
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
