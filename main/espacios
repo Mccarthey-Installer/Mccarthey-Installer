@@ -746,6 +746,9 @@ function verificar_online() {
         ["Sep"]="Septiembre" ["Oct"]="Octubre" ["Nov"]="Noviembre" ["Dec"]="Diciembre"
     )
 
+    if [[ ! -f "$HISTORIAL" ]]; then
+        touch "$HISTORIAL"
+    fi
     if [[ ! -f "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros de usuarios. 📂${NC}"
         read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
@@ -798,17 +801,14 @@ function verificar_online() {
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
+                    ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null || echo "$ULTIMO_LOGOUT")
-                        MES=$(echo "$ULTIMO_LOGOUT_FMT" | awk '{print $4}')
-                        for k in "${!month_map[@]}"; do
-                            if [[ "$MES" =~ $k ]]; then
-                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/$MES/${month_map[$k]}}
-                                break
-                            fi
-                        done
-                        DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
+                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
+                        if [[ $? -eq 0 && -n "$ULTIMO_LOGOUT_FMT" ]]; then
+                            DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
+                        else
+                            DETALLES="Nunca conectado"
+                        fi
                     else
                         DETALLES="Nunca conectado"
                     fi
@@ -820,10 +820,11 @@ function verificar_online() {
         fi
     done < "$REGISTROS"
 
-    echo
     echo -e "${LILAC}============================================${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
+                    
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
