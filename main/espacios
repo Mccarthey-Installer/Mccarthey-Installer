@@ -38,13 +38,15 @@ function crear_usuario_ssh() {
     # Verificar permisos de escritura en REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
         touch "$REGISTROS" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos.${NC}"
+            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos y sistema de archivos.${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo crear $REGISTROS" >> "$HISTORIAL" 2>/dev/null
             read -p "Presiona Enter para continuar..."
             return 1
         }
     fi
     if [[ ! -w "$REGISTROS" ]]; then
         echo -e "${ROJO}❌ No se puede escribir en $REGISTROS. Revisa permisos.${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):No se puede escribir en $REGISTROS" >> "$HISTORIAL" 2>/dev/null
         read -p "Presiona Enter para continuar..."
         return 1
     fi
@@ -52,13 +54,15 @@ function crear_usuario_ssh() {
     # Verificar permisos de escritura en HISTORIAL
     if [[ ! -f "$HISTORIAL" ]]; then
         touch "$HISTORIAL" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo crear $HISTORIAL. Revisa permisos.${NC}"
+            echo -e "${ROJO}❌ No se pudo crear $HISTORIAL. Revisa permisos y sistema de archivos.${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo crear $HISTORIAL" >> "$HISTORIAL" 2>/dev/null
             read -p "Presiona Enter para continuar..."
             return 1
         }
     fi
     if [[ ! -w "$HISTORIAL" ]]; then
         echo -e "${ROJO}❌ No se puede escribir en $HISTORIAL. Revisa permisos.${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):No se puede escribir en $HISTORIAL" >> "$HISTORIAL" 2>/dev/null
         read -p "Presiona Enter para continuar..."
         return 1
     fi
@@ -105,16 +109,16 @@ function crear_usuario_ssh() {
     {
         if ! flock -x -w 10 200; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo adquirir el bloqueo para $REGISTROS al crear usuario '$USUARIO'." >> "$HISTORIAL"
-            echo -e "${ROJO}❌ Error: No se pudo escribir en $REGISTROS debido a un bloqueo. Intenta de nuevo.${NC}"
+            echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo para $REGISTROS. Intenta de nuevo.${NC}"
             read -p "Presiona Enter para continuar..."
             return 1
         fi
 
         echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS}:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
         sync
-        sleep 0.2
 
-        if ! grep -qw "^$USUARIO:" "$REGISTROS"; then
+        # Verificar escritura (simplificada)
+        if ! tail -n 1 "$REGISTROS" | grep -qw "^$USUARIO:"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
             echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
             read -p "Presiona Enter para continuar..."
@@ -209,4 +213,4 @@ function mostrar_menu() {
 
 # Configurar autoejecución y mostrar el menú
 configurar_autoejecucion
-mostrar_menu
+mostrar_menu 
