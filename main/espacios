@@ -6,7 +6,6 @@ timedatectl set-timezone America/El_Salvador
 REGISTROS="/root/reg.txt"
 HISTORIAL="/root/log.txt"
 PIDFILE="/var/run/mon.pid"
-LOCKFILE="/root/reg.txt.lock"
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -29,20 +28,6 @@ fi'
         echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
         echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
-}
-
-# Función para verificar y limpiar el archivo de bloqueo
-function limpiar_bloqueo() {
-    if [[ -f "$LOCKFILE" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Archivo de bloqueo $LOCKFILE encontrado, intentando limpiar." >> "$HISTORIAL"
-        rm -f "$LOCKFILE" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo eliminar $LOCKFILE. Revisa permisos o procesos activos.${NC}"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo eliminar $LOCKFILE." >> "$HISTORIAL"
-            return 1
-        }
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Archivo de bloqueo $LOCKFILE eliminado exitosamente." >> "$HISTORIAL"
-    fi
-    return 0
 }
 
 # Función para crear usuarios SSH
@@ -85,16 +70,18 @@ function crear_usuario_ssh() {
     # Verificar sistema de archivos
     if mount | grep /root | grep -q ro; then
         echo -e "${ROJO}❌ El directorio /root está montado como solo lectura. Remonta con 'mount -o remount,rw /root'.${NC}"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Directorio /root en solo lectura" >> "$HISTORIAL"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Directorio /root en solo lectura" >> "$HISTORIAL" 2>/dev/null
         read -p "Presiona Enter para continuar..."
         return 1
     fi
 
-    # Limpiar archivo de bloqueo si existe
-    limpiar_bloqueo || {
+    # Verificar espacio en disco
+    if ! df -h /root | grep -q '[0-9]'; then
+        echo -e "${ROJO}❌ No hay espacio en disco en /root. Libera espacio e intenta de nuevo.${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):No hay espacio en disco en /root" >> "$HISTORIAL" 2>/dev/null
         read -p "Presiona Enter para continuar..."
         return 1
-    }
+    fi
 
     # Leer nombre del usuario
     while true; do
@@ -134,34 +121,24 @@ function crear_usuario_ssh() {
     EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
-    # Agregar al REGISTROS con bloqueo
-    {
-        if ! flock -x -w 15 200; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo adquirir el bloqueo para $REGISTROS al crear usuario '$USUARIO'." >> "$HISTORIAL"
-            echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo para $REGISTROS. Intenta de nuevo.${NC}"
-            read -p "Presiona Enter para continuar..."
-            return 1
-        fi
+    # Agregar al REGISTROS sin flock
+    echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS}:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
+    sync
 
-        echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS}:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
-        sync
-
-        # Verificar escritura
-        if ! tail -n 1 "$REGISTROS" | grep -qw "^$USUARIO:"; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
-            echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
-            read -p "Presiona Enter para continuar..."
-            return 1
-        fi
-    } 200>"$LOCKFILE"
+    # Verificar escritura (simplificada)
+    if ! grep -qw "^$USUARIO:" "$REGISTROS"; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
+        echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Contenido de $REGISTROS tras intento de escritura:" >> "$HISTORIAL"
+        cat "$REGISTROS" >> "$HISTORIAL" 2>/dev/null
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
 
     # Crear usuario
     if ! useradd -M -s /bin/false "$USUARIO"; then
-        {
-            flock -x -w 15 200
-            sed -i "/^$USUARIO:/d" "$REGISTROS"
-            sync
-        } 200>"$LOCKFILE"
+        sed -i "/^$USUARIO:/d" "$REGISTROS"
+        sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error creando usuario '$USUARIO' en el sistema. Registro eliminado." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
         read -p "Presiona Enter para continuar..."
@@ -171,11 +148,8 @@ function crear_usuario_ssh() {
     # Establecer contraseña
     if ! echo "$USUARIO:$CLAVE" | chpasswd; then
         userdel -r "$USUARIO" 2>/dev/null
-        {
-            flock -x -w 15 200
-            sed -i "/^$USUARIO:/d" "$REGISTROS"
-            sync
-        } 200>"$LOCKFILE"
+        sed -i "/^$USUARIO:/d" "$REGISTROS"
+        sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error estableciendo contraseña para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Falló el cambio de contraseña. Registro revertido.${NC}"
         read -p "Presiona Enter para continuar..."
@@ -185,11 +159,8 @@ function crear_usuario_ssh() {
     # Configurar expiración
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
         userdel -r "$USUARIO" 2>/dev/null
-        {
-            flock -x -w 15 200
-            sed -i "/^$USUARIO:/d" "$REGISTROS"
-            sync
-        } 200>"$LOCKFILE"
+        sed -i "/^$USUARIO:/d" "$REGISTROS"
+        sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
         read -p "Presiona Enter para continuar..."
