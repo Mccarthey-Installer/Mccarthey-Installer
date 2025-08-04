@@ -29,3 +29,106 @@ fi'
         echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
 }
+
+# Función para crear usuarios SSH
+function crear_usuario_ssh() {
+    clear
+    echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
+
+    # Solicitar datos del usuario
+    read -p "👤 Nombre del usuario: " username
+    if [[ -z "$username" ]] || id "$username" >/dev/null 2>&1; then
+        echo -e "${ROJO}Error: Nombre de usuario vacío o ya existe.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    read -p "🔑 Contraseña: " password
+    if [[ -z "$password" ]]; then
+        echo -e "${ROJO}Error: La contraseña no puede estar vacía.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    read -p "📅 Días de validez: " days
+    if ! [[ "$days" =~ ^[0-9]+$ ]] || [[ "$days" -lt 1 ]]; then
+        echo -e "${ROJO}Error: Los días deben ser un número positivo.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    read -p "📱 ¿Cuántos móviles? " mobiles
+    if ! [[ "$mobiles" =~ ^[0-9]+$ ]] || [[ "$mobiles" -lt 1 ]]; then
+        echo -e "${ROJO}Error: El número de móviles debe ser un número positivo.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    # Calcular fecha de expiración (día siguiente a la duración)
+    creation_date=$(date +"%Y-%m-%d %H:%M:%S")
+    expiration_date=$(date -d "$days days" +"%d/%B/%Y")
+    expiration_chage=$(date -d "$days days" +"%Y-%m-%d")
+
+    # Crear usuario
+    useradd -M -s /bin/false "$username" >/dev/null 2>&1
+    echo "$username:$password" | chpasswd >/dev/null 2>&1
+    chage -E "$expiration_chage" "$username" >/dev/null 2>&1
+
+    # Verificar si el usuario fue creado
+    if id "$username" >/dev/null 2>&1; then
+        # Mostrar confirmación
+        echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
+        echo -e "👤 Usuario: $username"
+        echo -e "🔑 Clave: $password"
+        echo -e "📅 Expira: $expiration_date//"
+        echo -e "📱 Límite móviles: $mobiles"
+        echo -e "📅 Creado: $creation_date"
+
+        # Registrar en los archivos
+        echo -e "Usuario creado: $username:$password:Expira:$expiration_date:Días:$days:Móviles:$mobiles:Creado:$creation_date" >> "$REGISTROS"
+        echo -e "$(date +"%Y-%m-%d %H:%M:%S"):Usuario creado:$username" >> "$HISTORIAL"
+
+        # Mostrar resumen
+        echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
+        echo -e "👤 Usuario:📅 Expira:⏳ Días:📱 Móviles:📅 Creado"
+        echo -e "---------------------------------------------------------------"
+        echo -e "$username:$password:$expiration_date:$days días:$mobiles:$creation_date"
+        echo -e "==============================================================="
+        echo -e "${CIAN}Presiona Enter para continuar...${NC}"
+        read
+    else
+        echo -e "${ROJO}Error: No se pudo crear el usuario.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+}
+
+# Función para mostrar el menú
+function mostrar_menu() {
+    clear
+    echo -e "${VIOLETA}===== 🚀 MENÚ DE GESTIÓN SSH =====${NC}"
+    echo -e "${AZUL}1) Crear usuario SSH"
+    echo -e "2) Salir${NC}"
+    echo -e "${VIOLETA}===============================${NC}"
+    read -p "Selecciona una opción [1-2]: " opcion
+
+    case $opcion in
+        1)
+            crear_usuario_ssh
+            mostrar_menu
+            ;;
+        2)
+            echo -e "${VERDE}Saliendo...${NC}"
+            exit 0
+            ;;
+        *)
+            echo -e "${ROJO}Opción inválida. Intenta de nuevo.${NC}"
+            read -p "Presiona Enter para continuar..."
+            mostrar_menu
+            ;;
+    esac
+}
+
+# Configurar autoejecución y mostrar el menú
+configurar_autoejecucion
+mostrar_menu
