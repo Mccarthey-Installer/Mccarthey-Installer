@@ -121,16 +121,16 @@ function crear_usuario_ssh() {
     EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
-    # Agregar al REGISTROS sin flock
+    # Agregar al REGISTROS
     echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS}:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
     sync
 
     # Verificar escritura (simplificada)
-    if ! grep -qw "^$USUARIO:" "$REGISTROS"; then
+    if ! grep -q "^$USUARIO:" "$REGISTROS"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
-        echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Contenido de $REGISTROS tras intento de escritura:" >> "$HISTORIAL"
         cat "$REGISTROS" >> "$HISTORIAL" 2>/dev/null
+        echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
         read -p "Presiona Enter para continuar..."
         return 1
     fi
