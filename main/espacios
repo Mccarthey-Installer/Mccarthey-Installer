@@ -200,7 +200,6 @@ function crear_registro() {
 
 function ver_registros() {
     clear
-    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
     # Definir colores
     AZUL_SUAVE='\033[38;5;45m'
@@ -212,6 +211,8 @@ function ver_registros() {
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
+
+    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
     # Centrar texto en un ancho dado
     center_value() {
@@ -235,9 +236,14 @@ function ver_registros() {
                 # Formatear la fecha de expiración (sin año)
                 FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')
 
-                # Calcular días restantes reales
-                FECHA_EXPIRA_DIA=$(date -d "$CREADO + $DIAS days" +%Y-%m-%d 2>/dev/null)
+                # EXTRAER SOLO FECHA (sin hora) para usar en el cálculo
+                FECHA_CREACION=$(echo "$CREADO" | cut -d' ' -f1)
+
+                # Calcular fecha de expiración sumando días a la fecha de creación
+                FECHA_EXPIRA_DIA=$(date -d "$FECHA_CREACION + $DIAS days" +%Y-%m-%d 2>/dev/null)
+
                 FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+
                 DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
                 [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
 
@@ -261,6 +267,7 @@ function ver_registros() {
     echo -e "${LILAC}=====================${NC}"
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
+
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
