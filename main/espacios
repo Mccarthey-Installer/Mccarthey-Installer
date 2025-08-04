@@ -281,11 +281,12 @@ function eliminar_usuario() {
     HOT_PINK='\033[38;5;198m'
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
+    AMARILLO='\033[38;5;220m'
     NC='\033[0m'
 
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros disponibles. 📂${NC}"
-        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 1
     fi
 
@@ -304,16 +305,16 @@ function eliminar_usuario() {
 
     if [[ $contador -eq 1 ]]; then
         echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema. 💔${NC}"
-        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 1
     fi
 
     echo
-    read -p "$(echo -e ${MINT_GREEN}🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios)\n   (0 para cancelar): ${NC})" input
+    read -p "$(echo -e "${MINT_GREEN}🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios)\n   (0 para cancelar): ${NC}")" input
 
     if [[ "$input" == "0" ]]; then
         echo -e "${PASTEL_PURPLE}🚫 Operación cancelada.${NC}"
-        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 0
     fi
 
@@ -328,7 +329,7 @@ function eliminar_usuario() {
 
     if [[ ${#usuarios_a_eliminar[@]} -eq 0 ]]; then
         echo -e "${HOT_PINK}❌ Ningún usuario válido seleccionado. 💔${NC}"
-        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 1
     fi
 
@@ -344,8 +345,9 @@ function eliminar_usuario() {
         fi
     done
 
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
