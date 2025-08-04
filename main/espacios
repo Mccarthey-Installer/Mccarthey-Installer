@@ -334,7 +334,16 @@ function eliminar_usuario() {
     fi
 
     for usuario in "${usuarios_a_eliminar[@]}"; do
-        if userdel -r "$usuario" 2>/dev/null; then
+        # Cerrar sesiones activas antes de eliminar
+        sesiones=$(loginctl list-sessions --no-legend | awk -v u="$usuario" '$3 == u {print $1}')
+        for sesion in $sesiones; do
+            loginctl terminate-session "$sesion"
+        done
+        # Dar tiempo para cerrar sesiones
+        sleep 1
+
+        # Forzar eliminación del usuario y su directorio home
+        if userdel -r -f "$usuario" 2>/dev/null; then
             sed -i "/^$usuario:/d" "$REGISTROS"
             sync
             echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario $usuario eliminado exitosamente." >> "$HISTORIAL"
