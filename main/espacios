@@ -200,24 +200,66 @@ function crear_registro() {
 
 function ver_registros() {
     clear
-    echo -e "${VIOLETA}===== 🌸 REGISTROS =====${NC}"
-    echo -e "${AMARILLO}Nº  👤 Usuario  🔒 Clave   📅 Expira    ⏳ Días   📲 Móviles${NC}"
-    echo -e "${CIAN}-----------------------------------------------------------------------${NC}"
+    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
-    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
-        echo -e "${ROJO}❌ No hay registros disponibles.${NC}"
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar... ✨${NC})"
-        return 1
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    # Centrar texto en un ancho dado
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+    }
+
+    if [[ -f $REGISTROS ]]; then
+        # Encabezado con colores
+        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
+            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📲 Móviles"
+        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
+
+        NUM=1
+        while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO; do
+            if id "$USUARIO" &>/dev/null; then
+                # Formatear la fecha de expiración (sin año)
+                FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')
+
+                # Calcular días restantes reales
+                FECHA_EXPIRA_DIA=$(date -d "$CREADO + $DIAS days" +%Y-%m-%d 2>/dev/null)
+                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+                [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+
+                DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
+
+                # Imprimir fila con colores
+                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+                    "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
+                NUM=$((NUM+1))
+            fi
+        done < "$REGISTROS"
+
+        # Si no se mostró ningún usuario válido
+        if [[ $NUM -eq 1 ]]; then
+            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
+        fi
+    else
+        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
     fi
 
-    contador=1
-    while IFS=':' read -r usuario clave expira dias moviles creado; do
-        echo -e "${AZUL}${contador}   ${AMARILLO}${usuario}        ${AMARILLO}${clave}        ${AMARILLO}${expira}//      ${AMARILLO}${dias}     ${AMARILLO}${moviles}${NC}"
-        ((contador++))
-    done < "$REGISTROS"
-
-    echo -e "${CIAN}=====================${NC}"
-    read -p "$(echo -e ${CIAN}Presiona Enter para continuar... ✨${NC})"
+    echo -e "${LILAC}=====================${NC}"
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
 
 # Colores y emojis
@@ -237,7 +279,6 @@ NC='\033[0m'
 if [[ -t 0 ]]; then
     while true; do
         clear
-        barra_sistema
         echo
         echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
