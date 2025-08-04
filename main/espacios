@@ -35,81 +35,159 @@ function crear_usuario_ssh() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
-    # Solicitar datos del usuario
-    read -p "👤 Nombre del usuario: " username
-    if [[ -z "$username" ]] || id "$username" >/dev/null 2>&1; then
-        echo -e "${ROJO}Error: Nombre de usuario vacío o ya existe.${NC}"
+    # Verificar permisos de escritura en REGISTROS
+    if [[ ! -f "$REGISTROS" ]]; then
+        touch "$REGISTROS" 2>/dev/null || {
+            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos.${NC}"
+            read -p "Presiona Enter para continuar..."
+            return 1
+        }
+    fi
+    if [[ ! -w "$REGISTROS" ]]; then
+        echo -e "${ROJO}❌ No se puede escribir en $REGISTROS. Revisa permisos.${NC}"
         read -p "Presiona Enter para continuar..."
         return 1
     fi
 
-    read -p "🔑 Contraseña: " password
-    if [[ -z "$password" ]]; then
-        echo -e "${ROJO}Error: La contraseña no puede estar vacía.${NC}"
+    # Verificar permisos de escritura en HISTORIAL
+    if [[ ! -f "$HISTORIAL" ]]; then
+        touch "$HISTORIAL" 2>/dev/null || {
+            echo -e "${ROJO}❌ No se pudo crear $HISTORIAL. Revisa permisos.${NC}"
+            read -p "Presiona Enter para continuar..."
+            return 1
+        }
+    fi
+    if [[ ! -w "$HISTORIAL" ]]; then
+        echo -e "${ROJO}❌ No se puede escribir en $HISTORIAL. Revisa permisos.${NC}"
         read -p "Presiona Enter para continuar..."
         return 1
     fi
 
-    read -p "📅 Días de validez: " days
-    if ! [[ "$days" =~ ^[0-9]+$ ]] || [[ "$days" -lt 1 ]]; then
-        echo -e "${ROJO}Error: Los días deben ser un número positivo.${NC}"
-        read -p "Presiona Enter para continuar..."
-        return 1
-    fi
+    # Leer nombre del usuario
+    while true; do
+        read -p "👤 Nombre del usuario: " USUARIO
+        [[ -z "$USUARIO" ]] && echo -e "${ROJO}❌ Ingresa un nombre válido.${NC}" && continue
+        if id "$USUARIO" &>/dev/null; then
+            echo -e "${ROJO}⚠️ El usuario '$USUARIO' ya existe en el sistema.${NC}"
+            continue
+        fi
+        if grep -qw "^$USUARIO:" "$REGISTROS"; then
+            echo -e "${ROJO}⚠️ Ya existe un registro con ese nombre en $REGISTROS.${NC}"
+            continue
+        fi
+        break
+    done
 
-    read -p "📱 ¿Cuántos móviles? " mobiles
-    if ! [[ "$mobiles" =~ ^[0-9]+$ ]] || [[ "$mobiles" -lt 1 ]]; then
-        echo -e "${ROJO}Error: El número de móviles debe ser un número positivo.${NC}"
-        read -p "Presiona Enter para continuar..."
-        return 1
-    fi
+    # Leer contraseña
+    read -p "🔑 Contraseña: " CLAVE
+    [[ -z "$CLAVE" ]] && echo -e "${ROJO}❌ La contraseña no puede estar vacía.${NC}" && read -p "Presiona Enter para continuar..." && return 1
 
-    # Calcular fecha de expiración (día siguiente a la duración)
-    creation_date=$(date +"%Y-%m-%d %H:%M:%S")
-    expiration_date=$(date -d "$days days" +"%d/%B/%Y")
-    expiration_chage=$(date -d "$days days" +"%Y-%m-%d")
+    # Leer días de validez
+    while true; do
+        read -p "📅 Días de validez: " DIAS
+        [[ "$DIAS" =~ ^[0-9]+$ && "$DIAS" -ge 0 ]] && break
+        echo -e "${ROJO}❌ Ingresa un número válido (0 o más).${NC}"
+    done
+
+    # Leer número de móviles
+    while true; do
+        read -p "📱 ¿Cuántos móviles? " MOVILES
+        [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ && "$MOVILES" -le 999 ]] && break
+        echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
+    done
+
+    # Calcular fechas
+    FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
+    EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d")
+    FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
+
+    # Agregar al REGISTROS con bloqueo
+    {
+        if ! flock -x -w 10 200; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo adquirir el bloqueo para $REGISTROS al crear usuario '$USUARIO'." >> "$HISTORIAL"
+            echo -e "${ROJO}❌ Error: No se pudo escribir en $REGISTROS debido a un bloqueo. Intenta de nuevo.${NC}"
+            read -p "Presiona Enter para continuar..."
+            return 1
+        fi
+
+        echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS}:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
+        sync
+        sleep 0.2
+
+        if ! grep -qw "^$USUARIO:" "$REGISTROS"; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
+            echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
+            read -p "Presiona Enter para continuar..."
+            return 1
+        fi
+    } 200>"$REGISTROS.lock"
 
     # Crear usuario
-    useradd -M -s /bin/false "$username" >/dev/null 2>&1
-    echo "$username:$password" | chpasswd >/dev/null 2>&1
-    chage -E "$expiration_chage" "$username" >/dev/null 2>&1
-
-    # Verificar si el usuario fue creado
-    if id "$username" >/dev/null 2>&1; then
-        # Mostrar confirmación
-        echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
-        echo -e "👤 Usuario: $username"
-        echo -e "🔑 Clave: $password"
-        echo -e "📅 Expira: $expiration_date//"
-        echo -e "📱 Límite móviles: $mobiles"
-        echo -e "📅 Creado: $creation_date"
-
-        # Registrar en los archivos
-        echo -e "Usuario creado: $username:$password:Expira:$expiration_date:Días:$days:Móviles:$mobiles:Creado:$creation_date" >> "$REGISTROS"
-        echo -e "$(date +"%Y-%m-%d %H:%M:%S"):Usuario creado:$username" >> "$HISTORIAL"
-
-        # Mostrar resumen
-        echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
-        echo -e "👤 Usuario:📅 Expira:⏳ Días:📱 Móviles:📅 Creado"
-        echo -e "---------------------------------------------------------------"
-        echo -e "$username:$password:$expiration_date:$days días:$mobiles:$creation_date"
-        echo -e "==============================================================="
-        echo -e "${CIAN}Presiona Enter para continuar...${NC}"
-        read
-    else
-        echo -e "${ROJO}Error: No se pudo crear el usuario.${NC}"
+    if ! useradd -M -s /bin/false "$USUARIO"; then
+        {
+            flock -x -w 10 200
+            sed -i "/^$USUARIO:/d" "$REGISTROS"
+            sync
+        } 200>"$REGISTROS.lock"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error creando usuario '$USUARIO' en el sistema. Registro eliminado." >> "$HISTORIAL"
+        echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
         read -p "Presiona Enter para continuar..."
         return 1
     fi
+
+    # Establecer contraseña
+    if ! echo "$USUARIO:$CLAVE" | chpasswd; then
+        userdel -r "$USUARIO" 2>/dev/null
+        {
+            flock -x -w 10 200
+            sed -i "/^$USUARIO:/d" "$REGISTROS"
+            sync
+        } 200>"$REGISTROS.lock"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error estableciendo contraseña para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
+        echo -e "${ROJO}❌ Falló el cambio de contraseña. Registro revertido.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    # Configurar expiración
+    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
+        userdel -r "$USUARIO" 2>/dev/null
+        {
+            flock -x -w 10 200
+            sed -i "/^$USUARIO:/d" "$REGISTROS"
+            sync
+        } 200>"$REGISTROS.lock"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
+        echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    # Registrar acción en HISTORIAL
+    echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
+
+    # Mostrar resultado final
+    echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
+    echo -e "👤 Usuario:${USUARIO}"
+    echo -e "🔑 Clave:${CLAVE}"
+    echo -e "📅 Expira:${FECHA_FORMAT}//"
+    echo -e "📱 Límite móviles:${MOVILES}"
+    echo -e "📅 Creado:${FECHA_CREACION}"
+    echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
+    echo -e "👤 Usuario:📅 Expira:⏳ Días:📱 Móviles:📅 Creado"
+    echo -e "---------------------------------------------------------------"
+    echo -e "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}"
+    echo -e "==============================================================="
+    read -p "Presiona Enter para continuar..."
 }
 
 # Función para mostrar el menú
 function mostrar_menu() {
     clear
     echo -e "${VIOLETA}===== 🚀 MENÚ DE GESTIÓN SSH =====${NC}"
-    echo -e "${AZUL}1) Crear usuario SSH"
-    echo -e "2) Salir${NC}"
-    echo -e "${VIOLETA}===============================${NC}"
+    echo -e "1) Crear usuario SSH"
+    echo -e "2) Salir"
+    echo -e "===============================${NC}"
     read -p "Selecciona una opción [1-2]: " opcion
 
     case $opcion in
