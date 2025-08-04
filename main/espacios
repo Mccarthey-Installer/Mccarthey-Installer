@@ -871,34 +871,90 @@ else
     echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "/var/run/mon.pid")).${NC}"
 fi             
 
-# Función para mostrar historial de conexiones
-ROSADO='\033[38;5;218m'
-LILA='\033[38;5;135m'
-TURQUESA='\033[38;5;45m'
-NC='\033[0m'
 function informacion_usuarios() {
     clear
-    echo -e "${ROSADO}🌸✨ INFORMACIÓN DE CONEXIONES 💖✨🌸${NC}"
-    if [[ ! -f $HISTORIAL ]]; then
-        echo -e "${LILA}😿 ¡Oh no! No hay historial de conexiones aún, pequeña! 💔${NC}"
-        read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"
-        return
+    echo -e "${AZUL_SUAVE}🌸✨ INFORMACIÓN DE CONEXIONES 💖✨🌸${NC}"
+
+    # Definir colores (coherentes con tu script)
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    declare -A month_map=(
+        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
+        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
+        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
+    )
+
+    if [[ ! -f "$HISTORIAL" ]]; then
+        echo -e "${HOT_PINK}❌ No hay historial de conexiones. 📂${NC}"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar, dulce... 🌟${NC}")"
+        return 1
     fi
 
-    printf "${LILA}%-15s %-22s %-22s %-12s${NC}\n" "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰ Duración"
-    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    printf "${PASTEL_BLUE}%-15s ${MINT_GREEN}%-20s ${LILAC}%-20s ${SOFT_PINK}%-10s${NC}\n" \
+        "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰ Duración"
+    echo -e "${LILAC}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
 
-    tac "$HISTORIAL" | awk -F'|' '!v[$1]++' | tac | while IFS='|' read -r USUARIO CONECTO DESCONECTO DURACION; do
-        # Formatear fechas: dd/mes hh:mm AM/PM (mes en español, AM/PM en MAYÚSCULA)
-        CONECTO_FMT=$(date -d "$CONECTO" +"%d/%B %I:%M %p" 2>/dev/null | \
-            sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$CONECTO")
-        DESCONECTO_FMT=$(date -d "$DESCONECTO" +"%d/%B %I:%M %p" 2>/dev/null | \
-            sed 's/January/enero/;s/February/febrero/;s/March/marzo/;s/April/abril/;s/May/mayo/;s/June/junio/;s/July/julio/;s/August/agosto/;s/September/septiembre/;s/October/octubre/;s/November/noviembre/;s/December/diciembre/' || echo "$DESCONECTO")
-        printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONECTO_FMT" "$DESCONECTO_FMT" "$DURACION"
+    # Obtener lista de usuarios únicos del historial
+    mapfile -t USUARIOS < <(awk -F'|' '{print $1}' "$HISTORIAL" | sort -u)
+
+    for USUARIO in "${USUARIOS[@]}"; do
+        if id "$USUARIO" &>/dev/null; then
+            # Obtener el último registro de conexión para el usuario
+            ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)
+            if [[ -n "$ULTIMO_REGISTRO" ]]; then
+                IFS='|' read -r _ HORA_CONEXION HORA_DESCONECCION <<< "$ULTIMO_REGISTRO"
+                
+                # Verificar que las fechas sean válidas
+                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ && \
+                      "$HORA_DESCONECCION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+                    # Formatear fechas
+                    CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%B %I:%M %p" 2>/dev/null | awk '{print $1 "/" tolower($2) " " $3 ":" $4 " " tolower($5)}')
+                    DESCONEXION_FMT=$(date -d "$HORA_DESCONECCION" +"%d/%B %I:%M %p" 2>/dev/null | awk '{print $1 "/" tolower($2) " " $3 ":" $4 " " tolower($5)}')
+
+                    # Traducir meses
+                    for k in "${!month_map[@]}"; do
+                        CONEXION_FMT=${CONEXION_FMT/${month_map[$k]}/${month_map[$k]}}
+                        DESCONEXION_FMT=${DESCONEXION_FMT/${month_map[$k]}/${month_map[$k]}}
+                    done
+
+                    # Calcular duración
+                    SEC_CON=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                    SEC_DES=$(date -d "$HORA_DESCONECCION" +%s 2>/dev/null)
+                    if [[ -n "$SEC_CON" && -n "$SEC_DES" ]]; then
+                        DURACION_SEC=$((SEC_DES - SEC_CON))
+                        if [[ $DURACION_SEC -ge 0 ]]; then
+                            MINUTOS=$((DURACION_SEC / 60))
+                            if [[ $MINUTOS -ge 60 ]]; then
+                                HORAS=$((MINUTOS / 60))
+                                MINUTOS=$((MINUTOS % 60))
+                                DURACION=$(printf "%dh %dm" $HORAS $MINUTOS)
+                            else
+                                DURACION="${MINUTOS}m"
+                            fi
+                        else
+                            DURACION="N/A"
+                        fi
+                    else
+                        DURACION="N/A"
+                    fi
+
+                    printf "${PASTEL_BLUE}%-15s ${MINT_GREEN}%-20s ${LILAC}%-20s ${SOFT_PINK}%-10s${NC}\n" \
+                        "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
+                fi
+            fi
+        fi
     done
 
-    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
-    read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
+    echo -e "${LILAC}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar, dulce... 🌟${NC}")"
 }
 
 # Colores y emojis
