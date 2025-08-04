@@ -45,7 +45,6 @@ fi'
     fi
 }
 
-# Función para crear usuarios SSH
 function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
@@ -129,9 +128,10 @@ function crear_registro() {
         echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
     done
 
-    # Calcular fechas
+    # Calcular fechas con ajuste para expiración a medianoche siguiente
+    DIAS_EXPIRACION=$(( DIAS == 0 ? 1 : DIAS + 1 ))
     FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
-    EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d")
+    EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
     # Agregar al REGISTROS
@@ -197,6 +197,7 @@ function crear_registro() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
+
 
 function ver_registros() {
     clear
@@ -436,7 +437,8 @@ function crear_multiples_usuarios() {
         IFS=':' read -r USUARIO CLAVE DIAS MOVILES <<< "$linea"
 
         FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
-        EXPIRA_FECHA=$(date -d "+$DIAS days" +"%Y-%m-%d")
+        DIAS_EXPIRACION=$(( DIAS == 0 ? 1 : DIAS + 1 ))
+        EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
         FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
         if ! useradd -M -s /bin/false "$USUARIO"; then
@@ -483,6 +485,7 @@ function crear_multiples_usuarios() {
     echo -e "${HOT_PINK}❌ Usuarios con error: $errores${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
 
  function mini_registro() {
     clear
