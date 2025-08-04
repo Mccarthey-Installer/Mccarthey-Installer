@@ -951,7 +951,125 @@ fi
     echo -e "${LILAC}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar, dulce... 🌟${NC}")"
 }
+function bloquear_desbloquear_usuario() {
+    clear
+    echo -e "${AZUL_SUAVE}==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ====${NC}"
+    echo -e "${AZUL_SUAVE}===== 📋 USUARIOS REGISTRADOS =====${NC}"
 
+    # Definir colores (coherentes con tu script)
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    if [[ ! -f "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ No hay registros de usuarios. 📂${NC}"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+        return 1
+    fi
+
+    printf "${PASTEL_BLUE}%-5s %-15s %-15s %-22s %-15s${NC}\n" \
+        "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "⏳ Duración"
+    echo -e "${LILAC}--------------------------------------------------------------------------${NC}"
+
+    declare -A usuarios
+    declare -a nombres
+    contador=1
+
+    while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
+        if id "$USUARIO" &>/dev/null; then
+            usuarios["$contador"]="$USUARIO"
+            nombres+=("$USUARIO")
+            printf "${PASTEL_BLUE}%-5s %-15s ${SOFT_PINK}%-15s ${LILAC}%-22s ${MINT_GREEN}%-15s${NC}\n" \
+                "$contador" "$USUARIO" "$CLAVE" "$EXPIRA" "$DURACION"
+            ((contador++))
+        fi
+    done < "$REGISTROS"
+
+    echo -e "${LILAC}==========================================================================${NC}"
+    read -p "$(echo -e "${PASTEL_PURPLE}👤 Digite el número o el nombre del usuario: ${NC}")" input
+
+    # Validar entrada
+    USUARIO=""
+    if [[ "$input" =~ ^[0-9]+$ && -n "${usuarios[$input]}" ]]; then
+        USUARIO="${usuarios[$input]}"
+    elif [[ -n "$input" ]]; then
+        for nombre in "${nombres[@]}"; do
+            if [[ "$nombre" == "$input" ]]; then
+                USUARIO="$input"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$USUARIO" || ! $(id "$USUARIO" &>/dev/null) ]]; then
+        echo -e "${HOT_PINK}❌ Usuario '$input' no encontrado o inválido. 🚫${NC}"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+        return 1
+    fi
+
+    # Verificar estado del usuario
+    if grep -q "^$USUARIO:!" /etc/shadow; then
+        ESTADO="BLOQUEADO"
+        COLOR_ESTADO="${HOT_PINK}"
+        ACCION="desbloquear"
+        ACCION_CONFIRM="Desea desbloquear al usuario '$USUARIO'? (s/n)"
+    else
+        ESTADO="DESBLOQUEADO"
+        COLOR_ESTADO="${MINT_GREEN}"
+        ACCION="bloquear"
+        ACCION_CONFIRM="Desea bloquear al usuario '$USUARIO'? (s/n)"
+    fi
+
+    echo -e "${PASTEL_BLUE}𒯢 El usuario '$USUARIO' está ${COLOR_ESTADO}${ESTADO}${NC}."
+    read -p "$(echo -e "${PASTEL_PURPLE}✅ $ACCION_CONFIRM ${NC}")" respuesta
+
+    if [[ "$respuesta" =~ ^[Ss]$ ]]; then
+        if [[ "$ESTADO" == "BLOQUEADO" ]]; then
+            # Desbloquear usuario
+            usermod -U "$USUARIO" 2>/dev/null
+            if [[ $? -eq 0 ]]; then
+                echo -e "${MINT_GREEN}🔓 Usuario '$USUARIO' desbloqueado exitosamente. ✅${NC}"
+            else
+                echo -e "${HOT_PINK}❌ Error al desbloquear al usuario '$USUARIO'. 🚫${NC}"
+                read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+                return 1
+            fi
+        else
+            # Bloquear usuario y cerrar sesiones
+            usermod -L "$USUARIO" 2>/dev/null
+            if [[ $? -eq 0 ]]; then
+                # Cerrar sesiones activas
+                CONEXIONES_SSH=$(ps -u "$USUARIO" -o pid=,comm= | grep "^[0-9]\+ sshd$" | awk '{print $1}')
+                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o pid=,comm= | grep "^[0-9]\+ dropbear$" | awk '{print $1}')
+                # Cerrar sesiones de loginctl
+                while IFS=' ' read -r SESSION _ _ USER _; do
+                    if [[ "$USER" == "$USUARIO" ]]; then
+                        loginctl terminate-session "$SESSION" 2>/dev/null
+                    fi
+                done < <(loginctl list-sessions --no-legend)
+                # Cerrar procesos SSH/Dropbear
+                for pid in $CONEXIONES_SSH $CONEXIONES_DROPBEAR; do
+                    kill -9 "$pid" 2>/dev/null
+                done
+                echo -e "${MINT_GREEN}🔒 Usuario '$USUARIO' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}"
+            else
+                echo -e "${HOT_PINK}❌ Error al bloquear al usuario '$USUARIO'. 🚫${NC}"
+                read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+                return 1
+            fi
+        fi
+    else
+        echo -e "${SOFT_CORAL}⚠️ Operación cancelada. 🚫${NC}"
+    fi
+
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+}
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
