@@ -122,10 +122,10 @@ function crear_usuario_ssh() {
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
     # Agregar al REGISTROS
-    echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS}:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
+    echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
     sync
 
-    # Verificar escritura (simplificada)
+    # Verificar escritura
     if ! grep -q "^$USUARIO:" "$REGISTROS"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Contenido de $REGISTROS tras intento de escritura:" >> "$HISTORIAL"
@@ -171,28 +171,28 @@ function crear_usuario_ssh() {
     echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
 
     # Mostrar resultado final
-    echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
-    echo -e "👤 Usuario:${USUARIO}"
-    echo -e "🔑 Clave:${CLAVE}"
-    echo -e "📅 Expira:${FECHA_FORMAT}//"
-    echo -e "📱 Límite móviles:${MOVILES}"
-    echo -e "📅 Creado:${FECHA_CREACION}"
+    echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
+    echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
+    echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
+    echo -e "${AZUL}📅 Expira:  ${AMARILLO}$FECHA_FORMAT//${NC}"
+    echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$MOVILES${NC}"
+    echo -e "${AZUL}📅 Creado:  ${AMARILLO}$FECHA_CREACION${NC}"
     echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
-    echo -e "👤 Usuario:📅 Expira:⏳ Días:📱 Móviles:📅 Creado"
-    echo -e "---------------------------------------------------------------"
-    echo -e "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}"
-    echo -e "==============================================================="
-    read -p "Presiona Enter para continuar..."
+    echo -e "${AMARILLO}👤 Usuario    📅 Expira          ⏳  Días       📱 Móviles   📅 Creado${NC}"
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    printf "${VERDE}%-12s %-20s %-13s %-12s %-20s${NC}\n" "$USUARIO:$CLAVE" "$FECHA_FORMAT//" "$DIAS días" "$MOVILES" "$FECHA_CREACION"
+    echo -e "${CIAN}===============================================================${NC}"
+    read -p "${CIAN}Presiona Enter para continuar...${NC}"
 }
 
 # Función para mostrar el menú
 function mostrar_menu() {
     clear
     echo -e "${VIOLETA}===== 🚀 MENÚ DE GESTIÓN SSH =====${NC}"
-    echo -e "1) Crear usuario SSH"
-    echo -e "2) Salir"
-    echo -e "===============================${NC}"
-    read -p "Selecciona una opción [1-2]: " opcion
+    echo -e "${AZUL}1) Crear usuario SSH${NC}"
+    echo -e "${AZUL}2) Salir${NC}"
+    echo -e "${VIOLETA}===============================${NC}"
+    read -p "${AZUL}Selecciona una opción [1-2]: ${NC}" opcion
 
     case $opcion in
         1)
@@ -205,7 +205,7 @@ function mostrar_menu() {
             ;;
         *)
             echo -e "${ROJO}Opción inválida. Intenta de nuevo.${NC}"
-            read -p "Presiona Enter para continuar..."
+            read -p "${CIAN}Presiona Enter para continuar...${NC}"
             mostrar_menu
             ;;
     esac
