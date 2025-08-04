@@ -1,25 +1,26 @@
 #!/bin/bash
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
-export TERM=${TERM:-xterm-256color}
 timedatectl set-timezone America/El_Salvador
+
+# Forzar soporte de colores ANSI
+export TERM=xterm-256color
 
 REGISTROS="/root/reg.txt"
 HISTORIAL="/root/log.txt"
 PIDFILE="/var/run/mon.pid"
 
-# Usar \e para mejor compatibilidad y restablecer con tput sgr0
-VIOLETA='\e[38;5;141m'
-VERDE='\e[38;5;42m'
-AMARILLO='\e[38;5;220m'
-AZUL='\e[38;5;39m'
-ROJO='\e[38;5;196m'
-CIAN='\e[38;5;51m'
-NC=$(tput sgr0)
+VIOLETA='\033[38;5;141m'
+VERDE='\033[38;5;42m'
+AMARILLO='\033[38;5;220m'
+AZUL='\033[38;5;39m'
+ROJO='\033[38;5;196m'
+CIAN='\033[38;5;51m'
+NC='\033[0m'
 
 # Verificar si el terminal soporta colores
-if [ "$(tput colors)" -lt 8 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S'):Terminal no soporta colores ANSI. Se desactivan colores." >> "$HISTORIAL" 2>/dev/null
+if ! tput colors >/dev/null 2>&1 || [ "$(tput colors)" -lt 8 ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S'):Terminal no soporta colores ANSI o soporta menos de 8 colores. Desactivando colores." >> "$HISTORIAL" 2>/dev/null
     VIOLETA=''
     VERDE=''
     AMARILLO=''
