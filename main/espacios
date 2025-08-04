@@ -6,6 +6,7 @@ timedatectl set-timezone America/El_Salvador
 REGISTROS="/root/reg.txt"
 HISTORIAL="/root/log.txt"
 PIDFILE="/var/run/mon.pid"
+LOCKFILE="/root/reg.txt.lock"
 
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -28,6 +29,20 @@ fi'
         echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
         echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
     fi
+}
+
+# Función para verificar y limpiar el archivo de bloqueo
+function limpiar_bloqueo() {
+    if [[ -f "$LOCKFILE" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Archivo de bloqueo $LOCKFILE encontrado, intentando limpiar." >> "$HISTORIAL"
+        rm -f "$LOCKFILE" 2>/dev/null || {
+            echo -e "${ROJO}❌ No se pudo eliminar $LOCKFILE. Revisa permisos o procesos activos.${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo eliminar $LOCKFILE." >> "$HISTORIAL"
+            return 1
+        }
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Archivo de bloqueo $LOCKFILE eliminado exitosamente." >> "$HISTORIAL"
+    fi
+    return 0
 }
 
 # Función para crear usuarios SSH
@@ -66,6 +81,20 @@ function crear_usuario_ssh() {
         read -p "Presiona Enter para continuar..."
         return 1
     fi
+
+    # Verificar sistema de archivos
+    if mount | grep /root | grep -q ro; then
+        echo -e "${ROJO}❌ El directorio /root está montado como solo lectura. Remonta con 'mount -o remount,rw /root'.${NC}"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):Directorio /root en solo lectura" >> "$HISTORIAL"
+        read -p "Presiona Enter para continuar..."
+        return 1
+    fi
+
+    # Limpiar archivo de bloqueo si existe
+    limpiar_bloqueo || {
+        read -p "Presiona Enter para continuar..."
+        return 1
+    }
 
     # Leer nombre del usuario
     while true; do
@@ -107,7 +136,7 @@ function crear_usuario_ssh() {
 
     # Agregar al REGISTROS con bloqueo
     {
-        if ! flock -x -w 10 200; then
+        if ! flock -x -w 15 200; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo adquirir el bloqueo para $REGISTROS al crear usuario '$USUARIO'." >> "$HISTORIAL"
             echo -e "${ROJO}❌ Error: No se pudo adquirir el bloqueo para $REGISTROS. Intenta de nuevo.${NC}"
             read -p "Presiona Enter para continuar..."
@@ -117,22 +146,22 @@ function crear_usuario_ssh() {
         echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS}:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
         sync
 
-        # Verificar escritura (simplificada)
+        # Verificar escritura
         if ! tail -n 1 "$REGISTROS" | grep -qw "^$USUARIO:"; then
             echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
             echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
             read -p "Presiona Enter para continuar..."
             return 1
         fi
-    } 200>"$REGISTROS.lock"
+    } 200>"$LOCKFILE"
 
     # Crear usuario
     if ! useradd -M -s /bin/false "$USUARIO"; then
         {
-            flock -x -w 10 200
+            flock -x -w 15 200
             sed -i "/^$USUARIO:/d" "$REGISTROS"
             sync
-        } 200>"$REGISTROS.lock"
+        } 200>"$LOCKFILE"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error creando usuario '$USUARIO' en el sistema. Registro eliminado." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
         read -p "Presiona Enter para continuar..."
@@ -143,10 +172,10 @@ function crear_usuario_ssh() {
     if ! echo "$USUARIO:$CLAVE" | chpasswd; then
         userdel -r "$USUARIO" 2>/dev/null
         {
-            flock -x -w 10 200
+            flock -x -w 15 200
             sed -i "/^$USUARIO:/d" "$REGISTROS"
             sync
-        } 200>"$REGISTROS.lock"
+        } 200>"$LOCKFILE"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error estableciendo contraseña para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Falló el cambio de contraseña. Registro revertido.${NC}"
         read -p "Presiona Enter para continuar..."
@@ -157,10 +186,10 @@ function crear_usuario_ssh() {
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
         userdel -r "$USUARIO" 2>/dev/null
         {
-            flock -x -w 10 200
+            flock -x -w 15 200
             sed -i "/^$USUARIO:/d" "$REGISTROS"
             sync
-        } 200>"$REGISTROS.lock"
+        } 200>"$LOCKFILE"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
         read -p "Presiona Enter para continuar..."
@@ -213,4 +242,4 @@ function mostrar_menu() {
 
 # Configurar autoejecución y mostrar el menú
 configurar_autoejecucion
-mostrar_menu 
+mostrar_menu
