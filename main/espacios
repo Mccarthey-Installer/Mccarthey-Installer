@@ -741,7 +741,7 @@ function nuclear_eliminar() {
         return 1
     fi
 
-    printf "${PASTEL_BLUE}%-12s ${MINT_GREEN}%-12s ${SOFT_PINK}%-10s ${LILAC}%-25s${NC}\n" \
+    printf "${PASTEL_BLUE}%-12s ${MINT_GREEN}%-12s ${SOFT_PINK}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
         "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
@@ -804,17 +804,16 @@ function nuclear_eliminar() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${PASTEL_BLUE}%-12s ${COLOR_ESTADO}%-12s ${SOFT_PINK}%-10s ${LILAC}%-25s${NC}\n" \
+            printf "${PASTEL_BLUE}%-12s ${COLOR_ESTADO}%-12s ${SOFT_PINK}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
                 "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
-echo
+    echo
     echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC} ${CIAN} Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC} ${CIAN} Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${ROJO}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
-                    
 
        
 
