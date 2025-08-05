@@ -318,7 +318,7 @@ function ver_registros() {
                 DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
 
                 FECHA_EXPIRA_DIA=$(date -d "$FECHA_CREACION + $DIAS_NUM days" +%Y-%m-%d 2>/dev/null)
-                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
+                FECHA_ACTUAL_DIA=$(date -d "today 00:00" +%Y-%m-%d)
                 DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
                 [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
 
@@ -347,6 +347,7 @@ function ver_registros() {
     echo -e "${LILAC}=====================${NC}"
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
+
 
 
 function eliminar_usuario() {
@@ -609,8 +610,14 @@ function crear_multiples_usuarios() {
         if id "$usuario" &>/dev/null; then
             # Extraer días numéricos
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
+            fecha_creacion=$(echo "$creado" | cut -d' ' -f1)
+            fecha_expira=$(date -d "$fecha_creacion + $dias_num days" +%Y-%m-%d 2>/dev/null)
+            fecha_actual=$(date -d "today 00:00" +%Y-%m-%d)
+            dias_restantes=$(( ( $(date -d "$fecha_expira" +%s) - $(date -d "$fecha_actual" +%s) ) / 86400 ))
+            [[ $dias_restantes -lt 0 ]] && dias_restantes=0
+
             printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
-                "$usuario" "$clave" "$(center_value "$dias_num" 10)" "$moviles"
+                "$usuario" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
             ((contador++))
         fi
     done < "$REGISTROS"
@@ -623,6 +630,7 @@ function crear_multiples_usuarios() {
     echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
        
 
 function nuclear_eliminar() {
