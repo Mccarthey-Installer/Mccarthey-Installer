@@ -809,10 +809,10 @@ function nuclear_eliminar() {
         fi
     done < "$REGISTROS"
 
-    echo -e "${LILAC}============================================${NC}"
-    echo -e "${MINT_GREEN}Total de Online: $TOTAL_CONEXIONES${NC}  ${PASTEL_BLUE}Total usuarios: $TOTAL_USUARIOS${NC}  ${HOT_PINK}Inactivos: $INACTIVOS${NC}"
-    echo -e "${LILAC}============================================${NC}"
-    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar...${NC}")"
+echo
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC} ${CIAN} Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC} ${CIAN} Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
+    echo -e "${ROJO}================================================${NC}"
+    read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
                     
 
