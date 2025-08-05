@@ -711,9 +711,7 @@ function nuclear_eliminar() {
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
 
-    
-
-       function verificar_online() {
+    function verificar_online() {
     clear
     echo -e "${AZUL_SUAVE}===== 🟢 USUARIOS ONLINE =====${NC}"
 
@@ -812,8 +810,12 @@ function nuclear_eliminar() {
     done < "$REGISTROS"
 
     echo -e "${LILAC}============================================${NC}"
-    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+    echo -e "${SOFT_CORAL}Total de Online: $TOTAL_CONEXIONES  Total usuarios: $TOTAL_USUARIOS  Inactivos: $INACTIVOS${NC}"
+    echo -e "${LILAC}============================================${NC}"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar...${NC}")"
 }
+
+       
 
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
