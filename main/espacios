@@ -603,7 +603,7 @@ function crear_multiples_usuarios() {
     # Encabezado con colores
     printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
         "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
-    echo -e "${LILAC}--------------------------------------------${NC}"
+    echo -e "${LILAC}--------------------------------------------${NC"
 
     contador=0
     while IFS=':' read -r usuario clave expira dias moviles creado; do
@@ -612,7 +612,7 @@ function crear_multiples_usuarios() {
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
             fecha_creacion=$(echo "$creado" | cut -d' ' -f1)
             fecha_expira=$(date -d "$fecha_creacion + $dias_num days" +%Y-%m-%d 2>/dev/null)
-            fecha_actual=$(date +%Y-%m-%d)  # ⬅️ ESTA es la corrección clave
+            fecha_actual=$(date -d "today 00:00" +%Y-%m-%d)  # Corrección para mayor robustez
             dias_restantes=$(( ( $(date -d "$fecha_expira" +%s) - $(date -d "$fecha_actual" +%s) ) / 86400 ))
             [[ $dias_restantes -lt 0 ]] && dias_restantes=0
 
