@@ -746,7 +746,7 @@ function verificar_online() {
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
     AMARILLO='\033[93m'
-    CIAN='\033[96m'
+    
     VIOLETA='\033[95m'
     ROJO='\033[91m'
     NC='\033[0m'
