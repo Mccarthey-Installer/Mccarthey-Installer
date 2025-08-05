@@ -10,16 +10,14 @@ REGISTROS="/root/reg.txt"
 HISTORIAL="/root/log.txt"
 PIDFILE="/var/run/mon.pid"
 
-
-
-    function barra_sistema() {
-    # Definición colores
-    BLANCO='\033[97m'
-    AZUL='\033[94m'
-    MAGENTA='\033[95m'
-    ROJO='\033[91m'
-    AMARILLO='\033[93m'
-    NC='\033[0m'
+function barra_sistema() {
+    # Definición colores según tu estilo
+    BLANCO='\033[97m'     # Blanco brillante
+    AZUL='\033[94m'       # Azul claro
+    MAGENTA='\033[95m'    # Magenta
+    ROJO='\033[91m'       # Rojo claro
+    AMARILLO='\033[93m'   # Amarillo brillante
+    NC='\033[0m'          # Sin color
 
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
@@ -88,60 +86,31 @@ PIDFILE="/var/run/mon.pid"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
+    # Mostrar usuarios que expiran hoy con formato exacto
     if [[ -f $REGISTROS ]]; then
         USUARIOS_0DIAS=""
         while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
                 if [[ "$FECHA_EXPIRA_DIA" == "$FECHA_ACTUAL_DIA" ]]; then
-                    USUARIOS_0DIAS+="${BLANCO}$USUARIO 0 días${NC}\n"
+                    USUARIOS_0DIAS="${USUARIOS_0DIAS}${BLANCO}$USUARIO 0 días${NC}"$'\n'
                 fi
             fi
         done < "$REGISTROS"
+
         if [[ -n "$USUARIOS_0DIAS" ]]; then
+            echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
             echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
-            echo -e -n "$USUARIOS_0DIAS"
+            echo -e "$USUARIOS_0DIAS"
             echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
         fi
     fi
 }
 
 
-VIOLETA='\033[38;5;141m'
-VERDE='\033[38;5;42m'
-AMARILLO='\033[38;5;220m'
-AZUL='\033[38;5;39m'
-ROJO='\033[38;5;196m'
-CIAN='\033[38;5;51m'
-NC='\033[0m'
+    
 
-# Verificar si el terminal soporta colores
-if ! tput colors >/dev/null 2>&1 || [ "$(tput colors)" -lt 8 ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S'):Terminal no soporta colores ANSI o soporta menos de 8 colores. Desactivando colores." >> "$HISTORIAL" 2>/dev/null
-    VIOLETA=''
-    VERDE=''
-    AMARILLO=''
-    AZUL=''
-    ROJO=''
-    CIAN=''
-    NC=''
-fi
-
-# Función para configurar la autoejecución en ~/.bashrc
-function configurar_autoejecucion() {
-    BASHRC="/root/.bashrc"
-    AUTOEXEC_BLOCK='if [[ -t 0 && -z "$IN_PANEL" ]]; then
-    export IN_PANEL=1
-    bash <(wget -qO- https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/main/espacios)
-    unset IN_PANEL
-fi'
-
-    if ! grep -Fx "$AUTOEXEC_BLOCK" "$BASHRC" >/dev/null 2>&1; then
-        echo -e "\n$AUTOEXEC_BLOCK" >> "$BASHRC"
-        echo -e "${VERDE}Autoejecución configurada en $BASHRC. El menú se cargará automáticamente en la próxima sesión.${NC}"
-    fi
-}
-
+    
 function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
