@@ -11,6 +11,7 @@ HISTORIAL="/root/log.txt"
 PIDFILE="/var/run/mon.pid"
 
 
+    
     function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'     # Blanco brillante
@@ -87,12 +88,16 @@ PIDFILE="/var/run/mon.pid"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
-    # Mostrar usuarios con 0 días de duración
+    # Mostrar usuarios con 0 días de duración en una sola línea
     if [[ -f "$REGISTROS" ]]; then
         USUARIOS_0DIAS=""
         while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if [[ "$DURACION" == "0 días" ]]; then
-                USUARIOS_0DIAS="${USUARIOS_0DIAS}${BLANCO}$USUARIO 0 días${NC}"$'\n'
+                if [[ -z "$USUARIOS_0DIAS" ]]; then
+                    USUARIOS_0DIAS="${BLANCO}$USUARIO 0 días${NC}"
+                else
+                    USUARIOS_0DIAS="${USUARIOS_0DIAS}  ${BLANCO}$USUARIO 0 días${NC}"
+                fi
             fi
         done < "$REGISTROS"
 
@@ -104,9 +109,6 @@ PIDFILE="/var/run/mon.pid"
         fi
     fi
 }
-
-
-    
 
     
 function crear_registro() {
