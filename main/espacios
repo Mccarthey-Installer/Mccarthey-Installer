@@ -721,6 +721,8 @@ function nuclear_eliminar() {
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
 
+    
+
     function centrar_texto() {
     local texto="$1"
     local ancho="$2"
