@@ -846,7 +846,7 @@ function verificar_online() {
     done < "$REGISTROS"
 
     echo
-    echo -e "${AZUL_SUAVE}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${AZUL_SUAVE} Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${AZUL_SUAVE} Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${CIAN} Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${CIAN} Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${ROJO}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
