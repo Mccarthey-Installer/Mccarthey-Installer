@@ -10,7 +10,8 @@ REGISTROS="/root/reg.txt"
 HISTORIAL="/root/log.txt"
 PIDFILE="/var/run/mon.pid"
 
-function barra_sistema() {
+
+    function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'     # Blanco brillante
     AZUL='\033[94m'       # Azul claro
@@ -59,7 +60,7 @@ function barra_sistema() {
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
-    if [[ -f $REGISTROS ]]; then
+    if [[ -f "$REGISTROS" ]]; then
         while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
@@ -86,15 +87,12 @@ function barra_sistema() {
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
-    # Mostrar usuarios que expiran hoy con formato exacto
-    if [[ -f $REGISTROS ]]; then
+    # Mostrar usuarios con 0 días de duración
+    if [[ -f "$REGISTROS" ]]; then
         USUARIOS_0DIAS=""
         while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                FECHA_EXPIRA_DIA=$(date -d "$EXPIRA_DATETIME" +%Y-%m-%d 2>/dev/null)
-                if [[ "$FECHA_EXPIRA_DIA" == "$FECHA_ACTUAL_DIA" ]]; then
-                    USUARIOS_0DIAS="${USUARIOS_0DIAS}${BLANCO}$USUARIO 0 días${NC}"$'\n'
-                fi
+            if [[ "$DURACION" == "0 días" ]]; then
+                USUARIOS_0DIAS="${USUARIOS_0DIAS}${BLANCO}$USUARIO 0 días${NC}"$'\n'
             fi
         done < "$REGISTROS"
 
