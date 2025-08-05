@@ -739,9 +739,7 @@ function nuclear_eliminar() {
     printf "%*s%s%*s" "$relleno_izq" "" "$texto" "$relleno_der" ""
 }
 
-
-
-                    function verificar_online() {
+function verificar_online() {
     clear
     echo -e "${AZUL_SUAVE}===== 🟢 USUARIOS ONLINE =====${NC}"
 
@@ -771,6 +769,16 @@ function nuclear_eliminar() {
         return 1
     fi
 
+    # Centrar texto en un ancho dado
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+    }
+
     printf "${PASTEL_BLUE}%-12s ${MINT_GREEN}%-12s ${SOFT_PINK}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
         "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
@@ -786,6 +794,7 @@ function nuclear_eliminar() {
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${HOT_PINK}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+            MOVILES_CENTRADO=$(center_value "$MOVILES_NUM" 10)
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
@@ -834,17 +843,19 @@ function nuclear_eliminar() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${PASTEL_BLUE}%-12s ${COLOR_ESTADO}%-12s ${SOFT_PINK}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
-                "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+            printf "${PASTEL_BLUE}%-12s ${COLOR_ESTADO}%-12s ${SOFT_PINK}%s ${AZUL_SUAVE}%-25s${NC}\n" \
+                "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
         fi
     done < "$REGISTROS"
 
-     echo
+    echo
     echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC} ${CIAN} Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC} ${CIAN} Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
     echo -e "${ROJO}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
 
+                    
+                    
                     
 
        
