@@ -779,8 +779,8 @@ function verificar_online() {
         printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
     }
 
-    printf "${PASTEL_BLUE}%-12s ${MINT_GREEN}%-12s ${SOFT_PINK}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
-        "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    printf "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
+        "👤 USUARIO"   "🟢 CONEXIONES"   "📱 MÓVILES"   "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
@@ -843,7 +843,7 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${PASTEL_BLUE}%-12s ${COLOR_ESTADO}%-12s ${SOFT_PINK}%s ${AZUL_SUAVE}%-25s${NC}\n" \
+            printf "${AMARILLO}%-12s ${COLOR_ESTADO}%-12s ${VERDE}%s ${AZUL_SUAVE}%-25s${NC}\n" \
                 "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
         fi
     done < "$REGISTROS"
