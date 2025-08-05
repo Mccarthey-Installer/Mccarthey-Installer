@@ -711,7 +711,16 @@ function nuclear_eliminar() {
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
 
-    function verificar_online() {
+    function centrar_texto() {
+    local texto="$1"
+    local ancho="$2"
+    local relleno_total=$((ancho - ${#texto}))
+    local relleno_izq=$((relleno_total / 2))
+    local relleno_der=$((relleno_total - relleno_izq))
+    printf "%*s%s%*s" "$relleno_izq" "" "$texto" "$relleno_der" ""
+}
+
+function verificar_online() {
     clear
     echo -e "${AZUL_SUAVE}===== 🟢 USUARIOS ONLINE =====${NC}"
 
@@ -724,6 +733,10 @@ function nuclear_eliminar() {
     HOT_PINK='\033[38;5;198m'
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
+    AMARILLO='\033[93m'
+    CIAN='\033[96m'
+    VIOLETA='\033[95m'
+    ROJO='\033[91m'
     NC='\033[0m'
 
     declare -A month_map=(
@@ -741,8 +754,17 @@ function nuclear_eliminar() {
         return 1
     fi
 
-    printf "${PASTEL_BLUE}%-12s ${MINT_GREEN}%-12s ${SOFT_PINK}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
-        "👤 USUARIO" "🟢 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    ancho_usr=12
+    ancho_conx=12
+    ancho_mov=10
+    ancho_tiempo=25
+
+    printf "${PASTEL_BLUE}%s ${MINT_GREEN}%s ${SOFT_PINK}%s ${AZUL_SUAVE}%s${NC}\n" \
+        "$(centrar_texto '👤 USUARIO' $ancho_usr)" \
+        "$(centrar_texto '🟢 CONEXIONES' $ancho_conx)" \
+        "$(centrar_texto '📱 MÓVILES' $ancho_mov)" \
+        "$(centrar_texto '⏰ TIEMPO CONECTADO' $ancho_tiempo)"
+
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
@@ -804,8 +826,12 @@ function nuclear_eliminar() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${PASTEL_BLUE}%-12s ${COLOR_ESTADO}%-12s ${SOFT_PINK}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
-                "$USUARIO" "$ESTADO" "$MOVILES_NUM" "$DETALLES"
+
+            printf "${PASTEL_BLUE}%s ${COLOR_ESTADO}%s ${SOFT_PINK}%s ${AZUL_SUAVE}%s${NC}\n" \
+                "$(centrar_texto "$USUARIO" $ancho_usr)" \
+                "$(centrar_texto "$ESTADO" $ancho_conx)" \
+                "$(centrar_texto "$MOVILES_NUM" $ancho_mov)" \
+                "$(centrar_texto "$DETALLES" $ancho_tiempo)"
         fi
     done < "$REGISTROS"
 
@@ -814,6 +840,7 @@ function nuclear_eliminar() {
     echo -e "${ROJO}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
+                    
 
        
 
