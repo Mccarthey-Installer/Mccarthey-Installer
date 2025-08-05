@@ -612,7 +612,7 @@ function crear_multiples_usuarios() {
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
             fecha_creacion=$(echo "$creado" | cut -d' ' -f1)
             fecha_expira=$(date -d "$fecha_creacion + $dias_num days" +%Y-%m-%d 2>/dev/null)
-            fecha_actual=$(date -d "today 00:00" +%Y-%m-%d)
+            fecha_actual=$(date +%Y-%m-%d)  # ⬅️ ESTA es la corrección clave
             dias_restantes=$(( ( $(date -d "$fecha_expira" +%s) - $(date -d "$fecha_actual" +%s) ) / 86400 ))
             [[ $dias_restantes -lt 0 ]] && dias_restantes=0
 
@@ -630,7 +630,6 @@ function crear_multiples_usuarios() {
     echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
-
        
 
 function nuclear_eliminar() {
