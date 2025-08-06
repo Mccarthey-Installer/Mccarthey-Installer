@@ -85,7 +85,7 @@ export PIDFILE="/var/run/mon.pid"
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🌸 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}🛍️ 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
@@ -103,7 +103,7 @@ export PIDFILE="/var/run/mon.pid"
 
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then
                     if [[ -z "$USUARIOS_0DIAS" ]]; then
-                        USUARIOS_0DIAS="${BLANCO}$USUARIO 0 días${NC}"
+                        USUARIOS_0DIAS="${BLANCO}$USUARIO 0 días 🔴${NC}"
                     else
                         USUARIOS_0DIAS="${USUARIOS_0DIAS}  ${BLANCO}$USUARIO 0 días${NC}"
                     fi
@@ -805,7 +805,7 @@ function verificar_online() {
     while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
             ((TOTAL_USUARIOS++))
-            ESTADO="☑️0"
+            ESTADO="☑️ 0"
             DETALLES="💤 Nunca conectado"
             COLOR_ESTADO="${ROJO}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
