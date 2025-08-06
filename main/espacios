@@ -12,6 +12,7 @@ export PIDFILE="/var/run/mon.pid"
 
 
     
+
     function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'     # Blanco brillante
@@ -88,15 +89,24 @@ export PIDFILE="/var/run/mon.pid"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
-    # Mostrar usuarios con 0 días de duración en una sola línea
+    # Mostrar usuarios con 0 días reales de duración en una sola línea (cálculo dinámico)
     if [[ -f "$REGISTROS" ]]; then
         USUARIOS_0DIAS=""
         while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if [[ "$DURACION" == "0 días" ]]; then
-                if [[ -z "$USUARIOS_0DIAS" ]]; then
-                    USUARIOS_0DIAS="${BLANCO}$USUARIO 0 días${NC}"
-                else
-                    USUARIOS_0DIAS="${USUARIOS_0DIAS}  ${BLANCO}$USUARIO 0 días${NC}"
+            if id "$USUARIO" &>/dev/null; then
+                # Calcular días restantes dinámicamente igual que en ver_registros
+                FECHA_CREACION=$(echo "$PRIMER_LOGIN" | cut -d' ' -f1)
+                DIAS_NUM=$(echo "$DURACION" | grep -oE '^[0-9]+')
+                FECHA_EXPIRA_DIA=$(date -d "$FECHA_CREACION + $DIAS_NUM days" +%Y-%m-%d 2>/dev/null)
+                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+                [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+
+                if [[ $DIAS_RESTANTES -eq 0 ]]; then
+                    if [[ -z "$USUARIOS_0DIAS" ]]; then
+                        USUARIOS_0DIAS="${BLANCO}$USUARIO 0 días${NC}"
+                    else
+                        USUARIOS_0DIAS="${USUARIOS_0DIAS}  ${BLANCO}$USUARIO 0 días${NC}"
+                    fi
                 fi
             fi
         done < "$REGISTROS"
@@ -109,6 +119,7 @@ export PIDFILE="/var/run/mon.pid"
         fi
     fi
 }
+
 
     
 function crear_registro() {
