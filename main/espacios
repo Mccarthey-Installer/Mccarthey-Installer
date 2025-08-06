@@ -850,10 +850,10 @@ function verificar_online() {
                             done
                             DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
                         else
-                            DETALLES="Nunca conectado"
+                            DETALLES="😴 Nunca conectado"
                         fi
                     else
-                        DETALLES="Nunca conectado"
+                        DETALLES="😴 Nunca conectado"
                     fi
                     ((INACTIVOS++))
                 fi
