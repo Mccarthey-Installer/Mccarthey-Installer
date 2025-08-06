@@ -343,7 +343,7 @@ function ver_registros() {
                 MOVILES_C=$(center_value "$MOVILES" $ancho_mov)  
 
                 # Imprimir fila con emojis en las columnas Clave, Expira, Días y Móviles
-printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}🔑%s${PASTEL_PURPLE}📅%s${MINT_GREEN}⏳%s${SOFT_PINK}📱%s${NC}\n" \
+printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
     "$NUM_C" "$USUARIO_C" "$CLAVE_C" "$EXPIRA_C" "$DIAS_C" "$MOVILES_C"
 
 
