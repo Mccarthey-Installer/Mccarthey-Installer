@@ -813,7 +813,7 @@ function verificar_online() {
             DETALLES="   😴 Nunca conectado"
             COLOR_ESTADO="${ROJO}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
-            MOVILES_CENTRADO=$(center_value " 📲 $MOVILES_NUM" 10)
+            MOVILES_CENTRADO="📲 $MOVILES_NUM"
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
@@ -862,7 +862,7 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-        printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%-35s${NC}\n" \
+        printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%10s ${AZUL_SUAVE}%-35s${NC}\n" \
     "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
 
         fi
