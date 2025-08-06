@@ -806,7 +806,7 @@ function verificar_online() {
         if id "$USUARIO" &>/dev/null; then
             ((TOTAL_USUARIOS++))
             ESTADO="☑️ 0"
-            DETALLES="😴 Nunca conectado"
+            DETALLES="   😴 Nunca conectado"
             COLOR_ESTADO="${ROJO}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             MOVILES_CENTRADO=$(center_value "$MOVILES_NUM" 10)
@@ -848,12 +848,12 @@ function verificar_online() {
                             for k in "${!month_map[@]}"; do
                                 ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/${month_map[$k]}/${month_map[$k]}}
                             done
-                            DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
+                            DETALLES="   📅 Última: $ULTIMO_LOGOUT_FMT"
                         else
-                            DETALLES="😴 Nunca conectado"
+                            DETALLES="   😴 Nunca conectado"
                         fi
                     else
-                        DETALLES="😴 Nunca conectado"
+                        DETALLES="   😴 Nunca conectado"
                     fi
                     ((INACTIVOS++))
                 fi
