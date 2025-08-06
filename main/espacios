@@ -628,6 +628,7 @@ function crear_multiples_usuarios() {
 }
        
 
+
 function nuclear_eliminar() {
     clear
     echo -e "${HOT_PINK}===== 💣 ELIMINACIÓN COMPLETA DE USUARIOS (MODO NUCLEAR) =====${NC}"
@@ -679,7 +680,7 @@ function nuclear_eliminar() {
     for item in $input; do
         if [[ "$item" =~ ^[0-9]+$ ]] && [[ -n "${user_map[$item]}" ]]; then
             usuarios_a_eliminar+=("${user_map[$item]}")
-        elif grep -qw "^$item:" "$REGISTROS"; then
+        elif grep -qiw "^$item:" "$REGISTROS"; then
             usuarios_a_eliminar+=("$item")
         fi
     done
@@ -695,6 +696,7 @@ function nuclear_eliminar() {
 
     eliminados=""
     for usuario in "${usuarios_a_eliminar[@]}"; do
+        echo "Intentando eliminar usuario: $usuario" >&2
         # Cerrar sesiones activas del usuario con loginctl
         sesiones=$(loginctl list-sessions --no-legend | awk -v u="$usuario" '$3 == u {print $1}')
         for sesion in $sesiones; do
@@ -705,10 +707,18 @@ function nuclear_eliminar() {
         sleep 1
 
         # Eliminar usuario forzadamente
-        userdel -r -f "$usuario" 2>/dev/null
+        if userdel -r -f "$usuario" 2>/dev/null; then
+            echo "Usuario $usuario eliminado del sistema." >&2
+        else
+            echo -e "${HOT_PINK}❌ Error al eliminar usuario $usuario del sistema. 💔${NC}" >&2
+        fi
 
-        # Eliminar registro en archivo
-        sed -i "/^$usuario:/d" "$REGISTROS" 2>/dev/null
+        # Eliminar registro en archivo (insensible a mayúsculas)
+        if sed -i "/^$usuario:/Id" "$REGISTROS" 2>/dev/null; then
+            echo "Registro de $usuario eliminado de $REGISTROS." >&2
+        else
+            echo -e "${HOT_PINK}❌ Error al eliminar el registro de $usuario en $REGISTROS. 💔${NC}" >&2
+        fi
         sync
 
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario $usuario eliminado completamente (modo nuclear)." >> "$HISTORIAL" 2>/dev/null
@@ -723,6 +733,7 @@ function nuclear_eliminar() {
 
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+        
 
     
 
