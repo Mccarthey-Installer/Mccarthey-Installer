@@ -807,14 +807,14 @@ function verificar_online() {
             ((TOTAL_USUARIOS++))
             ESTADO="0"
             DETALLES="Nunca conectado"
-            COLOR_ESTADO="${HOT_PINK}"
+            COLOR_ESTADO="${ROJO}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             MOVILES_CENTRADO=$(center_value "$MOVILES_NUM" 10)
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
                 ((INACTIVOS++))
-                COLOR_ESTADO="${HOT_PINK}"
+                COLOR_ESTADO="${ROJO}"
                 ESTADO="🔴 BLOQ"
             else
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
