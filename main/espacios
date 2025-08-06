@@ -858,8 +858,9 @@ function verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${AMARILLO}%-12s ${COLOR_ESTADO}%-12s ${VERDE}%s ${AZUL_SUAVE}%-25s${NC}\n" \
-                "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
+        printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%-35s${NC}\n" \
+    "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
+
         fi
     done < "$REGISTROS"
 
