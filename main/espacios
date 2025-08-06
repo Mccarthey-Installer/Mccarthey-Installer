@@ -756,7 +756,7 @@ function nuclear_eliminar() {
 
 function verificar_online() {
     clear
-    echo -e "${AZUL_SUAVE}===== 🟢 USUARIOS ONLINE =====${NC}"
+    echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
 
     # Definir colores
     AZUL_SUAVE='\033[38;5;45m'
@@ -795,7 +795,7 @@ function verificar_online() {
     }
 
     printf "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
-        "👤 USUARIO"   "🟢 CONEXIONES"   "📱 MÓVILES"   "⏰ TIEMPO CONECTADO"
+        "👤 USUARIO"   "✅ CONEXIONES"   "📱 MÓVILES"   "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
@@ -805,7 +805,7 @@ function verificar_online() {
     while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
             ((TOTAL_USUARIOS++))
-            ESTADO="0"
+            ESTADO="☑️0"
             DETALLES="Nunca conectado"
             COLOR_ESTADO="${ROJO}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
@@ -821,7 +821,7 @@ function verificar_online() {
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    ESTADO="🟢 $CONEXIONES"
+                    ESTADO="✅ $CONEXIONES"
                     COLOR_ESTADO="${MINT_GREEN}"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
