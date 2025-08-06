@@ -349,7 +349,6 @@ function ver_registros() {
 }
 
 
-
 function eliminar_usuario() {
     clear
     echo -e "${HOT_PINK}===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 =====${NC}"
@@ -366,27 +365,23 @@ function eliminar_usuario() {
     AMARILLO='\033[38;5;220m'
     NC='\033[0m'
 
-    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
-        echo -e "${HOT_PINK}❌ No hay registros disponibles. 📂${NC}"
-        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
-        return 1
-    fi
-
     echo -e "${PASTEL_BLUE}Nº      👤 Usuario${NC}"
     echo -e "${LILAC}--------------------------${NC}"
 
     contador=1
     declare -A user_map
-    while IFS=':' read -r usuario clave expira dias moviles creado; do
-        if id "$usuario" &>/dev/null; then
-            printf "${SOFT_CORAL}%-7d ${AMARILLO}%s${NC}\n" "$contador" "$usuario"
-            user_map[$contador]="$usuario"
+
+    # Leer usuarios del sistema (UID >= 1000 y != 65534 para excluir nobody)
+    while IFS=: read -r username x uid gid desc home shell; do
+        if (( uid >= 1000 && uid != 65534 )) && id "$username" &>/dev/null; then
+            printf "${SOFT_CORAL}%-7d ${AMARILLO}%s${NC}\n" "$contador" "$username"
+            user_map[$contador]="$username"
             ((contador++))
         fi
-    done < "$REGISTROS"
+    done < /etc/passwd
 
     if [[ $contador -eq 1 ]]; then
-        echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema. 💔${NC}"
+        echo -e "${HOT_PINK}❌ No hay usuarios existentes para eliminar. 💔${NC}"
         read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 1
     fi
@@ -404,7 +399,7 @@ function eliminar_usuario() {
     for item in $input; do
         if [[ "$item" =~ ^[0-9]+$ ]] && [[ -n "${user_map[$item]}" ]]; then
             usuarios_a_eliminar+=("${user_map[$item]}")
-        elif id "$item" &>/dev/null && grep -qw "^$item:" "$REGISTROS"; then
+        elif id "$item" &>/dev/null; then
             usuarios_a_eliminar+=("$item")
         fi
     done
@@ -416,18 +411,17 @@ function eliminar_usuario() {
     fi
 
     for usuario in "${usuarios_a_eliminar[@]}"; do
-        # Cerrar sesiones activas antes de eliminar
+        # Terminar sesiones activas
         sesiones=$(loginctl list-sessions --no-legend | awk -v u="$usuario" '$3 == u {print $1}')
         for sesion in $sesiones; do
             loginctl terminate-session "$sesion"
         done
-        # Dar tiempo para cerrar sesiones
         sleep 1
 
-        # Forzar eliminación del usuario y su directorio home
+        # Eliminar usuario del sistema
         if userdel -r -f "$usuario" 2>/dev/null; then
-            sed -i "/^$usuario:/d" "$REGISTROS"
-            sync
+            # Remover del archivo de registros si existe
+            [[ -f "$REGISTROS" ]] && sed -i "/^$usuario:/d" "$REGISTROS"
             echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario $usuario eliminado exitosamente." >> "$HISTORIAL"
             echo -e "${MINT_GREEN}✅ Usuario $usuario eliminado correctamente.${NC}"
         else
@@ -438,6 +432,8 @@ function eliminar_usuario() {
 
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
+
 
 
 function crear_multiples_usuarios() {
