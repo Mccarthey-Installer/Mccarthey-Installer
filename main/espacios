@@ -806,7 +806,7 @@ function verificar_online() {
         if id "$USUARIO" &>/dev/null; then
             ((TOTAL_USUARIOS++))
             ESTADO="☑️0"
-            DETALLES="Nunca conectado"
+            DETALLES="💤 Nunca conectado"
             COLOR_ESTADO="${ROJO}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             MOVILES_CENTRADO=$(center_value "$MOVILES_NUM" 10)
