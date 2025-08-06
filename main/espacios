@@ -103,9 +103,9 @@ export PIDFILE="/var/run/mon.pid"
 
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then
                     if [[ -z "$USUARIOS_0DIAS" ]]; then
-                        USUARIOS_0DIAS="${ROJO}$USUARIO 0 días 🔴${NC}"
-                    else
-                        USUARIOS_0DIAS="${USUARIOS_0DIAS}  ${ROJO}$USUARIO 0 días 🔴${NC}"
+    USUARIOS_0DIAS="${ROJO}$USUARIO${BLANCO} 0 días 🔴${NC}"
+else
+    USUARIOS_0DIAS="${USUARIOS_0DIAS}  ${ROJO}$USUARIO${BLANCO} 0 días 🔴${NC}"
                     fi
                 fi
             fi
