@@ -594,7 +594,7 @@ while IFS=':' read -r usuario clave expira dias moviles creado; do
         dias_num=$(echo "$dias" | grep -oE '^[0-9]+')  
 
         FECHA_EXPIRA_DIA=$(date -d "$creado +$dias_num days" +%F)  
-        FECHA_ACTUAL_DIA=$(date +%F)  
+        AHORA=$(date -d "2025-08-08 00:01:00" +"%Y-%m-%d %H:%M:%S")
         DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))  
         (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0  
 
