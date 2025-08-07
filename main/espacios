@@ -2,19 +2,24 @@
 export TZ="America/El_Salvador"
 export LANG=es_ES.UTF-8
 timedatectl set-timezone America/El_Salvador 2>/dev/null || true
-
-# Forzar soporte de colores ANSI
 export TERM=xterm-256color
-
 export REGISTROS="/root/reg.txt"
 export HISTORIAL="/root/log.txt"
 export PIDFILE="/var/run/mon.pid"
 
-# Ejecutar función según argumento
+# 👉 Definir función
+actualizar_dias() {
+  echo "Función actualizar_dias ejecutada correctamente"
+  # Aquí colocas tu lógica real para actualizar los días
+}
+
+# 👉 Ejecutar si se pasa como argumento
 if [[ "$1" == "actualizar_dias" ]]; then
   actualizar_dias
   exit 0
 fi
+
+# Resto del menú o lógica interactiva...
     
 
     function barra_sistema() {
