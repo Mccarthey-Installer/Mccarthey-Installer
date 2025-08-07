@@ -593,10 +593,12 @@ function crear_multiples_usuarios() {
         if id "$usuario" &>/dev/null; then
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
 
-            # Reemplazo solicitado para cálculo de días restantes
+            # Cálculo de días restantes con fecha fija
             FECHA_EXPIRA_DIA=$(date -d "$creado +$dias_num days" +%F)
-            AHORA=$(date -d "2025-08-08 00:01:00" +"%Y-%m-%d %H:%M:%S")
-            DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+            AHORA="2025-08-08 00:01:00"
+            SEGUNDOS_ACTUALES=$(date -d "$AHORA" +%s)
+            SEGUNDOS_EXPIRA=$(date -d "$FECHA_EXPIRA_DIA" +%s)
+            DIAS_RESTANTES=$(( (SEGUNDOS_EXPIRA - SEGUNDOS_ACTUALES) / 86400 ))
             (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
 
             printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
@@ -613,8 +615,6 @@ function crear_multiples_usuarios() {
     echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
-
-
        
 
 
