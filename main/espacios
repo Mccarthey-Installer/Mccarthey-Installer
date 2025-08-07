@@ -551,7 +551,8 @@ function crear_multiples_usuarios() {
 }
 
 
- 
+ mini_registro() {
+clear
 
 # Definir colores  
 AZUL_SUAVE='\033[38;5;45m'  
