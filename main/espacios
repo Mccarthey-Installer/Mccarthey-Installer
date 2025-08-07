@@ -554,7 +554,7 @@ function crear_multiples_usuarios() {
  function mini_registro() {
     clear
 
-    # Definir colores
+    # Colores
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -567,7 +567,7 @@ function crear_multiples_usuarios() {
 
     echo -e "${AZUL_SUAVE}===== 📋 MINI REGISTRO =====${NC}"
 
-    # Centrar texto en un ancho dado
+    # Función centrar texto
     center_value() {
         local value="$1"
         local width="$2"
@@ -577,13 +577,14 @@ function crear_multiples_usuarios() {
         printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
     }
 
+    # Validar existencia de archivo
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros disponibles. 📂${NC}"
         read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         return 1
     fi
 
-    # Encabezado con colores
+    # Encabezado
     printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
         "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
     echo -e "${LILAC}--------------------------------------------${NC}"
@@ -593,11 +594,16 @@ function crear_multiples_usuarios() {
         if id "$usuario" &>/dev/null; then
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
 
-            # Reemplazo solicitado para cálculo de días restantes
-            FECHA_EXPIRA_DIA=$(date -d "$creado +$dias_num days" +%F)
-            FECHA_ACTUAL_DIA=$(date -d "2025-08-08 00:01:00" +%F)
-            DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-            (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+            # 👇 Cálculo REAL de días restantes con hora exacta incluida
+            FECHA_EXPIRA_FULL=$(date -d "$creado +$dias_num days" +"%Y-%m-%d %H:%M:%S")
+            AHORA=$(date -d "2025-08-08 00:01:00" +"%Y-%m-%d %H:%M:%S")
+            SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA_FULL" +%s) - $(date -d "$AHORA" +%s) ))
+
+            if (( SEGUNDOS_RESTANTES > 0 )); then
+                DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))
+            else
+                DIAS_RESTANTES=0
+            fi
 
             printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
                 "$usuario" "$clave" "$(center_value "$DIAS_RESTANTES" 10)" "$moviles"
@@ -613,6 +619,7 @@ function crear_multiples_usuarios() {
     echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
+
 
        
 
