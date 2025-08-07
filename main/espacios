@@ -1018,7 +1018,7 @@ fi
   
     if [[ ! -f "$HISTORIAL" ]]; then  
         echo -e "${LILA}😿 ¡Oh no! No hay historial de conexiones aún, pequeña! 💔${NC}"  
-        read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"  
+        read -p "${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC}"  
         return 1  
     fi  
   
@@ -1033,8 +1033,7 @@ fi
             if [[ -n "$ULTIMO_REGISTRO" ]]; then  
                 IFS='|' read -r _ HORA_CONEXION HORA_DESCONECCION <<< "$ULTIMO_REGISTRO"  
   
-                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ && \  
-                      "$HORA_DESCONECCION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
+                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ && "$HORA_DESCONECCION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
   
                     CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%b %I:%M %p" 2>/dev/null)  
                     DESCONEXION_FMT=$(date -d "$HORA_DESCONECCION" +"%d/%b %I:%M %p" 2>/dev/null)  
@@ -1064,8 +1063,9 @@ fi
     done  
   
     echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"  
-    read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"  
+    read -p "${LILA}Presiona Enter para continuar, dulce... 🌟${NC}"  
 }
+
 
  function bloquear_desbloquear_usuario() {
     clear
@@ -1434,13 +1434,13 @@ if [[ -t 0 ]]; then
         case $OPCION in
             1) crear_registro ;;
             2) ver_registros ;;
-            3) eliminar_usuario ;;
+            3) nuclear_eliminar ;;
             4) informacion_usuarios ;;
             5) verificar_online ;;
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) nuclear_eliminar ;;
+            9) eliminar_usuario ;;
             10) configurar_banner_ssh ;;
             0) exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
