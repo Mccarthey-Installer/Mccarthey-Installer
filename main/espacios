@@ -436,9 +436,7 @@ PASTEL_PURPLE='\033[38;5;189m'
 MINT_GREEN='\033[38;5;159m'
 NC='\033[0m'
 
-# definimos las rutas
-REGISTROS="/root/registros.txt"
-HISTORIAL="/root/historial_conexiones.txt"
+
 
 echo -e "${AZUL_SUAVE}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
 echo -e "${PASTEL_BLUE}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
