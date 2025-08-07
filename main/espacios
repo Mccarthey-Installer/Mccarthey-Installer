@@ -248,6 +248,59 @@ function crear_registro() {
 }
 
 
+function actualizar_dias() {
+    if [[ ! -f "$REGISTROS" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$HISTORIAL"
+        return 1
+    fi
+
+    TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || {
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$HISTORIAL"
+        return 1
+    }
+
+    > "$TEMP_FILE"
+    FECHA_ACTUAL_DIA=$(date -d "today 00:00" +%Y-%m-%d)
+
+    while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
+        if id "$USUARIO" &>/dev/null; then
+            DIAS_NUM=$(echo "$DURACION" | grep -oE '^[0-9]+')
+            FECHA_CREACION=$(echo "$PRIMER_LOGIN" | cut -d' ' -f1)
+
+            # Calcular días restantes
+            FECHA_EXPIRA_DIA=$(date -d "$FECHA_CREACION + $DIAS_NUM days" +%Y-%m-%d 2>/dev/null)
+            DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+            [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+
+            if [[ $DIAS_RESTANTES -eq 0 ]]; then
+                # Eliminar usuario si ha expirado
+                sesiones=$(loginctl list-sessions --no-legend | awk -v u="$USUARIO" '$3 == u {print $1}')
+                for sesion in $sesiones; do
+                    loginctl terminate-session "$sesion" 2>/dev/null
+                done
+                userdel -r -f "$USUARIO" 2>/dev/null
+                echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario $USUARIO eliminado por expiración." >> "$HISTORIAL"
+                continue
+            fi
+
+            # Actualizar DURACION
+            NUEVA_DURACION="$DIAS_RESTANTES días"
+            echo "${USUARIO}:${CLAVE}:${EXPIRA}:${NUEVA_DURACION}:${MOVILES}:${PRIMER_LOGIN}" >> "$TEMP_FILE"
+        else
+            # Mantener el registro si el usuario no existe en el sistema
+            echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${PRIMER_LOGIN}" >> "$TEMP_FILE"
+        fi
+    done < "$REGISTROS"
+
+    mv "$TEMP_FILE" "$REGISTROS" 2>/dev/null && sync || {
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error reemplazando $REGISTROS." >> "$HISTORIAL"
+        rm -f "$TEMP_FILE"
+        return 1
+    }
+
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Días de validez actualizados en $REGISTROS." >> "$HISTORIAL"
+}
+
 function ver_registros() {
     clear
 
@@ -264,7 +317,6 @@ function ver_registros() {
 
     echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"  
 
-    # Función para centrar texto  
     center_value() {  
         local value="$1"  
         local width="$2"  
@@ -275,7 +327,6 @@ function ver_registros() {
     }  
 
     if [[ -f $REGISTROS ]]; then  
-        # Anchos más ajustados para columnas pegadas  
         ancho_n=3  
         ancho_usr=8  
         ancho_clave=8  
@@ -283,7 +334,6 @@ function ver_registros() {
         ancho_dias=8  
         ancho_mov=10  
 
-        # Encabezado centrado, sin espacios extras entre columnas  
         printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
             "$(center_value 'Nº' $ancho_n)" \
             "$(center_value '👩 Usuario' $ancho_usr)" \
@@ -298,26 +348,17 @@ function ver_registros() {
         while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO; do  
             if id "$USUARIO" &>/dev/null; then  
                 FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')  
-                FECHA_CREACION=$(echo "$CREADO" | cut -d' ' -f1)  
                 DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')  
 
-                FECHA_EXPIRA_DIA=$(date -d "$FECHA_CREACION + $DIAS_NUM days" +%Y-%m-%d 2>/dev/null)  
-                FECHA_ACTUAL_DIA=$(date -d "today 00:00" +%Y-%m-%d)  
-                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))  
-                [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0  
-
-                # Centrado de cada campo con espacios mínimos  
                 NUM_C=$(center_value "$NUM" $ancho_n)  
                 USUARIO_C=$(center_value "$USUARIO" $ancho_usr)  
                 CLAVE_C=$(center_value "$CLAVE" $ancho_clave)  
                 EXPIRA_C=$(center_value "$FORMATO_EXPIRA" $ancho_exp)  
-                DIAS_C=$(center_value "$DIAS_RESTANTES" $ancho_dias)  
+                DIAS_C=$(center_value "$DIAS_NUM" $ancho_dias)  
                 MOVILES_C=$(center_value "$MOVILES" $ancho_mov)  
 
-                # Imprimir fila con emojis en las columnas Clave, Expira, Días y Móviles
-printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC} %s${PASTEL_PURPLE}   %s${MINT_GREEN}  %s${SOFT_PINK}  %s${NC}\n" \
-    "$NUM_C" "$USUARIO_C" "$CLAVE_C" "$EXPIRA_C" "$DIAS_C" "$MOVILES_C"
-
+                printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC} %s${PASTEL_PURPLE}   %s${MINT_GREEN}  %s${SOFT_PINK}  %s${NC}\n" \
+                    "$NUM_C" "$USUARIO_C" "$CLAVE_C" "$EXPIRA_C" "$DIAS_C" "$MOVILES_C"
 
                 NUM=$((NUM+1))  
             fi  
@@ -333,7 +374,6 @@ printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC} %s${PASTEL_PURPLE}   %s${MINT_GR
     echo -e "${LILAC}=====================${NC}"  
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
-
 
 
 function eliminar_usuario() {
