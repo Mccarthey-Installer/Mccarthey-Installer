@@ -276,7 +276,7 @@ function ver_registros() {
     }  
 
     if [[ -f $REGISTROS ]]; then  
-        # Anchos más ajustados para columnas pegadas  
+        # Anchos ajustados para columnas pegadas  
         ancho_n=3  
         ancho_usr=8  
         ancho_clave=8  
@@ -303,9 +303,10 @@ function ver_registros() {
                 DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')  
 
                 FECHA_EXPIRA_DIA=$(date -d "$CREADO +$DIAS_NUM days" +%F)
-FECHA_ACTUAL_DIA=$(date +%F)
-DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-(( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+                FECHA_ACTUAL_DIA=$(date +%F)
+                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+                (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+
                 # Centrado de cada campo con espacios mínimos  
                 NUM_C=$(center_value "$NUM" $ancho_n)  
                 USUARIO_C=$(center_value "$USUARIO" $ancho_usr)  
@@ -315,9 +316,8 @@ DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTU
                 MOVILES_C=$(center_value "$MOVILES" $ancho_mov)  
 
                 # Imprimir fila con emojis en las columnas Clave, Expira, Días y Móviles
-printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC} %s${PASTEL_PURPLE}   %s${MINT_GREEN}  %s${SOFT_PINK}  %s${NC}\n" \
-    "$NUM_C" "$USUARIO_C" "$CLAVE_C" "$EXPIRA_C" "$DIAS_C" "$MOVILES_C"
-
+                printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
+                    "$NUM_C" "$USUARIO_C" "$CLAVE_C" "$EXPIRA_C" "$DIAS_C" "$MOVILES_C"
 
                 NUM=$((NUM+1))  
             fi  
