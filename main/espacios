@@ -1054,7 +1054,7 @@ fi
                     DURACION="N/A"
                 fi
 
-                printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
+                printf "${SOFT_PINK}%-15s ${PASTEL_BLUE}%-22s ${LILAC}%-22s ${SOFT_CORAL}%-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
             fi
         fi
     done
