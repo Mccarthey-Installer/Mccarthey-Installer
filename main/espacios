@@ -303,7 +303,7 @@ function ver_registros() {
                 DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')  
 
                 FECHA_EXPIRA_DIA=$(date -d "$CREADO +$DIAS_NUM days" +%F)
-                FECHA_ACTUAL_DIA=$(date+%F)
+                FECHA_ACTUAL_DIA=$(date +%F)
                 DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
                 (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
 
