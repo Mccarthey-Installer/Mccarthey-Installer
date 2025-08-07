@@ -88,6 +88,37 @@ export PIDFILE="/var/run/mon.pid"
     echo -e "${MAGENTA}🛍️ 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    # Mostrar usuarios expirando (0 días)
+    USUARIOS_EXPIRADOS=()
+
+    if [[ -f "$REGISTROS" ]]; then
+        while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+            if id "$USUARIO" &>/dev/null; then
+                DIAS_NUM=$(echo "$DURACION" | grep -oE '^[0-9]+')
+                FECHA_EXPIRA_DIA=$(date -d "$PRIMER_LOGIN +$DIAS_NUM days" +%F 2>/dev/null)
+                FECHA_ACTUAL_DIA=$(date +%F)
+                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+                (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+
+                if [[ "$DIAS_RESTANTES" -eq 0 ]]; then
+                    USUARIOS_EXPIRADOS+=("$USUARIO 0 Días")
+                fi
+            fi
+        done < "$REGISTROS"
+    fi
+
+    if (( ${#USUARIOS_EXPIRADOS[@]} > 0 )); then
+        echo
+        echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN${NC}"
+        FORMATO=""
+        for usuario in "${USUARIOS_EXPIRADOS[@]}"; do
+            FORMATO+="$usuario     "
+        done
+        echo -e "  $FORMATO"
+    fi
+
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+
 
     
 }
