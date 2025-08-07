@@ -584,7 +584,7 @@ if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
 fi  
 
 # Encabezado con colores  
-printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \  
+printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
     "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"  
 echo -e "${LILAC}--------------------------------------------${NC}"  
 
@@ -593,13 +593,12 @@ while IFS=':' read -r usuario clave expira dias moviles creado; do
     if id "$usuario" &>/dev/null; then  
         dias_num=$(echo "$dias" | grep -oE '^[0-9]+')  
 
-        # Reemplazo solicitado para cálculo de días restantes  
         FECHA_EXPIRA_DIA=$(date -d "$creado +$dias_num days" +%F)  
-        AHORA=$(date -d "2025-08-08 00:01:00" +"%Y-%m-%d %H:%M:%S")
+        FECHA_ACTUAL_DIA=$(date +%F)  
         DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))  
         (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0  
 
-        printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \  
+        printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
             "$usuario" "$clave" "$(center_value "$DIAS_RESTANTES" 10)" "$moviles"  
         ((contador++))  
     fi  
@@ -612,7 +611,6 @@ fi
 echo -e "${LILAC}============================================${NC}"  
 echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"  
 read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
-
 }
 
 
