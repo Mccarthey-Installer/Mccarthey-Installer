@@ -10,7 +10,11 @@ export REGISTROS="/root/reg.txt"
 export HISTORIAL="/root/log.txt"
 export PIDFILE="/var/run/mon.pid"
 
-
+# Ejecutar función según argumento
+if [[ "$1" == "actualizar_dias" ]]; then
+  actualizar_dias
+  exit 0
+fi
     
 
     function barra_sistema() {
