@@ -454,11 +454,13 @@ if [ ${#usuarios[@]} -eq 0 ]; then
     return 1
 fi
 
-# Cargar $REGISTROS en memoria para evitar accesos repetidos
 declare -A usuarios_existentes
 if [[ -f "$REGISTROS" ]]; then
     while IFS=: read -r user _; do
-        usuarios_existentes["$user"]=1
+        # Validar que user no esté vacío y sea válido
+        if [[ -n "$user" && "$user" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+            usuarios_existentes["$user"]=1
+        fi
     done < "$REGISTROS"
 fi
 
