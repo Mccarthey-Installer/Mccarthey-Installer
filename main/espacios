@@ -591,18 +591,21 @@ function crear_multiples_usuarios() {
     contador=0
     while IFS=':' read -r usuario clave expira dias moviles creado; do
         if id "$usuario" &>/dev/null; then
+            # Extraer días numéricos
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
+            fecha_creacion=$(echo "$creado" | cut -d' ' -f1)
+            fecha_expira=$(date -d "$fecha_creacion + $dias_num days" +%Y-%m-%d 2>/dev/null)
 
-            # Cálculo de días restantes con fecha fija
-            FECHA_EXPIRA_DIA=$(date -d "$creado +$dias_num days" +%F)
-            AHORA="2025-08-08 00:01:00"
-            SEGUNDOS_ACTUALES=$(date -d "$AHORA" +%s)
-            SEGUNDOS_EXPIRA=$(date -d "$FECHA_EXPIRA_DIA" +%s)
-            DIAS_RESTANTES=$(( (SEGUNDOS_EXPIRA - SEGUNDOS_ACTUALES) / 86400 ))
-            (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+            # Fecha actual fija
+            fecha_actual="2025-08-08"
+
+            segundos_actual=$(date -d "$fecha_actual" +%s)
+            segundos_expira=$(date -d "$fecha_expira" +%s)
+            dias_restantes=$(( (segundos_expira - segundos_actual) / 86400 ))
+            [[ $dias_restantes -lt 0 ]] && dias_restantes=0
 
             printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
-                "$usuario" "$clave" "$(center_value "$DIAS_RESTANTES" 10)" "$moviles"
+                "$usuario" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
             ((contador++))
         fi
     done < "$REGISTROS"
@@ -615,7 +618,6 @@ function crear_multiples_usuarios() {
     echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
-       
 
 
 function nuclear_eliminar() {
