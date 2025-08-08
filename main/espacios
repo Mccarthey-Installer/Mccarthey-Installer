@@ -391,16 +391,14 @@ function ver_registros() {
 
             # Calcular días restantes usando la fecha de creación
             if [[ -n "$CREADO" ]]; then
-                fecha_creacion=$(date -d "$CREADO" +%s 2>/dev/null)
-                fecha_actual=$(date +%s)
-                # Calcular días transcurridos
-                dias_transcurridos=$(( (fecha_actual - fecha_creacion) / 86400 )) # 86400 segundos = 1 día
-                # Calcular días restantes
-                DIAS_RESTANTES=$(( DIAS_NUM - dias_transcurridos ))
-                # Asegurar que no sea negativo
-                if [[ $DIAS_RESTANTES -lt 0 ]]; then
-                    DIAS_RESTANTES=0
-                fi
+    fecha_creacion=$(date -d "$CREADO" +%s 2>/dev/null)
+    fecha_actual=$(date +%s)
+    dias_transcurridos=$(( (fecha_actual - fecha_creacion) / 86400 ))
+    DIAS_RESTANTES=$(( DIAS_NUM - dias_transcurridos ))
+    (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+else
+    DIAS_RESTANTES=$DIAS_NUM
+fi
             else
                 # En caso de que no haya fecha de creación válida, usar 0
                 DIAS_RESTANTES=0
