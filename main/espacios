@@ -333,7 +333,7 @@ function ver_registros() {
                 fi
 
                 # Obtener la hora actual
-                FECHA_ACTUAL=$(date +"%Y-%m-%d %H:%M:%S")
+                FECHA_ACTUAL=$(date -d "2025-08-08 00:01:00" +%F")
 
                 # Calcular días restantes dinámicamente
                 SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
