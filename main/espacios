@@ -384,7 +384,7 @@ function ver_registros() {
                 usuario_display="${USUARIO}${HOT_PINK}*${NC}" # Marca para usuarios no existentes
             fi
             # Formatear la fecha de expiración (sin año)
-            FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "/"}')
+            FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')
 
             # Extraer solo la cantidad numérica de días
             DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
