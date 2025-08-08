@@ -332,7 +332,12 @@ ver_registros() {
                     continue
                 fi
 
-                FECHA_EXPIRA=$(date -d "$CREADO +$DIAS_NUM days" +"%Y-%m-%d 00:00:00" 2>/dev/null)
+                FECHA_EXPIRA=$(date -d "$CREADO +$DIAS_NUM days 00:20:00" +"%Y-%m-%d %H:%M:%S" 2>/dev/null)
+FECHA_ACTUAL="$(date +"%Y-%m-%d %H:%M:%S")"
+
+SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
+DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))
+[[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
                 if [[ $? -ne 0 ]]; then
                     continue
                 fi
