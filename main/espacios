@@ -302,24 +302,30 @@ function ver_registros() {
                 # Formatear la fecha de expiración (sin año)
                 FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')
 
-                # EXTRAER SOLO FECHA (sin hora) para usar en el cálculo
-                FECHA_CREACION=$(echo "$CREADO" | cut -d' ' -f1)
-
                 # Extraer solo la cantidad numérica de días
                 DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
 
-                # Calcular fecha de expiración sumando DIAS_NUM días
-                FECHA_EXPIRA_DIA=$(date -d "$FECHA_CREACION + $DIAS_NUM days" +%Y-%m-%d 2>/dev/null)
-
-                FECHA_ACTUAL_DIA=$(date +%Y-%m-%d)
-
-                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-                [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+                # Calcular días restantes usando la fecha de creación
+                if [[ -n "$CREADO" ]]; then
+                    fecha_creacion=$(date -d "$CREADO" +%s 2>/dev/null)
+                    fecha_actual=$(date +%s)
+                    # Calcular días transcurridos
+                    dias_transcurridos=$(( (fecha_actual - fecha_creacion) / 86400 )) # 86400 segundos = 1 día
+                    # Calcular días restantes
+                    DIAS_RESTANTES=$(( DIAS_NUM - dias_transcurridos ))
+                    # Asegurar que no sea negativo
+                    if [[ $DIAS_RESTANTES -lt 0 ]]; then
+                        DIAS_RESTANTES=0
+                    fi
+                else
+                    # En caso de que no haya fecha de creación válida, usar 0
+                    DIAS_RESTANTES=0
+                fi
 
                 DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
 
                 # Imprimir fila con colores
-                printf "${SOFT_CORAL}%-3d ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+                printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
                     "$NUM" "$USUARIO" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
                 NUM=$((NUM+1))
             fi
