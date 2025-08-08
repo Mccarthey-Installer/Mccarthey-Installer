@@ -267,6 +267,7 @@ function crear_registro() {
 function mini_registro() {
     clear
 
+    # Definir colores
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -279,6 +280,7 @@ function mini_registro() {
 
     echo -e "${AZUL_SUAVE}===== 📋 MINI REGISTRO =====${NC}"
 
+    # Centrar texto en un ancho dado
     center_value() {
         local value="$1"
         local width="$2"
@@ -294,6 +296,7 @@ function mini_registro() {
         return 1
     fi
 
+    # Encabezado con colores
     printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
         "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
     echo -e "${LILAC}--------------------------------------------${NC}"
@@ -301,35 +304,10 @@ function mini_registro() {
     contador=0
     while IFS=':' read -r usuario clave expira dias moviles creado; do
         if id "$usuario" &>/dev/null; then
+            # Extraer días numéricos
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
-            fecha_creacion="$creado"
-            fecha_expira=$(date -d "$fecha_creacion +$dias_num days 23:59:59" +"%Y-%m-%d %H:%M:%S" 2>/dev/null)
-            if [[ $? -ne 0 ]]; then
-                continue
-            fi
-
-            # Obtener la fecha y hora actual
-            fecha_actual=$(date +"%Y-%m-%d %H:%M:%S")
-            hora_actual=$(date +"%H:%M:%S")
-
-            # Ajustar fecha_actual para restar un día después de las 23:59
-            if [[ "$hora_actual" > "23:59:00" ]]; then
-                # Si es después de las 23:59, usar el final del día actual
-                fecha_actual=$(date -d "$(date +%Y-%m-%d) 23:59:59" +"%Y-%m-%d %H:%M:%S")
-            fi
-
-            segundos_actual=$(date -d "$fecha_actual" +%s)
-            segundos_expira=$(date -d "$fecha_expira" +%s)
-            segundos_restantes=$((segundos_expira - segundos_actual))
-
-            if [[ $segundos_restantes -le 0 ]]; then
-                dias_restantes=0
-            else
-                dias_restantes=$(( (segundos_restantes + 86399) / 86400 ))
-            fi
-
-            printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
-                "$usuario" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
+            printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+                "$usuario" "$clave" "$(center_value "$dias_num" 10)" "$moviles"
             ((contador++))
         fi
     done < "$REGISTROS"
