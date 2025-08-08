@@ -517,10 +517,11 @@ for linea in "${usuarios[@]}"; do
     fi
     usuarios_input["$USUARIO"]=1
     # Validar que el nombre de usuario sea válido para useradd
-    if ! [[ "$USUARIO" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
-        echo -e "${HOT_PINK}❌ Nombre de usuario inválido '$USUARIO'. Solo letras minúsculas, números, guiones o guiones bajos (máx. 32 caracteres). 💔${NC}"
-        continue
-    fi
+    # Validar que el nombre de usuario sea válido para useradd
+if ! [[ "$USUARIO" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$ ]]; then
+    echo -e "${HOT_PINK}❌ Nombre de usuario inválido '$USUARIO'. Solo letras (mayúsculas o minúsculas), números, guiones o guiones bajos (máx. 32 caracteres). 💔${NC}"
+    continue
+fi
     if id "$USUARIO" &>/dev/null || [[ -n "${usuarios_existentes[$USUARIO]}" ]]; then
         echo -e "${HOT_PINK}❌ El usuario '$USUARIO' ya existe en el sistema o en $REGISTROS. 💔${NC}"
         continue
