@@ -89,38 +89,38 @@ export PIDFILE="/var/run/mon.pid"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     # Mostrar usuarios expirando (0 días)
-    USUARIOS_EXPIRADOS=()
+USUARIOS_EXPIRADOS=()
 
-    if [[ -f "$REGISTROS" ]]; then
-        while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
-            if id "$USUARIO" &>/dev/null; then
-                DIAS_NUM=$(echo "$DURACION" | grep -oE '^[0-9]+')
-                FECHA_EXPIRA_DIA=$(date -d "$PRIMER_LOGIN +$DIAS_NUM days" +%F 2>/dev/null)
-                FECHA_ACTUAL_DIA=$(date +%F)
-                DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
-                (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
+if [[ -f "$REGISTROS" ]]; then
+    while IFS=':' read -r USUARIO CLAVE EXPIRA_DATETIME DURACION MOVILES BLOQUEO_MANUAL PRIMER_LOGIN; do
+        if id "$USUARIO" &>/dev/null; then
+            DIAS_NUM=$(echo "$DURACION" | grep -oE '^[0-9]+')
+            FECHA_EXPIRA_DIA=$(date -d "$PRIMER_LOGIN +$DIAS_NUM days" +%F 2>/dev/null)
+            FECHA_ACTUAL_DIA=$(date +%F)
+            DIAS_RESTANTES=$(( ( $(date -d "$FECHA_EXPIRA_DIA" +%s) - $(date -d "$FECHA_ACTUAL_DIA" +%s) ) / 86400 ))
+            (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
 
-                if [[ "$DIAS_RESTANTES" -eq 0 ]]; then
-                    USUARIOS_EXPIRADOS+=("$USUARIO 0 Días")
-                fi
+            if [[ "$DIAS_RESTANTES" -eq 0 ]]; then
+                USUARIOS_EXPIRADOS+=("$USUARIO 0 Días")
             fi
-        done < "$REGISTROS"
-    fi
+        fi
+    done < "$REGISTROS"
+fi
 
-    if (( ${#USUARIOS_EXPIRADOS[@]} > 0 )); then
-        echo
-        echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN${NC}"
-        FORMATO=""
-        for usuario in "${USUARIOS_EXPIRADOS[@]}"; do
-            FORMATO+="$usuario     "
-        done
-        echo -e "  $FORMATO"
-    fi
+if (( ${#USUARIOS_EXPIRADOS[@]} > 0 )); then
+    echo
+    echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN${NC}"
 
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    FORMATO=""
+    for usuario_exp in "${USUARIOS_EXPIRADOS[@]}"; do
+        nombre_usuario=$(echo "$usuario_exp" | awk '{print $1}')
+        texto_dias=$(echo "$usuario_exp" | awk '{$1=""; print $0}' | xargs)
 
+        FORMATO+="${BLANCO}${nombre_usuario}${NC} ${AMARILLO}${texto_dias}${NC}     "
+    done
+    echo -e "  $FORMATO"
+fi
 
-    
 }
 
 
