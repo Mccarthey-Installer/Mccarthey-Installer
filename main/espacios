@@ -308,7 +308,15 @@ function mini_registro() {
                 continue
             fi
 
+            # Obtener la fecha y hora actual
             fecha_actual=$(date +"%Y-%m-%d %H:%M:%S")
+            hora_actual=$(date +"%H:%M:%S")
+
+            # Ajustar fecha_actual para restar un día después de las 23:59
+            if [[ "$hora_actual" > "23:59:00" ]]; then
+                # Si es después de las 23:59, usar el final del día actual
+                fecha_actual=$(date -d "$(date +%Y-%m-%d) 23:59:59" +"%Y-%m-%d %H:%M:%S")
+            fi
 
             segundos_actual=$(date -d "$fecha_actual" +%s)
             segundos_expira=$(date -d "$fecha_expira" +%s)
@@ -317,10 +325,10 @@ function mini_registro() {
             if [[ $segundos_restantes -le 0 ]]; then
                 dias_restantes=0
             else
-                dias_restantes=$(( segundos_restantes / 86400 ))
+                dias_restantes=$(( (segundos_restantes + 86399) / 86400 ))
             fi
 
-            printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+            printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
                 "$usuario" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
             ((contador++))
         fi
@@ -351,6 +359,7 @@ ver_registros() {
 
     echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
+    # Función para centrar texto
     center_value() {
         local value="$1"
         local width="$2"
@@ -360,6 +369,7 @@ ver_registros() {
         printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
     }
 
+    # Validar que REGISTROS esté definida
     if [[ -z "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ La variable REGISTROS no está definida. 📂${NC}"
         read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
@@ -374,6 +384,7 @@ ver_registros() {
         ancho_dias=8
         ancho_mov=10
 
+        # Encabezado
         printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
             "$(center_value 'Nº' $ancho_n)" \
             "$(center_value '👩 Usuario' $ancho_usr)" \
@@ -390,27 +401,36 @@ ver_registros() {
                 FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')
                 DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
 
+                # Validar que DIAS_NUM sea número
                 if [[ ! "$DIAS_NUM" =~ ^[0-9]+$ ]]; then
                     continue
                 fi
 
+                # Validar fecha
                 if ! date -d "$CREADO" &>/dev/null; then
                     continue
                 fi
 
-                FECHA_EXPIRA=$(date -d "$CREADO +$DIAS_NUM days 23:59:59" +"%Y-%m-%d %H:%M:%S" 2>/dev/null)
+                # Calcular fecha de expiración
+                FECHA_EXPIRA=$(date -d "$CREADO +$DIAS_NUM days 00:20:00" +"%Y-%m-%d %H:%M:%S" 2>/dev/null)
                 if [[ $? -ne 0 ]]; then
                     continue
                 fi
 
+                # Obtener la fecha y hora actual
                 FECHA_ACTUAL="$(date +"%Y-%m-%d %H:%M:%S")"
+                HORA_ACTUAL=$(date +"%H:%M:%S")
 
-                SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
-                if [[ $SEGUNDOS_RESTANTES -le 0 ]]; then
-                    DIAS_RESTANTES=0
-                else
-                    DIAS_RESTANTES=$(( SEGUNDOS_RESTANTES / 86400 ))
+                # Ajustar FECHA_ACTUAL para restar un día después de las 23:59
+                if [[ "$HORA_ACTUAL" > "23:59:00" ]]; then
+                    # Si es después de las 23:59, usar el final del día actual
+                    FECHA_ACTUAL=$(date -d "$(date +%Y-%m-%d) 23:59:59" +"%Y-%m-%d %H:%M:%S")
                 fi
+
+                # Calcular segundos y días restantes
+                SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
+                DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))
+                [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
 
                 NUM_C=$(center_value "$NUM" $ancho_n)
                 USUARIO_C=$(center_value "$USUARIO" $ancho_usr)
@@ -436,7 +456,6 @@ ver_registros() {
     echo -e "${LILAC}=====================${NC}"
     read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
-        
 
 
 
