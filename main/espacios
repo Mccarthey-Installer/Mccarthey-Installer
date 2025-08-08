@@ -377,10 +377,26 @@ function ver_registros() {
     contador=0
     while IFS=':' read -r usuario clave expira dias moviles creado; do
         if id "$usuario" &>/dev/null; then
-            # Extraer días numéricos
+            # Extraer días numéricos del campo dias
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
+            # Obtener fecha de creación y calcular días restantes
+            if [[ -n "$creado" ]]; then
+                fecha_creacion=$(date -d "$creado" +%s 2>/dev/null)
+                fecha_actual=$(date +%s)
+                # Calcular días transcurridos
+                dias_transcurridos=$(( (fecha_actual - fecha_creacion) / 86400 )) # 86400 segundos = 1 día
+                # Calcular días restantes
+                dias_restantes=$(( dias_num - dias_transcurridos ))
+                # Asegurar que no sea negativo
+                if [[ $dias_restantes -lt 0 ]]; then
+                    dias_restantes=0
+                fi
+            else
+                # En caso de que no haya fecha de creación válida, usar 0
+                dias_restantes=0
+            fi
             printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
-                "$usuario" "$clave" "$(center_value "$dias_num" 10)" "$moviles"
+                "$usuario" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
             ((contador++))
         fi
     done < "$REGISTROS"
