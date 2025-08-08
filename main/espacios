@@ -299,7 +299,7 @@ function ver_registros() {
         ancho_dias=8  
         ancho_mov=10  
 
-        # Encabezado centrado, sin espacios extras entre columnas  
+        # Encabezado centrado  
         printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
             "$(center_value 'Nº' $ancho_n)" \
             "$(center_value '👩 Usuario' $ancho_usr)" \
@@ -318,18 +318,18 @@ function ver_registros() {
 
                 # Validar que DIAS_NUM sea un número válido
                 if [[ ! "$DIAS_NUM" =~ ^[0-9]+$ ]]; then
-                    continue  # Saltar entrada si DIAS_NUM no es válido
+                    continue
                 fi
 
                 # Validar que CREADO sea una fecha válida
                 if ! date -d "$CREADO" &>/dev/null; then
-                    continue  # Saltar entrada si la fecha es inválida
+                    continue
                 fi
 
                 # Calcular la fecha de expiración (medianoche del día siguiente)
                 FECHA_EXPIRA=$(date -d "$CREADO +$DIAS_NUM days" +"%Y-%m-%d 00:00:00" 2>/dev/null)
                 if [[ $? -ne 0 ]]; then
-                    continue  # Saltar si el cálculo de la fecha falla
+                    continue
                 fi
 
                 # Obtener la hora actual
@@ -337,10 +337,10 @@ function ver_registros() {
 
                 # Calcular días restantes dinámicamente
                 SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
-                DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))  # Redondear hacia arriba
+                DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))
                 [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
 
-                # Centrado de cada campo con espacios mínimos  
+                # Centrado de cada campo  
                 NUM_C=$(center_value "$NUM" $ancho_n)  
                 USUARIO_C=$(center_value "$USUARIO" $ancho_usr)  
                 CLAVE_C=$(center_value "$CLAVE" $ancho_clave)  
@@ -348,7 +348,7 @@ function ver_registros() {
                 DIAS_C=$(center_value "$DIAS_RESTANTES" $ancho_dias)  
                 MOVILES_C=$(center_value "$MOVILES" $ancho_mov)  
 
-                # Imprimir fila con emojis en las columnas Clave, Expira, Días y Móviles
+                # Imprimir fila  
                 printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
                     "$NUM_C" "$USUARIO_C" "$CLAVE_C" "$EXPIRA_C" "$DIAS_C" "$MOVILES_C"
 
