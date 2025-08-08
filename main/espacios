@@ -692,16 +692,28 @@ read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
         if id "$usuario" &>/dev/null; then
             # Extraer días numéricos
             dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
-            fecha_creacion=$(echo "$creado" | cut -d' ' -f1)
-            fecha_expira=$(date -d "$fecha_creacion + $dias_num days" +%Y-%m-%d 2>/dev/null)
+            
+            # Fecha creación (incluye hora si tiene)
+            fecha_creacion="$creado"
+            
+            # Fecha expiración con hora al final del día (23:59:59)
+            fecha_expira=$(date -d "$fecha_creacion +$dias_num days 23:59:59" +"%Y-%m-%d %H:%M:%S" 2>/dev/null)
+            if [[ $? -ne 0 ]]; then
+                continue
+            fi
 
-            # Fecha actual fija
-            fecha_actual="$(date +%F)"
+            fecha_actual=$(date +"%Y-%m-%d %H:%M:%S")
 
             segundos_actual=$(date -d "$fecha_actual" +%s)
             segundos_expira=$(date -d "$fecha_expira" +%s)
-            dias_restantes=$(( (segundos_expira - segundos_actual) / 86400 ))
-            [[ $dias_restantes -lt 0 ]] && dias_restantes=0
+            segundos_restantes=$((segundos_expira - segundos_actual))
+
+            # Calcular días restantes redondeando hacia arriba (si queda algo del día cuenta como 1)
+            if [[ $segundos_restantes -le 0 ]]; then
+                dias_restantes=0
+            else
+                dias_restantes=$(( (segundos_restantes + 86399) / 86400 ))
+            fi
 
             printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
                 "$usuario" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
