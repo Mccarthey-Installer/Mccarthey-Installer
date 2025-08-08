@@ -264,42 +264,48 @@ function crear_registro() {
 
 
 
-function ver_registros() {
+ver_registros() {
     clear
 
-    # Definir colores  
-    AZUL_SUAVE='\033[38;5;45m'  
-    SOFT_PINK='\033[38;5;211m'  
-    PASTEL_BLUE='\033[38;5;153m'  
-    LILAC='\033[38;5;183m'  
-    SOFT_CORAL='\033[38;5;217m'  
-    HOT_PINK='\033[38;5;198m'  
-    PASTEL_PURPLE='\033[38;5;189m'  
-    MINT_GREEN='\033[38;5;159m'  
-    NC='\033[0m'  
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
 
-    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"  
+    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
-    # Función para centrar texto  
-    center_value() {  
-        local value="$1"  
-        local width="$2"  
-        local len=${#value}  
-        local padding_left=$(( (width - len) / 2 ))  
-        local padding_right=$(( width - len - padding_left ))  
-        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""  
-    }  
+    # Función para centrar texto
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+    }
 
-    if [[ -f $REGISTROS ]]; then  
-        # Anchos ajustados para columnas pegadas  
-        ancho_n=3  
-        ancho_usr=8  
-        ancho_clave=8  
-        ancho_exp=10  
-        ancho_dias=8  
-        ancho_mov=10  
+    # Validar que REGISTROS esté definida
+    if [[ -z "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ La variable REGISTROS no está definida. 📂${NC}"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+        return
+    fi
 
-        # Encabezado centrado  
+    if [[ -f "$REGISTROS" ]]; then
+        ancho_n=3
+        ancho_usr=8
+        ancho_clave=8
+        ancho_exp=10
+        ancho_dias=8
+        ancho_mov=10
+
+        # Encabezado
         printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
             "$(center_value 'Nº' $ancho_n)" \
             "$(center_value '👩 Usuario' $ancho_usr)" \
@@ -308,63 +314,57 @@ function ver_registros() {
             "$(center_value '⏳ Días' $ancho_dias)" \
             "$(center_value '📲 Móviles' $ancho_mov)"
 
-        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"  
+        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
-        NUM=1  
-        while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO; do  
-            if id "$USUARIO" &>/dev/null; then  
-                FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')  
-                DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')  
+        NUM=1
+        while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO; do
+            if id "$USUARIO" &>/dev/null; then
+                FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')
+                DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
 
-                # Validar que DIAS_NUM sea un número válido
+                # Validar que DIAS_NUM sea número
                 if [[ ! "$DIAS_NUM" =~ ^[0-9]+$ ]]; then
                     continue
                 fi
 
-                # Validar que CREADO sea una fecha válida
+                # Validar fecha
                 if ! date -d "$CREADO" &>/dev/null; then
                     continue
                 fi
 
-                # Calcular la fecha de expiración (medianoche del día siguiente)
                 FECHA_EXPIRA=$(date -d "$CREADO +$DIAS_NUM days" +"%Y-%m-%d 00:00:00" 2>/dev/null)
                 if [[ $? -ne 0 ]]; then
                     continue
                 fi
 
-                # Obtener la hora actual
-                FECHA_ACTUAL=$(date -d "2025-08-08 00:01:00" +%F")
-
-                # Calcular días restantes dinámicamente
+                FECHA_ACTUAL=$(date +"%Y-%m-%d %H:%M:%S")
                 SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
                 DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))
                 [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
 
-                # Centrado de cada campo  
-                NUM_C=$(center_value "$NUM" $ancho_n)  
-                USUARIO_C=$(center_value "$USUARIO" $ancho_usr)  
-                CLAVE_C=$(center_value "$CLAVE" $ancho_clave)  
-                EXPIRA_C=$(center_value "$FORMATO_EXPIRA" $ancho_exp)  
-                DIAS_C=$(center_value "$DIAS_RESTANTES" $ancho_dias)  
-                MOVILES_C=$(center_value "$MOVILES" $ancho_mov)  
+                NUM_C=$(center_value "$NUM" $ancho_n)
+                USUARIO_C=$(center_value "$USUARIO" $ancho_usr)
+                CLAVE_C=$(center_value "$CLAVE" $ancho_clave)
+                EXPIRA_C=$(center_value "$FORMATO_EXPIRA" $ancho_exp)
+                DIAS_C=$(center_value "$DIAS_RESTANTES" $ancho_dias)
+                MOVILES_C=$(center_value "$MOVILES" $ancho_mov)
 
-                # Imprimir fila  
                 printf "${SOFT_CORAL}%s${PASTEL_BLUE}%s${LILAC}%s${PASTEL_PURPLE}%s${MINT_GREEN}%s${SOFT_PINK}%s${NC}\n" \
                     "$NUM_C" "$USUARIO_C" "$CLAVE_C" "$EXPIRA_C" "$DIAS_C" "$MOVILES_C"
 
-                NUM=$((NUM+1))  
-            fi  
-        done < "$REGISTROS"  
+                NUM=$((NUM+1))
+            fi
+        done < "$REGISTROS"
 
-        if [[ $NUM -eq 1 ]]; then  
-            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"  
-        fi  
-    else  
-        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"  
-    fi  
+        if [[ $NUM -eq 1 ]]; then
+            echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema o los registros no son válidos. 💔${NC}"
+        fi
+    else
+        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe. 📂${NC}"
+    fi
 
-    echo -e "${LILAC}=====================${NC}"  
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+    echo -e "${LILAC}=====================${NC}"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
 
 
