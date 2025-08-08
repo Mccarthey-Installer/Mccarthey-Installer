@@ -301,7 +301,7 @@ function crear_registro() {
     # Encabezado con colores
     printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
         "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
-    echo -e "${LILAC}--------------------------------------------${NC"
+    echo -e "${LILAC}--------------------------------------------${NC}"
 
     contador=0
     while IFS=':' read -r usuario clave expira dias moviles creado; do
@@ -373,7 +373,7 @@ function ver_registros() {
         # Encabezado con colores
         printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
             "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📲 Móviles"
-        echo -e "${LILAC}-----------------------------------------------------------------------${NC"
+        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
         while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO; do
@@ -384,7 +384,7 @@ function ver_registros() {
                 usuario_display="${USUARIO}${HOT_PINK}*${NC}" # Marca para usuarios no existentes
             fi
             # Formatear la fecha de expiración (sin año)
-            FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "//"}')
+            FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "/"}')
 
             # Extraer solo la cantidad numérica de días
             DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
