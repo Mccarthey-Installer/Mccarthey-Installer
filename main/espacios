@@ -337,7 +337,7 @@ ver_registros() {
                     continue
                 fi
 
-                FECHA_ACTUAL=$(date +"%Y-%m-%d %H:%M:%S")
+                FECHA_ACTUAL=$(date -d "2025-08-08 00:01:00" +%F")
                 SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
                 DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))
                 [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
