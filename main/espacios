@@ -326,7 +326,7 @@ function ver_registros() {
                     continue  # Saltar entrada si la fecha es inválida
                 fi
 
-                # Calcular la fecha exacta de expiración (medianoche del día siguiente)
+                # Calcular la fecha de expiración (medianoche del día siguiente)
                 FECHA_EXPIRA=$(date -d "$CREADO +$DIAS_NUM days" +"%Y-%m-%d 00:00:00" 2>/dev/null)
                 if [[ $? -ne 0 ]]; then
                     continue  # Saltar si el cálculo de la fecha falla
@@ -337,10 +337,7 @@ function ver_registros() {
 
                 # Calcular días restantes dinámicamente
                 SEGUNDOS_RESTANTES=$(( $(date -d "$FECHA_EXPIRA" +%s) - $(date -d "$FECHA_ACTUAL" +%s) ))
-                DIAS_RESTANTES=$(( SEGUNDOS_RESTANTES / 86400 ))
-                if [[ $SEGUNDOS_RESTANTES -gt 0 && $SEGUNDOS_RESTANTES -lt 86400 ]]; then
-                    DIAS_RESTANTES=0  # Si falta menos de un día, mostrar 0 días
-                fi
+                DIAS_RESTANTES=$(( (SEGUNDOS_RESTANTES + 86399) / 86400 ))  # Redondear hacia arriba
                 [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
 
                 # Centrado de cada campo con espacios mínimos  
