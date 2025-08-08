@@ -292,45 +292,45 @@ function crear_registro() {
         printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
     }
 
+    # Verificar si existe el archivo
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros disponibles. 📂${NC}"
-        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+        read -p "$(echo -e ${PASTEL_PURPLE}Presiona\ Enter\ para\ continuar...\ ✨${NC})"
         return 1
     fi
 
-    # Encabezado con colores
+    # Encabezado
     printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
         "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
     echo -e "${LILAC}--------------------------------------------${NC}"
 
     contador=0
     while IFS=':' read -r usuario clave expira dias moviles creado; do
-        # Verificar si el usuario existe en el sistema
+        # Verificar si el usuario existe
         if id "$usuario" &>/dev/null; then
             usuario_display="$usuario"
         else
-            usuario_display="${usuario}${HOT_PINK}*${NC}" # Marca para usuarios no existentes
+            usuario_display="${usuario}${HOT_PINK}*${NC}"
         fi
-        # Extraer días numéricos del campo dias
+
+        # Extraer días numéricos
         dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
-        # Calcular días restantes usando la fecha de creación
+
+        # Calcular días restantes
         if [[ -n "$creado" ]]; then
             fecha_creacion=$(date -d "$creado" +%s 2>/dev/null)
             fecha_actual=$(date +%s)
-            # Calcular días transcurridos
-            dias_transcurridos=$(( (fecha_actual - fecha_creacion) / 86400 )) # 86400 segundos = 1 día
-            # Calcular días restantes
+            dias_transcurridos=$(( (fecha_actual - fecha_creacion) / 86400 ))
             dias_restantes=$(( dias_num - dias_transcurridos ))
-            # Asegurar que no sea negativo
-            if [[ $dias_restantes -lt 0 ]]; then
-                DIAS_RESTANTES="$DIAS_NUM"
-            fi
+            (( dias_restantes < 0 )) && dias_restantes=0
         else
-            # En caso de que no haya fecha de creación válida, usar 0
-            dias_restantes=0
+            dias_restantes="$dias_num"
         fi
+
+        # Fila
         printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
             "$usuario_display" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
+
         ((contador++))
     done < "$REGISTROS"
 
@@ -340,7 +340,7 @@ function crear_registro() {
 
     echo -e "${LILAC}============================================${NC}"
     echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
-    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona\ Enter\ para\ continuar...\ ✨${NC})"
 }
 
 function ver_registros() {
