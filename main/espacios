@@ -88,7 +88,8 @@ export PIDFILE="/var/run/mon.pid"
     echo -e "${MAGENTA}🛍️ 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    # Mostrar usuarios expirando (0 días)
+    
+# Mostrar usuarios expirando (0 días)
 USUARIOS_EXPIRADOS=()
 
 if [[ -f "$REGISTROS" ]]; then
@@ -116,13 +117,11 @@ if (( ${#USUARIOS_EXPIRADOS[@]} > 0 )); then
         nombre_usuario=$(echo "$usuario_exp" | awk '{print $1}')
         texto_dias=$(echo "$usuario_exp" | awk '{$1=""; print $0}' | xargs)
 
-        FORMATO+="${BLANCO}${nombre_usuario}${NC} ${AMARILLO}${texto_dias}${NC}     "
+        FORMATO+="${BLANCO}${nombre_usuario}${NC} ${AMARILLO}${texto_dias}${NC}  "
     done
     echo -e "  $FORMATO"
 fi
-
 }
-
 
     
 function crear_registro() {
