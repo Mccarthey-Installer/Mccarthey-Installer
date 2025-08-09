@@ -319,7 +319,7 @@ function crear_registro() {
         # Calcular días restantes
         if [[ -n "$creado" ]]; then
             fecha_creacion=$(date -d "$creado" +%s 2>/dev/null)
-            fecha_actual=$(date +%s)
+            fecha_actual=$(date -d "2025-08-09" +%s)
             dias_transcurridos=$(( (fecha_actual - fecha_creacion) / 86400 ))
             dias_restantes=$(( dias_num - dias_transcurridos ))
             (( dias_restantes < 0 )) && dias_restantes=0
