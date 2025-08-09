@@ -8,7 +8,203 @@ export HISTORIAL="/root/log.txt"
 export PIDFILE="/var/run/mon.pid"
 
 
+function crear_multiples_usuarios() {
+    clear
 
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    REGISTROS="/root/reg.txt"
+    HISTORIAL="/root/log.txt"
+
+    echo -e "${AZUL_SUAVE}===== 🆕 CREAR MÚLTIPLES USUARIOS SSH =====${NC}"
+    echo -e "${PASTEL_BLUE}📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)${NC}"
+    echo -e "${PASTEL_BLUE}📋 Ejemplo: lucy 123 5 4${NC}"
+    echo -e "${MINT_GREEN}✅ Presiona Enter dos veces para confirmar.${NC}"
+
+    declare -a usuarios
+    while IFS= read -r linea && [ -n "$linea" ]; do
+        usuarios+=("$linea")
+    done
+
+    if [ ${#usuarios[@]} -eq 0 ]; then
+        echo -e "${HOT_PINK}❌ No se ingresaron usuarios. 💔${NC}"
+        read -p "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
+        return 1
+    fi
+
+    declare -A usuarios_existentes
+    if [[ -f "$REGISTROS" ]]; then
+        while IFS=: read -r user _; do
+            if [[ -n "$user" && "$user" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+                usuarios_existentes["$user"]=1
+            fi
+        done < "$REGISTROS"
+    fi
+
+    # Control de duplicados en el input
+    declare -A usuarios_input
+    duplicados=0
+
+    echo -e "${AZUL_SUAVE}===== 📋 USUARIOS A CREAR =====${NC}"
+    echo -e "${SOFT_CORAL}👤 Usuario    🔑 Clave      ⏳ Días       📱 Móviles${NC}"
+    echo -e "${LILAC}---------------------------------------------------------------${NC}"
+
+    usuarios_validos=()
+    for linea in "${usuarios[@]}"; do
+        read -r USUARIO CLAVE DIAS MOVILES <<< "$linea"
+        if [[ -z "$USUARIO" || -z "$CLAVE" || -z "$DIAS" || -z "$MOVILES" ]]; then
+            echo -e "${HOT_PINK}❌ Línea inválida: $linea. Debe contener nombre, contraseña, días y móviles. 💔${NC}"
+            continue
+        fi
+        if [[ -n "${usuarios_input[$USUARIO]}" ]]; then
+            echo -e "${HOT_PINK}❌ Usuario duplicado '$USUARIO' en el mismo bloque de entrada. 💔${NC}"
+            ((duplicados++))
+            continue
+        fi
+        usuarios_input["$USUARIO"]=1
+        if ! [[ "$USUARIO" =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,31}$ ]]; then
+            echo -e "${HOT_PINK}❌ Nombre de usuario inválido '$USUARIO'. Solo letras, números, guiones o guiones bajos (máx. 32 caracteres). 💔${NC}"
+            continue
+        fi
+        if id "$USUARIO" &>/dev/null || [[ -n "${usuarios_existentes[$USUARIO]}" ]]; then
+            echo -e "${HOT_PINK}❌ El usuario '$USUARIO' ya existe en el sistema o en $REGISTROS. 💔${NC}"
+            continue
+        fi
+        if ! [[ "$DIAS" =~ ^[0-9]+$ && "$DIAS" -ge 0 && "$DIAS" -le 365 ]]; then
+            echo -e "${HOT_PINK}❌ Días inválidos para '$USUARIO': $DIAS. Debe ser un número entre 0 y 365. 💔${NC}"
+            continue
+        fi
+        if ! [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ && "$MOVILES" -le 999 ]]; then
+            echo -e "${HOT_PINK}❌ Móviles inválidos para '$USUARIO': $MOVILES. Debe ser un número entre 1 y 999. 💔${NC}"
+            continue
+        fi
+        printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-12s ${SOFT_PINK}%-12s${NC}\n" "$USUARIO" "$CLAVE" "$DIAS" "$MOVILES"
+        usuarios_validos+=("$USUARIO:$CLAVE:$DIAS:$MOVILES")
+    done
+
+    if [ ${#usuarios_validos[@]} -eq 0 ]; then
+        echo -e "${HOT_PINK}❌ No hay usuarios válidos para crear. 💔${NC}"
+        read -p "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
+        return 1
+    fi
+
+    echo -e "${LILAC}===============================================================${NC}"
+    read -p "${MINT_GREEN}✅ ¿Confirmar creación de estos usuarios? (s/n): ${NC}" confirmacion
+
+    if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
+        echo -e "${PASTEL_PURPLE}🚫 Operación cancelada. ✨${NC}"
+        read -p "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
+        return 0
+    fi
+
+    creados=0
+    errores=0
+    declare -a registros_nuevos
+    declare -a historial_nuevos
+
+    for linea in "${usuarios_validos[@]}"; do
+        IFS=':' read -r USUARIO CLAVE DIAS MOVILES <<< "$linea"
+
+        FECHA_CREACION=$(date +"%Y-%m-%d_%H-%M-%S")
+        if [[ $DIAS -eq 0 ]]; then
+            DIAS_EXPIRACION=1
+        else
+            DIAS_EXPIRACION=$((DIAS + 1))
+        fi
+        if ! EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d" 2>/dev/null); then
+            echo -e "${HOT_PINK}❌ Error calculando la fecha de expiración para '$USUARIO'. 💔${NC}"
+            historial_nuevos+=("$(date '+%Y-%m-%d %H:%M:%S'):Error calculando la fecha de expiración para '$USUARIO'.")
+            ((errores++))
+            continue
+        fi
+        FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
+
+        # Intentar useradd con timeout
+        if ! timeout 5 useradd -M -s /bin/false "$USUARIO" 2>/dev/null; then
+            echo -e "${HOT_PINK}❌ Error creando usuario '$USUARIO' en el sistema. 💔${NC}"
+            historial_nuevos+=("$(date '+%Y-%m-%d %H:%M:%S'):Error creando usuario '$USUARIO' en el sistema.")
+            ((errores++))
+            continue
+        fi
+
+        if ! echo "$USUARIO:$CLAVE" | chpasswd; then
+            userdel -r "$USUARIO" 2>/dev/null
+            echo -e "${HOT_PINK}❌ Error estableciendo contraseña para '$USUARIO'. 💔${NC}"
+            historial_nuevos+=("$(date '+%Y-%m-%d %H:%M:%S'):Error estableciendo contraseña para '$USUARIO'.")
+            ((errores++))
+            continue
+        fi
+
+        if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
+            userdel -r "$USUARIO" 2>/dev/null
+            echo -e "${HOT_PINK}❌ Error configurando expiración para '$USUARIO'. 💔${NC}"
+            historial_nuevos+=("$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'.")
+            ((errores++))
+            continue
+        fi
+
+        registros_nuevos+=("${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}")
+
+        if ! id "$USUARIO" &>/dev/null; then
+            echo -e "${HOT_PINK}❌ Error: Falló la creación de '$USUARIO' en el sistema. 💔${NC}"
+            historial_nuevos+=("$(date '+%Y-%m-%d %H:%M:%S'):Error: Falló la creación de '$USUARIO' en el sistema.")
+            ((errores++))
+            continue
+        fi
+
+        historial_nuevos+=("$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO")
+        echo -e "${MINT_GREEN}✅ Usuario $USUARIO creado exitosamente. ✨${NC}"
+        ((creados++))
+
+        # Pequeño retraso para evitar saturar el sistema
+        sleep 0.1
+    done
+
+    # Escribir todos los registros y el historial
+    if [ ${#registros_nuevos[@]} -gt 0 ]; then
+        printf "%s\n" "${registros_nuevos[@]}" >> "$REGISTROS"
+        sync
+    fi
+    if [ ${#historial_nuevos[@]} -gt 0 ]; then
+        printf "%s\n" "${historial_nuevos[@]}" >> "$HISTORIAL"
+        sync
+    fi
+
+    # Verificar registros escritos usando el arreglo en memoria
+    for linea in "${registros_nuevos[@]}"; do
+        USUARIO=$(echo "$linea" | cut -d':' -f1)
+        usuarios_existentes["$USUARIO"]=1
+        if ! grep -q "^$USUARIO:" "$REGISTROS"; then
+            userdel -r "$USUARIO" 2>/dev/null
+            echo -e "${HOT_PINK}❌ Error: Falló la escritura del registro de '$USUARIO' en $REGISTROS. 💔${NC}"
+            historial_nuevos+=("$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura.")
+            ((errores++))
+            ((creados--))
+        fi
+    done
+    if [ ${#historial_nuevos[@]} -gt 0 ]; then
+        printf "%s\n" "${historial_nuevos[@]}" >> "$HISTORIAL"
+        sync
+    fi
+
+    # Resumen mejorado con conteo de duplicados
+    echo -e "${AZUL_SUAVE}===== 📊 RESUMEN DE CREACIÓN =====${NC}"
+    echo -e "${MINT_GREEN}✅ Usuarios creados exitosamente: $creados${NC}"
+    echo -e "${HOT_PINK}❌ Usuarios con error: $errores${NC}"
+    if [ $duplicados -gt 0 ]; then
+        echo -e "${HOT_PINK}🚫 Usuarios duplicados en la entrada: $duplicados${NC}"
+    fi
+    read -p "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
+}
 
 
         function ver_registros() {
