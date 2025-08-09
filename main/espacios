@@ -111,11 +111,14 @@ function barra_sistema() {
     
 
     
-function crear_registro() {
+
+    function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
-    
+    # Definir REGISTROS si no está definido
+    REGISTROS=${REGISTROS:-/root/reg.txt}
+    HISTORIAL=${HISTORIAL:-/root/historial.txt}
 
     # Verificar permisos de escritura en REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
@@ -147,7 +150,7 @@ function crear_registro() {
         return 1
     fi
 
-    # Verificar sistema de archivos
+    # Verificar sistema de archivos montado como solo lectura
     if mount | grep /root | grep -q ro; then
         echo -e "${ROJO}❌ El directorio /root está montado como solo lectura. Remonta con 'mount -o remount,rw /root'.${NC}"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Directorio /root en solo lectura" >> "$HISTORIAL" 2>/dev/null
@@ -196,18 +199,18 @@ function crear_registro() {
         echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
     done
 
-    # Calcular fechas con ajuste para expiración a medianoche siguiente
+    # Calcular fechas y formateos
     DIAS_EXPIRACION=$(( DIAS == 0 ? 1 : DIAS + 1 ))
-    FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
+    FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S" | tr -d '\r\n')
     EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
-    # Agregar al REGISTROS con formato exacto
-    echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
+    # Guardar registro en formato correcto con printf para evitar problemas de espacio
+    printf '%s:%s:%s:%s días:%s:%s\n' "$USUARIO" "$CLAVE" "$FECHA_FORMAT" "$DIAS" "$MOVILES" "$FECHA_CREACION" >> "$REGISTROS"
     sync
 
-    # Verificar escritura
-    if ! grep -q "^${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" "$REGISTROS"; then
+    # Verificar que el registro exista (buscar solo por usuario para evitar problemas)
+    if ! grep -q "^$USUARIO:" "$REGISTROS"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Contenido de $REGISTROS tras intento de escritura:" >> "$HISTORIAL"
         cat "$REGISTROS" >> "$HISTORIAL" 2>/dev/null
@@ -216,9 +219,9 @@ function crear_registro() {
         return 1
     fi
 
-    # Crear usuario
+    # Crear usuario sin directorio home y shell false
     if ! useradd -M -s /bin/false "$USUARIO"; then
-        sed -i "/^${USUARIO}:/d" "$REGISTROS"
+        sed -i "/^$USUARIO:/d" "$REGISTROS"
         sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error creando usuario '$USUARIO' en el sistema. Registro eliminado." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
@@ -226,10 +229,10 @@ function crear_registro() {
         return 1
     fi
 
-    # Establecer contraseña
+    # Establecer contraseña para el usuario
     if ! echo "$USUARIO:$CLAVE" | chpasswd; then
         userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^${USUARIO}:/d" "$REGISTROS"
+        sed -i "/^$USUARIO:/d" "$REGISTROS"
         sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error estableciendo contraseña para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Falló el cambio de contraseña. Registro revertido.${NC}"
@@ -237,21 +240,23 @@ function crear_registro() {
         return 1
     fi
 
-    # Configurar expiración
-    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
-        userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^${USUARIO}:/d" "$REGISTROS"
-        sync
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
-        echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
+    # Configurar fecha de expiración del usuario (solo si es distinto de ilimitado)
+    if [[ -n "$EXPIRA_FECHA" ]]; then
+        if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
+            userdel -r "$USUARIO" 2>/dev/null
+            sed -i "/^$USUARIO:/d" "$REGISTROS"
+            sync
+            echo "$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
+            echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
+            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
+            return 1
+        fi
     fi
 
-    # Registrar acción en HISTORIAL
+    # Registrar creación en historial
     echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
 
-    # Mostrar resultado final
+    # Mostrar resumen final ordenado y con colores
     echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
     echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
     echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
@@ -265,7 +270,6 @@ function crear_registro() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
-
 
 
 
