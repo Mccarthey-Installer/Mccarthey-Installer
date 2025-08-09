@@ -341,20 +341,21 @@ function barra_sistema() {
     # Registrar acción en HISTORIAL
     echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
 
-    # Mostrar resultado final (corregir visualización de FECHA_CREACION)
-    FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | sed 's/_/ /; s/-/:/g')
-    echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
-    echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
-    echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
-    echo -e "${AZUL}📅 Expira:  ${AMARILLO}${FECHA_FORMAT}//${NC}"
-    echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$MOVILES${NC}"
-    echo -e "${AZUL}📅 Creado:  ${AMARILLO}${FECHA_CREACION_DISPLAY}${NC}"
-    echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
-    echo -e "${AMARILLO}👤 Usuario    📅 Expira          ⏳  Días       📱 Móviles   📅 Creado${NC}"
-    echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    printf "${VERDE}%-12s %-20s %-13s %-12s %-20s${NC}\n" "$USUARIO:$CLAVE" "${FECHA_FORMAT}//" "$DIAS días" "$MOVILES" "$FECHA_CREACION_DISPLAY"
-    echo -e "${CIAN}===============================================================${NC}"
-    read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
+
+# Mostrar resultado final (corregir visualización de FECHA_CREACION)
+FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | sed 's/_/ /; s/-/:/g')
+echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
+echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
+echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
+echo -e "${AZUL}📅 Expira:  ${AMARILLO}${FECHA_FORMAT}//${NC}"
+echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$MOVILES${NC}"
+echo -e "${AZUL}📅 Creado:  ${AMARILLO}${FECHA_CREACION_DISPLAY}${NC}"
+echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
+echo -e "${AMARILLO}👤 Usuario    📅 Expira          ⏳  Días       📱 Móviles   📅 Creado${NC}"
+echo -e "${CIAN}---------------------------------------------------------------${NC}"
+printf "${VERDE}%-12s %-20s %-13s %-12s %-20s${NC}\n" "$USUARIO:$CLAVE" "${FECHA_FORMAT}//" "$DIAS días" "$MOVILES" "$FECHA_CREACION_DISPLAY"
+echo -e "${CIAN}===============================================================${NC}"
+read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
 
 function monitorear_conexiones() {
