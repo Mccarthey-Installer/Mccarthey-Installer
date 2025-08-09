@@ -115,9 +115,7 @@ function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
-    # Definir REGISTROS si no está definido
-    REGISTROS=${REGISTROS:-/root/reg.txt}
-    HISTORIAL=${HISTORIAL:-/root/historial.txt}
+    
 
     # Verificar permisos de escritura en REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
