@@ -17,7 +17,8 @@ export PIDFILE="/var/run/mon.pid"
                     
                     
 
-function monitorear_conexiones() {
+
+                function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=5
     REGISTROS="/root/reg.txt"
@@ -56,7 +57,7 @@ function monitorear_conexiones() {
 
         > "$TEMP_FILE_NEW"
 
-        while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN EXTRA; do
+        while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN DURATION; do
             [[ -z "$USUARIO" ]] && continue
 
             if id "$USUARIO" &>/dev/null; then
@@ -89,26 +90,48 @@ function monitorear_conexiones() {
                 fi
 
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
+                NEW_DURATION="0"
                 TMP_STATUS="/tmp/status_${USUARIO}.tmp"
 
-                # Guardar y usar formato con espacios entre fecha y hora
+                # Estandarizar formato de timestamp con guiones bajos
                 if [[ $CONEXIONES -gt 0 && ! -f "$TMP_STATUS" ]]; then
-                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d_%H-%M-%S")
                     echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión de '$USUARIO' iniciada." >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión de '$USUARIO' iniciada en $NEW_PRIMER_LOGIN." >> "$LOG"
                 elif [[ $CONEXIONES -eq 0 && -f "$TMP_STATUS" ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
                     if [[ -n "$HORA_CONEXION" ]]; then
-                        HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
-                        echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION" >> "$HISTORIAL"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión de '$USUARIO' finalizada." >> "$LOG"
+                        HORA_DESCONEXION=$(date +"%Y-%m-%d_%H-%M-%S")
+                        # Calcular duración de la conexión terminada
+                        START_SECONDS=$(date -d "${HORA_CONEXION//_/ }" +%s 2>/dev/null)
+                        END_SECONDS=$(date -d "${HORA_DESCONEXION//_/ }" +%s 2>/dev/null)
+                        DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
+                        DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
+                        echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión de '$USUARIO' finalizada. Duración: $DURATION." >> "$LOG"
                     fi
                     rm -f "$TMP_STATUS" 2>/dev/null
+                    NEW_PRIMER_LOGIN=""
+                    NEW_DURATION="0"
                 fi
 
-                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
+                # Calcular duración para conexiones activas
+                if [[ $CONEXIONES -gt 0 && -f "$TMP_STATUS" ]]; then
+                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
+                    if [[ -n "$HORA_CONEXION" ]]; then
+                        START_SECONDS=$(date -d "${HORA_CONEXION//_/ }" +%s 2>/dev/null)
+                        CURRENT_SECONDS=$(date +%s)
+                        DURATION_SECONDS=$((CURRENT_SECONDS - START_SECONDS))
+                        NEW_DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado por $NEW_DURATION." >> "$LOG"
+                    fi
+                fi
+
+                # Guardar en el archivo temporal con el nuevo campo DURATION
+                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}:${NEW_DURATION}" >> "$TEMP_FILE_NEW"
             else
-                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
+                # Si el usuario no existe, mantener los valores originales
+                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${PRIMER_LOGIN}:${DURATION:-0}" >> "$TEMP_FILE_NEW"
             fi
         done < "$TEMP_FILE"
 
@@ -123,7 +146,6 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-
 
   function verificar_online() {
     clear
