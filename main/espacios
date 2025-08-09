@@ -12,7 +12,8 @@ export PIDFILE="/var/run/mon.pid"
                     
                     
     
-                    function verificar_online() {
+                    
+                function verificar_online() {
     clear
     echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
 
@@ -28,9 +29,9 @@ export PIDFILE="/var/run/mon.pid"
     NC='\033[0m'
 
     declare -A month_map=(
-        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
-        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
-        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
+        ["January"]="enero" ["February"]="febrero" ["March"]="marzo" ["April"]="abril"
+        ["May"]="mayo" ["June"]="junio" ["July"]="julio" ["August"]="agosto"
+        ["September"]="septiembre" ["October"]="octubre" ["November"]="noviembre" ["December"]="diciembre"
     )
 
     if [[ ! -f "$HISTORIAL" ]]; then
@@ -84,7 +85,8 @@ export PIDFILE="/var/run/mon.pid"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
                     if [[ -n "$PRIMER_LOGIN" ]]; then
-                        START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
+                        PRIMER_LOGIN_FIXED=${PRIMER_LOGIN/_/ }
+                        START=$(date -d "$PRIMER_LOGIN_FIXED" +%s 2>/dev/null)
                         if [[ $? -eq 0 && -n "$START" ]]; then
                             CURRENT=$(date +%s)
                             ELAPSED_SEC=$((CURRENT - START))
@@ -99,13 +101,17 @@ export PIDFILE="/var/run/mon.pid"
                         DETALLES="⏰ Tiempo no disponible"
                     fi
                 else
-                    ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
+                    ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
-                        if [[ $? -eq 0 && -n "$ULTIMO_LOGOUT_FMT" ]]; then
-                            for k in "${!month_map[@]}"; do
-                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/${month_map[$k]}/${month_map[$k]}}
-                            done
+                        ULTIMO_LOGOUT_FIXED=${ULTIMO_LOGOUT/_/ }
+                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT_FIXED" +"%d de %B %I:%M %p")
+                        # Traducir meses inglés a español
+                        for english in "${!month_map[@]}"; do
+                            ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/$english/${month_map[$english]}}
+                        done
+                        # Lowercase todo (mantiene números intactos)
+                        ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT,,}
+                        if [[ -n "$ULTIMO_LOGOUT_FMT" ]]; then
                             DETALLES="   📅 Última: $ULTIMO_LOGOUT_FMT"
                         else
                             DETALLES="   😴 Nunca conectado"
@@ -116,9 +122,8 @@ export PIDFILE="/var/run/mon.pid"
                     ((INACTIVOS++))
                 fi
             fi
-        printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%-35s${NC}\n" \
-    "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
-
+            printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%-35s${NC}\n" \
+                "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
         fi
     done < "$REGISTROS"
 
@@ -127,7 +132,6 @@ export PIDFILE="/var/run/mon.pid"
     echo -e "${ROJO}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
-                    
                     
                     
 
@@ -790,7 +794,9 @@ function mini_registro() {
 }
 
     
-function crear_registro() {
+
+
+    function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
@@ -842,6 +848,12 @@ function crear_registro() {
         echo "$(date '+%Y-%m-%d %H:%M:%S'):No hay espacio en disco en /root" >> "$HISTORIAL" 2>/dev/null
         read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return 1
+    fi
+
+    # Agregar /bin/false a /etc/shells si no existe (necesario para logins con Dropbear/SSH tunneling)
+    if ! grep -q '^/bin/false$' /etc/shells; then
+        echo "/bin/false" >> /etc/shells
+        echo "$(date '+%Y-%m-%d %H:%M:%S'):/bin/false agregado a /etc/shells para permitir conexiones." >> "$HISTORIAL"
     fi
 
     # Leer nombre del usuario
@@ -947,7 +959,6 @@ function crear_registro() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
-
 
 
 
