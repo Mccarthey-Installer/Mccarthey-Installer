@@ -195,7 +195,11 @@ function barra_sistema() {
     read -p "$(echo -e ${PASTEL_PURPLE}Presiona\ Enter\ para\ continuar...\ ✨${NC})"
 }
 
-function crear_registro() {
+
+
+    
+
+    function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
@@ -337,8 +341,8 @@ function crear_registro() {
     # Registrar acción en HISTORIAL
     echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
 
-    # Mostrar resultado final (mostrar FECHA_CREACION con formato legible)
-    FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | tr '_' ' ' | tr '-' ':')
+    # Mostrar resultado final (corregir visualización de FECHA_CREACION)
+    FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | sed 's/_/ /; s/-/:/g')
     echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
     echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
     echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
