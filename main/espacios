@@ -10,9 +10,11 @@ export PIDFILE="/var/run/mon.pid"
 
 
                     
+                    
+    
                     function verificar_online() {
     clear
-    echo -e "${AZUL_SUAVE}===== 🟢 USUARIOS ONLINE =====${NC}"
+    echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
 
     # Definir colores
     AZUL_SUAVE='\033[38;5;45m'
@@ -23,10 +25,6 @@ export PIDFILE="/var/run/mon.pid"
     HOT_PINK='\033[38;5;198m'
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
-    AMARILLO='\033[93m'
-    CIAN='\033[96m'
-    VIOLETA='\033[95m'
-    ROJO='\033[91m'
     NC='\033[0m'
 
     declare -A month_map=(
@@ -44,17 +42,18 @@ export PIDFILE="/var/run/mon.pid"
         return 1
     fi
 
-    ancho_usr=12
-    ancho_conx=12
-    ancho_mov=10
-    ancho_tiempo=25
+    # Centrar texto en un ancho dado
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+    }
 
-    printf "${PASTEL_BLUE}%s ${MINT_GREEN}%s ${SOFT_PINK}%s ${AZUL_SUAVE}%s${NC}\n" \
-        "$(centrar_texto '👤 USUARIO' $ancho_usr)" \
-        "$(centrar_texto '🟢 CONEXIONES' $ancho_conx)" \
-        "$(centrar_texto '📱 MÓVILES' $ancho_mov)" \
-        "$(centrar_texto '⏰ TIEMPO CONECTADO' $ancho_tiempo)"
-
+    printf "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
+        "👤 USUARIO"   "✅ CONEXIONES"   "📱 MÓVILES"   "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     TOTAL_CONEXIONES=0
@@ -64,22 +63,23 @@ export PIDFILE="/var/run/mon.pid"
     while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
         if id "$USUARIO" &>/dev/null; then
             ((TOTAL_USUARIOS++))
-            ESTADO="0"
-            DETALLES="Nunca conectado"
-            COLOR_ESTADO="${HOT_PINK}"
+            ESTADO="☑️ 0"
+            DETALLES="   😴 Nunca conectado"
+            COLOR_ESTADO="${ROJO}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
+            MOVILES_CENTRADO=$(center_value "  📲 $MOVILES_NUM" 10)
 
             if grep -q "^$USUARIO:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
                 ((INACTIVOS++))
-                COLOR_ESTADO="${HOT_PINK}"
+                COLOR_ESTADO="${ROJO}"
                 ESTADO="🔴 BLOQ"
             else
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    ESTADO="🟢 $CONEXIONES"
+                    ESTADO="✅ $CONEXIONES"
                     COLOR_ESTADO="${MINT_GREEN}"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
@@ -106,22 +106,19 @@ export PIDFILE="/var/run/mon.pid"
                             for k in "${!month_map[@]}"; do
                                 ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/${month_map[$k]}/${month_map[$k]}}
                             done
-                            DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
+                            DETALLES="   📅 Última: $ULTIMO_LOGOUT_FMT"
                         else
-                            DETALLES="Nunca conectado"
+                            DETALLES="   😴 Nunca conectado"
                         fi
                     else
-                        DETALLES="Nunca conectado"
+                        DETALLES="   😴 Nunca conectado"
                     fi
                     ((INACTIVOS++))
                 fi
             fi
+        printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%-35s${NC}\n" \
+    "$USUARIO" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
 
-            printf "${PASTEL_BLUE}%s ${COLOR_ESTADO}%s ${SOFT_PINK}%s ${AZUL_SUAVE}%s${NC}\n" \
-                "$(centrar_texto "$USUARIO" $ancho_usr)" \
-                "$(centrar_texto "$ESTADO" $ancho_conx)" \
-                "$(centrar_texto "$MOVILES_NUM" $ancho_mov)" \
-                "$(centrar_texto "$DETALLES" $ancho_tiempo)"
         fi
     done < "$REGISTROS"
 
@@ -130,6 +127,9 @@ export PIDFILE="/var/run/mon.pid"
     echo -e "${ROJO}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar...${NC})"
 }
+                    
+                    
+                    
 
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
