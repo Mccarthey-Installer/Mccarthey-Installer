@@ -116,6 +116,101 @@ function barra_sistema() {
 
     
 
+function mini_registro() {
+    clear
+
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    REGISTROS="/root/reg.txt"
+
+    echo -e "${AZUL_SUAVE}===== 📋 MINI REGISTRO =====${NC}"
+
+    # Centrar texto en un ancho dado
+    center_value() {
+        local value="$1"
+        local width="$2"
+        local len=${#value}
+        local padding_left=$(( (width - len) / 2 ))
+        local padding_right=$(( width - len - padding_left ))
+        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+    }
+
+    # Verificar si existe el archivo
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ No hay registros disponibles. 📂${NC}"
+        read -p "$(echo -e ${PASTEL_PURPLE}Presiona\ Enter\ para\ continuar...\ ✨${NC})"
+        return 1
+    fi
+
+    # Encabezado
+    printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
+        "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
+    echo -e "${LILAC}--------------------------------------------${NC}"
+
+    contador=0
+    while IFS=':' read -r usuario clave expira dias moviles creado; do
+        # Verificar si el usuario existe
+        if id "$usuario" &>/dev/null; then
+            usuario_display="$usuario"
+        else
+            usuario_display="${usuario}${HOT_PINK}*${NC}"
+        fi
+
+        # Extraer días numéricos
+        dias_num=$(echo "$dias" | grep -oE '^[0-9]+')
+
+        # Calcular días restantes
+        if [[ -n "$creado" ]]; then
+            # Manejar ambos formatos: "2025-08-09_10-49-50" y "2025-08-09 10:49:50"
+            if [[ "$creado" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]]; then
+                fecha_creacion=$(echo "$creado" | awk -F'[_-]' '{print $1"-"$2"-"$3" "$4":"$5":"$6}')
+                fecha_creacion_secs=$(date -d "$fecha_creacion" +%s 2>/dev/null)
+            else
+                fecha_creacion_secs=$(date -d "$creado" +%s 2>/dev/null)
+            fi
+            if [[ -z "$fecha_creacion_secs" ]]; then
+                # Si la conversión falla, usar la fecha actual y actualizar el registro
+                fecha_creacion_secs=$(date +%s)
+                creado=$(date +"%Y-%m-%d_%H-%M-%S")
+                sed -i "s/^${usuario}:${clave}:${expira}:${dias}:${moviles}:.*/${usuario}:${clave}:${expira}:${dias}:${moviles}:${creado}/" "$REGISTROS"
+                sync
+            fi
+            fecha_actual=$(date +%s)
+            dias_transcurridos=$(( (fecha_actual - fecha_creacion_secs) / 86400 ))
+            dias_restantes=$(( dias_num - dias_transcurridos ))
+            (( dias_restantes < 0 )) && dias_restantes=0
+        else
+            dias_restantes="$dias_num"
+            creado=$(date +"%Y-%m-%d_%H-%M-%S")
+            sed -i "s/^${usuario}:${clave}:${expira}:${dias}:${moviles}:.*/${usuario}:${clave}:${expira}:${dias}:${moviles}:${creado}/" "$REGISTROS"
+            sync
+        fi
+
+        # Fila
+        printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
+            "$usuario_display" "$clave" "$(center_value "$dias_restantes" 10)" "$moviles"
+
+        ((contador++))
+    done < "$REGISTROS"
+
+    if [[ $contador -eq 0 ]]; then
+        echo -e "${HOT_PINK}❌ No hay usuarios existentes en el sistema. 💔${NC}"
+    fi
+
+    echo -e "${LILAC}============================================${NC}"
+    echo -e "${SOFT_CORAL}TOTAL: ${contador} usuarios${NC}"
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona\ Enter\ para\ continuar...\ ✨${NC})"
+}
+
 
 
  
@@ -126,163 +221,9 @@ function barra_sistema() {
 
     
     
-function crear_registro() {
-    clear
-    echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
-    # Definir rutas explícitamente
-    REGISTROS="/root/reg.txt"
-    HISTORIAL="/root/log.txt"
 
-    # Verificar permisos de escritura en REGISTROS
-    if [[ ! -f "$REGISTROS" ]]; then
-        touch "$REGISTROS" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo crear $REGISTROS. Revisa permisos y sistema de archivos.${NC}"
-            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-            return 1
-        }
-    fi
-    if [[ ! -w "$REGISTROS" ]]; then
-        echo -e "${ROJO}❌ No se puede escribir en $REGISTROS. Revisa permisos.${NC}"
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Verificar permisos de escritura en HISTORIAL
-    if [[ ! -f "$HISTORIAL" ]]; then
-        touch "$HISTORIAL" 2>/dev/null || {
-            echo -e "${ROJO}❌ No se pudo crear $HISTORIAL. Revisa permisos y sistema de archivos.${NC}"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'):No se pudo crear $HISTORIAL" >> "$HISTORIAL" 2>/dev/null
-            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-            return 1
-        }
-    fi
-    if [[ ! -w "$HISTORIAL" ]]; then
-        echo -e "${ROJO}❌ No se puede escribir en $HISTORIAL. Revisa permisos.${NC}"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):No se puede escribir en $HISTORIAL" >> "$HISTORIAL" 2>/dev/null
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Verificar sistema de archivos
-    if mount | grep /root | grep -q ro; then
-        echo -e "${ROJO}❌ El directorio /root está montado como solo lectura. Remonta con 'mount -o remount,rw /root'.${NC}"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Directorio /root en solo lectura" >> "$HISTORIAL" 2>/dev/null
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Verificar espacio en disco
-    if ! df -h /root | grep -q '[0-9]'; then
-        echo -e "${ROJO}❌ No hay espacio en disco en /root. Libera espacio e intenta de nuevo.${NC}"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):No hay espacio en disco en /root" >> "$HISTORIAL" 2>/dev/null
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Leer nombre del usuario
-    while true; do
-        read -p "$(echo -e ${AZUL}👤 Nombre del usuario: ${NC})" USUARIO
-        [[ -z "$USUARIO" ]] && echo -e "${ROJO}❌ Ingresa un nombre válido.${NC}" && continue
-        if id "$USUARIO" &>/dev/null; then
-            echo -e "${ROJO}⚠️ El usuario '$USUARIO' ya existe en el sistema.${NC}"
-            continue
-        fi
-        if grep -qw "^$USUARIO:" "$REGISTROS"; then
-            echo -e "${ROJO}⚠️ Ya existe un registro con ese nombre en $REGISTROS.${NC}"
-            continue
-        fi
-        break
-    done
-
-    # Leer contraseña
-    read -p "$(echo -e ${AZUL}🔑 Contraseña: ${NC})" CLAVE
-    [[ -z "$CLAVE" ]] && echo -e "${ROJO}❌ La contraseña no puede estar vacía.${NC}" && read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})" && return 1
-
-    # Leer días de validez
-    while true; do
-        read -p "$(echo -e ${AZUL}📅 Días de validez: ${NC})" DIAS
-        [[ "$DIAS" =~ ^[0-9]+$ && "$DIAS" -ge 0 ]] && break
-        echo -e "${ROJO}❌ Ingresa un número válido (0 o más).${NC}"
-    done
-
-    # Leer número de móviles
-    while true; do
-        read -p "$(echo -e ${AZUL}📱 ¿Cuántos móviles? ${NC})" MOVILES
-        [[ "$MOVILES" =~ ^[1-9][0-9]{0,2}$ && "$MOVILES" -le 999 ]] && break
-        echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
-    done
-
-    # Calcular fechas con ajuste para expiración a medianoche siguiente
-    DIAS_EXPIRACION=$(( DIAS == 0 ? 1 : DIAS + 1 ))
-    FECHA_CREACION=$(date +"%Y-%m-%d_%H-%M-%S")
-    EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
-    FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
-
-    # Agregar al REGISTROS
-    echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
-    sync
-
-    # Verificar escritura
-    if ! grep -q "^${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}$" "$REGISTROS"; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Contenido de $REGISTROS tras intento de escritura:" >> "$HISTORIAL"
-        cat "$REGISTROS" >> "$HISTORIAL" 2>/dev/null
-        echo -e "${ROJO}❌ Error: Falló la escritura del registro en $REGISTROS. Intenta de nuevo.${NC}"
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Crear usuario
-    if ! useradd -M -s /bin/false "$USUARIO"; then
-        sed -i "/^${USUARIO}:/d" "$REGISTROS"
-        sync
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error creando usuario '$USUARIO' en el sistema. Registro eliminado." >> "$HISTORIAL"
-        echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Establecer contraseña
-    if ! echo "$USUARIO:$CLAVE" | chpasswd; then
-        userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^${USUARIO}:/d" "$REGISTROS"
-        sync
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error estableciendo contraseña para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
-        echo -e "${ROJO}❌ Falló el cambio de contraseña. Registro revertido.${NC}"
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Configurar expiración
-    if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
-        userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^${USUARIO}:/d" "$REGISTROS"
-        sync
-        echo "$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
-        echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
-        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-        return 1
-    fi
-
-    # Registrar acción en HISTORIAL
-    echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
-
-    # Mostrar resultado final (corregir visualización de FECHA_CREACION)
-    FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | awk -F'[_-]' '{print $1"-"$2"-"$3" "$4":"$5":"$6}')
-    echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
-    echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
-    echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
-    echo -e "${AZUL}📅 Expira:  ${AMARILLO}${FECHA_FORMAT}//${NC}"
-    echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$MOVILES${NC}"
-    echo -e "${AZUL}📅 Creado:  ${AMARILLO}${FECHA_CREACION_DISPLAY}${NC}"
-    echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
-    echo -e "${AMARILLO}👤 Usuario    📅 Expira          ⏳  Días       📱 Móviles   📅 Creado${NC}"
-    echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    printf "${VERDE}%-12s %-20s %-13s %-12s %-20s${NC}\n" "$USUARIO:$CLAVE" "${FECHA_FORMAT}//" "$DIAS días" "$MOVILES" "$FECHA_CREACION_DISPLAY"
-    echo -e "${CIAN}===============================================================${NC}"
-    read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-}
+    
 
 
 
