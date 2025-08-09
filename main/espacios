@@ -7,7 +7,9 @@ export REGISTROS="/root/reg.txt"
 export HISTORIAL="/root/log.txt"
 export PIDFILE="/var/run/mon.pid"
 
-function verificar_online() {
+
+
+                    function verificar_online() {
     clear
     echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
 
@@ -21,12 +23,6 @@ function verificar_online() {
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
-
-    declare -A month_map=(
-        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
-        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
-        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
-    )
 
     REGISTROS="/root/reg.txt"
     HISTORIAL="/root/log.txt"
@@ -66,7 +62,7 @@ function verificar_online() {
         if id "$USUARIO" &>/dev/null; then
             ((TOTAL_USUARIOS++))
             ESTADO="☑️ 0"
-            DETALLES="   😴 Nunca conectado"
+            DETALLES="😴 Nunca conectado"
             COLOR_ESTADO="${HOT_PINK}"
             MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
             MOVILES_CENTRADO=$(center_value "📲 $MOVILES_NUM" 10)
@@ -115,17 +111,16 @@ function verificar_online() {
                 else
                     ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$(echo "$ULTIMO_LOGOUT" | awk -F'[_-]' '{print $1"-"$2"-"$3" "$4":"$5":"$6}')" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
+                        # Convertir a formato legible: 08 de agosto 09:03 pm
+                        fecha_logout=$(echo "$ULTIMO_LOGOUT" | awk -F'[_-]' '{print $1"-"$2"-"$3" "$4":"$5":"$6}')
+                        ULTIMO_LOGOUT_FMT=$(date -d "$fecha_logout" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
                         if [[ $? -eq 0 && -n "$ULTIMO_LOGOUT_FMT" ]]; then
-                            for k in "${!month_map[@]}"; do
-                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/${month_map[$k]}/${month_map[$k]}}
-                            done
-                            DETALLES="   📅 Última: $ULTIMO_LOGOUT_FMT"
+                            DETALLES="⏰ Última: $ULTIMO_LOGOUT_FMT"
                         else
-                            DETALLES="   😴 Nunca conectado"
+                            DETALLES="😴 Nunca conectado"
                         fi
                     else
-                        DETALLES="   😴 Nunca conectado"
+                        DETALLES="😴 Nunca conectado"
                     fi
                     ((INACTIVOS++))
                 fi
@@ -223,11 +218,13 @@ function monitorear_conexiones() {
                     echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
                     echo "$(date '+%Y-%m-%d_%H-%M-%S'): Nueva conexión de '$USUARIO' iniciada." >> "$LOG"
                 elif [[ $CONEXIONES -eq 0 && -f "$TMP_STATUS" ]]; then
-                    HORA_CONEXION=$(cat "$TMP_STATUS")
-                    HORA_DESCONEXION=$(date +"%Y-%m-%d_%H-%M-%S")
-                    echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION" >> "$HISTORIAL"
-                    rm -f "$TMP_STATUS"
-                    echo "$(date '+%Y-%m-%d_%H-%M-%S'): Conexión de '$USUARIO' finalizada." >> "$LOG"
+                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
+                    if [[ -n "$HORA_CONEXION" ]]; then
+                        HORA_DESCONEXION=$(date +"%Y-%m-%d_%H-%M-%S")
+                        echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION" >> "$HISTORIAL"
+                        echo "$(date '+%Y-%m-%d_%H-%M-%S'): Conexión de '$USUARIO' finalizada." >> "$LOG"
+                    fi
+                    rm -f "$TMP_STATUS" 2>/dev/null
                 fi
 
                 echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
@@ -243,7 +240,7 @@ function monitorear_conexiones() {
             continue
         }
 
-        rm -f "$TEMP_FILE"
+        rm -f "$TEMP_FILE" 2>/dev/null
         sleep "$INTERVALO"
     done
 }
