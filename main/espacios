@@ -109,9 +109,15 @@ function barra_sistema() {
 }
 
     
+
+    
 function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
+
+    # Definir REGISTROS si no está definido
+    REGISTROS=${REGISTROS:-/root/reg.txt}
+    HISTORIAL=${HISTORIAL:-/root/historial.txt}
 
     # Verificar permisos de escritura en REGISTROS
     if [[ ! -f "$REGISTROS" ]]; then
@@ -198,12 +204,12 @@ function crear_registro() {
     EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
-    # Agregar al REGISTROS
+    # Agregar al REGISTROS con formato exacto
     echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
     sync
 
     # Verificar escritura
-    if ! grep -q "^$USUARIO:" "$REGISTROS"; then
+    if ! grep -q "^${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" "$REGISTROS"; then
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error: Registro de '$USUARIO' no se encontró en $REGISTROS tras escritura." >> "$HISTORIAL"
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Contenido de $REGISTROS tras intento de escritura:" >> "$HISTORIAL"
         cat "$REGISTROS" >> "$HISTORIAL" 2>/dev/null
@@ -214,7 +220,7 @@ function crear_registro() {
 
     # Crear usuario
     if ! useradd -M -s /bin/false "$USUARIO"; then
-        sed -i "/^$USUARIO:/d" "$REGISTROS"
+        sed -i "/^${USUARIO}:/d" "$REGISTROS"
         sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error creando usuario '$USUARIO' en el sistema. Registro eliminado." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Error creando el usuario en el sistema.${NC}"
@@ -225,7 +231,7 @@ function crear_registro() {
     # Establecer contraseña
     if ! echo "$USUARIO:$CLAVE" | chpasswd; then
         userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^$USUARIO:/d" "$REGISTROS"
+        sed -i "/^${USUARIO}:/d" "$REGISTROS"
         sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error estableciendo contraseña para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Falló el cambio de contraseña. Registro revertido.${NC}"
@@ -236,7 +242,7 @@ function crear_registro() {
     # Configurar expiración
     if ! usermod -e "$EXPIRA_FECHA" "$USUARIO"; then
         userdel -r "$USUARIO" 2>/dev/null
-        sed -i "/^$USUARIO:/d" "$REGISTROS"
+        sed -i "/^${USUARIO}:/d" "$REGISTROS"
         sync
         echo "$(date '+%Y-%m-%d %H:%M:%S'):Error configurando expiración para '$USUARIO'. Registro y usuario eliminados." >> "$HISTORIAL"
         echo -e "${ROJO}❌ Error configurando expiración. Registro eliminado.${NC}"
@@ -261,7 +267,6 @@ function crear_registro() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
-
 
 
 
