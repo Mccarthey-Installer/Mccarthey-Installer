@@ -24,18 +24,20 @@ export PIDFILE="/var/run/mon.pid"
     REGISTROS="/root/reg.txt"
     HISTORIAL="/root/log.txt"
 
-    # Definir colores para logs (aunque no se muestren en el archivo)
+    # Colores para logs (solo para consola, no se guardan en el archivo)
     HOT_PINK='\033[38;5;198m'
     MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
 
     while true; do
+        # Verificar si existe reg.txt
         if [[ ! -f "$REGISTROS" ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): El archivo de registros '$REGISTROS' no existe." >> "$LOG"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No existe '$REGISTROS'." >> "$LOG"
             sleep "$INTERVALO"
             continue
         fi
 
+        # Crear archivos temporales
         TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || {
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$LOG"
             sleep "$INTERVALO"
@@ -57,34 +59,33 @@ export PIDFILE="/var/run/mon.pid"
 
         > "$TEMP_FILE_NEW"
 
+        # Leer reg.txt
         while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN DURATION; do
             [[ -z "$USUARIO" ]] && continue
 
+            # Verificar si el usuario existe
             if id "$USUARIO" &>/dev/null; then
+                # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
+                # Obtener límite de conexiones
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
 
+                # Verificar si el usuario está bloqueado
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
                 if [[ -z "$ESTA_BLOQUEADO" ]]; then
-                    # Controlar sesiones: mantener máximo MOVILES_NUM sesiones
-                    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
-                    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
+                    # Controlar sesiones: cerrar conexiones extras
+                    PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm= | awk '$2=="sshd"{print $1}'))
+                    PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm= | awk '$2=="dropbear"{print $1}'))
                     PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
 
-                    mapfile -t PIDS_ORDENADOS < <(for pid in "${PIDS_TODOS[@]}"; do
-                        START=$(ps -p "$pid" -o lstart= 2>/dev/null)
-                        echo "$pid:$START"
-                    done | sort -t: -k2 | awk -F: '{print $1}')
-
-                    TOTAL_CONEX=${#PIDS_ORDENADOS[@]}
-                    if (( TOTAL_CONEX > MOVILES_NUM )); then
-                        for PID in "${PIDS_ORDENADOS[@]:$MOVILES_NUM}"; do
+                    if (( ${#PIDS_TODOS[@]} > MOVILES_NUM )); then
+                        for PID in "${PIDS_TODOS[@]:$MOVILES_NUM}"; do
                             kill -9 "$PID" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada por exceso de conexiones." >> "$LOG"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada." >> "$LOG"
                         done
                     fi
                 fi
@@ -93,48 +94,56 @@ export PIDFILE="/var/run/mon.pid"
                 NEW_DURATION="0"
                 TMP_STATUS="/tmp/status_${USUARIO}.tmp"
 
-                # Estandarizar formato de timestamp con guiones bajos
-                if [[ $CONEXIONES -gt 0 && ! -f "$TMP_STATUS" ]]; then
-                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d_%H-%M-%S")
-                    echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión de '$USUARIO' iniciada en $NEW_PRIMER_LOGIN." >> "$LOG"
+                # Manejar conexiones activas y calcular duración
+                if [[ $CONEXIONES -gt 0 ]]; then
+                    if [[ ! -f "$TMP_STATUS" ]]; then
+                        # Nueva conexión: guardar timestamp
+                        NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d_%H-%M-%S")
+                        echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión de '$USUARIO' en $NEW_PRIMER_LOGIN." >> "$LOG"
+                    fi
+                    # Calcular duración de conexión activa
+                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
+                    if [[ -n "$HORA_CONEXION" ]]; then
+                        START_SECONDS=$(date -d "${HORA_CONEXION//_/ }" +%s 2>/dev/null)
+                        CURRENT_SECONDS=$(date +%s)
+                        if [[ -n "$START_SECONDS" && -n "$CURRENT_SECONDS" ]]; then
+                            DURATION_SECONDS=$((CURRENT_SECONDS - START_SECONDS))
+                            NEW_DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado por $NEW_DURATION." >> "$LOG"
+                        else
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error calculando duración para $USUARIO." >> "$LOG"
+                            NEW_DURATION="0"
+                        fi
+                    fi
                 elif [[ $CONEXIONES -eq 0 && -f "$TMP_STATUS" ]]; then
+                    # Conexión terminada: calcular duración y guardar en historial
                     HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
                     if [[ -n "$HORA_CONEXION" ]]; then
                         HORA_DESCONEXION=$(date +"%Y-%m-%d_%H-%M-%S")
-                        # Calcular duración de la conexión terminada
                         START_SECONDS=$(date -d "${HORA_CONEXION//_/ }" +%s 2>/dev/null)
                         END_SECONDS=$(date -d "${HORA_DESCONEXION//_/ }" +%s 2>/dev/null)
-                        DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
-                        DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
-                        echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión de '$USUARIO' finalizada. Duración: $DURATION." >> "$LOG"
+                        if [[ -n "$START_SECONDS" && -n "$END_SECONDS" ]]; then
+                            DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
+                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
+                            echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión de '$USUARIO' terminada. Duración: $DURATION." >> "$LOG"
+                        fi
                     fi
                     rm -f "$TMP_STATUS" 2>/dev/null
                     NEW_PRIMER_LOGIN=""
                     NEW_DURATION="0"
                 fi
 
-                # Calcular duración para conexiones activas
-                if [[ $CONEXIONES -gt 0 && -f "$TMP_STATUS" ]]; then
-                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
-                    if [[ -n "$HORA_CONEXION" ]]; then
-                        START_SECONDS=$(date -d "${HORA_CONEXION//_/ }" +%s 2>/dev/null)
-                        CURRENT_SECONDS=$(date +%s)
-                        DURATION_SECONDS=$((CURRENT_SECONDS - START_SECONDS))
-                        NEW_DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado por $NEW_DURATION." >> "$LOG"
-                    fi
-                fi
-
-                # Guardar en el archivo temporal con el nuevo campo DURATION
+                # Guardar en el archivo temporal con el campo DURATION
                 echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}:${NEW_DURATION}" >> "$TEMP_FILE_NEW"
             else
-                # Si el usuario no existe, mantener los valores originales
+                # Si el usuario no existe, mantener valores originales
                 echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${PRIMER_LOGIN}:${DURATION:-0}" >> "$TEMP_FILE_NEW"
             fi
         done < "$TEMP_FILE"
 
+        # Reemplazar reg.txt
         mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null && sync || {
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Error reemplazando $REGISTROS." >> "$LOG"
             rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"
