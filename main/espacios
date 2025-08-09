@@ -146,18 +146,21 @@ function barra_sistema() {
 
         > "$TEMP_FILE_NEW"
 
-        # Leer línea con 7 campos ahora: USUARIO CLAVE EXPIRA DURACION MOVILES FECHA_CREACION PRIMER_LOGIN
-        while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES FECHA_CREACION PRIMER_LOGIN; do
+        while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
             if id "$USUARIO" &>/dev/null; then
+                # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
+                # Extraer número de móviles permitido
                 MOVILES_NUM=$(echo "$MOVILES" | grep -oE '[0-9]+' || echo "1")
 
+                # Verificar si el usuario está bloqueado en /etc/shadow
                 ESTA_BLOQUEADO=$(grep "^$USUARIO:!" /etc/shadow)
 
                 if [[ -z "$ESTA_BLOQUEADO" ]]; then
+                    # Control de sesiones: mantener las conexiones más antiguas
                     PIDS_SSHD=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="sshd"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
                     PIDS_DROPBEAR=($(ps -u "$USUARIO" -o pid=,comm=,lstart= | awk '$2=="dropbear"{print $1 ":" $3" "$4" "$5" "$6" "$7}' | sort -t: -k2 | awk -F: '{print $1}'))
                     PIDS_TODOS=("${PIDS_SSHD[@]}" "${PIDS_DROPBEAR[@]}")
@@ -175,16 +178,16 @@ function barra_sistema() {
                     fi
                 fi
 
+                # Preservar PRIMER_LOGIN (fecha de creación) si ya existe
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
-                if [[ $CONEXIONES -gt 0 && -z "$PRIMER_LOGIN" ]]; then
+                if [[ -z "$PRIMER_LOGIN" ]]; then
+                    # Si PRIMER_LOGIN está vacío, establecerlo como la fecha de creación (solo la primera vez)
                     NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                elif [[ $CONEXIONES -eq 0 && -n "$PRIMER_LOGIN" ]]; then
-                    NEW_PRIMER_LOGIN=""
                 fi
 
-                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${FECHA_CREACION}:${NEW_PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
+                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
             else
-                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${FECHA_CREACION}:${PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
+                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
             fi
         done < "$TEMP_FILE"
 
@@ -197,7 +200,7 @@ function barra_sistema() {
 
         rm -f "$TEMP_FILE"
 
-        while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES FECHA_CREACION PRIMER_LOGIN; do
+        while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
             TMP_STATUS="/tmp/status_${USUARIO}.tmp"
             CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
             CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
@@ -210,8 +213,8 @@ function barra_sistema() {
             else
                 if [[ -f "$TMP_STATUS" ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS")
-                    HORA_DESCONECCION=$(date +"%Y-%m-%d %H:%M:%S")
-                    echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONECCION" >> "$HISTORIAL"
+                    HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
+                    echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION" >> "$HISTORIAL"
                     rm -f "$TMP_STATUS"
                 fi
             fi
@@ -220,7 +223,6 @@ function barra_sistema() {
         sleep "$INTERVALO"
     done
 }
-
 
 
 
