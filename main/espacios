@@ -46,7 +46,7 @@ function mini_registro() {
     # Encabezado
     printf "${PASTEL_BLUE}%-12s ${LILAC}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
         "👤 Nombre" "🔑 Contraseña" "$(center_value '⏳ Días' 10)" "📱 Móviles"
-    echo -e "${LILAC}--------------------------------------------${NC"
+    echo -e "${LILAC}--------------------------------------------${NC}"
 
     contador=0
     while IFS=':' read -r usuario clave expira dias moviles creado; do
