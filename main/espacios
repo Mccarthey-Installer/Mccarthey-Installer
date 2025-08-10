@@ -778,11 +778,11 @@ function mini_registro() {
     
 
     
-
-    function crear_registro() {
+function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
 
+    # Definir rutas explícitamente
     REGISTROS="/root/reg.txt"
     HISTORIAL="/root/log.txt"
 
@@ -832,7 +832,7 @@ function mini_registro() {
         return 1
     fi
 
-    # Agregar /bin/false a /etc/shells si no existe
+    # Agregar /bin/false a /etc/shells si no existe (necesario para logins con Dropbear/SSH tunneling)
     if ! grep -q '^/bin/false$' /etc/shells; then
         echo "/bin/false" >> /etc/shells
         echo "$(date '+%Y-%m-%d %H:%M:%S'):/bin/false agregado a /etc/shells para permitir conexiones." >> "$HISTORIAL"
@@ -871,14 +871,14 @@ function mini_registro() {
         echo -e "${ROJO}❌ Ingresa un número entre 1 y 999.${NC}"
     done
 
-    # Calcular fechas
+    # Calcular fechas con ajuste para expiración a medianoche siguiente
     DIAS_EXPIRACION=$(( DIAS == 0 ? 1 : DIAS + 1 ))
     FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
     EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
-    # Escribir en REGISTROS sin comillas y sin debug
-    printf '%s\n' "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
+    # Agregar al REGISTROS
+    echo "${USUARIO}:${CLAVE}:${FECHA_FORMAT}:${DIAS} días:${MOVILES}:${FECHA_CREACION}" >> "$REGISTROS"
     sync
 
     # Verificar escritura
@@ -926,8 +926,8 @@ function mini_registro() {
     # Registrar acción en HISTORIAL
     echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
 
-    # Mostrar resultado final
-    FECHA_CREACION_DISPLAY="$FECHA_CREACION"
+    # Mostrar resultado final (corregir visualización de FECHA_CREACION)
+    FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | sed 's/_/ /')
     echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
     echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
     echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
@@ -942,7 +942,10 @@ function mini_registro() {
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
 
+    
 
+    
+    
 
 
 
