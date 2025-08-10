@@ -148,7 +148,9 @@ ver_registros() {
             clave=${user_data#*:}
             dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
             fecha_creacion="$fecha_creacion1 $fecha_creacion2"
-            printf "%-2s %-11s %-10s %-16s %-8s %-8s\n" "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias_restantes" "$moviles"
+            # Convertir fecha_expiracion a formato bonito en español para mostrar
+            fecha_exp_en_esp=$(LC_ALL=es_ES.UTF-8 date -d "$fecha_expiracion" "+%d/%B/%Y")
+            printf "%-2s %-11s %-10s %-16s %-8s %-8s\n" "$count" "$usuario" "$clave" "$fecha_exp_en_esp" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
     fi
