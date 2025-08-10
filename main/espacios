@@ -12,6 +12,7 @@ export PIDFILE="/var/run/mon.pid"
 
     
 
+    
     function crear_registro() {
     clear
     echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
@@ -108,7 +109,7 @@ export PIDFILE="/var/run/mon.pid"
     # Calcular fechas con ajuste para expiración a medianoche siguiente
     DIAS_EXPIRACION=$(( DIAS == 0 ? 1 : DIAS + 1 ))
     FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
-    FECHA_CREACION_FILE=$(echo "$FECHA_CREACION" | tr ' ' '_')  # Reemplazar espacios por guiones bajos
+    FECHA_CREACION_FILE=$(date +"%Y-%m-%d_%H%M%S")  # Formato sin dos puntos: YYYY-MM-DD_HHMMSS
     EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}' | sed 's/\/*$//')
 
@@ -196,8 +197,8 @@ function monitorear_conexiones() {
             [[ -z "$USUARIO" ]] && continue
             # Limpiar barras adicionales en EXPIRA
             EXPIRA=$(echo "$EXPIRA" | sed 's/\/*$//')
-            # Convertir PRIMER_LOGIN al formato con espacios para cálculos
-            PRIMER_LOGIN=$(echo "$PRIMER_LOGIN" | tr '_' ' ')
+            # Convertir PRIMER_LOGIN al formato con espacios y dos puntos para cálculos
+            PRIMER_LOGIN=$(echo "$PRIMER_LOGIN" | sed 's/_/ /; s/\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)$/\1:\2:\3/')
 
             if id "$USUARIO" &>/dev/null; then
                 CONEXIONES=$(( $(ps -u "$USUARIO" -o comm= | grep -c "^sshd$") + $(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$") ))
@@ -253,8 +254,8 @@ function monitorear_conexiones() {
                     DURACION_CONECTADO=""
                 fi
 
-                # Convertir NEW_PRIMER_LOGIN a formato con guiones bajos para escribir en reg.txt
-                NEW_PRIMER_LOGIN_FILE=$(echo "$NEW_PRIMER_LOGIN" | tr ' ' '_')
+                # Convertir NEW_PRIMER_LOGIN a formato sin dos puntos para escribir en reg.txt
+                NEW_PRIMER_LOGIN_FILE=$(echo "$NEW_PRIMER_LOGIN" | sed 's/ /_/; s/:\([0-9][0-9]\):\([0-9][0-9]\)$/_\1\2/')
                 if [[ -n "$NEW_PRIMER_LOGIN" && -n "$DURACION_CONECTADO" ]]; then
                     echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN_FILE}|${DURACION_CONECTADO}" >> "$TEMP_FILE_NEW"
                 else
@@ -262,8 +263,8 @@ function monitorear_conexiones() {
                 fi
 
             else
-                # Mantener PRIMER_LOGIN en formato con guiones bajos
-                PRIMER_LOGIN_FILE=$(echo "$PRIMER_LOGIN" | tr ' ' '_')
+                # Mantener PRIMER_LOGIN en formato sin dos puntos
+                PRIMER_LOGIN_FILE=$(echo "$PRIMER_LOGIN" | sed 's/ /_/; s/:\([0-9][0-9]\):\([0-9][0-9]\)$/_\1\2/')
                 echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${PRIMER_LOGIN_FILE}" >> "$TEMP_FILE_NEW"
             fi
         done < "$TEMP_FILE"
@@ -273,8 +274,6 @@ function monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-
-                
 
   function verificar_online() {
     clear
@@ -531,7 +530,7 @@ function barra_sistema() {
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🤔🤔 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}🤔💫 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
