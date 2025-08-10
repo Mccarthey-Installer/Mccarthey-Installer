@@ -37,6 +37,8 @@ function monitorear_conexiones() {
                 fi
 
                 NEW_PRIMER_LOGIN="$PRIMER_LOGIN"
+                DURACION_CONECTADO=""
+
                 TMP_STATUS="/tmp/status_${USUARIO}.tmp"
 
                 if [[ $CONEXIONES -gt 0 ]]; then
@@ -45,6 +47,18 @@ function monitorear_conexiones() {
                         echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado en $NEW_PRIMER_LOGIN." >> "$LOG"
                     fi
+
+                    # Calcular duración en vivo
+                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null || echo "$NEW_PRIMER_LOGIN")
+                    if [[ -n "$HORA_CONEXION" ]]; then
+                        START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                        NOW_SECONDS=$(date +%s)
+                        if [[ -n "$START_SECONDS" ]]; then
+                            DURATION_SECONDS=$(( NOW_SECONDS - START_SECONDS ))
+                            DURACION_CONECTADO=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
+                        fi
+                    fi
+
                 elif [[ -n "$PRIMER_LOGIN" || -f "$TMP_STATUS" ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null || echo "$PRIMER_LOGIN")
                     if [[ -n "$HORA_CONEXION" ]]; then
@@ -53,16 +67,22 @@ function monitorear_conexiones() {
                         END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
                         if [[ -n "$START_SECONDS" && -n "$END_SECONDS" ]]; then
                             DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
-                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
+                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
                             echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desconectado. Duración: $DURATION." >> "$LOG"
                         fi
                     fi
                     rm -f "$TMP_STATUS" 2>/dev/null
                     NEW_PRIMER_LOGIN=""
+                    DURACION_CONECTADO=""
                 fi
 
-                echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
+                if [[ -n "$NEW_PRIMER_LOGIN" && -n "$DURACION_CONECTADO" ]]; then
+                    echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}|${DURACION_CONECTADO}" >> "$TEMP_FILE_NEW"
+                else
+                    echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${NEW_PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
+                fi
+
             else
                 echo "${USUARIO}:${CLAVE}:${EXPIRA}:${DURACION}:${MOVILES}:${PRIMER_LOGIN}" >> "$TEMP_FILE_NEW"
             fi
