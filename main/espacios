@@ -71,14 +71,23 @@ export PIDFILE="/var/run/mon.pid"
                 if [[ -z "$fecha_creacion_secs" ]]; then
                     fecha_creacion_secs=$(date +%s)
                     CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
-                    sed -i "s/^${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:.*/${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:${CREADO}/" "$REGISTROS"
+
+                    # Escapar variables para sed
+                    safe_user=$(printf '%s' "$USUARIO" | sed 's/[\/&|]/\\&/g')
+                    safe_clave=$(printf '%s' "$CLAVE" | sed 's/[\/&|]/\\&/g')
+                    safe_expira=$(printf '%s' "$EXPIRA" | sed 's/[\/&|]/\\&/g')
+                    safe_dias=$(printf '%s' "$DIAS" | sed 's/[\/&|]/\\&/g')
+                    safe_moviles=$(printf '%s' "$MOVILES" | sed 's/[\/&|]/\\&/g')
+                    safe_creado=$(printf '%s' "$CREADO" | sed 's/[\/&|]/\\&/g')
+
+                    sed -i "s|^${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:.*|${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:${safe_creado}|" "$REGISTROS"
                     sync
                 fi
 
                 # Calcular días transcurridos
                 dias_transcurridos=$(( (ahora_secs - fecha_creacion_secs) / 86400 ))
 
-                # Si ya pasó el corte hoy y el usuario fue creado antes o en el corte → descontar día
+                # Si ya pasó el corte hoy y el usuario fue creado antes o en el corte → sumar día
                 if (( ahora_secs >= corte_hoy_secs && fecha_creacion_secs <= corte_hoy_secs )); then
                     dias_transcurridos=$((dias_transcurridos + 1))
                 fi
@@ -89,7 +98,16 @@ export PIDFILE="/var/run/mon.pid"
             else
                 DIAS_RESTANTES="$DIAS_NUM"
                 CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
-                sed -i "s/^${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:.*/${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:${CREADO}/" "$REGISTROS"
+
+                # Escapar variables para sed
+                safe_user=$(printf '%s' "$USUARIO" | sed 's/[\/&|]/\\&/g')
+                safe_clave=$(printf '%s' "$CLAVE" | sed 's/[\/&|]/\\&/g')
+                safe_expira=$(printf '%s' "$EXPIRA" | sed 's/[\/&|]/\\&/g')
+                safe_dias=$(printf '%s' "$DIAS" | sed 's/[\/&|]/\\&/g')
+                safe_moviles=$(printf '%s' "$MOVILES" | sed 's/[\/&|]/\\&/g')
+                safe_creado=$(printf '%s' "$CREADO" | sed 's/[\/&|]/\\&/g')
+
+                sed -i "s|^${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:.*|${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:${safe_creado}|" "$REGISTROS"
                 sync
             fi
 
@@ -107,9 +125,9 @@ export PIDFILE="/var/run/mon.pid"
     fi
 
     echo -e "${LILAC}=====================${NC}"
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona\ Enter\ para\ continuar...\ ✨${NC})"
+    read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
 }
-    
+
 function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
