@@ -14,29 +14,11 @@ function monitorear_conexiones() {
     INTERVALO=5
 
     while true; do
-        [[ ! -f "$REGISTROS" ]] && { 
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." | tee -a "$LOG"
-            sleep "$INTERVALO"
-            continue
-        }
+        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
 
-        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { 
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal." | tee -a "$LOG"
-            sleep "$INTERVALO"
-            continue
-        }
-        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { 
-            rm -f "$TEMP_FILE"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal nuevo." | tee -a "$LOG"
-            sleep "$INTERVALO"
-            continue
-        }
-        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { 
-            rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." | tee -a "$LOG"
-            sleep "$INTERVALO"
-            continue
-        }
+        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
         while IFS=':' read -r USUARIO CLAVE EXPIRA DURACION MOVILES PRIMER_LOGIN; do
@@ -50,7 +32,7 @@ function monitorear_conexiones() {
                     PIDS=($(ps -u "$USUARIO" -o pid=,comm= | awk '$2=="sshd" || $2=="dropbear"{print $1}' | tail -n +$((MOVILES_NUM+1))))
                     for PID in "${PIDS[@]}"; do
                         kill -9 "$PID" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada." | tee -a "$LOG"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$USUARIO' (PID $PID) cerrada." >> "$LOG"
                     done
                 fi
 
@@ -61,20 +43,7 @@ function monitorear_conexiones() {
                     if [[ -z "$PRIMER_LOGIN" || ! -f "$TMP_STATUS" ]]; then
                         NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
                         echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado en $NEW_PRIMER_LOGIN." | tee -a "$LOG"
-                    else
-                        # Calcular tiempo conectado en vivo
-                        HORA_CONEXION=$(cat "$TMP_STATUS")
-                        START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
-                        NOW_SECONDS=$(date +%s)
-                        if [[ -n "$START_SECONDS" ]]; then
-                            DURATION_SECONDS=$((NOW_SECONDS - START_SECONDS))
-                            TIEMPO_ONLINE=$(printf '%02d:%02d:%02d' \
-                                $((DURATION_SECONDS/3600)) \
-                                $(((DURATION_SECONDS%3600)/60)) \
-                                $((DURATION_SECONDS%60)))
-                            echo "$(date '+%H:%M:%S'): $USUARIO ONLINE desde $HORA_CONEXION | Tiempo conectado: $TIEMPO_ONLINE" | tee -a "$LOG"
-                        fi
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado en $NEW_PRIMER_LOGIN." >> "$LOG"
                     fi
                 elif [[ -n "$PRIMER_LOGIN" || -f "$TMP_STATUS" ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null || echo "$PRIMER_LOGIN")
@@ -84,12 +53,9 @@ function monitorear_conexiones() {
                         END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
                         if [[ -n "$START_SECONDS" && -n "$END_SECONDS" ]]; then
                             DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
-                            DURATION=$(printf '%02d:%02d:%02d' \
-                                $((DURATION_SECONDS/3600)) \
-                                $(((DURATION_SECONDS%3600)/60)) \
-                                $((DURATION_SECONDS%60)))
+                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(( (DURATION_SECONDS%3600)/60 )) $((DURATION_SECONDS%60)))
                             echo "$USUARIO|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desconectado. Duración: $DURATION." | tee -a "$LOG"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO desconectado. Duración: $DURATION." >> "$LOG"
                         fi
                     fi
                     rm -f "$TMP_STATUS" 2>/dev/null
@@ -102,12 +68,7 @@ function monitorear_conexiones() {
             fi
         done < "$TEMP_FILE"
 
-        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null && sync || { 
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error reemplazando $REGISTROS." | tee -a "$LOG"
-            rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"
-            sleep "$INTERVALO"
-            continue
-        }
+        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null && sync || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error reemplazando $REGISTROS." >> "$LOG"; rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; sleep "$INTERVALO"; continue; }
         rm -f "$TEMP_FILE" 2>/dev/null
         sleep "$INTERVALO"
     done
