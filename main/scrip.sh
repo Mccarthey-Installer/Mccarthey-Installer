@@ -19,35 +19,30 @@ calcular_expiracion() {
 calcular_dias_restantes() {
     local fecha_expiracion="$1"
 
-    # Extraer día, mes y año igual que antes
     local dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
     local mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
     local anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
 
-    # Convertir mes en español a inglés
+    # Convertir mes español a número
     case $mes in
-        "enero") mes="January" ;;
-        "febrero") mes="February" ;;
-        "marzo") mes="March" ;;
-        "abril") mes="April" ;;
-        "mayo") mes="May" ;;
-        "junio") mes="June" ;;
-        "julio") mes="July" ;;
-        "agosto") mes="August" ;;
-        "septiembre") mes="September" ;;
-        "octubre") mes="October" ;;
-        "noviembre") mes="November" ;;
-        "diciembre") mes="December" ;;
+        "enero") mes_num="01" ;;
+        "febrero") mes_num="02" ;;
+        "marzo") mes_num="03" ;;
+        "abril") mes_num="04" ;;
+        "mayo") mes_num="05" ;;
+        "junio") mes_num="06" ;;
+        "julio") mes_num="07" ;;
+        "agosto") mes_num="08" ;;
+        "septiembre") mes_num="09" ;;
+        "octubre") mes_num="10" ;;
+        "noviembre") mes_num="11" ;;
+        "diciembre") mes_num="12" ;;
         *) echo 0; return ;;
     esac
 
-    # Convertir fecha expiracion a formato YYYY-MM-DD (sin hora)
-    local fecha_formateada="$anio-$(date -d "$mes" +%m)-$dia"
-
-    # Fecha actual en YYYY-MM-DD
+    local fecha_formateada="$anio-$mes_num-$dia"
     local fecha_actual=$(date "+%Y-%m-%d")
 
-    # Convertir fechas a segundos epoch (mediante fecha a medianoche)
     local fecha_exp_epoch=$(date -d "$fecha_formateada" "+%s" 2>/dev/null)
     local fecha_act_epoch=$(date -d "$fecha_actual" "+%s")
 
@@ -56,7 +51,6 @@ calcular_dias_restantes() {
         return
     fi
 
-    # Diferencia en días completos
     local diff_segundos=$((fecha_exp_epoch - fecha_act_epoch))
     local dias_restantes=$((diff_segundos / 86400))
 
