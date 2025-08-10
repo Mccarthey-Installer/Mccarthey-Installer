@@ -16,10 +16,17 @@ calcular_expiracion() {
     date -d "+$dias days" +"%Y-%m-%d %H:%M:%S"
 }
 
-# Función para formatear fecha a formato legible
+# Función para formatear fecha a español (dd/mes/yyyy)
 formato_fecha() {
     local fecha=$1
-    date -d "$fecha" +"%d/%B/%Y"
+    # Lista de meses en español
+    meses=("enero" "febrero" "marzo" "abril" "mayo" "junio" "julio" "agosto" "septiembre" "octubre" "noviembre" "diciembre")
+    dia=$(date -d "$fecha" +"%d")
+    mes=$(date -d "$fecha" +"%m")
+    anio=$(date -d "$fecha" +"%Y")
+    # Convertir mes numérico a texto (restamos 1 porque los índices en bash comienzan en 0)
+    mes_index=$((10#$mes - 1))
+    echo "$dia/${meses[$mes_index]}/$anio"
 }
 
 # Función para crear un usuario
@@ -34,6 +41,13 @@ crear_usuario() {
     # Validar que el usuario no exista
     if id "$username" >/dev/null 2>&1; then
         echo -e "${RED}Error: El usuario $username ya existe.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Validar que los días y móviles sean números
+    if ! [[ "$dias" =~ ^[0-9]+$ ]] || ! [[ "$moviles" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}Error: Los días y móviles deben ser números enteros.${NC}"
         read -p "Presiona Enter para continuar..."
         return
     fi
@@ -68,7 +82,7 @@ crear_usuario() {
 ver_registros() {
     clear
     echo -e "${GREEN}===== 🌸 REGISTROS =====${NC}"
-    echo "Nº 👩 Usuario 🔒 Clave   📅 Expira    ⏳ Días   📲 Móviles"
+    echo "Nº 👩 Usuario 🔒 Clave   📅 Expira          ⏳ Días   📲 Móviles"
     echo "---------------------------------------------------------------"
     
     if [[ ! -f "$REGISTRO_FILE" ]] || [[ ! -s "$REGISTRO_FILE" ]]; then
@@ -80,7 +94,11 @@ ver_registros() {
     # Leer el archivo de registros
     count=1
     while IFS=':' read -r user pass expira dias moviles creado; do
-        printf "%-2s %-12s %-12s %-12s %-8s %s\n" "$count" "$user" "$pass" "$(formato_fecha "$expira")" "$dias" "$moviles"
+        # Validar que los campos no estén vacíos o corruptos
+        if [[ -z "$user" ]] || [[ -z "$pass" ]] || [[ -z "$expira" ]] || [[ -z "$dias" ]] || [[ -z "$moviles" ]] || [[ -z "$creado" ]]; then
+            continue
+        fi
+        printf "%-2s %-12s %-12s %-18s %-10s %s\n" "$count" "$user" "$pass" "$(formato_fecha "$expira")" "$dias" "$moviles"
         ((count++))
     done < "$REGISTRO_FILE"
     
@@ -106,6 +124,9 @@ eliminar_usuario() {
     echo "-----------------"
     count=1
     while IFS=':' read -r user pass expira dias moviles creado; do
+        if [[ -z "$user" ]]; then
+            continue
+        fi
         printf "%-2s %s\n" "$count" "$user"
         ((count++))
     done < "$REGISTRO_FILE"
