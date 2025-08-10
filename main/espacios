@@ -863,7 +863,7 @@ function mini_registro() {
 
     # Calcular fechas con ajuste para expiración a medianoche siguiente
     DIAS_EXPIRACION=$(( DIAS == 0 ? 1 : DIAS + 1 ))
-    FECHA_CREACION=$(date +"%Y-%m-%d_%H-%M-%S")
+    FECHA_CREACION=$(date +"%Y-%m-%d %H:%M:%S")
     EXPIRA_FECHA=$(date -d "+$DIAS_EXPIRACION days" +"%Y-%m-%d")
     FECHA_FORMAT=$(date -d "+$DIAS days" +"%d/%B/%Y" | awk '{print $1 "/" tolower($2) "/" $3}')
 
