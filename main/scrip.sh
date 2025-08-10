@@ -17,6 +17,28 @@ calcular_expiracion() {
     echo $fecha_expiracion
 }
 
+# Función para calcular días restantes
+calcular_dias_restantes() {
+    local fecha_expiracion=$1
+    local dias_originales=$2
+    local fecha_actual=$(date "+%s")
+    local fecha_exp_epoch=$(date -d "$fecha_expiracion" "+%s")
+    local diff_segundos=$((fecha_exp_epoch - fecha_actual))
+    local dias_restantes=$((diff_segundos / 86400)) # 86400 segundos = 1 día
+
+    # Si la hora actual es después de las 00:00 del día siguiente, restar un día
+    local hora_actual=$(date "+%H:%M:%S")
+    if [[ $hora_actual > "00:00:00" && $dias_restantes -eq $dias_originales ]]; then
+        dias_restantes=$((dias_restantes - 1))
+    fi
+
+    # Asegurar que no sea negativo
+    if [ $dias_restantes -lt 0 ]; then
+        dias_restantes=0
+    fi
+    echo $dias_restantes
+}
+
 # Función para crear usuario
 crear_usuario() {
     clear
@@ -61,8 +83,8 @@ crear_usuario() {
         return
     fi
 
-    # Configurar fecha de expiración en el sistema
-    fecha_expiracion_sistema=$(date -d "+$dias days" "+%Y-%m-%d")
+    # Configurar fecha de expiración en el sistema (a las 00:00 del día siguiente al último día)
+    fecha_expiracion_sistema=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
     if ! chage -E "$fecha_expiracion_sistema" "$usuario" 2>/dev/null; then
         echo "❌ Error al establecer la fecha de expiración."
         userdel "$usuario" 2>/dev/null
@@ -107,7 +129,8 @@ ver_registros() {
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
-            printf "%-2s %-11s %-10s %-16s %-8s %-8s\n" "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias" "$moviles"
+            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
+            printf "%-2s %-11s %-10s %-16s %-8s %-8s\n" "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
     fi
