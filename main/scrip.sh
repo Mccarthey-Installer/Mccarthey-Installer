@@ -19,10 +19,12 @@ calcular_expiracion() {
 # Función para formatear fecha a español (dd/mes/yyyy)
 formato_fecha() {
     local fecha=$1
+    # Lista de meses en español
     meses=("enero" "febrero" "marzo" "abril" "mayo" "junio" "julio" "agosto" "septiembre" "octubre" "noviembre" "diciembre")
     dia=$(date -d "$fecha" +"%d")
     mes=$(date -d "$fecha" +"%m")
     anio=$(date -d "$fecha" +"%Y")
+    # Convertir mes numérico a texto (restamos 1 porque los índices en bash comienzan en 0)
     mes_index=$((10#$mes - 1))
     echo "$dia/${meses[$mes_index]}/$anio"
 }
@@ -36,26 +38,32 @@ crear_usuario() {
     read -p "📅 Días de validez: " dias
     read -p "📱 ¿Cuántos móviles? " moviles
 
+    # Validar que el usuario no exista
     if id "$username" >/dev/null 2>&1; then
         echo -e "${RED}Error: El usuario $username ya existe.${NC}"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
+    # Validar que los días y móviles sean números
     if ! [[ "$dias" =~ ^[0-9]+$ ]] || ! [[ "$moviles" =~ ^[0-9]+$ ]]; then
         echo -e "${RED}Error: Los días y móviles deben ser números enteros.${NC}"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
+    # Crear usuario en el sistema
     useradd -M -s /bin/false "$username"
     echo "$username:$password" | chpasswd
 
+    # Calcular fecha de creación y expiración
     fecha_creacion=$(date +"%Y-%m-%d %H:%M:%S")
     fecha_expiracion=$(calcular_expiracion $dias)
 
+    # Guardar en el archivo de registro
     echo "$username:$password:$fecha_expiracion:$dias:$moviles:$fecha_creacion" >> "$REGISTRO_FILE"
 
+    # Mostrar información del usuario creado
     echo -e "${GREEN}✅ Usuario creado correctamente:${NC}"
     echo "👤 Usuario: $username"
     echo "🔑 Clave: $password"
@@ -63,121 +71,121 @@ crear_usuario() {
     echo "📱 Límite móviles: $moviles"
     echo "📅 Creado: $fecha_creacion"
     echo -e "${YELLOW}===== 📝 RESUMEN DE REGISTRO =====${NC}"
-    echo "👤 Usuario    📅 Expira          ⏳  Días       📱 Móviles   📅 Creado"
+    echo "👤 Usuario    📅 Expira          ⏳ Días       📱 Móviles   📅 Creado"
     echo "---------------------------------------------------------------"
     printf "%-12s %-20s %-12s %-12s %s\n" "$username:$password" "$(formato_fecha "$fecha_expiracion")" "$dias días" "$moviles" "$fecha_creacion"
     echo "==============================================================="
     read -p "Presiona Enter para continuar..."
 }
 
-# Función para ver registros (corrigiendo días y móviles)
+# Función para ver registros
 ver_registros() {
     clear
     echo -e "${GREEN}===== 🌸 REGISTROS =====${NC}"
-    echo "Nº 👩 Usuario 🔒 Clave   📅 Expira          ⏳  Días   📲 Móviles"
+    echo "Nº 👩 Usuario 🔒 Clave   📅 Expira          ⏳ Días   📲 Móviles"
     echo "---------------------------------------------------------------"
-
+    
     if [[ ! -f "$REGISTRO_FILE" ]] || [[ ! -s "$REGISTRO_FILE" ]]; then
         echo -e "${RED}No hay usuarios registrados.${NC}"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
+    # Leer el archivo de registros
     count=1
     while IFS=':' read -r user pass expira dias moviles creado; do
-        if [[ -z "$user" || -z "$pass" || -z "$expira" || -z "$dias" || -z "$moviles" || -z "$creado" ]]; then
+        # Validar que los campos no estén vacíos o corruptos
+        if [[ -z "$user" ]] || [[ -z "$pass" ]] || [[ -z "$expira" ]] || [[ -z "$dias" ]] || [[ -z "$moviles" ]] || [[ -z "$creado" ]]; then
             continue
         fi
-        # Eliminar ceros a la izquierda de días y móviles
-        dias_sin_ceros=$((10#$dias))
-        moviles_sin_ceros=$((10#$moviles))
-        printf "%-2s %-12s %-12s %-18s %-10s %s\n" "$count" "$user" "$pass" "$(formato_fecha "$expira")" "$dias_sin_ceros" "$moviles_sin_ceros"
+        # Asegurar que días y móviles se muestren correctamente
+        printf "%-2s %-12s %-12s %-18s %-10s %s\n" "$count" "$user" "$pass" "$(formato_fecha "$expira")" "$dias días" "$moviles"
         ((count++))
     done < "$REGISTRO_FILE"
-
+    
     echo "---------------------------------------------------------------"
     read -p "Presiona Enter para continuar..."
 }
 
-# Función que cierra las sesiones activas de un usuario con loginctl
-cerrar_sesiones_activa() {
-    local user=$1
-    # Listar sesiones activas del usuario
-    sessions=$(loginctl list-sessions --no-legend | awk '{print $1,$3}' | grep -w "$user" | awk '{print $1}')
-    for session in $sessions; do
-        loginctl terminate-session "$session"
-    done
-}
-
-# Función mejorada para eliminar usuarios, acepta múltiples nombres o números separados por espacios.
+# Función para eliminar usuario
 eliminar_usuario() {
     clear
     echo -e "${GREEN}===== 🗑️ ELIMINAR USUARIO SSH =====${NC}"
-
+    
+    # Verificar si hay usuarios registrados
     if [[ ! -f "$REGISTRO_FILE" ]] || [[ ! -s "$REGISTRO_FILE" ]]; then
         echo -e "${RED}No hay usuarios registrados para eliminar.${NC}"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
+    # Mostrar lista de usuarios
     echo -e "${YELLOW}Lista de usuarios registrados:${NC}"
     echo "Nº 👩 Usuario"
     echo "-----------------"
-    mapfile -t usuarios < <(cut -d':' -f1 "$REGISTRO_FILE")
     count=1
-    for u in "${usuarios[@]}"; do
-        printf "%-2s %s\n" "$count" "$u"
+    declare -A user_map
+    while IFS=':' read -r user pass expira dias moviles creado; do
+        if [[ -z "$user" ]]; then
+            continue
+        fi
+        printf "%-2s %s\n" "$count" "$user"
+        user_map[$count]="$user"
         ((count++))
-    done
+    done < "$REGISTRO_FILE"
     echo "-----------------"
 
-    read -p "👤 Nombre(s) o número(s) de usuario(s) a eliminar (separados por espacio): " -a lista_entrada
+    # Solicitar los usuarios a eliminar (nombres o números)
+    read -p "👤 Nombre(s) o número(s) del usuario a eliminar (ej: 1 2 3 o susi Elize): " input
 
-    # Crear lista de usuarios a eliminar a partir de entrada numérica o nombres
-    usuarios_a_eliminar=()
-    for item in "${lista_entrada[@]}"; do
-        if [[ "$item" =~ ^[0-9]+$ ]]; then
-            # Si el número es válido, buscar usuario por índice
-            idx=$((item - 1))
-            if (( idx >= 0 && idx < ${#usuarios[@]} )); then
-                usuarios_a_eliminar+=("${usuarios[$idx]}")
-            else
-                echo -e "${RED}Error: No existe el número de usuario $item.${NC}"
-            fi
-        else
-            # Validar que el nombre exista en usuarios
-            if [[ " ${usuarios[*]} " == *" $item "* ]]; then
-                usuarios_a_eliminar+=("$item")
-            else
-                echo -e "${RED}Error: El usuario $item no existe en el registro.${NC}"
-            fi
+    # Dividir la entrada en un arreglo
+    IFS=' ' read -r -a user_inputs <<< "$input"
+    valid_users=()
+
+    # Procesar cada entrada
+    for item in "${user_inputs[@]}"; do
+        # Verificar si es un número (índice)
+        if [[ "$item" =~ ^[0-9]+$ ]] && [[ -n "${user_map[$item]}" ]]; then
+            valid_users+=("${user_map[$item]}")
+        # Verificar si es un nombre de usuario válido
+        elif id "$item" >/dev/null 2>&1 && grep -q "^$item:" "$REGISTRO_FILE"; then
+            valid_users+=("$item")
         fi
     done
 
-    if [[ ${#usuarios_a_eliminar[@]} -eq 0 ]]; then
-        echo -e "${RED}No se seleccionaron usuarios válidos para eliminar.${NC}"
+    # Verificar si se encontraron usuarios válidos
+    if [[ ${#valid_users[@]} -eq 0 ]]; then
+        echo -e "${RED}Error: Ninguno de los usuarios o números especificados existe en el sistema.${NC}"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    for user in "${usuarios_a_eliminar[@]}"; do
-        if ! id "$user" >/dev/null 2>&1; then
-            echo -e "${YELLOW}El usuario $user no existe en el sistema, se omitirá.${NC}"
-            # Igual borrar de registro
-            grep -v "^$user:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
-            mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE"
-            continue
+    # Procesar eliminación de cada usuario válido
+    for username in "${valid_users[@]}"; do
+        # Terminar sesiones activas con loginctl
+        sessions=$(loginctl list-sessions --no-legend | grep "$username" | awk '{print $1}')
+        if [[ -n "$sessions" ]]; then
+            for session in $sessions; do
+                loginctl terminate-session "$session"
+                echo -e "${YELLOW}Sesión $session del usuario $username terminada.${NC}"
+            done
         fi
-        # Cerrar sesiones activas antes de eliminar el usuario
-        cerrar_sesiones_activa "$user"
-        # Eliminar usuario del sistema completo con su directorio (si quieres)
-        userdel -r "$user" 2>/dev/null || userdel "$user"
-        # Eliminar del registro
-        grep -v "^$user:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
+
+        # Eliminar usuario del sistema
+        userdel "$username" 2>/dev/null
+        if [[ $? -eq 0 ]]; then
+            echo -e "${GREEN}Usuario $username eliminado del sistema.${NC}"
+        else
+            echo -e "${RED}Error al eliminar el usuario $username del sistema.${NC}"
+        fi
+
+        # Eliminar usuario del archivo de registro
+        grep -v "^$username:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
         mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE"
-        echo -e "${GREEN}✅ Usuario $user eliminado correctamente.${NC}"
+        echo -e "${GREEN}Usuario $username eliminado del registro.${NC}"
     done
 
+    echo -e "${GREEN}✅ Eliminación completada.${NC}"
     read -p "Presiona Enter para continuar..."
 }
 
@@ -185,7 +193,7 @@ eliminar_usuario() {
 while true; do
     clear
     echo -e "${YELLOW}===== MENÚ SSH WEBSOCKET =====${NC}"
-    echo "1. Crear usuario"
+    echo "1. 💫Crear usuario"
     echo "2. Ver registros"
     echo "3. Eliminar usuario"
     echo "0. Salir"
