@@ -41,11 +41,13 @@ function monitorear_conexiones() {
                 TMP_STATUS="/tmp/status_${USUARIO}.tmp"
 
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
-                    echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado en $NEW_PRIMER_LOGIN." >> "$LOG"
-                elif [[ -f "$TMP_STATUS" ]]; then
-                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
+                    if [[ -z "$PRIMER_LOGIN" || ! -f "$TMP_STATUS" ]]; then
+                        NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                        echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $USUARIO conectado en $NEW_PRIMER_LOGIN." >> "$LOG"
+                    fi
+                elif [[ -n "$PRIMER_LOGIN" || -f "$TMP_STATUS" ]]; then
+                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null || echo "$PRIMER_LOGIN")
                     if [[ -n "$HORA_CONEXION" ]]; then
                         HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                         START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
