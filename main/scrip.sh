@@ -182,6 +182,141 @@ mini_registro() {
     echo "Presiona Enter para continuar... ✨"
     read
 }
+
+# Función para crear múltiples usuarios
+crear_multiples_usuarios() {
+    clear
+    echo "===== 🆕 CREAR MÚLTIPLES USUARIOS SSH ====="
+    echo "📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)"
+    echo "📋 Ejemplo: lucy 123 5 4"
+    echo "✅ Presiona Enter dos veces para confirmar."
+
+    # Array para almacenar las entradas de usuarios
+    declare -a usuarios_input
+    while true; do
+        read -r linea
+        # Si la línea está vacía y la anterior también, salir del bucle
+        if [[ -z "$linea" ]]; then
+            read -r linea_siguiente
+            if [[ -z "$linea_siguiente" ]]; then
+                break
+            else
+                usuarios_input+=("$linea" "$linea_siguiente")
+                continue
+            fi
+        fi
+        usuarios_input+=("$linea")
+    done
+
+    # Verificar si se ingresaron usuarios
+    if [ ${#usuarios_input[@]} -eq 0 ]; then
+        echo "❌ No se ingresaron usuarios."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Procesar y validar entradas
+    declare -a usuarios_validos
+    declare -a errores
+    for linea in "${usuarios_input[@]}"; do
+        # Separar los campos
+        read -r usuario clave dias moviles <<< "$linea"
+
+        # Validar que todos los campos estén presentes
+        if [[ -z "$usuario" || -z "$clave" || -z "$dias" || -z "$moviles" ]]; then
+            errores+=("Línea '$linea': Todos los campos son obligatorios.")
+            continue
+        fi
+
+        # Validar que días y móviles sean números
+        if ! [[ "$dias" =~ ^[0-9]+$ ]] || ! [[ "$moviles" =~ ^[0-9]+$ ]]; then
+            errores+=("Línea '$linea': Días y móviles deben ser números.")
+            continue
+        fi
+
+        # Verificar si el usuario ya existe en el sistema
+        if id "$usuario" >/dev/null 2>&1; then
+            errores+=("Línea '$linea': El usuario $usuario ya existe en el sistema.")
+            continue
+        fi
+
+        # Almacenar usuario válido
+        usuarios_validos+=("$usuario:$clave:$dias:$moviles")
+    done
+
+    # Mostrar errores si los hay
+    if [ ${#errores[@]} -gt 0 ]; then
+        echo "❌ Errores encontrados:"
+        for error in "${errores[@]}"; do
+            echo "$error"
+        done
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Mostrar resumen de usuarios a crear
+    echo "===== 📋 USUARIOS A CREAR ====="
+    echo "👤 Usuario    🔑 Clave      ⏳ Días       📱 Móviles"
+    echo "---------------------------------------------------------------"
+    for usuario_data in "${usuarios_validos[@]}"; do
+        IFS=':' read -r usuario clave dias moviles <<< "$usuario_data"
+        printf "%-12s %-12s %-12s %-12s\n" "$usuario" "$clave" "$dias" "$moviles"
+    done
+    echo "==============================================================="
+
+    # Confirmar creación
+    read -p "✅ ¿Confirmar creación de estos usuarios? (s/n): " confirmacion
+    if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
+        echo "❌ Creación cancelada."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Crear usuarios y registrar
+    count=0
+    for usuario_data in "${usuarios_validos[@]}"; do
+        IFS=':' read -r usuario clave dias moviles <<< "$usuario_data"
+
+        # Crear usuario en el sistema Linux
+        if ! useradd -M -s /sbin/nologin "$usuario" 2>/dev/null; then
+            echo "❌ Error al crear el usuario $usuario en el sistema."
+            continue
+        fi
+
+        # Establecer la contraseña
+        if ! echo "$usuario:$clave" | chpasswd 2>/dev/null; then
+            echo "❌ Error al establecer la contraseña para $usuario."
+            userdel "$usuario" 2>/dev/null
+            continue
+        fi
+
+        # Configurar fecha de expiración en el sistema
+        fecha_expiracion_sistema=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
+        if ! chage -E "$fecha_expiracion_sistema" "$usuario" 2>/dev/null; then
+            echo "❌ Error al establecer la fecha de expiración para $usuario."
+            userdel "$usuario" 2>/dev/null
+            continue
+        fi
+
+        # Obtener fecha actual y de expiración para registros
+        fecha_creacion=$(date "+%Y-%m-%d %H:%M:%S")
+        fecha_expiracion=$(calcular_expiracion $dias)
+
+        # Guardar en archivo de registros
+        echo "$usuario:$clave $fecha_expiracion $dias $moviles $fecha_creacion" >> $REGISTROS
+
+        # Guardar en historial
+        echo "Usuario creado: $usuario, Expira: $fecha_expiracion, Móviles: $moviles, Creado: $fecha_creacion" >> $HISTORIAL
+
+        ((count++))
+    done
+
+    # Mostrar resumen de creación
+    echo "===== 📊 RESUMEN DE CREACIÓN ====="
+    echo "✅ Usuarios creados exitosamente: $count"
+    echo "Presiona Enter para continuar... ✨"
+    read
+}
 # Menú principal
 while true; do
     clear
@@ -189,6 +324,7 @@ while true; do
     echo "1. Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
+    echo "4. Crear múltiples usuarios"
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
@@ -201,6 +337,9 @@ while true; do
             ;;
         3)
             mini_registro
+            ;;
+        4)
+            crear_multiples_usuarios
             ;;
         0)
             echo "Saliendo..."
