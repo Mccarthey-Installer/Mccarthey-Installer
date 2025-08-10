@@ -19,12 +19,10 @@ calcular_expiracion() {
 # Función para formatear fecha a español (dd/mes/yyyy)
 formato_fecha() {
     local fecha=$1
-    # Lista de meses en español
     meses=("enero" "febrero" "marzo" "abril" "mayo" "junio" "julio" "agosto" "septiembre" "octubre" "noviembre" "diciembre")
     dia=$(date -d "$fecha" +"%d")
     mes=$(date -d "$fecha" +"%m")
     anio=$(date -d "$fecha" +"%Y")
-    # Convertir mes numérico a texto (restamos 1 porque los índices en bash comienzan en 0)
     mes_index=$((10#$mes - 1))
     echo "$dia/${meses[$mes_index]}/$anio"
 }
@@ -98,7 +96,8 @@ ver_registros() {
         if [[ -z "$user" ]] || [[ -z "$pass" ]] || [[ -z "$expira" ]] || [[ -z "$dias" ]] || [[ -z "$moviles" ]] || [[ -z "$creado" ]]; then
             continue
         fi
-        printf "%-2s %-12s %-12s %-18s %-10s %s\n" "$count" "$user" "$pass" "$(formato_fecha "$expira")" "$dias" "$moviles"
+        # Mostrar días como "X días" para mantener el formato
+        printf "%-2s %-12s %-12s %-18s %-10s %s\n" "$count" "$user" "$pass" "$(formato_fecha "$expira")" "$dias días" "$moviles"
         ((count++))
     done < "$REGISTRO_FILE"
     
@@ -118,45 +117,64 @@ eliminar_usuario() {
         return
     fi
 
-    # Mostrar lista de usuarios
+    # Crear un array para mapear números a nombres de usuario
+    declare -A user_map
+    count=1
     echo -e "${YELLOW}Lista de usuarios registrados:${NC}"
     echo "Nº 👩 Usuario"
     echo "-----------------"
-    count=1
     while IFS=':' read -r user pass expira dias moviles creado; do
         if [[ -z "$user" ]]; then
             continue
         fi
         printf "%-2s %s\n" "$count" "$user"
+        user_map[$count]="$user"
         ((count++))
     done < "$REGISTRO_FILE"
     echo "-----------------"
 
-    # Solicitar el nombre del usuario a eliminar
-    read -p "👤 Nombre del usuario a eliminar: " username
+    # Solicitar los usuarios o números a eliminar
+    read -p "👤 Nombre(s) del usuario o número(s) a eliminar (ej: 1 2 3 o susi rigo): " input
 
-    # Verificar si el usuario existe en el sistema
-    if ! id "$username" >/dev/null 2>&1; then
-        echo -e "${RED}Error: El usuario $username no existe en el sistema.${NC}"
-        read -p "Presiona Enter para continuar..."
-        return
+    # Convertir la entrada en un array
+    read -ra selections <<< "$input"
+    deleted_users=()
+
+    for selection in "${selections[@]}"; do
+        # Determinar si la entrada es un número o un nombre
+        if [[ "$selection" =~ ^[0-9]+$ ]] && [[ -n "${user_map[$selection]}" ]]; then
+            username="${user_map[$selection]}"
+        else
+            username="$selection"
+        fi
+
+        # Verificar si el usuario existe en el sistema
+        if ! id "$username" >/dev/null 2>&1; then
+            echo -e "${RED}Error: El usuario $username no existe en el sistema.${NC}"
+            continue
+        fi
+
+        # Verificar si el usuario está en el registro
+        if ! grep -q "^$username:" "$REGISTRO_FILE"; then
+            echo -e "${RED}Error: El usuario $username no está en el registro.${NC}"
+            continue
+        fi
+
+        # Eliminar usuario del sistema
+        userdel "$username" 2>/dev/null
+
+        # Eliminar usuario del archivo de registro
+        grep -v "^$username:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
+        mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE"
+
+        deleted_users+=("$username")
+    done
+
+    if [[ ${#deleted_users[@]} -gt 0 ]]; then
+        echo -e "${GREEN}✅ Usuarios eliminados correctamente: ${deleted_users[*]}${NC}"
+    else
+        echo -e "${RED}No se eliminó ningún usuario.${NC}"
     fi
-
-    # Verificar si el usuario está en el registro
-    if ! grep -q "^$username:" "$REGISTRO_FILE"; then
-        echo -e "${RED}Error: El usuario $username no está en el registro.${NC}"
-        read -p "Presiona Enter para continuar..."
-        return
-    fi
-
-    # Eliminar usuario del sistema
-    userdel "$username"
-
-    # Eliminar usuario del archivo de registro
-    grep -v "^$username:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
-    mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE"
-
-    echo -e "${GREEN}✅ Usuario $username eliminado correctamente.${NC}"
     read -p "Presiona Enter para continuar..."
 }
 
