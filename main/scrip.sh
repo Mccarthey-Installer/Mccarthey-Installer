@@ -39,7 +39,38 @@ crear_usuario() {
         return
     fi
 
-    # Obtener fecha actual y de expiración
+    # Verificar si el usuario ya existe en el sistema
+    if id "$usuario" >/dev/null 2>&1; then
+        echo "❌ El usuario $usuario ya existe en el sistema."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Crear usuario en el sistema Linux
+    if ! useradd -M -s /sbin/nologin "$usuario" 2>/dev/null; then
+        echo "❌ Error al crear el usuario en el sistema."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Establecer la contraseña
+    if ! echo "$usuario:$clave" | chpasswd 2>/dev/null; then
+        echo "❌ Error al establecer la contraseña."
+        userdel "$usuario" 2>/dev/null
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Configurar fecha de expiración en el sistema
+    fecha_expiracion_sistema=$(date -d "+$dias days" "+%Y-%m-%d")
+    if ! chage -E "$fecha_expiracion_sistema" "$usuario" 2>/dev/null; then
+        echo "❌ Error al establecer la fecha de expiración."
+        userdel "$usuario" 2>/dev/null
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Obtener fecha actual y de expiración para registros
     fecha_creacion=$(date "+%Y-%m-%d %H:%M:%S")
     fecha_expiracion=$(calcular_expiracion $dias)
 
