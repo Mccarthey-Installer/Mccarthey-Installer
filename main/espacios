@@ -530,7 +530,7 @@ function barra_sistema() {
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🎉😑 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}🙄🙄 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
@@ -746,106 +746,7 @@ read
 
                 
             
-                function ver_registros() {
-    clear
-
-    # Definir colores
-    AZUL_SUAVE='\033[38;5;45m'
-    SOFT_PINK='\033[38;5;211m'
-    PASTEL_BLUE='\033[38;5;153m'
-    LILAC='\033[38;5;183m'
-    SOFT_CORAL='\033[38;5;217m'
-    HOT_PINK='\033[38;5;198m'
-    PASTEL_PURPLE='\033[38;5;189m'
-    MINT_GREEN='\033[38;5;159m'
-    NC='\033[0m'
-
-    REGISTROS="/root/reg.txt"
-
-    echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
-
-    center_value() {
-        local value="$1"
-        local width="$2"
-        local len=${#value}
-        local padding_left=$(( (width - len) / 2 ))
-        local padding_right=$(( width - len - padding_left ))
-        printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
-    }
-
-    # Hora de corte fija: 9:05 AM
-    CORTE="09:05:00"
-    corte_hoy_secs=$(date -d "$(date '+%Y-%m-%d') $CORTE" +%s)
-    ahora_secs=$(date +%s)
-
-    if [[ -f $REGISTROS ]]; then
-        printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
-            "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📲 Móviles"
-        echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
-
-        NUM=1
-        while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO EXTRA; do
-            [[ -z "$USUARIO" ]] && continue
-            [[ -z "$CLAVE" || -z "$EXPIRA" || -z "$DIAS" || -z "$MOVILES" ]] && continue
-
-            if id "$USUARIO" &>/dev/null; then
-                usuario_display="$USUARIO"
-            else
-                usuario_display="${USUARIO}${HOT_PINK}*${NC}"
-            fi
-
-            FORMATO_EXPIRA=$(echo "$EXPIRA" | awk -F'/' '{print $1 "/" $2 "/"}')
-            DIAS_NUM=$(echo "$DIAS" | grep -oE '[0-9]+')
-
-            if [[ -n "$CREADO" ]]; then
-                if [[ "$CREADO" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]]; then
-                    fecha_creacion=$(echo "$CREADO" | sed 's/_/ /; s/-/:/g')
-                    fecha_creacion_secs=$(date -d "$fecha_creacion" +%s 2>/dev/null)
-                else
-                    fecha_creacion_secs=$(date -d "$CREADO" +%s 2>/dev/null)
-                fi
-
-                if [[ -z "$fecha_creacion_secs" ]]; then
-                    fecha_creacion_secs=$(date +%s)
-                    CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
-                    sed -i "s/^${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:.*/${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:${CREADO}/" "$REGISTROS"
-                    sync
-                fi
-
-                # Calcular días transcurridos
-                dias_transcurridos=$(( (ahora_secs - fecha_creacion_secs) / 86400 ))
-
-                # Si ya pasó el corte hoy y el usuario fue creado antes o en el corte → descontar día
-                if (( ahora_secs >= corte_hoy_secs && fecha_creacion_secs <= corte_hoy_secs )); then
-                    dias_transcurridos=$((dias_transcurridos + 1))
-                fi
-
-                (( dias_transcurridos < 0 )) && dias_transcurridos=0
-                DIAS_RESTANTES=$(( DIAS_NUM - dias_transcurridos ))
-                (( DIAS_RESTANTES < 0 )) && DIAS_RESTANTES=0
-            else
-                DIAS_RESTANTES="$DIAS_NUM"
-                CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
-                sed -i "s/^${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:.*/${USUARIO}:${CLAVE}:${EXPIRA}:${DIAS}:${MOVILES}:${CREADO}/" "$REGISTROS"
-                sync
-            fi
-
-            DURACION_CENTRADA=$(center_value "$DIAS_RESTANTES" 10)
-
-            printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%-10s ${SOFT_PINK}%-12s${NC}\n" \
-                "$NUM" "$usuario_display" "$CLAVE" "$FORMATO_EXPIRA" "$DURACION_CENTRADA" "$MOVILES"
-
-            NUM=$((NUM+1))
-        done < "$REGISTROS"
-
-        [[ $NUM -eq 1 ]] && echo -e "${HOT_PINK}❌ No hay usuarios válidos.${NC}"
-    else
-        echo -e "${HOT_PINK}❌ No hay registros aún. El archivo '$REGISTROS' no existe.${NC}"
-    fi
-
-    echo -e "${LILAC}=====================${NC}"
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona\ Enter\ para\ continuar...\ ✨${NC})"
-}
+                
     
     
 function mini_registro() {
