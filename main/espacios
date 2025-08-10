@@ -530,7 +530,7 @@ function barra_sistema() {
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}😑😑 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}🎉😑 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
@@ -744,6 +744,8 @@ read
 }
         
 
+                
+            
                 function ver_registros() {
     clear
 
@@ -762,7 +764,6 @@ read
 
     echo -e "${AZUL_SUAVE}===== 🌸 REGISTROS =====${NC}"
 
-    # Función para centrar texto
     center_value() {
         local value="$1"
         local width="$2"
@@ -772,16 +773,14 @@ read
         printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
     }
 
-    # Hora de corte fija: 8:50 AM
-    CORTE="08:50:00"
+    # Hora de corte fija: 9:05 AM
+    CORTE="09:05:00"
     corte_hoy_secs=$(date -d "$(date '+%Y-%m-%d') $CORTE" +%s)
     ahora_secs=$(date +%s)
 
     if [[ -f $REGISTROS ]]; then
-        # Encabezado
         printf "${SOFT_CORAL}%-3s ${PASTEL_BLUE}%-12s ${LILAC}%-12s ${PASTEL_PURPLE}%-12s ${MINT_GREEN}%10s ${SOFT_PINK}%-12s${NC}\n" \
             "Nº" "👩 Usuario" "🔒 Clave" "📅 Expira" "$(center_value '⏳ Días' 10)" "📲 Móviles"
-
         echo -e "${LILAC}-----------------------------------------------------------------------${NC}"
 
         NUM=1
@@ -813,11 +812,11 @@ read
                     sync
                 fi
 
-                # Calcular días transcurridos normalmente
+                # Calcular días transcurridos
                 dias_transcurridos=$(( (ahora_secs - fecha_creacion_secs) / 86400 ))
 
-                # Ajuste: si ya pasamos el corte y el usuario fue creado antes del corte → restar un día ya
-                if (( ahora_secs >= corte_hoy_secs && fecha_creacion_secs < corte_hoy_secs )); then
+                # Si ya pasó el corte hoy y el usuario fue creado antes o en el corte → descontar día
+                if (( ahora_secs >= corte_hoy_secs && fecha_creacion_secs <= corte_hoy_secs )); then
                     dias_transcurridos=$((dias_transcurridos + 1))
                 fi
 
