@@ -16,37 +16,51 @@ calcular_expiracion() {
     local fecha_expiracion=$(date -d "+$dias days" "+%d/%B/%Y")
     echo $fecha_expiracion
 }
-
 # Función para calcular días restantes
 calcular_dias_restantes() {
     local fecha_expiracion="$1"
     local dias_originales="$2"
     local fecha_actual=$(date "+%s")
 
-    # Intentar convertir la fecha (soporta español y formato numérico)
+    # Convertir la fecha de expiración de formato dd/mes/YYYY a un formato que date pueda entender
+    # Ejemplo: "12/agosto/2025" -> "12 August 2025"
+    local dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
+    local mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
+    local anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
+
+    # Mapear nombres de meses en español a inglés para compatibilidad con date
+    case $mes in
+        "enero") mes="January" ;;
+        "febrero") mes="February" ;;
+        "marzo") mes="March" ;;
+        "abril") mes="April" ;;
+        "mayo") mes="May" ;;
+        "junio") mes="June" ;;
+        "julio") mes="July" ;;
+        "agosto") mes="August" ;;
+        "septiembre") mes="September" ;;
+        "octubre") mes="October" ;;
+        "noviembre") mes="November" ;;
+        "diciembre") mes="December" ;;
+        *) echo 0; return ;;
+    esac
+
+    # Construir fecha en formato que date pueda entender
+    local fecha_formateada="$dia $mes $anio"
+
+    # Convertir la fecha de expiración a epoch
     local fecha_exp_epoch
-    fecha_exp_epoch=$(LC_ALL=es_ES.UTF-8 date -d "$fecha_expiracion" "+%s" 2>/dev/null)
+    fecha_exp_epoch=$(date -d "$fecha_formateada" "+%s" 2>/dev/null)
 
-    # Si falla en español, intenta formato numérico
-    if [[ -z "$fecha_exp_epoch" ]]; then
-        fecha_exp_epoch=$(date -d "$fecha_expiracion" "+%s" 2>/dev/null)
-    fi
-
-    # Si aún falla, poner días restantes a 0
+    # Si la conversión falla, retornar 0
     if [[ -z "$fecha_exp_epoch" ]]; then
         echo 0
         return
     fi
 
-    # Calcular diferencia
+    # Calcular diferencia en días
     local diff_segundos=$((fecha_exp_epoch - fecha_actual))
-    local dias_restantes=$((diff_segundos / 86400)) # 86400 segundos = 1 día
-
-    # Ajustar si estamos después de medianoche
-    local hora_actual=$(date "+%H:%M:%S")
-    if [[ "$hora_actual" > "00:00:00" && $dias_restantes -eq $dias_originales ]]; then
-        dias_restantes=$((dias_restantes - 1))
-    fi
+    local dias_restantes=$((diff_segundos / 86400))
 
     # No permitir números negativos
     if [ $dias_restantes -lt 0 ]; then
