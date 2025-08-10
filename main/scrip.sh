@@ -160,12 +160,35 @@ ver_registros() {
     fi
     read -p "Presiona Enter para continuar..."
 }
+# Función para mostrar un mini registro
+mini_registro() {
+    clear
+    echo "==== 📋 MINI REGISTRO ====="
+    echo "👤 Nombre  🔑 Contraseña   ⏳ Días   📱 Móviles"
+    if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
+        echo "No hay registros disponibles."
+    else
+        count=0
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+            usuario=${user_data%%:*}
+            clave=${user_data#*:}
+            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
+            printf "%-12s %-16s %-10s %-10s\n" "$usuario" "$clave" "$dias_restantes" "$moviles"
+            ((count++))
+        done < $REGISTROS
+        echo "==========================================="
+        echo "TOTAL: $count usuarios"
+    fi
+    echo "Presiona Enter para continuar... ✨"
+    read
+}
 # Menú principal
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
     echo "1. Crear usuario"
     echo "2. Ver registros"
+    echo "3. Mini registro"
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
@@ -175,6 +198,9 @@ while true; do
             ;;
         2)
             ver_registros
+            ;;
+        3)
+            mini_registro
             ;;
         0)
             echo "Saliendo..."
