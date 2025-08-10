@@ -7,6 +7,9 @@ export REGISTROS="/root/reg.txt"
 export HISTORIAL="/root/log.txt"
 export PIDFILE="/var/run/mon.pid"
 
+
+##DEMOOOOOOOOOOOO 
+
 function monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     REGISTROS="/root/reg.txt"
