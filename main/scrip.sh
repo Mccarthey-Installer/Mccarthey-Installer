@@ -92,6 +92,26 @@ ver_registros() {
 eliminar_usuario() {
     clear
     echo -e "${GREEN}===== 🗑️ ELIMINAR USUARIO SSH =====${NC}"
+    
+    # Verificar si hay usuarios registrados
+    if [[ ! -f "$REGISTRO_FILE" ]] || [[ ! -s "$REGISTRO_FILE" ]]; then
+        echo -e "${RED}No hay usuarios registrados para eliminar.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Mostrar lista de usuarios
+    echo -e "${YELLOW}Lista de usuarios registrados:${NC}"
+    echo "Nº 👩 Usuario"
+    echo "-----------------"
+    count=1
+    while IFS=':' read -r user pass expira dias moviles creado; do
+        printf "%-2s %s\n" "$count" "$user"
+        ((count++))
+    done < "$REGISTRO_FILE"
+    echo "-----------------"
+
+    # Solicitar el nombre del usuario a eliminar
     read -p "👤 Nombre del usuario a eliminar: " username
 
     # Verificar si el usuario existe en el sistema
@@ -101,14 +121,19 @@ eliminar_usuario() {
         return
     fi
 
+    # Verificar si el usuario está en el registro
+    if ! grep -q "^$username:" "$REGISTRO_FILE"; then
+        echo -e "${RED}Error: El usuario $username no está en el registro.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
     # Eliminar usuario del sistema
     userdel "$username"
 
     # Eliminar usuario del archivo de registro
-    if [[ -f "$REGISTRO_FILE" ]]; then
-        grep -v "^$username:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
-        mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE"
-    fi
+    grep -v "^$username:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
+    mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE"
 
     echo -e "${GREEN}✅ Usuario $username eliminado correctamente.${NC}"
     read -p "Presiona Enter para continuar..."
