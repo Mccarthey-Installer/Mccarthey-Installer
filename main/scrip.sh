@@ -317,6 +317,112 @@ crear_multiples_usuarios() {
     echo "Presiona Enter para continuar... ✨"
     read
 }
+
+
+# Función para eliminar múltiples usuarios
+eliminar_multiples_usuarios() {
+    clear
+    echo "===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 ====="
+    echo "Nº      👤 Usuario"
+    echo "--------------------------"
+    if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
+        echo "No hay registros disponibles."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Cargar usuarios en un array para fácil acceso por número
+    declare -a usuarios
+    count=1
+    while IFS=' ' read -r user_data _; do
+        usuario=${user_data%%:*}
+        usuarios[$count]="$usuario"
+        printf "%-7s %-20s\n" "$count" "$usuario"
+        ((count++))
+    done < $REGISTROS
+
+    read -p "🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios) (0 para cancelar): " input
+
+    if [[ "$input" == "0" ]]; then
+        echo "❌ Eliminación cancelada."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Procesar input: puede ser números o nombres
+    declare -a usuarios_a_eliminar
+    for item in $input; do
+        if [[ "$item" =~ ^[0-9]+$ ]]; then
+            # Es un número
+            if [[ $item -ge 1 && $item -lt $count ]]; then
+                usuarios_a_eliminar+=("${usuarios[$item]}")
+            else
+                echo "❌ Número inválido: $item"
+            fi
+        else
+            # Es un nombre, verificar si existe
+            if grep -q "^$item:" $REGISTROS; then
+                usuarios_a_eliminar+=("$item")
+            else
+                echo "❌ Usuario no encontrado: $item"
+            fi
+        fi
+    done
+
+    # Eliminar duplicados si los hay
+    usuarios_a_eliminar=($(echo "${usuarios_a_eliminar[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+
+    if [ ${#usuarios_a_eliminar[@]} -eq 0 ]; then
+        echo "❌ No se seleccionaron usuarios válidos."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Confirmar eliminación
+    echo "===== 📋 USUARIOS A ELIMINAR ====="
+    for usuario in "${usuarios_a_eliminar[@]}"; do
+        echo "👤 $usuario"
+    done
+    read -p "✅ ¿Confirmar eliminación? (s/n): " confirmacion
+    if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
+        echo "❌ Eliminación cancelada."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # Eliminar usuarios
+    count=0
+    fecha_eliminacion=$(date "+%Y-%m-%d %H:%M:%S")
+    for usuario in "${usuarios_a_eliminar[@]}"; do
+        # Terminar sesiones activas si existen (usando loginctl si está disponible)
+        if command -v loginctl >/dev/null 2>&1; then
+            loginctl terminate-user "$usuario" 2>/dev/null
+        else
+            # Alternativa: matar procesos del usuario
+            pkill -9 -u "$usuario" 2>/dev/null
+        fi
+
+        # Eliminar usuario del sistema
+        if userdel "$usuario" 2>/dev/null; then
+            # Eliminar del registro
+            sed -i "/^$usuario:/d" $REGISTROS
+
+            # Registrar en historial
+            echo "Usuario eliminado: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+
+            ((count++))
+        else
+            echo "❌ Error al eliminar el usuario $usuario del sistema."
+        fi
+    done
+
+    # Mostrar resumen
+    echo "===== 📊 RESUMEN DE ELIMINACIÓN ====="
+    echo "✅ Usuarios eliminados exitosamente: $count"
+    echo "Presiona Enter para continuar... ✨"
+    read
+}
+
 # Menú principal
 while true; do
     clear
@@ -325,6 +431,7 @@ while true; do
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
+    echo "5. Eliminar múltiples usuarios"
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
@@ -340,6 +447,9 @@ while true; do
             ;;
         4)
             crear_multiples_usuarios
+            ;;
+        5)
+            eliminar_multiples_usuarios
             ;;
         0)
             echo "Saliendo..."
