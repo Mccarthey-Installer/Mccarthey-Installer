@@ -146,14 +146,14 @@ while true; do
     echo "1. Crear usuario"
     echo "2. Ver registros"
     echo "3. Eliminar usuario"
-    echo "4. Salir"
-    read -p "Selecciona una opción [1-4]: " opcion
+    echo "0. Salir"
+    read -p "Selecciona una opción [0-3]: " opcion
 
     case $opcion in
         1) crear_usuario ;;
         2) ver_registros ;;
         3) eliminar_usuario ;;
-        4) echo "Saliendo..."; exit 0 ;;
+        0) echo "Saliendo..."; exit 0 ;;
         *) echo -e "${RED}Opción inválida${NC}"; read -p "Presiona Enter para continuar..." ;;
     esac
 done
