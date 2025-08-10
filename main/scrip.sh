@@ -19,23 +19,40 @@ calcular_expiracion() {
 
 # Función para calcular días restantes
 calcular_dias_restantes() {
-    local fecha_expiracion=$1
-    local dias_originales=$2
+    local fecha_expiracion="$1"
+    local dias_originales="$2"
     local fecha_actual=$(date "+%s")
-    local fecha_exp_epoch=$(date -d "$fecha_expiracion" "+%s")
+
+    # Intentar convertir la fecha (soporta español y formato numérico)
+    local fecha_exp_epoch
+    fecha_exp_epoch=$(LC_ALL=es_ES.UTF-8 date -d "$fecha_expiracion" "+%s" 2>/dev/null)
+
+    # Si falla en español, intenta formato numérico
+    if [[ -z "$fecha_exp_epoch" ]]; then
+        fecha_exp_epoch=$(date -d "$fecha_expiracion" "+%s" 2>/dev/null)
+    fi
+
+    # Si aún falla, poner días restantes a 0
+    if [[ -z "$fecha_exp_epoch" ]]; then
+        echo 0
+        return
+    fi
+
+    # Calcular diferencia
     local diff_segundos=$((fecha_exp_epoch - fecha_actual))
     local dias_restantes=$((diff_segundos / 86400)) # 86400 segundos = 1 día
 
-    # Si la hora actual es después de las 00:00 del día siguiente, restar un día
+    # Ajustar si estamos después de medianoche
     local hora_actual=$(date "+%H:%M:%S")
-    if [[ $hora_actual > "00:00:00" && $dias_restantes -eq $dias_originales ]]; then
+    if [[ "$hora_actual" > "00:00:00" && $dias_restantes -eq $dias_originales ]]; then
         dias_restantes=$((dias_restantes - 1))
     fi
 
-    # Asegurar que no sea negativo
+    # No permitir números negativos
     if [ $dias_restantes -lt 0 ]; then
         dias_restantes=0
     fi
+
     echo $dias_restantes
 }
 
