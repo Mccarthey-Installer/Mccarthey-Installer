@@ -16,19 +16,15 @@ calcular_expiracion() {
     local fecha_expiracion=$(date -d "+$dias days" "+%d/%B/%Y")
     echo $fecha_expiracion
 }
-# Función para calcular días restantes
 calcular_dias_restantes() {
     local fecha_expiracion="$1"
-    local dias_originales="$2"
-    local fecha_actual=$(date "+%s")
 
-    # Convertir la fecha de expiración de formato dd/mes/YYYY a un formato que date pueda entender
-    # Ejemplo: "12/agosto/2025" -> "12 August 2025"
+    # Extraer día, mes y año igual que antes
     local dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
     local mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
     local anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
 
-    # Mapear nombres de meses en español a inglés para compatibilidad con date
+    # Convertir mes en español a inglés
     case $mes in
         "enero") mes="January" ;;
         "febrero") mes="February" ;;
@@ -45,31 +41,31 @@ calcular_dias_restantes() {
         *) echo 0; return ;;
     esac
 
-    # Construir fecha en formato que date pueda entender
-    local fecha_formateada="$dia $mes $anio"
+    # Convertir fecha expiracion a formato YYYY-MM-DD (sin hora)
+    local fecha_formateada="$anio-$(date -d "$mes" +%m)-$dia"
 
-    # Convertir la fecha de expiración a epoch
-    local fecha_exp_epoch
-    fecha_exp_epoch=$(date -d "$fecha_formateada" "+%s" 2>/dev/null)
+    # Fecha actual en YYYY-MM-DD
+    local fecha_actual=$(date "+%Y-%m-%d")
 
-    # Si la conversión falla, retornar 0
+    # Convertir fechas a segundos epoch (mediante fecha a medianoche)
+    local fecha_exp_epoch=$(date -d "$fecha_formateada" "+%s" 2>/dev/null)
+    local fecha_act_epoch=$(date -d "$fecha_actual" "+%s")
+
     if [[ -z "$fecha_exp_epoch" ]]; then
         echo 0
         return
     fi
 
-    # Calcular diferencia en días
-    local diff_segundos=$((fecha_exp_epoch - fecha_actual))
+    # Diferencia en días completos
+    local diff_segundos=$((fecha_exp_epoch - fecha_act_epoch))
     local dias_restantes=$((diff_segundos / 86400))
 
-    # No permitir números negativos
     if [ $dias_restantes -lt 0 ]; then
         dias_restantes=0
     fi
 
     echo $dias_restantes
 }
-
 # Función para crear usuario
 crear_usuario() {
     clear
