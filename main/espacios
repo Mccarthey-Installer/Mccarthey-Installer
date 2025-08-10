@@ -167,21 +167,28 @@ function monitorear_conexiones() {
                     COLOR_ESTADO="${MINT_GREEN}"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
-                    if [[ -n "$PRIMER_LOGIN" ]]; then
-                        START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
-                        if [[ $? -eq 0 && -n "$START" ]]; then
-                            CURRENT=$(date +%s)
-                            ELAPSED_SEC=$((CURRENT - START))
-                            H=$((ELAPSED_SEC / 3600))
-                            M=$(( (ELAPSED_SEC % 3600) / 60 ))
-                            S=$((ELAPSED_SEC % 60 ))
-                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
-                        else
-                            DETALLES="⏰ Tiempo no disponible"
-                        fi
-                    else
-                        DETALLES="⏰ Tiempo no disponible"
-                    fi
+                    TMP_STATUS="/tmp/status_${USUARIO}.tmp"
+if [[ -f "$TMP_STATUS" ]]; then
+    PRIMER_LOGIN_TMP=$(cat "$TMP_STATUS")
+else
+    PRIMER_LOGIN_TMP="$PRIMER_LOGIN"
+fi
+
+if [[ -n "$PRIMER_LOGIN_TMP" ]]; then
+    START=$(date -d "$PRIMER_LOGIN_TMP" +%s 2>/dev/null)
+    if [[ $? -eq 0 && -n "$START" ]]; then
+        CURRENT=$(date +%s)
+        ELAPSED_SEC=$((CURRENT - START))
+        H=$((ELAPSED_SEC / 3600))
+        M=$(((ELAPSED_SEC % 3600) / 60))
+        S=$((ELAPSED_SEC % 60))
+        DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+    else
+        DETALLES="⏰ Tiempo no disponible"
+    fi
+else
+    DETALLES="⏰ Tiempo no disponible"
+fi
                 else
                     ULTIMO_LOGOUT=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
@@ -344,7 +351,7 @@ function barra_sistema() {
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}😎😎 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}💫💫💫 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
