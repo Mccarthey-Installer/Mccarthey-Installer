@@ -924,7 +924,7 @@ function mini_registro() {
     echo "$(date '+%Y-%m-%d %H:%M:%S'):Usuario creado:$USUARIO" >> "$HISTORIAL"
 
     # Mostrar resultado final (corregir visualización de FECHA_CREACION)
-    FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | sed 's/_/ /; s/-/:/g')
+    FECHA_CREACION_DISPLAY=$(echo "$FECHA_CREACION" | sed 's/_/ /')
     echo -e "${VERDE}✅  Usuario creado correctamente:${NC}"
     echo -e "${AZUL}👤 Usuario:${AMARILLO} $USUARIO${NC}"
     echo -e "${AZUL}🔑 Clave:   ${AMARILLO}$CLAVE${NC}"
