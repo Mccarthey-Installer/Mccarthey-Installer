@@ -530,7 +530,7 @@ function barra_sistema() {
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🤔💫 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}🎉🎉 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
@@ -630,13 +630,17 @@ function crear_multiples_usuarios() {
     fi
 
     echo -e "${LILAC}===============================================================${NC}"
-    read -p "${MINT_GREEN}✅ ¿Confirmar creación de estos usuarios? (s/n): ${NC}" confirmacion
 
-    if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
-        echo -e "${PASTEL_PURPLE}🚫 Operación cancelada. ✨${NC}"
-        read -p "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
-        return 0
-    fi
+echo -ne "${MINT_GREEN}✅ ¿Confirmar creación de estos usuarios? (s/n): ${NC}"
+read confirmacion
+
+if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
+    echo -e "${PASTEL_PURPLE}🚫 Operación cancelada. ✨${NC}"
+    echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
+    read
+    return 0
+fi
+
 
     creados=0
     errores=0
@@ -735,10 +739,9 @@ function crear_multiples_usuarios() {
     if [ $duplicados -gt 0 ]; then
         echo -e "${HOT_PINK}🚫 Usuarios duplicados en la entrada: $duplicados${NC}"
     fi
-    read -p "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
+    echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}"
+read
 }
-
-
         function ver_registros() {
     clear
 
