@@ -108,13 +108,13 @@ ver_registros() {
     read -p "Presiona Enter para continuar..."
 }
 
-# Función para terminar sesiones activas de un usuario
+# Función para terminar sesiones activas de un usuario (MODO NUCLEAR)
 terminar_sesiones_usuario() {
     local username=$1
     echo -e "${BLUE}🔒 Terminando sesiones activas del usuario $username...${NC}"
     
-    # Obtener todas las sesiones del usuario
-    local sessions=$(loginctl list-sessions --no-legend | grep "$username" | awk '{print $1}')
+    # Obtener sesiones por usuario exacto (más preciso)
+    local sessions=$(loginctl list-sessions --no-legend | awk -v u="$username" '$3 == u {print $1}')
     
     if [[ -n "$sessions" ]]; then
         for session in $sessions; do
@@ -122,6 +122,19 @@ terminar_sesiones_usuario() {
             loginctl terminate-session "$session" 2>/dev/null || true
         done
         echo -e "${GREEN}✅ Sesiones terminadas para $username${NC}"
+        
+        # Pausa para asegurar cierre completo
+        sleep 2
+        
+        # Verificar si quedan sesiones y forzar cierre
+        local remaining=$(loginctl list-sessions --no-legend | awk -v u="$username" '$3 == u {print $1}')
+        if [[ -n "$remaining" ]]; then
+            echo -e "${YELLOW}  🔄 Forzando cierre de sesiones restantes...${NC}"
+            for session in $remaining; do
+                loginctl kill-session "$session" 2>/dev/null || true
+            done
+            sleep 1
+        fi
     else
         echo -e "${YELLOW}ℹ️ No hay sesiones activas para $username${NC}"
     fi
@@ -242,25 +255,61 @@ eliminar_usuario() {
 
     # Eliminar usuarios
     echo ""
-    echo -e "${BLUE}🔄 Iniciando proceso de eliminación...${NC}"
+    echo -e "${BLUE}🔄 Iniciando proceso de eliminación NUCLEAR...${NC}"
     
     for username in "${usuarios_eliminar[@]}"; do
         echo ""
-        echo -e "${YELLOW}🗑️ Eliminando usuario: $username${NC}"
+        echo -e "${YELLOW}💣 Eliminando usuario: $username (MODO NUCLEAR)${NC}"
         
-        # 1. Terminar sesiones activas
+        # 1. Terminar sesiones activas con método nuclear
         terminar_sesiones_usuario "$username"
         
-        # 2. Eliminar usuario del sistema
-        echo "  🔧 Eliminando del sistema..."
-        userdel "$username" 2>/dev/null || echo -e "${RED}    ⚠️ Error al eliminar del sistema${NC}"
+        # 2. Matar todos los procesos del usuario
+        echo "  ⚔️ Eliminando procesos del usuario..."
+        pkill -u "$username" 2>/dev/null || true
+        sleep 1
         
-        # 3. Eliminar usuario del archivo de registro
+        # 3. Forzar eliminación completa del usuario del sistema
+        echo "  🔧 Eliminando del sistema (FORZADO)..."
+        if userdel -r -f "$username" 2>/dev/null; then
+            echo -e "${GREEN}    ✅ Usuario eliminado del sistema${NC}"
+        else
+            echo -e "${RED}    ⚠️ Error al eliminar del sistema, intentando método alternativo...${NC}"
+            # Método alternativo más agresivo
+            userdel -f "$username" 2>/dev/null || true
+            rm -rf "/home/$username" 2>/dev/null || true
+        fi
+        
+        # 4. Eliminar usuario del archivo de registro con sync
         echo "  📝 Eliminando del registro..."
-        grep -v "^$username:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt"
-        mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE"
+        sed -i "/^$username:/d" "$REGISTRO_FILE" 2>/dev/null
+        sync  # Forzar escritura al disco
         
-        echo -e "${GREEN}  ✅ Usuario $username eliminado completamente${NC}"
+        # 5. Verificación final de limpieza
+        echo "  🧹 Verificando limpieza completa..."
+        
+        # Verificar que no exista en el sistema
+        if ! id "$username" >/dev/null 2>&1; then
+            echo -e "${GREEN}    ✅ Usuario completamente eliminado del sistema${NC}"
+        else
+            echo -e "${RED}    ⚠️ Usuario aún existe, aplicando limpieza final...${NC}"
+            # Último recurso: editar directamente /etc/passwd, /etc/shadow, /etc/group
+            sed -i "/^$username:/d" /etc/passwd 2>/dev/null || true
+            sed -i "/^$username:/d" /etc/shadow 2>/dev/null || true
+            sed -i "/^$username:/d" /etc/group 2>/dev/null || true
+        fi
+        
+        # Verificar que no esté en el registro
+        if ! grep -q "^$username:" "$REGISTRO_FILE" 2>/dev/null; then
+            echo -e "${GREEN}    ✅ Usuario eliminado del registro${NC}"
+        else
+            echo -e "${RED}    ⚠️ Reintentando eliminación del registro...${NC}"
+            grep -v "^$username:" "$REGISTRO_FILE" > "$TEMP_DIR/ssh_users_temp.txt" 2>/dev/null
+            mv "$TEMP_DIR/ssh_users_temp.txt" "$REGISTRO_FILE" 2>/dev/null
+            sync
+        fi
+        
+        echo -e "${GREEN}  🎯 Usuario $username COMPLETAMENTE ERRADICADO${NC}"
     done
 
     echo ""
