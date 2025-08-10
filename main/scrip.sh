@@ -138,22 +138,22 @@ crear_usuario() {
 ver_registros() {
     clear
     echo "===== 🌸 REGISTROS ====="
-    echo "Nº 👩 Usuario 🔒 Clave   📅 Expira    ⏳ Días   📲 Móviles"
+    echo "Nº 👩 Usuario 🔒 Clave   📅 Expira    ⏳  Días   📲 Móviles"
     if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
         echo "No hay registros disponibles."
     else
         count=1
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
             dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
+            fecha_creacion="$fecha_creacion1 $fecha_creacion2"
             printf "%-2s %-11s %-10s %-16s %-8s %-8s\n" "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
     fi
     read -p "Presiona Enter para continuar..."
 }
-
 # Menú principal
 while true; do
     clear
