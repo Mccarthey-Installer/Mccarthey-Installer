@@ -454,16 +454,18 @@ center_value() {
 
 # Función para monitorear conexiones en segundo plano
 monitorear_conexiones() {
-    local LOG="/var/log/monitoreo_conexiones.log"
+    local LOG="/var/log/monitoreo_conexiones_our.log"  # Nueva ruta para evitar conflictos
     local INTERVALO=5
     declare -A estado_anterior
 
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones." >> "$LOG"
+    # Limpiar archivos temporales antiguos
+    rm -f /tmp/status_*.tmp 2>/dev/null
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones (PID $$)." >> "$LOG"
     while true; do
-        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS (/diana/reg.txt)." >> "$LOG"; sleep "$INTERVALO"; continue; }
 
-        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE=$(mktemp "/tmp/reg_our.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp "/tmp/reg_our_new.tmp.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
         cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
@@ -479,7 +481,7 @@ monitorear_conexiones() {
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 [[ -n $(grep "^$usuario:!" /etc/shadow 2>/dev/null) ]] && CONEXIONES=0
 
-                TMP_STATUS="/tmp/status_${usuario}.tmp"
+                TMP_STATUS="/tmp/status_our_${usuario}.tmp"  # Nueva convención para evitar conflictos
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $CONEXIONES conexiones." >> "$LOG"
                 if [[ $CONEXIONES -gt 0 ]]; then
                     if [[ "${estado_anterior[$usuario]}" != "online" ]]; then
@@ -573,7 +575,7 @@ verificar_online() {
                     COLOR_ESTADO="${MINT_GREEN}"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
-                    TMP_STATUS="/tmp/status_${usuario}.tmp"
+                    TMP_STATUS="/tmp/status_our_${usuario}.tmp"
                     if [[ -f "$TMP_STATUS" ]]; then
                         HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
                         START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
@@ -623,13 +625,13 @@ verificar_online() {
 # Iniciar monitoreo de conexiones en segundo plano si no está corriendo
 if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
     rm -f "$PIDFILE"
-    nohup bash -c "source $0; monitorear_conexiones" >> /var/log/monitoreo_conexiones.log 2>&1 &
+    nohup bash -c "source $0; monitorear_conexiones" >> /var/log/monitoreo_conexiones_our.log 2>&1 &
     sleep 1
     if ps -p $! >/dev/null 2>&1; then
         echo $! > "$PIDFILE"
         echo -e "${MINT_GREEN}🚀 Monitoreo iniciado en segundo plano (PID: $!).${NC}"
     else
-        echo -e "${HOT_PINK}❌ Error al iniciar el monitoreo. Revisa /var/log/monitoreo_conexiones.log.${NC}"
+        echo -e "${HOT_PINK}❌ Error al iniciar el monitoreo. Revisa /var/log/monitoreo_conexiones_our.log.${NC}"
     fi
 else
     echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
@@ -643,7 +645,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.🙏 Crear usuario"
+    echo "1.👏 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
