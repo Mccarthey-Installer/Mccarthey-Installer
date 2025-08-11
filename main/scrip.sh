@@ -423,7 +423,9 @@ eliminar_multiples_usuarios() {
     read
 }
 
-# Definir colores para la salida
+
+        
+                    # Definir colores para la salida
 AZUL_SUAVE='\033[38;5;45m'
 SOFT_PINK='\033[38;5;211m'
 PASTEL_BLUE='\033[38;5;153m'
@@ -467,6 +469,7 @@ monitorear_conexiones() {
             usuario=${user_data%%:*}
             clave=${user_data#*:}
             [[ -z "$usuario" ]] && continue
+            fecha_creacion="$fecha_creacion1 $fecha_creacion2"
 
             if id "$usuario" &>/dev/null; then
                 CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
@@ -476,7 +479,7 @@ monitorear_conexiones() {
 
                 TMP_STATUS="/tmp/status_${usuario}.tmp"
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    if [[ ! -f "$TMP_STATUS" || "${estado_anterior[$usuario]}" != "online" ]]; then
+                    if [[ "${estado_anterior[$usuario]}" != "online" ]]; then
                         echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$TMP_STATUS"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                     fi
@@ -511,16 +514,17 @@ monitorear_conexiones() {
 verificar_online() {
     clear
     echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
-    echo -e "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}" \
-        "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    echo -e "${LILAC}-----------------------------------------------------------------${NC}"
-
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros de usuarios. 📂${NC}"
         echo -e "${VIOLETA}Presiona Enter para continuar... ✨${NC}"
         read
         return
     fi
+
+    # Imprimir encabezado sin el error de formato
+    printf "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
+        "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     declare -A month_map=(
         ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
@@ -618,8 +622,6 @@ else
     echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
 
-                    
-
 
 
 
@@ -627,7 +629,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. Crear usuario"
+    echo "1.🙏 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
