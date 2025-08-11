@@ -1,8 +1,5 @@
 #!/bin/bash
-export TZ="America/El_Salvador"
-export LANG=es_ES.UTF-8
-timedatectl set-timezone America/El_Salvador 2>/dev/null || true
-export TERM=xterm-256color
+
 # Definir rutas
 export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
@@ -439,7 +436,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.🐕 Crear usuario"
+    echo "1. Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
