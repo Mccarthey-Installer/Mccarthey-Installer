@@ -423,6 +423,170 @@ eliminar_multiples_usuarios() {
     read
 }
 
+# Definir colores para la salida
+AZUL_SUAVE='\033[38;5;45m'
+SOFT_PINK='\033[38;5;211m'
+PASTEL_BLUE='\033[38;5;153m'
+LILAC='\033[38;5;183m'
+SOFT_CORAL='\033[38;5;217m'
+HOT_PINK='\033[38;5;198m'
+PASTEL_PURPLE='\033[38;5;189m'
+MINT_GREEN='\033[38;5;159m'
+AMARILLO='\033[1;33m'
+ROJO='\033[1;31m'
+VERDE='\033[1;32m'
+CIAN='\033[1;36m'
+VIOLETA='\033[1;35m'
+NC='\033[0m'
+
+# Función para centrar texto en un ancho dado
+center_value() {
+    local value="$1"
+    local width="$2"
+    local len=${#value}
+    local padding_left=$(( (width - len) / 2 ))
+    local padding_right=$(( width - len - padding_left ))
+    printf "%*s%s%*s" "$padding_left" "" "$value" "$padding_right" ""
+}
+
+# Función para monitorear conexiones en segundo plano
+monitorear_conexiones() {
+    while true; do
+        while IFS=' ' read -r user_data _; do
+            usuario=${user_data%%:*}
+            if id "$usuario" &>/dev/null; then
+                # Verificar conexiones activas
+                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                if [[ $CONEXIONES -gt 0 ]]; then
+                    # Registrar tiempo de conexión en un archivo temporal
+                    echo "$(date '+%Y-%m-%d %H:%M:%S')" > "/tmp/status_${usuario}.tmp"
+                fi
+            fi
+        done < "$REGISTROS"
+        sleep 60  # Revisar cada 60 segundos
+    done
+}
+
+# Función para verificar usuarios online
+verificar_online() {
+    clear
+    echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
+    echo -e "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}" \
+        "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    echo -e "${LILAC}-----------------------------------------------------------------${NC}"
+
+    # Verificar si el archivo de registros existe
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ No hay registros de usuarios. 📂${NC}"
+        echo -e "${VIOLETA}Presiona Enter para continuar... ✨${NC}"
+        read
+        return
+    fi
+
+    # Mapa de meses para traducción
+    declare -A month_map=(
+        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
+        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
+        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
+    )
+
+    TOTAL_CONEXIONES=0
+    TOTAL_USUARIOS=0
+    INACTIVOS=0
+
+    while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+        usuario=${user_data%%:*}
+        if id "$usuario" &>/dev/null; then
+            ((TOTAL_USUARIOS++))
+            ESTADO="☑️ 0"
+            DETALLES="   😴 Nunca conectado"
+            COLOR_ESTADO="${ROJO}"
+            MOVILES_NUM="$moviles"
+            MOVILES_CENTRADO=$(center_value "  📲 $MOVILES_NUM" 10)
+
+            # Verificar si el usuario está bloqueado
+            if grep -q "^$usuario:!" /etc/shadow 2>/dev/null; then
+                DETALLES="🔒 Usuario bloqueado"
+                ((INACTIVOS++))
+                COLOR_ESTADO="${ROJO}"
+                ESTADO="🔴 BLOQ"
+            else
+                # Contar conexiones SSH y Dropbear
+                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                if [[ $CONEXIONES -gt 0 ]]; then
+                    ESTADO="✅ $CONEXIONES"
+                    COLOR_ESTADO="${MINT_GREEN}"
+                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
+
+                    # Obtener tiempo de conexión desde el archivo temporal
+                    TMP_STATUS="/tmp/status_${usuario}.tmp"
+                    if [[ -f "$TMP_STATUS" ]]; then
+                        PRIMER_LOGIN=$(cat "$TMP_STATUS")
+                        START=$(date -d "$PRIMER_LOGIN" +%s 2>/dev/null)
+                        if [[ $? -eq 0 && -n "$START" ]]; then
+                            CURRENT=$(date +%s)
+                            ELAPSED_SEC=$((CURRENT - START))
+                            H=$((ELAPSED_SEC / 3600))
+                            M=$(((ELAPSED_SEC % 3600) / 60))
+                            S=$((ELAPSED_SEC % 60))
+                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                        else
+                            DETALLES="⏰ Tiempo no disponible"
+                        fi
+                    else
+                        DETALLES="⏰ Tiempo no disponible"
+                    fi
+                else
+                    # Buscar última conexión en el historial
+                    ULTIMO_LOGOUT=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
+                    if [[ -n "$ULTIMO_LOGOUT" ]]; then
+                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
+                        if [[ $? -eq 0 && -n "$ULTIMO_LOGOUT_FMT" ]]; then
+                            for k in "${!month_map[@]}"; do
+                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT//$k/${month_map[$k]}}
+                            done
+                            DETALLES="   📅 Última: $ULTIMO_LOGOUT_FMT"
+                        else
+                            DETALLES="   😴 Nunca conectado"
+                        fi
+                    else
+                        DETALLES="   😴 Nunca conectado"
+                    fi
+                    ((INACTIVOS++))
+                fi
+            fi
+            printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%-35s${NC}\n" \
+                "$usuario" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
+        fi
+    done < "$REGISTROS"
+
+    echo
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${TOTAL_CONEXIONES}${NC} ${CIAN}Total usuarios: ${AMARILLO}${TOTAL_USUARIOS}${NC} ${CIAN}Inactivos: ${AMARILLO}${INACTIVOS}${NC}"
+    echo -e "${ROJO}================================================${NC}"
+    echo -e "${VIOLETA}Presiona Enter para continuar...${NC}"
+    read
+}
+
+# Iniciar monitoreo de conexiones en segundo plano si no está corriendo
+if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$PIDFILE"
+    nohup bash -c "source $0; monitorear_conexiones" >> /var/log/monitoreo_conexiones.log 2>&1 &
+    sleep 1
+    if ps -p $! >/dev/null 2>&1; then
+        echo $! > "$PIDFILE"
+        echo -e "${MINT_GREEN}🚀 Monitoreo iniciado en segundo plano (PID: $!).${NC}"
+    else
+        echo -e "${HOT_PINK}❌ Error al iniciar el monitoreo. Revisa /var/log/monitoreo_conexiones.log.${NC}"
+    fi
+else
+    echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
+fi
+
+
 # Menú principal
 while true; do
     clear
@@ -432,6 +596,7 @@ while true; do
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
     echo "5. Eliminar múltiples usuarios"
+    echo "6. Verificar usuarios online"
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
@@ -450,6 +615,9 @@ while true; do
             ;;
         5)
             eliminar_multiples_usuarios
+            ;;
+        6)
+            verificar_online
             ;;
         0)
             echo "Saliendo..."
