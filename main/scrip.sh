@@ -641,12 +641,85 @@ else
     echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
 
+function informacion_usuarios() {
+    clear
+
+    # Definir colores si aún no están
+    ROSADO='\033[38;5;211m'
+    LILA='\033[38;5;183m'
+    TURQUESA='\033[38;5;45m'
+    NC='\033[0m'
+
+    echo -e "${ROSADO}🌸✨  INFORMACIÓN DE CONEXIONES 💖✨ 🌸${NC}"
+
+    declare -A month_map=(
+        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
+        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
+        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
+    )
+
+    if [[ ! -f "$HISTORIAL" ]]; then
+        echo -e "${LILA}😿 ¡Oh no! No hay historial de conexiones aún, pequeña! 💔${NC}"
+        read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"
+        return 1
+    fi
+
+    printf "${LILA}%-15s %-22s %-22s %-12s${NC}\n" "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰  Duración"
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+
+    mapfile -t USUARIOS < <(awk -F'|' '{print $1}' "$HISTORIAL" | sort -u)
+
+    for USUARIO in "${USUARIOS[@]}"; do
+        if id "$USUARIO" &>/dev/null; then
+            ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)
+            if [[ -n "$ULTIMO_REGISTRO" ]]; then
+                IFS='|' read -r _ HORA_CONEXION HORA_DESCONECCION <<< "$ULTIMO_REGISTRO"
+
+                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ && \
+                      "$HORA_DESCONECCION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+
+                    # Formatear fechas
+                    CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%b %I:%M %p" 2>/dev/null)
+                    DESCONEXION_FMT=$(date -d "$HORA_DESCONECCION" +"%d/%b %I:%M %p" 2>/dev/null)
+
+                    for eng in "${!month_map[@]}"; do
+                        esp=${month_map[$eng]}
+                        CONEXION_FMT=${CONEXION_FMT/$eng/$esp}
+                        DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}
+                    done
+
+                    # Convertir a segundos
+                    SEC_CON=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                    SEC_DES=$(date -d "$HORA_DESCONECCION" +%s 2>/dev/null)
+
+                    if [[ -n "$SEC_CON" && -n "$SEC_DES" && $SEC_DES -ge $SEC_CON ]]; then
+                        DURACION_SEG=$((SEC_DES - SEC_CON))
+                        HORAS=$((DURACION_SEG / 3600))
+                        MINUTOS=$(((DURACION_SEG % 3600) / 60))
+                        SEGUNDOS=$((DURACION_SEG % 60))
+                        DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
+                    else
+                        DURACION="N/A"
+                    fi
+
+                    # Mostrar fila
+                    printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
+                fi
+            fi
+        fi
+    done
+
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
+}
+AMARILLO_SUAVE='\033[38;2;255;204;0m'
 # Menú principal
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
     echo "1.😎😎 Crear usuario"
     echo "2. Ver registros"
+    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
     echo "5. Eliminar múltiples usuarios"
@@ -671,8 +744,9 @@ while true; do
             eliminar_multiples_usuarios
             ;;
         6)
-            verificar_online
-            ;;
+            verificar_online ;;
+        7) informacion_usuarios ;;
+            
         0)
             echo "Saliendo..."
             exit 0
