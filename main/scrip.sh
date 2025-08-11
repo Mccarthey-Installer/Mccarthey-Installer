@@ -426,8 +426,7 @@ eliminar_multiples_usuarios() {
 
         
                     
-        
-                    # Definir colores para la salida
+        # Definir colores para la salida
 AZUL_SUAVE='\033[38;5;45m'
 SOFT_PINK='\033[38;5;211m'
 PASTEL_BLUE='\033[38;5;153m'
@@ -459,6 +458,7 @@ monitorear_conexiones() {
     local INTERVALO=5
     declare -A estado_anterior
 
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones." >> "$LOG"
     while true; do
         [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
 
@@ -470,7 +470,7 @@ monitorear_conexiones() {
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
-            [[ -z "$usuario" ]] && { echo "$user_data $fecha_expiracion $dias $moviles $fecha_creacion1 $fecha_creacion2" >> "$TEMP_FILE_NEW"; continue; }
+            [[ -z "$usuario" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): Línea vacía o usuario inválido en $REGISTROS." >> "$LOG"; echo "$user_data $fecha_expiracion $dias $moviles $fecha_creacion1 $fecha_creacion2" >> "$TEMP_FILE_NEW"; continue; }
             fecha_creacion="$fecha_creacion1 $fecha_creacion2"
 
             if id "$usuario" &>/dev/null; then
@@ -480,11 +480,16 @@ monitorear_conexiones() {
                 [[ -n $(grep "^$usuario:!" /etc/shadow 2>/dev/null) ]] && CONEXIONES=0
 
                 TMP_STATUS="/tmp/status_${usuario}.tmp"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $CONEXIONES conexiones." >> "$LOG"
                 if [[ $CONEXIONES -gt 0 ]]; then
                     if [[ "${estado_anterior[$usuario]}" != "online" ]]; then
                         HORA_CONEXION=$(date '+%Y-%m-%d %H:%M:%S')
-                        echo "$HORA_CONEXION" > "$TMP_STATUS"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
+                        echo "$HORA_CONEXION" > "$TMP_STATUS" 2>>"$LOG"
+                        if [[ $? -eq 0 ]]; then
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION. Archivo $TMP_STATUS creado." >> "$LOG"
+                        else
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando $TMP_STATUS para $usuario." >> "$LOG"
+                        fi
                     fi
                     estado_anterior[$usuario]="online"
                 elif [[ "${estado_anterior[$usuario]}" == "online" ]]; then
@@ -497,13 +502,19 @@ monitorear_conexiones() {
                             DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
                             DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
                             echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION. Registrado en $HISTORIAL." >> "$LOG"
+                        else
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error calculando duración para $usuario (HORA_CONEXION=$HORA_CONEXION)." >> "$LOG"
                         fi
+                    else
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): No se encontró $TMP_STATUS para $usuario al desconectar." >> "$LOG"
                     fi
-                    rm -f "$TMP_STATUS" 2>/dev/null
+                    rm -f "$TMP_STATUS" 2>/dev/null && echo "$(date '+%Y-%m-%d %H:%M:%S'): $TMP_STATUS eliminado para $usuario." >> "$LOG"
                     estado_anterior[$usuario]="offline"
                 fi
                 echo "$user_data $fecha_expiracion $dias $moviles $fecha_creacion1 $fecha_creacion2" >> "$TEMP_FILE_NEW"
+            else
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario no existe en el sistema." >> "$LOG"
             fi
         done < "$TEMP_FILE"
 
@@ -564,7 +575,7 @@ verificar_online() {
 
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
                     if [[ -f "$TMP_STATUS" ]]; then
-                        HORA_CONEXION=$(cat "$TMP_STATUS")
+                        HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
                         START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
                         if [[ -n "$START_SECONDS" ]]; then
                             NOW_SECONDS=$(date +%s)
@@ -597,7 +608,7 @@ verificar_online() {
                     ((INACTIVOS++))
                 fi
             fi
-            printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%-35s${NC}\n" \
+            printf "${AMARILLO}%-14s ${COLOR_ESTADO}%-12s ${VERDE}%-10s ${AZUL_SUAVE}%s${NC}\n" \
                 "$usuario" "$ESTADO" "$MOVILES_CENTRADO" "$DETALLES"
         fi
     done < "$REGISTROS"
@@ -623,6 +634,7 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 else
     echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
+                    
 
 
 
@@ -631,7 +643,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.😘 Crear usuario"
+    echo "1.🙏 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
