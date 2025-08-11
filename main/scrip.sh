@@ -1,4 +1,8 @@
 #!/bin/bash
+export TZ="America/El_Salvador"
+export LANG=es_ES.UTF-8
+timedatectl set-timezone America/El_Salvador 2>/dev/null || true
+export TERM=xterm-256color
 
 # Definir rutas
 export REGISTROS="/diana/reg.txt"
