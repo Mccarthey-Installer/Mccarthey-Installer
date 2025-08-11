@@ -428,63 +428,48 @@ eliminar_multiples_usuarios() {
                     
         
                     
-
-
-
-
+# ==============================
 # Función para monitorear conexiones en segundo plano
+# ==============================
 monitorear_conexiones() {
-    # Archivo de log para monitoreo
     LOG="/var/log/monitoreo_conexiones.log"
-    # Intervalo de verificación en segundos
     INTERVALO=5
 
-    # Bucle infinito para monitorear continuamente
     while true; do
-        # Verificar si el archivo de registros existe
         [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
 
-        # Crear archivos temporales para procesar registros
         TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
         TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        
         cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
-        # Leer cada línea del archivo de registros
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
             [[ -z "$usuario" ]] && continue
 
-            # Verificar si el usuario existe en el sistema
             if id "$usuario" &>/dev/null; then
-                # Contar conexiones activas (sshd y dropbear)
                 CONEXIONES=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
                 MOVILES_NUM=$(echo "$moviles" | grep -oE '[0-9]+' || echo "1")
-                # Verificar si el usuario está bloqueado
                 [[ -n $(grep "^$usuario:!" /etc/shadow) ]] && CONEXIONES=0
 
-                # Limitar conexiones si exceden el número de móviles permitidos
-                if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
-                    PIDS=($(ps -u "$usuario" -o pid=,comm= | awk '$2=="sshd" || $2=="dropbear"{print $1}' | tail -n +$((MOVILES_NUM+1))))
-                    for PID in "${PIDS[@]}"; do
-                        kill -9 "$PID" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada." >> "$LOG"
-                    done
-                fi
-
-                # Archivo temporal para estado de conexión
                 TMP_STATUS="/tmp/status_${usuario}.tmp"
                 NEW_FECHA_CREACION="$fecha_creacion"
 
                 # Si hay conexiones activas
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    # Forzar creación de nuevo archivo temporal para reiniciar tiempo
-                    HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
-                    echo "$HORA_CONEXION" > "$TMP_STATUS"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
-                    NEW_FECHA_CREACION="$HORA_CONEXION"
-                # Si no hay conexiones activas pero hubo una conexión previa
+                    if [[ ! -f "$TMP_STATUS" ]]; then
+                        HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
+                        echo "$HORA_CONEXION" > "$TMP_STATUS"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
+                        NEW_FECHA_CREACION="$HORA_CONEXION"
+                    else
+                        HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
+                        NEW_FECHA_CREACION="$HORA_CONEXION"
+                    fi
+
+                # Si no hay conexiones y había estado conectado
                 elif [[ -f "$TMP_STATUS" ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
                     if [[ -n "$HORA_CONEXION" ]]; then
@@ -499,45 +484,41 @@ monitorear_conexiones() {
                         fi
                     fi
                     rm -f "$TMP_STATUS" 2>/dev/null
-                    NEW_FECHA_CREACION=""
+                    NEW_FECHA_CREACION="" 
                 fi
 
-                # Escribir en el archivo temporal nuevo
                 echo "$usuario:$clave $fecha_expiracion $dias $moviles $NEW_FECHA_CREACION" >> "$TEMP_FILE_NEW"
             else
-                # Mantener registro si el usuario no existe en el sistema
                 echo "$usuario:$clave $fecha_expiracion $dias $moviles $fecha_creacion" >> "$TEMP_FILE_NEW"
             fi
         done < "$TEMP_FILE"
 
-        # Reemplazar archivo de registros y limpiar temporales
-        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null && sync || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error reemplazando $REGISTROS." >> "$LOG"; rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; sleep "$INTERVALO"; continue; }
+        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null && sync
         rm -f "$TEMP_FILE" 2>/dev/null
         sleep "$INTERVALO"
     done
 }
 
+# ==============================
 # Función para verificar usuarios online
+# ==============================
 verificar_online() {
     clear
     echo "===== ✅ USUARIOS ONLINE ====="
-    # Mapa para traducir meses al español
     declare -A month_map=(
         ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
         ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
         ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
     )
 
-    # Crear archivo de historial si no existe
     [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"
-    # Verificar si existe el archivo de registros
+
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         echo "❌ No hay registros de usuarios. 📂"
         read -p "Presiona Enter para continuar... ✨"
         return 1
     fi
 
-    # Imprimir encabezado
     printf "%-14s %-12s %-10s %-25s\n" "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo "-----------------------------------------------------------------"
 
@@ -545,33 +526,28 @@ verificar_online() {
     TOTAL_USUARIOS=0
     INACTIVOS=0
 
-    # Leer archivo de registros
     while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
         usuario=${user_data%%:*}
         clave=${user_data#*:}
         [[ -z "$usuario" ]] && continue
 
-        # Verificar si el usuario existe en el sistema
         if id "$usuario" &>/dev/null; then
             ((TOTAL_USUARIOS++))
             ESTADO="☑️ 0"
             DETALLES="😴 Nunca conectado"
             MOVILES_NUM=$(echo "$moviles" | grep -oE '[0-9]+' || echo "1")
 
-            # Verificar si el usuario está bloqueado
             if grep -q "^$usuario:!" /etc/shadow; then
                 DETALLES="🔒 Usuario bloqueado"
                 ((INACTIVOS++))
                 ESTADO="🔴 BLOQ"
             else
-                # Contar conexiones activas
                 CONEXIONES=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="✅ $CONEXIONES"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
-
-                    # Obtener tiempo de conexión
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
+                    
                     if [[ -f "$TMP_STATUS" && -s "$TMP_STATUS" ]]; then
                         HORA_CONEXION=$(cat "$TMP_STATUS")
                         START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
@@ -582,68 +558,40 @@ verificar_online() {
                             M=$(((ELAPSED_SEC % 3600) / 60))
                             S=$((ELAPSED_SEC % 60))
                             DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
-                        else
-                            DETALLES="⏰ Tiempo no disponible"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al calcular tiempo para $usuario." >> "/var/log/monitoreo_conexiones.log"
                         fi
                     else
-                        # Forzar creación de archivo temporal si no existe
                         HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                         echo "$HORA_CONEXION" > "$TMP_STATUS"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo recreado)." >> "/var/log/monitoreo_conexiones.log"
                         DETALLES="⏰ 00:00:00"
                     fi
                 else
-                    # Buscar última desconexión en el historial
-                    ULTIMO_LOGOUT=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
+                    ULTIMO_LOGOUT=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
-                        if [[ $? -eq 0 && -n "$ULTIMO_LOGOUT_FMT" ]]; then
-                            for k in "${!month_map[@]}"; do
-                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/$k/${month_map[$k]}}
-                            done
-                            DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
-                        else
-                            DETALLES="😴 Nunca conectado"
-                        fi
-                    else
-                        DETALLES="😴 Nunca conectado"
+                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null)
+                        DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
                     fi
                     ((INACTIVOS++))
                 fi
             fi
-            # Imprimir información del usuario
+
             printf "%-14s %-12s %-10s %-25s\n" "$usuario" "$ESTADO" "📲 $MOVILES_NUM" "$DETALLES"
         fi
     done < "$REGISTROS"
 
-    # Imprimir resumen
     echo
     echo "Total de Online: $TOTAL_CONEXIONES Total usuarios: $TOTAL_USUARIOS Inactivos: $INACTIVOS"
     echo "================================================="
     read -p "Presiona Enter para continuar... ✨"
 }
 
-# Iniciar monitoreo de conexiones con nohup si no está corriendo
-if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE"
-    nohup bash -c "source $0; monitorear_conexiones" >> /var/log/monitoreo_conexiones.log 2>&1 &
-    sleep 1
-    if ps -p $! >/dev/null 2>&1; then
-        echo $! > "$PIDFILE"
-        echo "🚀 Monitoreo iniciado en segundo plano (PID: $!)."
-    else
-        echo "❌ Error al iniciar el monitoreo. Revisa /var/log/monitoreo_conexiones.log."
-    fi
-else
-    echo "⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE"))."
-fi
 
-# Menú principal actualizado
+
+
+# Menú principal
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.📏 Crear usuario"
+    echo "1.👏 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
