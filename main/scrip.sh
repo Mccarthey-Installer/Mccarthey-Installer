@@ -717,13 +717,13 @@ AMARILLO_SUAVE='\033[38;2;255;204;0m'
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.😎😎 Crear usuario"
+    echo "1.👀 Crear usuario"
     echo "2. Ver registros"
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
     echo "5. Eliminar múltiples usuarios"
     echo "6. Verificar usuarios online"
+    echo -e "${AMARILLO_SUAVE}7. 📊 Información${NC}"
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
@@ -744,9 +744,10 @@ while true; do
             eliminar_multiples_usuarios
             ;;
         6)
-            verificar_online ;;
-        7) informacion_usuarios ;;
-            
+            verificar_online
+            ;;
+        7) informacion_usuarios 
+            ;;
         0)
             echo "Saliendo..."
             exit 0
@@ -757,11 +758,3 @@ while true; do
             ;;
     esac
 done
-        
-                    
-        
-                    
-
-
-
-
