@@ -424,9 +424,13 @@ eliminar_multiples_usuarios() {
 }
 
 
-        
-                    
-        # Definir colores para la salida
+
+# Definir rutas únicas
+REGISTROS="/diana/reg.txt"
+HISTORIAL="/alexia/log.txt"
+PIDFILE="/Abigail/mon_our.pid"
+
+# Definir colores para la salida
 AZUL_SUAVE='\033[38;5;45m'
 SOFT_PINK='\033[38;5;211m'
 PASTEL_BLUE='\033[38;5;153m'
@@ -454,15 +458,15 @@ center_value() {
 
 # Función para monitorear conexiones en segundo plano
 monitorear_conexiones() {
-    local LOG="/var/log/monitoreo_conexiones_our.log"  # Nueva ruta para evitar conflictos
+    local LOG="/var/log/monitoreo_conexiones_our.log"
     local INTERVALO=5
     declare -A estado_anterior
 
     # Limpiar archivos temporales antiguos
-    rm -f /tmp/status_*.tmp 2>/dev/null
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones (PID $$)." >> "$LOG"
+    rm -f /tmp/status_our_*.tmp 2>/dev/null
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones (PID $$) en $REGISTROS." >> "$LOG"
     while true; do
-        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS (/diana/reg.txt)." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
 
         TEMP_FILE=$(mktemp "/tmp/reg_our.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
         TEMP_FILE_NEW=$(mktemp "/tmp/reg_our_new.tmp.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
@@ -481,7 +485,7 @@ monitorear_conexiones() {
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 [[ -n $(grep "^$usuario:!" /etc/shadow 2>/dev/null) ]] && CONEXIONES=0
 
-                TMP_STATUS="/tmp/status_our_${usuario}.tmp"  # Nueva convención para evitar conflictos
+                TMP_STATUS="/tmp/status_our_${usuario}.tmp"
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $CONEXIONES conexiones." >> "$LOG"
                 if [[ $CONEXIONES -gt 0 ]]; then
                     if [[ "${estado_anterior[$usuario]}" != "online" ]]; then
@@ -636,16 +640,12 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 else
     echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
-                    
-
-
-
 
 # Menú principal
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.👏 Crear usuario"
+    echo "1. Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
@@ -683,3 +683,11 @@ while true; do
             ;;
     esac
 done
+        
+                    
+        
+                    
+
+
+
+
