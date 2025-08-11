@@ -3,7 +3,7 @@
 # Definir rutas
 export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
-export PIDFILE="/Abigail/mon.pid"
+
 
 # Crear directorios si no existen
 mkdir -p $(dirname $REGISTROS)
@@ -428,7 +428,7 @@ eliminar_multiples_usuarios() {
 # Definir rutas únicas
 REGISTROS="/diana/reg.txt"
 HISTORIAL="/alexia/log.txt"
-PIDFILE="/Abigail/mon_our.pid"
+export PIDFILE="/Abigail/mon_our.pid"
 
 # Definir colores para la salida
 AZUL_SUAVE='\033[38;5;45m'
@@ -645,7 +645,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. Crear usuario"
+    echo "1.😎😎 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
