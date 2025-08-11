@@ -428,8 +428,6 @@ eliminar_multiples_usuarios() {
 
 
         
-                    
-        
                     # Definir colores para la salida
 AZUL_SUAVE='\033[38;5;45m'
 SOFT_PINK='\033[38;5;211m'
@@ -465,15 +463,16 @@ monitorear_conexiones() {
     while true; do
         [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
 
-        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
         cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
-            [[ -z "$usuario" ]] && continue
+            [[ -z "$usuario" ]] && { echo "$user_data $fecha_expiracion $dias $moviles $fecha_creacion1 $fecha_creacion2" >> "$TEMP_FILE_NEW"; continue; }
+            fecha_creacion="$fecha_creacion1 $fecha_creacion2"
 
             if id "$usuario" &>/dev/null; then
                 CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
@@ -483,9 +482,10 @@ monitorear_conexiones() {
 
                 TMP_STATUS="/tmp/status_${usuario}.tmp"
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    if [[ ! -f "$TMP_STATUS" || "${estado_anterior[$usuario]}" != "online" ]]; then
-                        echo "$(date '+%Y-%m-%d %H:%M:%S')" > "$TMP_STATUS"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                    if [[ "${estado_anterior[$usuario]}" != "online" ]]; then
+                        HORA_CONEXION=$(date '+%Y-%m-%d %H:%M:%S')
+                        echo "$HORA_CONEXION" > "$TMP_STATUS"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
                     fi
                     estado_anterior[$usuario]="online"
                 elif [[ "${estado_anterior[$usuario]}" == "online" ]]; then
@@ -518,16 +518,16 @@ monitorear_conexiones() {
 verificar_online() {
     clear
     echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
-    echo -e "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}" \
-        "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    echo -e "${LILAC}-----------------------------------------------------------------${NC}"
-
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros de usuarios. 📂${NC}"
         echo -e "${VIOLETA}Presiona Enter para continuar... ✨${NC}"
         read
         return
     fi
+
+    printf "${AMARILLO}%-14s ${AMARILLO}%-12s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
+        "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     declare -A month_map=(
         ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
@@ -544,10 +544,10 @@ verificar_online() {
         if id "$usuario" &>/dev/null; then
             ((TOTAL_USUARIOS++))
             ESTADO="☑️ 0"
-            DETALLES="   😴 Nunca conectado"
+            DETALLES="😴 Nunca conectado"
             COLOR_ESTADO="${ROJO}"
             MOVILES_NUM="$moviles"
-            MOVILES_CENTRADO=$(center_value "  📲 $MOVILES_NUM" 10)
+            MOVILES_CENTRADO=$(center_value "📲 $MOVILES_NUM" 10)
 
             if grep -q "^$usuario:!" /etc/shadow 2>/dev/null; then
                 DETALLES="🔒 Usuario bloqueado"
@@ -588,12 +588,12 @@ verificar_online() {
                             for k in "${!month_map[@]}"; do
                                 ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT//$k/${month_map[$k]}}
                             done
-                            DETALLES="   📅 Última: $ULTIMO_LOGOUT_FMT"
+                            DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
                         else
-                            DETALLES="   😴 Nunca conectado"
+                            DETALLES="😴 Nunca conectado"
                         fi
                     else
-                        DETALLES="   😴 Nunca conectado"
+                        DETALLES="😴 Nunca conectado"
                     fi
                     ((INACTIVOS++))
                 fi
@@ -624,6 +624,8 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 else
     echo -e "${SOFT_CORAL}⚠️ Monitoreo ya está corriendo (PID: $(cat "$PIDFILE")).${NC}"
 fi
+        
+                    
 
 
 
@@ -632,7 +634,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. Crear usuario"
+    echo "1.👏 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
