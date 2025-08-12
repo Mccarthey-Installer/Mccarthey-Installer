@@ -498,23 +498,25 @@ monitorear_conexiones() {
                         NEW_FECHA_CREACION="$HORA_CONEXION"
                     fi
                 # Si no hay conexiones activas pero estaba conectado antes
-                elif [[ $PREV_CONEXIONES -gt 0 || -f "$TMP_STATUS" ]]; then
-                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null | cut -d'|' -f1)
-                    if [[ -n "$HORA_CONEXION" && "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
-                        HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
-                        START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
-                        END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
-                        if [[ -n "$START_SECONDS" && -n "$END_SECONDS" ]]; then
-                            DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
-                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
-                            echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
-                        else
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al registrar desconexión de $usuario (fechas inválidas)." >> "$LOG"
+                else
+                    if [[ $PREV_CONEXIONES -gt 0 || -f "$TMP_STATUS" ]]; then
+                        HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null | cut -d'|' -f1)
+                        if [[ -n "$HORA_CONEXION" && "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+                            HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
+                            START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                            END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
+                            if [[ -n "$START_SECONDS" && -n "$END_SECONDS" && $START_SECONDS -le $END_SECONDS ]]; then
+                                DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
+                                DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
+                                echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
+                            else
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al registrar desconexión de $usuario (fechas inválidas)." >> "$LOG"
+                            fi
                         fi
+                        rm -f "$TMP_STATUS" 2>/dev/null # Eliminar archivo temporal al desconectar
+                        NEW_FECHA_CREACION=""
                     fi
-                    rm -f "$TMP_STATUS" 2>/dev/null
-                    NEW_FECHA_CREACION=""
                 fi
 
                 # Escribir en el archivo temporal nuevo
@@ -585,41 +587,51 @@ verificar_online() {
                     ESTADO="✅ $CONEXIONES"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
-                    # Obtener tiempo de conexión
+                    # Verificar conexiones activas y calcular tiempo conectado
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
                     if [[ -f "$TMP_STATUS" && -s "$TMP_STATUS" ]]; then
-                        HORA_CONEXION=$(cat "$TMP_STATUS" | cut -d'|' -f1)
+                        HORA_CONEXION=$(cut -d'|' -f1 "$TMP_STATUS")
                         if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
                             START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
-                            NOW_SECONDS=$(date +%s 2>/dev/null)
+                            NOW_SECONDS=$(date +%s)
                             if [[ -n "$START_SECONDS" && -n "$NOW_SECONDS" ]]; then
                                 ELAPSED_SEC=$((NOW_SECONDS - START_SECONDS))
+                                if (( ELAPSED_SEC < 0 )); then
+                                    # Tiempo negativo, reiniciar contador
+                                    HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
+                                    echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
+                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (tiempo negativo, archivo recreado)." >> "/var/log/monitoreo_conexiones.log"
+                                    ELAPSED_SEC=0
+                                fi
                                 H=$((ELAPSED_SEC / 3600))
                                 M=$(((ELAPSED_SEC % 3600) / 60))
                                 S=$((ELAPSED_SEC % 60))
                                 DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
                             else
-                                # Forzar recreación si la fecha es inválida
+                                # Error al obtener fechas, reiniciar contador
                                 HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                                 echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo recreado)." >> "/var/log/monitoreo_conexiones.log"
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (error de fechas, archivo recreado)." >> "/var/log/monitoreo_conexiones.log"
                                 DETALLES="⏰ 00:00:00"
                             fi
                         else
-                            # Forzar recreación si el archivo temporal es inválido
+                            # Archivo temporal inválido, crear nuevo
                             HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                             echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo recreado)." >> "/var/log/monitoreo_conexiones.log"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo inválido, recreado)." >> "/var/log/monitoreo_conexiones.log"
                             DETALLES="⏰ 00:00:00"
                         fi
                     else
-                        # Crear archivo temporal si no existe
+                        # Archivo temporal no existe o está vacío, crear nuevo
                         HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                         echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo creado)." >> "/var/log/monitoreo_conexiones.log"
                         DETALLES="⏰ 00:00:00"
                     fi
                 else
+                    # Usuario desconectado: eliminar archivo temporal para reiniciar contador en próxima conexión
+                    TMP_STATUS="/tmp/status_${usuario}.tmp"
+                    rm -f "$TMP_STATUS" 2>/dev/null
                     # Buscar última desconexión en el historial
                     ULTIMO_LOGOUT=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
@@ -674,7 +686,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.👏 Crear usuario"
+    echo "1.👏💯 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
