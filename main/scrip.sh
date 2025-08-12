@@ -424,8 +424,7 @@ eliminar_multiples_usuarios() {
 }
 
 
-        
-                    # Función para monitorear conexiones en segundo plano
+        # Función para monitorear conexiones en segundo plano
 monitorear_conexiones() {
     # Archivo de log para monitoreo
     LOG="/var/log/monitoreo_conexiones.log"
@@ -470,7 +469,7 @@ monitorear_conexiones() {
                 TMP_STATUS="/tmp/status_${usuario}.tmp"
                 NEW_FECHA_CREACION="$fecha_creacion"
 
-                # Verificar si el usuario estaba conectado en la iteración anterior
+                # Verificar estado previo (si estaba conectado antes)
                 PREV_CONEXIONES=0
                 if [[ -f "$TMP_STATUS" && -s "$TMP_STATUS" ]]; then
                     PREV_CONEXIONES=$(cat "$TMP_STATUS" | grep -q "CONNECTED" && echo 1 || echo 0)
@@ -478,8 +477,8 @@ monitorear_conexiones() {
 
                 # Si hay conexiones activas
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    # Si es una nueva conexión (no estaba conectado antes)
-                    if [[ $PREV_CONEXIONES -eq 0 || ! -f "$TMP_STATUS" || ! -s "$TMP_STATUS" ]]; then
+                    # Si es una nueva conexión (no estaba conectado antes o archivo temporal inválido)
+                    if [[ $PREV_CONEXIONES -eq 0 || ! -s "$TMP_STATUS" ]]; then
                         HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                         echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
@@ -488,7 +487,7 @@ monitorear_conexiones() {
                 # Si no hay conexiones activas pero estaba conectado antes
                 elif [[ $PREV_CONEXIONES -gt 0 || -f "$TMP_STATUS" ]]; then
                     HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null | cut -d'|' -f1)
-                    if [[ -n "$HORA_CONEXION" ]]; then
+                    if [[ -n "$HORA_CONEXION" && "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
                         HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                         START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
                         END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
@@ -575,26 +574,31 @@ verificar_online() {
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
                     if [[ -f "$TMP_STATUS" && -s "$TMP_STATUS" ]]; then
                         HORA_CONEXION=$(cat "$TMP_STATUS" | cut -d'|' -f1)
-                        START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
-                        NOW_SECONDS=$(date +%s 2>/dev/null)
-                        if [[ -n "$START_SECONDS" && -n "$NOW_SECONDS" ]]; then
-                            ELAPSED_SEC=$((NOW_SECONDS - START_SECONDS))
-                            H=$((ELAPSED_SEC / 3600))
-                            M=$(((ELAPSED_SEC % 3600) / 60))
-                            S=$((ELAPSED_SEC % 60))
-                            DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                        if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+                            START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                            NOW_SECONDS=$(date +%s 2>/dev/null)
+                            if [[ -n "$START_SECONDS" && -n "$NOW_SECONDS" ]]; then
+                                ELAPSED_SEC=$((NOW_SECONDS - START_SECONDS))
+                                H=$((ELAPSED_SEC / 3600))
+                                M=$(((ELAPSED_SEC % 3600) / 60))
+                                S=$((ELAPSED_SEC % 60))
+                                DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
+                            else
+                                DETALLES="⏰ Tiempo no disponible"
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al calcular tiempo para $usuario." >> "$LOG"
+                            fi
                         else
-                            # Forzar recreación si hay error
+                            # Forzar recreación si el archivo temporal es inválido
                             HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                             echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo recreado)." >> "/var/log/monitoreo_conexiones.log"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo recreado)." >> "$LOG"
                             DETALLES="⏰ 00:00:00"
                         fi
                     else
                         # Crear archivo temporal si no existe
                         HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                         echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo creado)." >> "/var/log/monitoreo_conexiones.log"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION (archivo creado)." >> "$LOG"
                         DETALLES="⏰ 00:00:00"
                     fi
                 else
@@ -652,7 +656,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.🎉 Crear usuario"
+    echo "1.😎😎 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
@@ -690,6 +694,7 @@ while true; do
             ;;
     esac
 done
+                    
         
                     
 
