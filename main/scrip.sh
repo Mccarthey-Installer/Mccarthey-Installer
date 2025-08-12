@@ -9,6 +9,7 @@ export PIDFILE="/Abigail/mon.pid"
 mkdir -p $(dirname $REGISTROS)
 mkdir -p $(dirname $HISTORIAL)
 mkdir -p $(dirname $PIDFILE)
+center_value()
 
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
@@ -427,9 +428,7 @@ eliminar_multiples_usuarios() {
         
                     
         
-                    
-
-# Función para centrar texto en un ancho dado
+                    # Función para centrar texto en un ancho dado
 center_value() {
     local value="$1"
     local width="$2"
@@ -510,11 +509,11 @@ verificar_online() {
                             DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
                         else
                             DETALLES="⏰ Tiempo no disponible"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error calculando tiempo desde $HORA_CONEXION para $usuario (START: $START)." >> /var/log/monitoreo_conexiones.log
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error calculando tiempo desde $HORA_CONEXION para $usuario." >> /var/log/monitoreo_conexiones.log
                         fi
                     else
                         DETALLES="⏰ Tiempo no disponible"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Archivo $TMP_STATUS no encontrado o no legible para $usuario (CONEXIONES: $CONEXIONES)." >> /var/log/monitoreo_conexiones.log
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Archivo $TMP_STATUS no encontrado para $usuario (CONEXIONES: $CONEXIONES)." >> /var/log/monitoreo_conexiones.log
                     fi
                 else
                     # Buscar última desconexión en el historial
@@ -651,10 +650,11 @@ monitorear_conexiones() {
     done
 }
 
-# Iniciar monitoreo de conexiones con nohup si no está corriendo
+# Iniciar monitoreo de conexiones en segundo plano
 if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
     rm -f "$PIDFILE"
-    nohup bash -c "source $0; monitorear_conexiones" >> /var/log/monitoreo_conexiones.log 2>&1 &
+    # Ejecutar monitorear_conexiones directamente en un bucle infinito
+    nohup bash -c "while true; do monitorear_conexiones; sleep 1; done" >> /var/log/monitoreo_conexiones.log 2>&1 &
     sleep 1
     if ps -p $! >/dev/null 2>&1; then
         echo $! > "$PIDFILE"
@@ -667,11 +667,13 @@ else
 fi
 
 
+
+
 # Menú principal
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.👏🎊 Crear usuario"
+    echo "1.👏 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
