@@ -448,7 +448,7 @@ verificar_online() {
         ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
     )
 
-    # Verificar si existen los archivos necesarios
+    # Verificar si existen los registros
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         echo "❌ No hay registros de usuarios. 📂"
         read -p "Presiona Enter para continuar... ✨"
@@ -470,7 +470,7 @@ verificar_online() {
         clave=${user_data#*:}
         ((TOTAL_USUARIOS++))
 
-        # Estado inicial: sin conexiones
+        # Estado inicial
         ESTADO="☑️ 0"
         DETALLES="😴 Nunca conectado"
         MOVILES_NUM=$moviles
@@ -489,14 +489,13 @@ verificar_online() {
                 CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
 
-                # Si hay conexiones activas
                 if [[ $CONEXIONES -gt 0 ]]; then
                     ESTADO="✅ $CONEXIONES"
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
 
                     # Leer tiempo de conexión desde archivo temporal
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
-                    if [[ -f "$TMP_STATUS" ]]; then
+                    if [[ -f "$TMP_STATUS" && -r "$TMP_STATUS" ]]; then
                         HORA_CONEXION=$(cat "$TMP_STATUS")
                         START=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
                         if [[ $? -eq 0 && -n "$START" ]]; then
@@ -508,9 +507,11 @@ verificar_online() {
                             DETALLES=$(printf "⏰ %02d:%02d:%02d" $H $M $S)
                         else
                             DETALLES="⏰ Tiempo no disponible"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error leyendo hora en $TMP_STATUS para $usuario." >> /var/log/monitoreo_conexiones.log
                         fi
                     else
                         DETALLES="⏰ Tiempo no disponible"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Archivo $TMP_STATUS no encontrado para $usuario." >> /var/log/monitoreo_conexiones.log
                     fi
                 else
                     # Buscar última desconexión en el historial
@@ -524,6 +525,7 @@ verificar_online() {
                             DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
                         else
                             DETALLES="😴 Nunca conectado"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error formateando $ULTIMO_LOGOUT para $usuario." >> /var/log/monitoreo_conexiones.log
                         fi
                     else
                         DETALLES="😴 Nunca conectado"
@@ -555,14 +557,15 @@ monitorear_conexiones() {
 
     # Crear directorio para el log si no existe
     mkdir -p $(dirname "$LOG")
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones." >> "$LOG"
 
     while true; do
         # Verificar si el archivo de registros existe
         [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
 
         # Crear archivos temporales
-        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
         cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
@@ -577,7 +580,7 @@ monitorear_conexiones() {
                 # Contar conexiones
                 CONEXIONES=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
                 MOVILES_NUM=$moviles
-                [[ -n $(grep "^$usuario:!" /etc/shadow) ]] && CONEXIONES=0
+                [[ -n $(grep "^$usuario:!" /etc/shadow 2>/dev/null) ]] && CONEXIONES=0
 
                 # Limitar conexiones si exceden el límite de móviles
                 if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
@@ -593,23 +596,31 @@ monitorear_conexiones() {
                     # Registrar inicio de conexión si no existe
                     if [[ ! -f "$TMP_STATUS" ]]; then
                         HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
-                        echo "$HORA_CONEXION" > "$TMP_STATUS"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
+                        echo "$HORA_CONEXION" > "$TMP_STATUS" 2>>"$LOG"
+                        if [[ $? -eq 0 ]]; then
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
+                        else
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error escribiendo $TMP_STATUS para $usuario." >> "$LOG"
+                        fi
                     fi
                 else
                     # Registrar desconexión si había una conexión activa
                     if [[ -f "$TMP_STATUS" ]]; then
-                        HORA_CONEXION=$(cat "$TMP_STATUS")
-                        HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
-                        START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
-                        END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
-                        if [[ -n "$START_SECONDS" && -n "$END_SECONDS" ]]; then
-                            DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
-                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
-                            echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
+                        HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
+                        if [[ -n "$HORA_CONEXION" ]]; then
+                            HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
+                            START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                            END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
+                            if [[ -n "$START_SECONDS" && -n "$END_SECONDS" ]]; then
+                                DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
+                                DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
+                                echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
+                            else
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error calculando duración para $usuario." >> "$LOG"
+                            fi
                         fi
-                        rm -f "$TMP_STATUS" 2>/dev/null
+                        rm -f "$TMP_STATUS" 2>/dev/null || echo "$(date '+%Y-%m-%d %H:%M:%S'): Error eliminando $TMP_STATUS para $usuario." >> "$LOG"
                     fi
                 fi
             fi
@@ -648,7 +659,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.📆 Crear usuario"
+    echo "1.👏📆Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
