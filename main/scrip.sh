@@ -552,9 +552,7 @@ monitorear_conexiones() {
     CIAN='\033[38;5;51m'
     NC='\033[0m'
 
-    # Rutas a ajustar a tu entorno
-    HISTORIAL="/root/historial.log"  # Aquí pon la ruta de tu historial
-    REGISTROS="/root/reg.txt"        # Ruta de tu archivo de registros
+    
 
     declare -A month_map=(
         ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
