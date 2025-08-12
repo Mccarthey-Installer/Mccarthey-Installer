@@ -629,21 +629,21 @@ verificar_online() {
                         DETALLES="⏰ 00:00:00"
                     fi
                 else
-                    # Usuario desconectado: eliminar archivo temporal para reiniciar contador en próxima conexión
+                    # Usuario desconectado: eliminar archivo temporal para reiniciar contador
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
                     rm -f "$TMP_STATUS" 2>/dev/null
                     # Buscar última desconexión en el historial
                     ULTIMO_LOGOUT=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
-                        if [[ $? -eq 0 && -n "$ULTIMO_LOGOUT_FMT" ]]; then
-                            for k in "${!month_map[@]}"; do
-                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/$k/${month_map[$k]}}
-                            done
-                            DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
-                        else
-                            DETALLES="😴 Nunca conectado"
-                        fi
+                        # Formatear fecha en español usando month_map
+                        DIA=$(date -d "$ULTIMO_LOGOUT" +"%d" | sed 's/^0*//') # Eliminar ceros a la izquierda
+                        MES=$(date -d "$ULTIMO_LOGOUT" +"%B")
+                        HORA=$(date -d "$ULTIMO_LOGOUT" +"%I:%M %p" | tr '[:upper:]' '[:lower:]')
+                        # Traducir mes usando month_map
+                        for k in "${!month_map[@]}"; do
+                            MES=${MES/$k/${month_map[$k]}}
+                        done
+                        DETALLES="📅 Última: ${DIA} de ${MES}:${HORA}"
                     else
                         DETALLES="😴 Nunca conectado"
                     fi
@@ -686,7 +686,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.👏💯 Crear usuario"
+    echo "1.👏 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
