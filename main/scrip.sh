@@ -9,7 +9,7 @@ export PIDFILE="/Abigail/mon.pid"
 mkdir -p $(dirname $REGISTROS)
 mkdir -p $(dirname $HISTORIAL)
 mkdir -p $(dirname $PIDFILE)
-center_value()
+#center_value()
 
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
