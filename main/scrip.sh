@@ -426,7 +426,13 @@ eliminar_multiples_usuarios() {
 
         
                     
-    # Función para monitorear conexiones en segundo plano
+        
+                    
+
+
+
+
+# Función para monitorear conexiones en segundo plano
 monitorear_conexiones() {
     # Archivo de log para monitoreo
     LOG="/var/log/monitoreo_conexiones.log"
@@ -473,46 +479,42 @@ monitorear_conexiones() {
 
                 # Verificar estado previo (si estaba conectado antes)
                 PREV_CONEXIONES=0
-                HORA_CONEXION=""
                 if [[ -f "$TMP_STATUS" && -s "$TMP_STATUS" ]]; then
-                    HORA_CONEXION=$(cut -d'|' -f1 "$TMP_STATUS")
+                    HORA_CONEXION=$(cat "$TMP_STATUS" | cut -d'|' -f1)
                     if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
                         PREV_CONEXIONES=$(cat "$TMP_STATUS" | grep -q "CONNECTED" && echo 1 || echo 0)
                     else
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario - Archivo temporal inválido ($TMP_STATUS), eliminado." >> "$LOG"
-                        rm -f "$TMP_STATUS" 2>/dev/null
-                        HORA_CONEXION=""
+                        rm -f "$TMP_STATUS" 2>/dev/null # Eliminar archivo inválido
                     fi
                 fi
 
-                # Registrar estado actual para depuración
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario - CONEXIONES=$CONEXIONES, PREV_CONEXIONES=$PREV_CONEXIONES, HORA_CONEXION=$HORA_CONEXION" >> "$LOG"
-
                 # Si hay conexiones activas
                 if [[ $CONEXIONES -gt 0 ]]; then
-                    # Si es una nueva conexión o el archivo temporal no existe/válido
-                    if [[ $PREV_CONEXIONES -eq 0 || ! -f "$TMP_STATUS" || ! -s "$TMP_STATUS" || -z "$HORA_CONEXION" ]]; then
+                    # Si es una nueva conexión o el archivo temporal es inválido
+                    if [[ $PREV_CONEXIONES -eq 0 || ! -f "$TMP_STATUS" || ! -s "$TMP_STATUS" ]]; then
                         HORA_CONEXION=$(date +"%Y-%m-%d %H:%M:%S")
                         echo "$HORA_CONEXION|CONNECTED" > "$TMP_STATUS"
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $HORA_CONEXION." >> "$LOG"
                         NEW_FECHA_CREACION="$HORA_CONEXION"
                     fi
-                # Si no hay conexiones activas
+                # Si no hay conexiones activas pero estaba conectado antes
                 else
-                    # Si estaba conectado antes, registrar desconexión
-                    if [[ $PREV_CONEXIONES -gt 0 && -n "$HORA_CONEXION" ]]; then
-                        HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
-                        START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
-                        END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
-                        if [[ -n "$START_SECONDS" && -n "$END_SECONDS" && $START_SECONDS -le $END_SECONDS ]]; then
-                            DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
-                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
-                            echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
-                        else
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario - Error al registrar desconexión (fechas inválidas: HORA_CONEXION=$HORA_CONEXION, HORA_DESCONEXION=$HORA_DESCONEXION)." >> "$LOG"
+                    if [[ $PREV_CONEXIONES -gt 0 || -f "$TMP_STATUS" ]]; then
+                        HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null | cut -d'|' -f1)
+                        if [[ -n "$HORA_CONEXION" && "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+                            HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
+                            START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                            END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
+                            if [[ -n "$START_SECONDS" && -n "$END_SECONDS" && $START_SECONDS -le $END_SECONDS ]]; then
+                                DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
+                                DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
+                                echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
+                            else
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al registrar desconexión de $usuario (fechas inválidas)." >> "$LOG"
+                            fi
                         fi
-                        rm -f "$TMP_STATUS" 2>/dev/null
+                        rm -f "$TMP_STATUS" 2>/dev/null # Eliminar archivo temporal al desconectar
                         NEW_FECHA_CREACION=""
                     fi
                 fi
@@ -627,29 +629,20 @@ verificar_online() {
                         DETALLES="⏰ 00:00:00"
                     fi
                 else
-                    # Usuario desconectado: eliminar archivo temporal para reiniciar contador
+                    # Usuario desconectado: eliminar archivo temporal para reiniciar contador en próxima conexión
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
                     rm -f "$TMP_STATUS" 2>/dev/null
-                    # Buscar última desconexión en el historial (si existe)
-                    ULTIMO_LOGOUT=""
-                    if [[ -f "$HISTORIAL" ]]; then
-                        ULTIMO_LOGOUT=$(grep -E "^${usuario}\|" "$HISTORIAL" | tail -n1 | awk -F'|' '{print $3}')
-                    fi
+                    # Buscar última desconexión en el historial
+                    ULTIMO_LOGOUT=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        # Intentar parsear y formatear la fecha de forma segura
-                        if START_SECONDS=$(date -d "$ULTIMO_LOGOUT" +%s 2>/dev/null); then
-                            # Día sin ceros a la izquierda
-                            DIA=$(date -d "$ULTIMO_LOGOUT" +"%d" | sed 's/^0*//')
-                            # Abreviatura del mes (Jan, Feb, ...)
-                            MES_ABBR=$(date -d "$ULTIMO_LOGOUT" +"%b")
-                            # Hora en formato 12h con am/pm en minúsculas
-                            HORA=$(date -d "$ULTIMO_LOGOUT" +"%I:%M %p" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-                            # Traducir abreviatura usando month_map
-                            MES=${month_map[$MES_ABBR]:-$MES_ABBR}
-                            DETALLES="📅 Última: ${DIA} de ${MES}:${HORA}"
+                        ULTIMO_LOGOUT_FMT=$(date -d "$ULTIMO_LOGOUT" +"%d de %B %I:%M %p" 2>/dev/null | awk '{print $1 " de " tolower($2) " " $3 ":" $4 " " tolower($5)}')
+                        if [[ $? -eq 0 && -n "$ULTIMO_LOGOUT_FMT" ]]; then
+                            for k in "${!month_map[@]}"; do
+                                ULTIMO_LOGOUT_FMT=${ULTIMO_LOGOUT_FMT/$k/${month_map[$k]}}
+                            done
+                            DETALLES="📅 Última: $ULTIMO_LOGOUT_FMT"
                         else
-                            # Si date -d falla, mostrar el valor crudo
-                            DETALLES="📅 Última: $ULTIMO_LOGOUT"
+                            DETALLES="😴 Nunca conectado"
                         fi
                     else
                         DETALLES="😴 Nunca conectado"
@@ -694,7 +687,7 @@ while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
     echo "1.👏 Crear usuario"
-    echo "2. 🦧Ver registros"
+    echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
     echo "5. Eliminar múltiples usuarios"
