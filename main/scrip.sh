@@ -632,18 +632,27 @@ verificar_online() {
                     # Usuario desconectado: eliminar archivo temporal para reiniciar contador
                     TMP_STATUS="/tmp/status_${usuario}.tmp"
                     rm -f "$TMP_STATUS" 2>/dev/null
-                    # Buscar última desconexión en el historial
-                    ULTIMO_LOGOUT=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}' | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$')
+                    # Buscar última desconexión en el historial (si existe)
+                    ULTIMO_LOGOUT=""
+                    if [[ -f "$HISTORIAL" ]]; then
+                        ULTIMO_LOGOUT=$(grep -E "^${usuario}\|" "$HISTORIAL" | tail -n1 | awk -F'|' '{print $3}')
+                    fi
                     if [[ -n "$ULTIMO_LOGOUT" ]]; then
-                        # Formatear fecha en español usando month_map
-                        DIA=$(date -d "$ULTIMO_LOGOUT" +"%d" | sed 's/^0*//') # Eliminar ceros a la izquierda
-                        MES=$(date -d "$ULTIMO_LOGOUT" +"%B")
-                        HORA=$(date -d "$ULTIMO_LOGOUT" +"%I:%M %p" | tr '[:upper:]' '[:lower:]')
-                        # Traducir mes usando month_map
-                        for k in "${!month_map[@]}"; do
-                            MES=${MES/$k/${month_map[$k]}}
-                        done
-                        DETALLES="📅 Última: ${DIA} de ${MES}:${HORA}"
+                        # Intentar parsear y formatear la fecha de forma segura
+                        if START_SECONDS=$(date -d "$ULTIMO_LOGOUT" +%s 2>/dev/null); then
+                            # Día sin ceros a la izquierda
+                            DIA=$(date -d "$ULTIMO_LOGOUT" +"%d" | sed 's/^0*//')
+                            # Abreviatura del mes (Jan, Feb, ...)
+                            MES_ABBR=$(date -d "$ULTIMO_LOGOUT" +"%b")
+                            # Hora en formato 12h con am/pm en minúsculas
+                            HORA=$(date -d "$ULTIMO_LOGOUT" +"%I:%M %p" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+                            # Traducir abreviatura usando month_map
+                            MES=${month_map[$MES_ABBR]:-$MES_ABBR}
+                            DETALLES="📅 Última: ${DIA} de ${MES}:${HORA}"
+                        else
+                            # Si date -d falla, mostrar el valor crudo
+                            DETALLES="📅 Última: $ULTIMO_LOGOUT"
+                        fi
                     else
                         DETALLES="😴 Nunca conectado"
                     fi
@@ -686,7 +695,7 @@ fi
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.👏 Crear usuario"
+    echo "1.👏💵 Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
