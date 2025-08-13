@@ -6,8 +6,6 @@
 export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
 export PIDFILE="/Abigail/mon.pid"
-# Al inicio del script, después de las variables
-rm -f /tmp/status_*.tmp
 
 # Crear directorios si no existen
 mkdir -p "$(dirname "$REGISTROS")"
@@ -584,7 +582,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. ⛑️💯 crear usuario"
+    echo "1. ⏰ crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
