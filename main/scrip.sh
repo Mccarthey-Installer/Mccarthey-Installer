@@ -731,7 +731,7 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
         echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-        echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
+        
         echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
@@ -739,14 +739,13 @@ if [[ -t 0 ]]; then
         case $OPCION in
             1) crear_registro ;;
             2) ver_registros ;;
-            3) nuclear_eliminar ;;
+            3) eliminar_multiples_usuarios ;;
             4) informacion_usuarios ;;
             5) verificar_online ;;
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) eliminar_usuario ;;
-            10) configurar_banner_ssh ;;
+            9) configurar_banner_ssh ;;
             0) exit 0 ;;
             *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
