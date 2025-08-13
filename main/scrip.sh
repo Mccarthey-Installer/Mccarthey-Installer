@@ -431,8 +431,10 @@ monitorear_conexiones() {
     INTERVALO=1
 
     while true; do
-        # Usuarios conectados ahora mismo por SSH o Dropbear
-        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
+        # Usuarios conectados ahora mismo por SSH o Dropbear, filtrados por los de reg.txt
+        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u | while read -r user; do
+            grep -q "^$user:" "$REGISTROS" && echo "$user"
+        done)
 
         # 🚫 Bloquear conexiones extras al instante según límite de móviles
         for usuario in $usuarios_ps; do
@@ -442,12 +444,12 @@ monitorear_conexiones() {
             MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
             [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
 
-            # Conexiones actuales
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            # Conexiones actuales (solo procesos sshd y dropbear del usuario)
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -E "^sshd$|^dropbear$" | wc -l) ))
 
             if [[ $conexiones -gt $MOVILES_NUM ]]; then
                 # Obtener el PID de la conexión más reciente (menor tiempo de ejecución)
-                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= | awk '$2=="sshd" || $2=="dropbear"{print $1, $3}' | sort -k2 -n | head -n 1)
+                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= | grep -E "sshd|dropbear" | awk '{print $1, $3}' | sort -k2 -n | head -n 1)
                 PID="${PIDS[0]%% *}"
                 if [[ -n "$PID" ]]; then
                     # Intentar cerrar con loginctl si está disponible
@@ -461,21 +463,21 @@ monitorear_conexiones() {
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada con kill -9 por exceder límite de $MOVILES_NUM." >> "$LOG"
                     # Verificar si la conexión se cerró
                     sleep 0.2
-                    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+                    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -E "^sshd$|^dropbear$" | wc -l) ))
                     if [[ $conexiones -gt $MOVILES_NUM ]]; then
                         # Reintentar con killall para procesos residuales
                         killall -u "$usuario" -9 -r "sshd|dropbear" 2>/dev/null
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
                     fi
                     # Verificación final
-                    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+                    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -E "^sshd$|^dropbear$" | wc -l) ))
                     if [[ $conexiones -gt $MOVILES_NUM ]]; then
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se pudo cerrar sesión extra de '$usuario'. Conexiones actuales: $conexiones, límite: $MOVILES_NUM." >> "$LOG"
                     else
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Éxito: Conexión extra de '$usuario' cerrada. Conexiones actuales: $conexiones." >> "$LOG"
                     fi
                 else
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se encontró PID para sesión extra de '$usuario'." >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se encontró PID para sesión extra de '$usuario'. Conexiones actuales: $conexiones." >> "$LOG"
                 fi
             fi
         done
@@ -486,7 +488,7 @@ monitorear_conexiones() {
             tmp_status="/tmp/status_${usuario}.tmp"
 
             # Conexiones actuales
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -E "^sshd$|^dropbear$" | wc -l) ))
 
             if [[ $conexiones -gt 0 ]]; then
                 # Si nunca se ha creado el reloj, créalo ahora
@@ -505,7 +507,7 @@ monitorear_conexiones() {
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -E "^sshd$|^dropbear$" | wc -l) ))
             if [[ $conexiones -eq 0 ]]; then
                 hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
                 hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -764,7 +766,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 😏PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======😎 😏PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
