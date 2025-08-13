@@ -41,19 +41,8 @@ monitorear_conexiones() {
 
             if [[ $conexiones -gt 0 ]]; then
                 if [[ ! -f "$tmp_status" ]]; then
-                    # Obtener el tiempo real de inicio de la última sesión
-                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
-                    if [[ -n "$hora_ini_sys" ]]; then
-                        # Convertir a timestamp para almacenar
-                        fecha_ini_timestamp=$(date -d "$hora_ini_sys" "+%s" 2>/dev/null)
-                        if [[ -n "$fecha_ini_timestamp" ]]; then
-                            echo "$fecha_ini_timestamp" > "$tmp_status"
-                        else
-                            date "+%s" > "$tmp_status"
-                        fi
-                    else
-                        date "+%s" > "$tmp_status"
-                    fi
+                    # Usar el tiempo actual como inicio de conexión (más preciso)
+                    date "+%s" > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 fi
             else
@@ -125,21 +114,11 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            # Si el archivo no existe, el monitoreo en background debería haberlo creado
-            # Si por alguna razón no existe, crearlo con el tiempo de última conexión
+            # Si el archivo no existe, significa que la conexión es nueva
+            # El monitor en background debería haberlo creado
             if [[ ! -f "$tmp_status" ]]; then
-                # Obtener el tiempo real de inicio de la última sesión
-                hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
-                if [[ -n "$hora_ini_sys" ]]; then
-                    fecha_ini_timestamp=$(date -d "$hora_ini_sys" "+%s" 2>/dev/null)
-                    if [[ -n "$fecha_ini_timestamp" ]]; then
-                        echo "$fecha_ini_timestamp" > "$tmp_status"
-                    else
-                        date "+%s" > "$tmp_status"
-                    fi
-                else
-                    date "+%s" > "$tmp_status"
-                fi
+                # Si no existe, crear con timestamp actual
+                date "+%s" > "$tmp_status"
             fi
 
             # Leer el timestamp y calcular tiempo transcurrido
@@ -603,7 +582,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 📧 📆crear usuario"
+    echo "1. 🤴crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
