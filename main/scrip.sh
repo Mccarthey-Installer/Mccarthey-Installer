@@ -428,30 +428,89 @@ eliminar_multiples_usuarios() {
 
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=0.3
+    INTERVALO=0.3  # Verificación rápida
 
     while true; do
-        usuarios_ps=$(ps -ef | grep -Po 'sshd: \K[^\s]+(?= \[priv\])' | sort -u)
+        # Usuarios con sesiones activas (usando loginctl, filtrados por reg.txt)
+        usuarios_ps=$(loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | while read -r user; do
+            grep -q "^$user:" "$REGISTROS" && echo "$user"
+        done)
 
+        # --- LIMITE DE CONEXIONES POR USUARIO ---
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
 
-            MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
-            [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
+            # Límite permitido (campo 4 en REGISTROS, si no es numérico, usa 1)
+            MOVILES_NUM=$(awk -F: -v u="$usuario" '$1==u{print $4}' "$REGISTROS" 2>/dev/null)
+            [[ -z "$MOVILES_NUM" || ! "$MOVILES_NUM" =~ ^[0-9]+$ ]] && MOVILES_NUM=1
+            (( MOVILES_NUM < 1 )) && MOVILES_NUM=1
 
-            # Lista de PIDs del proceso [priv] para ese usuario, ordenados por antigüedad
-            mapfile -t PIDS < <(
-                ps -eo pid,etimes,command --no-headers \
-                | grep -P "sshd: ${usuario} \[priv\]" \
-                | sort -k2,2n | awk '{print $1}'
-            )
+            # Conexiones actuales (usando loginctl para sesiones activas)
+            conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $conexiones conexiones, límite: $MOVILES_NUM" >> "$LOG"
 
-            # Matar las conexiones extra
-            if (( ${#PIDS[@]} > MOVILES_NUM )); then
-                for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
-                    kill -9 "${PIDS[$i]}" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión de '$usuario' (PID ${PIDS[$i]}) bloqueada. Límite $MOVILES_NUM." >> "$LOG"
-                done
+            if [[ $conexiones -gt $MOVILES_NUM ]]; then
+                # Obtener la sesión más reciente (última en la lista de loginctl)
+                SESSION=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | tail -n 1)
+                if [[ -n "$SESSION" ]]; then
+                    # Obtener el PID asociado (como respaldo)
+                    mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | awk '{print $1, $3}' | sort -k2 -n | head -n 1)
+                    PID="${PIDS[0]%% *}"
+                    # Cerrar la sesión con loginctl
+                    loginctl terminate-session "$SESSION" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION, PID $PID) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    # Forzar cierre del PID con kill -9 si existe
+                    if [[ -n "$PID" ]]; then
+                        kill -9 "$PID" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada con kill -9 por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    fi
+                    # Verificar si la conexión se cerró
+                    sleep 0.2
+                    conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
+                    if [[ $conexiones -gt $MOVILES_NUM ]]; then
+                        # Reintentar con killall para procesos residuales
+                        killall -u "$usuario" -9 -r "sshd" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    fi
+                    # Verificación final
+                    conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
+                    if [[ $conexiones -gt $MOVILES_NUM ]]; then
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se pudo cerrar sesión extra de '$usuario'. Conexiones actuales: $conexiones, límite: $MOVILES_NUM." >> "$LOG"
+                    else
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Éxito: Conexión extra de '$usuario' cerrada. Conexiones actuales: $conexiones." >> "$LOG"
+                    fi
+                else
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se encontró sesión para '$usuario'. Conexiones actuales: $conexiones." >> "$LOG"
+                fi
+            fi
+        done
+
+        # --- MARCA DE TIEMPO DE CONEXIÓN (entrada/salida) ---
+        for usuario in $usuarios_ps; do
+            [[ -z "$usuario" ]] && continue
+            tmp_status="/tmp/status_${usuario}.tmp"
+            conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
+            if [[ $conexiones -gt 0 ]]; then
+                if [[ ! -f "$tmp_status" ]]; then
+                    date +%s > "$tmp_status"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                else
+                    contenido=$(cat "$tmp_status" 2>/dev/null)
+                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
+                fi
+            fi
+        done
+
+        for f in /tmp/status_*.tmp; do
+            [[ ! -f "$f" ]] && continue
+            usuario="${f#/tmp/status_}"; usuario="${usuario%.tmp}"
+            conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
+            if [[ $conexiones -eq 0 ]]; then
+                hora_ini=$(date -d @"$(cat "$f" 2>/dev/null)" "+%Y-%m-%d %H:%M:%S")
+                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                rm -f "$f"
+                [[ -n "$HISTORIAL" ]] && echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
             fi
         done
 
@@ -703,7 +762,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}=====🔥=PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
