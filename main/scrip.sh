@@ -35,6 +35,8 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
     echo $! > "$PIDFILE"
 fi
 
+
+
 # ================================
 #  FUNCIÓN: MONITOREAR CONEXIONES
 # ================================
@@ -60,16 +62,35 @@ monitorear_conexiones() {
             if [[ $conexiones -gt 0 ]]; then
                 if [[ ! -f "$tmp_status" ]]; then
                     # Guardar marca de tiempo en segundos desde epoch
-                    date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                    date +%s > "$tmp_status" 2>/dev/null || {
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al escribir en $tmp_status" >> "$LOG"
+                        continue
+                    }
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado. Marca de tiempo: $(cat "$tmp_status")" >> "$LOG"
+                else
+                    # Verificar que el archivo contenga un número válido
+                    start_s=$(cat "$tmp_status" 2>/dev/null)
+                    if [[ ! "$start_s" =~ ^[0-9]+$ ]]; then
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status: '$start_s'. Reescribiendo." >> "$LOG"
+                        date +%s > "$tmp_status" 2>/dev/null || {
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al reescribir en $tmp_status" >> "$LOG"
+                            continue
+                        }
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado. Nueva marca de tiempo: $(cat "$tmp_status")" >> "$LOG"
+                    fi
                 fi
             else
                 if [[ -f "$tmp_status" ]]; then
-                    hora_ini=$(date -d "@$(cat "$tmp_status")" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
-                    hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                    rm -f "$tmp_status"
-                    echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                    start_s=$(cat "$tmp_status" 2>/dev/null)
+                    if [[ "$start_s" =~ ^[0-9]+$ ]]; then
+                        hora_ini=$(date -d "@$start_s" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+                        hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                        echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                    else
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status al desconectar: '$start_s'. Eliminando." >> "$LOG"
+                    fi
+                    rm -f "$tmp_status" 2>/dev/null
                 fi
             fi
 
@@ -131,11 +152,21 @@ verificar_online() {
                     detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
                 else
                     detalle="⏰ Error en cronómetro"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status: '$start_s'. Eliminando." >> "/var/log/monitoreo_conexiones.log"
+                    rm -f "$tmp_status" 2>/dev/null
                 fi
             else
                 detalle="⏰ Esperando datos..."
             fi
         else
+            # Si no hay conexiones, eliminar archivo temporal inválido
+            if [[ -f "$tmp_status" ]]; then
+                start_s=$(cat "$tmp_status" 2>/dev/null)
+                if [[ ! "$start_s" =~ ^[0-9]+$ ]]; then
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status al verificar: '$start_s'. Eliminando." >> "/var/log/monitoreo_conexiones.log"
+                    rm -f "$tmp_status" 2>/dev/null
+                fi
+            fi
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
@@ -578,7 +609,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 📏📏 crear usuario"
+    echo "1. 😍🤧 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
