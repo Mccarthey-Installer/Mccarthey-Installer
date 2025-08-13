@@ -178,7 +178,7 @@ bloquear_desbloquear_usuario() {
                 estado="bloqueado (hasta $(date -d @$bloqueo_hasta '+%I:%M%p'))"
             else
                 rm -f "$bloqueo_file"
-                usermod -U "$usuario" 2>/dev/null # Desbloquear cuenta en el sistema
+                usermod -U "$usuario" 2>/dev/null
                 estado="desbloqueado"
             fi
         fi
@@ -211,9 +211,10 @@ bloquear_desbloquear_usuario() {
         read -p "✅ Desea desbloquear al usuario '$usuario'? (s/n) " respuesta
         if [[ "$respuesta" =~ ^[sS]$ ]]; then
             rm -f "$bloqueo_file"
-            usermod -U "$usuario" 2>/dev/null # Desbloquear cuenta en el sistema
-            loginctl terminate-user "$usuario" 2>/dev/null # Terminar sesiones de logind
-            pkill -9 -u "$usuario" 2>/dev/null # Matar procesos con extrema fuerza
+            usermod -U "$usuario" 2>/dev/null
+            loginctl terminate-user "$usuario" 2>/dev/null
+            pkill -9 -u "$usuario" 2>/dev/null
+            killall -u "$usuario" -9 2>/dev/null
             echo -e "${VERDE}🔓 Usuario '$usuario' desbloqueado exitosamente.${NC}"
         else
             echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
@@ -228,10 +229,9 @@ bloquear_desbloquear_usuario() {
             if [[ "$minutos" =~ ^[0-9]+$ ]] && [[ $minutos -gt 0 ]]; then
                 bloqueo_hasta=$(( $(date +%s) + minutos * 60 ))
                 echo "$bloqueo_hasta" > "$bloqueo_file"
-                usermod -L "$usuario" 2>/dev/null # Bloquear cuenta en el sistema
-                loginctl terminate-user "$usuario" 2>/dev/null # Terminar sesiones de logind
-                pkill -9 -u "$usuario" 2>/dev/null # Matar procesos con fuerza extrema
-                # Asegurarse de que no queden sesiones residuales
+                usermod -L "$usuario" 2>/dev/null
+                loginctl terminate-user "$usuario" 2>/dev/null
+                pkill -9 -u "$usuario" 2>/dev/null
                 killall -u "$usuario" -9 2>/dev/null
                 echo -e "${VERDE}🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}"
                 echo -e "Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')"
@@ -244,6 +244,45 @@ bloquear_desbloquear_usuario() {
         read -p "Presiona Enter para continuar..."
     fi
 }
+
+monitorear_bloqueos() {
+    LOG="/var/log/monitoreo_bloqueos.log"
+    INTERVALO=10 # Verificar cada 10 segundos
+
+    while true; do
+        for bloqueo_file in /tmp/bloqueo_*.lock; do
+            [[ ! -f "$bloqueo_file" ]] && continue
+            usuario=$(basename "$bloqueo_file" .lock | cut -d_ -f2)
+            bloqueo_hasta=$(cat "$bloqueo_file")
+            if [[ $(date +%s) -ge $bloqueo_hasta ]]; then
+                rm -f "$bloqueo_file"
+                usermod -U "$usuario" 2>/dev/null
+                loginctl terminate-user "$usuario" 2>/dev/null
+                pkill -9 -u "$usuario" 2>/dev/null
+                killall -u "$usuario" -9 2>/dev/null
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desbloqueado automáticamente." >> "$LOG"
+            fi
+        done
+        sleep "$INTERVALO"
+    done
+}
+
+# ================================
+#  ARRANQUE AUTOMÁTICO DEL MONITOR DE BLOQUEOS
+# ================================
+if [[ ! -f "$PIDFILE.bloqueos" ]] || ! ps -p "$(cat "$PIDFILE.bloqueos" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$PIDFILE.bloqueos"
+    nohup bash "$0" mon_bloqueos >/dev/null 2>&1 &
+    echo $! > "$PIDFILE.bloqueos"
+fi
+
+# ================================
+#  MODO MONITOREO DE BLOQUEOS
+# ================================
+if [[ "$1" == "mon_bloqueos" ]]; then
+    monitorear_bloqueos
+    exit 0
+fi
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -263,7 +302,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 👐 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== ⛑️ PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
