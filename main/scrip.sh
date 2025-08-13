@@ -77,8 +77,6 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 fi
 
 # ================================
-#  FUNCIÓN: VERIFICAR ONLINE
-# ================================
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
@@ -111,7 +109,16 @@ verificar_online() {
             (( total_online += conexiones ))
 
             if [[ -f "$tmp_status" ]]; then
-                start_s=$((10#$(cat "$tmp_status")))
+                contenido=$(cat "$tmp_status")
+                if [[ "$contenido" =~ ^[0-9]+$ ]]; then
+                    # Ya es segundos UNIX
+                    start_s=$((10#$contenido))
+                else
+                    # Formato viejo -> reiniciar con hora actual
+                    start_s=$(date +%s)
+                    echo $start_s > "$tmp_status"
+                fi
+
                 now_s=$(date +%s)
                 elapsed=$(( now_s - start_s ))
 
@@ -145,7 +152,7 @@ verificar_online() {
 # ================================
 while true; do
     clear
-    echo "===== MENÚ SSH WEBSOCKET ====="
+    echo "===== ⛑️MENÚ SSH WEBSOCKET ====="
     echo "1. 📧Verificar usuarios online "    
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
