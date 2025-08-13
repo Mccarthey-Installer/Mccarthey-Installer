@@ -441,17 +441,19 @@ monitorear_conexiones() {
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
 
+            # Buscar número de móviles permitidos desde reg.txt
+            MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
+            [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1  # Default si no se encuentra
+
             # ¿Cuántas conexiones tiene activas?
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
-            # 🚫 Bloquear nuevas conexiones y dejar viva la primera
-            MOVILES_NUM=1  # Límite de conexiones simultáneas permitidas
+            # 🚫 Bloquear nuevas conexiones si excede el límite
             if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                # Listar PIDs de sesiones activas, dejando fuera las primeras permitidas
                 PIDS=($(ps -u "$usuario" -o pid=,comm= | awk '$2=="sshd" || $2=="dropbear"{print $1}' | tail -n +$((MOVILES_NUM+1))))
                 for PID in "${PIDS[@]}"; do
                     kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada por exceder el límite." >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada por exceder el límite de $MOVILES_NUM." >> "$LOG"
                 done
             fi
 
@@ -468,7 +470,7 @@ monitorear_conexiones() {
             fi
         done
 
-        # Ahora, ver quién estaba conectado y ya NO está, para cerrarles el tiempo
+        # Ver quién estaba conectado y ya NO está, para cerrarles el tiempo
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
@@ -485,7 +487,6 @@ monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-
 
 
 # ================================
@@ -733,7 +734,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 🍕 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== 📧📧 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
