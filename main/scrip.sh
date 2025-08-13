@@ -160,7 +160,7 @@ bloquear_desbloquear_usuario() {
     clear
     echo "==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ===="
     echo "===== 📋 USUARIOS REGISTRADOS ====="
-    printf "%-4s %-15s %-15s %-22s %-15s\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "✅ Estado"
+    printf "%-4s %-15s %-15s %-22s %-25s\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "✅ Estado"
     echo "--------------------------------------------------------------------------"
 
     # Leer usuarios desde el archivo de registros
@@ -182,7 +182,7 @@ bloquear_desbloquear_usuario() {
             fi
         fi
 
-        printf "%-4s %-15s %-15s %-22s %-15s\n" "$index" "$usuario" "$clave" "$fecha_exp" "$estado"
+        printf "%-4s %-15s %-15s %-22s %-25s\n" "$index" "$usuario" "$clave" "$fecha_exp" "$estado"
         usuarios[$index]="$usuario"
         ((index++))
     done < "$REGISTROS"
@@ -210,7 +210,7 @@ bloquear_desbloquear_usuario() {
         read -p "✅ Desea desbloquear al usuario '$usuario'? (s/n) " respuesta
         if [[ "$respuesta" =~ ^[sS]$ ]]; then
             rm -f "$bloqueo_file"
-            userdel -f "$usuario" 2>/dev/null
+            loginctl terminate-user "$usuario" 2>/dev/null
             pkill -u "$usuario" 2>/dev/null
             echo -e "${VERDE}🔓 Usuario '$usuario' desbloqueado exitosamente.${NC}"
         else
@@ -226,6 +226,7 @@ bloquear_desbloquear_usuario() {
             if [[ "$minutos" =~ ^[0-9]+$ ]] && [[ $minutos -gt 0 ]]; then
                 bloqueo_hasta=$(( $(date +%s) + minutos * 60 ))
                 echo "$bloqueo_hasta" > "$bloqueo_file"
+                loginctl terminate-user "$usuario" 2>/dev/null
                 pkill -u "$usuario" 2>/dev/null
                 echo -e "${VERDE}🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}"
                 echo -e "Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')"
@@ -257,7 +258,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== 👐 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
