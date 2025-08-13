@@ -118,12 +118,12 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            # Si no existe el archivo, guardamos el tiempo actual como inicio
-            if [[ ! -f "$tmp_status" ]]; then
+            # Si no existe el archivo o no tiene un número, lo creamos/reemplazamos
+            if [[ ! -f "$tmp_status" ]] || ! [[ $(cat "$tmp_status") =~ ^[0-9]+$ ]]; then
                 date +%s > "$tmp_status"
             fi
 
-            # Forzar a base 10 para evitar error de octal
+            # Forzar a base 10 para evitar octales
             start_s=$((10#$(cat "$tmp_status")))
             now_s=$(date +%s)
             elapsed=$(( now_s - start_s ))
@@ -580,7 +580,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 📐📐 crear usuario"
+    echo "1. 📧 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
