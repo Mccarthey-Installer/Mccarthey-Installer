@@ -431,7 +431,6 @@ monitorear_conexiones() {
     INTERVALO=0.3
 
     while true; do
-        # Extraer lista de usuarios con sesiones [priv]
         usuarios_ps=$(ps -ef | grep -Po 'sshd: \K[^\s]+(?= \[priv\])' | sort -u)
 
         for usuario in $usuarios_ps; do
@@ -440,19 +439,18 @@ monitorear_conexiones() {
             MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
             [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
 
-            # Lista de PIDs de las sesiones [priv] de ese usuario ordenadas por antigüedad
+            # Lista de PIDs del proceso [priv] para ese usuario, ordenados por antigüedad
             mapfile -t PIDS < <(
                 ps -eo pid,etimes,command --no-headers \
                 | grep -P "sshd: ${usuario} \[priv\]" \
                 | sort -k2,2n | awk '{print $1}'
             )
 
-            # Si excede el límite, matar las más nuevas
+            # Matar las conexiones extra
             if (( ${#PIDS[@]} > MOVILES_NUM )); then
                 for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
                     kill -9 "${PIDS[$i]}" 2>/dev/null
-                    echo -e "\033[1;31m$(date '+%Y-%m-%d %H:%M:%S'): Conexión nueva de '$usuario' (PID ${PIDS[$i]}) bloqueada. Límite: $MOVILES_NUM\033[0m"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión nueva de '$usuario' (PID ${PIDS[$i]}) bloqueada. Límite: $MOVILES_NUM" >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión de '$usuario' (PID ${PIDS[$i]}) bloqueada. Límite $MOVILES_NUM." >> "$LOG"
                 done
             fi
         done
@@ -705,7 +703,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======📐🎉PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
