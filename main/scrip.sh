@@ -447,45 +447,56 @@ monitorear_conexiones() {
             [[ -z "$MOVILES_NUM" || ! "$MOVILES_NUM" =~ ^[0-9]+$ ]] && MOVILES_NUM=1
             (( MOVILES_NUM < 1 )) && MOVILES_NUM=1
 
-            # Conexiones actuales (usando loginctl)
+            # Conexiones actuales (usando loginctl y ps para validar)
             conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $conexiones conexiones, límite: $MOVILES_NUM" >> "$LOG"
+            conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $conexiones sesiones (loginctl), $conexiones_ps procesos (ps), límite: $MOVILES_NUM" >> "$LOG"
 
-            if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                # Obtener todas las sesiones del usuario
+            if [[ $conexiones -gt $MOVILES_NUM || $conexiones_ps -gt $MOVILES_NUM ]]; then
+                # Obtener todas las sesiones del usuario (ordenadas por ID, las más recientes tienen IDs mayores)
                 mapfile -t SESSIONS < <(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | sort -n)
-                # Cerrar todas las sesiones excepto las primeras MOVILES_NUM (las más antiguas)
+                # Obtener PIDs de sshd ordenados por tiempo de ejecución (más reciente primero)
+                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | awk '{print $1, $3}' | sort -k2 -n | awk '{print $1}')
+                # Cerrar sesiones extras (manteniendo las MOVILES_NUM más antiguas)
                 for ((i=MOVILES_NUM; i<${#SESSIONS[@]}; i++)); do
                     SESSION="${SESSIONS[i]}"
-                    # Obtener el PID asociado como respaldo
-                    mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | awk '{print $1, $3}' | sort -k2 -n | head -n 1)
-                    PID="${PIDS[0]%% *}"
                     # Cerrar la sesión con loginctl
                     if [[ -n "$SESSION" ]]; then
-                        loginctl terminate-session "$SESSION" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION, PID $PID) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
-                    fi
-                    # Forzar cierre del PID con kill -9 si existe
-                    if [[ -n "$PID" ]]; then
-                        kill -9 "$PID" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada con kill -9 por exceder límite de $MOVILES_NUM." >> "$LOG"
-                    fi
-                    # Verificar si la conexión se cerró
-                    sleep 0.2
-                    conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
-                    if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                        # Reintentar con killall para procesos residuales
-                        killall -u "$usuario" -9 -r "sshd" 2>/dev/null
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
-                    fi
-                    # Verificación final
-                    conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
-                    if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se pudo cerrar sesión extra de '$usuario'. Conexiones actuales: $conexiones, límite: $MOVILES_NUM." >> "$LOG"
-                    else
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Éxito: Conexión extra de '$usuario' cerrada. Conexiones actuales: $conexiones." >> "$LOG"
+                        if loginctl terminate-session "$SESSION" 2>/dev/null; then
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
+                        else
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Fallo al cerrar sesión de '$usuario' (SESSION $SESSION) con loginctl." >> "$LOG"
+                        fi
                     fi
                 done
+                # Cerrar procesos sshd extras si persisten
+                for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
+                    PID="${PIDS[i]}"
+                    if [[ -n "$PID" ]]; then
+                        if kill -9 "$PID" 2>/dev/null; then
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada con kill -9 por exceder límite de $MOVILES_NUM." >> "$LOG"
+                        else
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Fallo al cerrar sesión de '$usuario' (PID $PID) con kill -9." >> "$LOG"
+                        fi
+                    fi
+                done
+                # Verificar si la conexión se cerró
+                sleep 0.2
+                conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
+                conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
+                if [[ $conexiones -gt $MOVILES_NUM || $conexiones_ps -gt $MOVILES_NUM ]]; then
+                    # Reintentar con killall para procesos residuales
+                    killall -u "$usuario" -9 -r "sshd" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
+                fi
+                # Verificación final
+                conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
+                conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
+                if [[ $conexiones -gt $MOVILES_NUM || $conexiones_ps -gt $MOVILES_NUM ]]; then
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se pudo cerrar sesión extra de '$usuario'. Sesiones: $conexiones (loginctl), $conexiones_ps (ps), límite: $MOVILES_NUM." >> "$LOG"
+                else
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Éxito: Conexión extra de '$usuario' cerrada. Sesiones: $conexiones (loginctl), $conexiones_ps (ps)." >> "$LOG"
+                fi
             fi
         done
 
@@ -766,7 +777,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}=====⏰⏰ANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}=====📆ANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
