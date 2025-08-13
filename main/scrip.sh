@@ -427,7 +427,7 @@ eliminar_multiples_usuarios() {
 
 
 # ================================
-#  FUNCIÓN: MONITOREAR CONEXIONES
+# FUNCIÓN: MONITOREAR CONEXIONES
 # ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
@@ -443,6 +443,17 @@ monitorear_conexiones() {
 
             # ¿Cuántas conexiones tiene activas?
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+
+            # 🚫 Bloquear nuevas conexiones y dejar viva la primera
+            MOVILES_NUM=1  # Límite de conexiones simultáneas permitidas
+            if [[ $conexiones -gt $MOVILES_NUM ]]; then
+                # Listar PIDs de sesiones activas, dejando fuera las primeras permitidas
+                PIDS=($(ps -u "$usuario" -o pid=,comm= | awk '$2=="sshd" || $2=="dropbear"{print $1}' | tail -n +$((MOVILES_NUM+1))))
+                for PID in "${PIDS[@]}"; do
+                    kill -9 "$PID" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada por exceder el límite." >> "$LOG"
+                done
+            fi
 
             if [[ $conexiones -gt 0 ]]; then
                 # Si nunca se ha creado el reloj, créalo ahora
@@ -722,7 +733,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 🎊 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== 🍕 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
