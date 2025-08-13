@@ -426,74 +426,7 @@ eliminar_multiples_usuarios() {
 }
 
 
-monitorear_conexiones() {
-    LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=1
 
-    while true; do
-        # Usuarios conectados ahora mismo por SSH o Dropbear
-        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
-
-        # 🚫 Bloquear conexiones extras manteniendo las más viejas
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
-
-            # Número de móviles permitidos desde reg.txt
-            MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
-            [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
-
-            # Conexiones actuales
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-
-            if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                # Ordenar conexiones por tiempo de ejecución (más antiguas primero)
-                PIDS=($(ps -u "$usuario" -o pid=,comm=,etimes= \
-                    | awk '$2=="sshd" || $2=="dropbear"' \
-                    | sort -k3,3n | awk '{print $1}'))
-
-                # Matar las más nuevas que exceden el límite
-                for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
-                    kill -9 "${PIDS[$i]}" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID ${PIDS[$i]}) cerrada por exceder límite de $MOVILES_NUM." >> "$LOG"
-                done
-            fi
-        done
-
-        # Manejar tiempos de conexión (igual que antes)
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
-            tmp_status="/tmp/status_${usuario}.tmp"
-
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-
-            if [[ $conexiones -gt 0 ]]; then
-                if [[ ! -f "$tmp_status" ]]; then
-                    date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
-                else
-                    contenido=$(cat "$tmp_status")
-                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
-                fi
-            fi
-        done
-
-        # Cerrar tiempos de los desconectados
-        for f in /tmp/status_*.tmp; do
-            [[ ! -f "$f" ]] && continue
-            usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-            if [[ $conexiones -eq 0 ]]; then
-                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
-                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                rm -f "$f"
-                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-            fi
-        done
-
-        sleep "$INTERVALO"
-    done
-}
 
 
 
@@ -742,7 +675,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======🔒🔒PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======💪💪PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
