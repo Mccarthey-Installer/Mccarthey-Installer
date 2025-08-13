@@ -178,6 +178,7 @@ bloquear_desbloquear_usuario() {
                 estado="bloqueado (hasta $(date -d @$bloqueo_hasta '+%I:%M%p'))"
             else
                 rm -f "$bloqueo_file"
+                usermod -U "$usuario" 2>/dev/null # Desbloquear cuenta en el sistema
                 estado="desbloqueado"
             fi
         fi
@@ -210,8 +211,9 @@ bloquear_desbloquear_usuario() {
         read -p "✅ Desea desbloquear al usuario '$usuario'? (s/n) " respuesta
         if [[ "$respuesta" =~ ^[sS]$ ]]; then
             rm -f "$bloqueo_file"
-            loginctl terminate-user "$usuario" 2>/dev/null
-            pkill -u "$usuario" 2>/dev/null
+            usermod -U "$usuario" 2>/dev/null # Desbloquear cuenta en el sistema
+            loginctl terminate-user "$usuario" 2>/dev/null # Terminar sesiones de logind
+            pkill -9 -u "$usuario" 2>/dev/null # Matar procesos con extrema fuerza
             echo -e "${VERDE}🔓 Usuario '$usuario' desbloqueado exitosamente.${NC}"
         else
             echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
@@ -226,8 +228,11 @@ bloquear_desbloquear_usuario() {
             if [[ "$minutos" =~ ^[0-9]+$ ]] && [[ $minutos -gt 0 ]]; then
                 bloqueo_hasta=$(( $(date +%s) + minutos * 60 ))
                 echo "$bloqueo_hasta" > "$bloqueo_file"
-                loginctl terminate-user "$usuario" 2>/dev/null
-                pkill -u "$usuario" 2>/dev/null
+                usermod -L "$usuario" 2>/dev/null # Bloquear cuenta en el sistema
+                loginctl terminate-user "$usuario" 2>/dev/null # Terminar sesiones de logind
+                pkill -9 -u "$usuario" 2>/dev/null # Matar procesos con fuerza extrema
+                # Asegurarse de que no queden sesiones residuales
+                killall -u "$usuario" -9 2>/dev/null
                 echo -e "${VERDE}🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}"
                 echo -e "Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')"
             else
