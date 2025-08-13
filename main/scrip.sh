@@ -737,7 +737,7 @@ if [[ -t 0 ]]; then
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
         case $OPCION in
-            1) crear_registro ;;
+            1) crear_usuario ;;
             2) ver_registros ;;
             3) eliminar_multiples_usuarios ;;
             4) informacion_usuarios ;;
