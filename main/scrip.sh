@@ -82,6 +82,53 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
     echo $! > "$PIDFILE"
 fi
 
+# Función para debug del cronómetro
+debug_cronometro() {
+    clear
+    echo "===== 🔍 DEBUG CRONÓMETRO ====="
+    echo "Hora actual del sistema: $(date)"
+    echo "Timestamp actual: $(date +%s)"
+    echo ""
+    
+    if [[ ! -f "$REGISTROS" ]]; then
+        echo "❌ No hay registros."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+        usuario=${userpass%%:*}
+        tmp_status="/tmp/status_${usuario}.tmp"
+        conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+        
+        echo "👤 Usuario: $usuario"
+        echo "🔗 Conexiones: $conexiones"
+        
+        if [[ -f "$tmp_status" ]]; then
+            contenido=$(cat "$tmp_status" 2>/dev/null)
+            echo "📄 Archivo temporal existe: $tmp_status"
+            echo "📝 Contenido: '$contenido'"
+            echo "📏 Longitud: ${#contenido}"
+            
+            if [[ "$contenido" =~ ^[0-9]+$ ]]; then
+                now_timestamp=$(date +%s)
+                elapsed=$(( now_timestamp - contenido ))
+                echo "⏰ Timestamp inicio: $contenido"
+                echo "⏰ Timestamp actual: $now_timestamp"
+                echo "📊 Diferencia: $elapsed segundos"
+                echo "🕒 Fecha inicio: $(date -d "@$contenido" "+%Y-%m-%d %H:%M:%S")"
+            else
+                echo "❌ Contenido no es timestamp válido"
+            fi
+        else
+            echo "❌ No existe archivo temporal"
+        fi
+        echo "-----------------------------------"
+    done < "$REGISTROS"
+    
+    read -p "Presiona Enter para continuar..."
+}
+
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
@@ -122,16 +169,29 @@ verificar_online() {
             fi
 
             # Leer el timestamp y calcular tiempo transcurrido
-            start_timestamp=$(cat "$tmp_status" 2>/dev/null)
-            if [[ "$start_timestamp" =~ ^[0-9]+$ ]]; then
-                now_timestamp=$(date +%s)
-                elapsed=$(( now_timestamp - start_timestamp ))
+            if [[ -f "$tmp_status" ]]; then
+                start_timestamp=$(cat "$tmp_status" 2>/dev/null | tr -d '\n' | tr -d ' ')
+                
+                # Debug: validar que sea un timestamp válido
+                if [[ "$start_timestamp" =~ ^[0-9]+$ ]] && [[ ${#start_timestamp} -eq 10 ]]; then
+                    now_timestamp=$(date +%s)
+                    elapsed=$(( now_timestamp - start_timestamp ))
+                    
+                    # Asegurar que elapsed no sea negativo
+                    if [[ $elapsed -lt 0 ]]; then
+                        elapsed=0
+                    fi
 
-                # Calcular horas, minutos, segundos
-                h=$(( elapsed / 3600 ))
-                m=$(( (elapsed % 3600) / 60 ))
-                s=$(( elapsed % 60 ))
-                detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                    # Calcular horas, minutos, segundos
+                    h=$(( elapsed / 3600 ))
+                    m=$(( (elapsed % 3600) / 60 ))
+                    s=$(( elapsed % 60 ))
+                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                else
+                    # Si el archivo tiene formato incorrecto, recrearlo
+                    date "+%s" > "$tmp_status"
+                    detalle="⏰ 00:00:00"
+                fi
             else
                 detalle="⏰ 00:00:00"
             fi
@@ -582,12 +642,13 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 🤴crear usuario"
+    echo "1. 📧 👐crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
     echo "5. Eliminar múltiples usuarios"
     echo "6. Verificar usuarios online"
+    echo "7. 🔍 Debug cronómetro"
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
@@ -609,6 +670,9 @@ while true; do
             ;;
         6)
             verificar_online
+            ;;
+        7)
+            debug_cronometro
             ;;
         0)
             echo "Saliendo..."
