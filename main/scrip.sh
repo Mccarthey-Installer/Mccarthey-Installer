@@ -446,8 +446,13 @@ eliminar_multiples_usuarios() {
         usuarios_ps=$(awk -F: '{print $1}' "$REGISTROS" | sort -u | while read -r user; do
             if id "$user" >/dev/null 2>&1; then
                 echo "$user"
+            else
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Usuario $user no existe en el sistema." >> "$LOG"
             fi
         done)
+
+        # Depuración: registrar usuarios detectados
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuarios detectados: $usuarios_ps" >> "$LOG"
 
         # --- LIMITE DE CONEXIONES POR USUARIO ---
         for usuario in $usuarios_ps; do
@@ -468,6 +473,10 @@ eliminar_multiples_usuarios() {
                 mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | sort -k3 -nr | awk '{print $1}')
                 # Obtener sesiones con loginctl como respaldo
                 mapfile -t SESSIONS < <(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | sort -n)
+
+                # Depuración: registrar PIDs y sesiones
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario - PIDs detectados: ${PIDS[*]}" >> "$LOG"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario - Sesiones detectadas: ${SESSIONS[*]}" >> "$LOG"
 
                 # Cerrar procesos sshd extras
                 for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
@@ -782,7 +791,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}=====😇 ANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}=====💯👀 ANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
