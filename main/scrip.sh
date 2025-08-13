@@ -433,9 +433,70 @@ eliminar_multiples_usuarios() {
 
 
         
-                    verificar_online() {
+                    monitorear_conexiones() {
+    LOG="/var/log/monitoreo_conexiones.log"
+    INTERVALO=5
+
+    while true; do
+        [[ ! -f "$REGISTROS" ]] && { sleep "$INTERVALO"; continue; }
+
+        TEMP_FILE=$(mktemp) || { sleep "$INTERVALO"; continue; }
+        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp) || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+        > "$TEMP_FILE_NEW"
+
+        # Leer con el formato real de reg.txt
+        while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+            usuario=${userpass%%:*}       # antes del :
+            clave=${userpass#*:}          # después del :
+            [[ -z "$usuario" ]] && continue
+
+            tmp_status="/tmp/status_${usuario}.tmp"
+
+            # Detectar conexiones SSH/Dropbear reales
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+
+            if [[ $conexiones -gt 0 ]]; then
+                # Usuario online: crear tmp si no existe
+                if [[ ! -f "$tmp_status" ]]; then
+                    # Intentar obtener hora real del login
+                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
+                    if [[ -n "$hora_ini_sys" ]]; then
+                        fecha_ini_fmt=$(date -d "$hora_ini_sys" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+                        echo "${fecha_ini_fmt:-$(date '+%Y-%m-%d %H:%M:%S')}" > "$tmp_status"
+                    else
+                        date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
+                    fi
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                fi
+            else
+                # Usuario offline: registrar desconexión si hay tmp
+                if [[ -f "$tmp_status" ]]; then
+                    hora_ini=$(cat "$tmp_status")
+                    hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                    rm -f "$tmp_status"
+                    echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                fi
+            fi
+
+            # Guardar de nuevo la línea original de reg.txt
+            echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
+        done < "$TEMP_FILE"
+
+        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null
+        rm -f "$TEMP_FILE"
+        sleep "$INTERVALO"
+    done
+}
+
+
+
+
+
+verificar_online() {
     clear
-    echo "===== ✅  USUARIOS ONLINE ====="
+    echo "===== ✅   USUARIOS ONLINE ====="
     printf "%-14s %-14s %-10s %-25s\n" "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo "-----------------------------------------------------------------"
 
@@ -444,17 +505,18 @@ eliminar_multiples_usuarios() {
     inactivos=0
 
     if [[ ! -f "$REGISTROS" ]]; then
-        echo "❌ No hay registros de usuarios."
+        echo "❌ No hay registros."
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+    while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
-        # Contar sesiones activas
+        # Contar procesos sshd o dropbear del usuario
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+        
         estado="☑️ 0"
         detalle="😴 Nunca conectado"
         mov_txt="📲 $moviles"
@@ -463,6 +525,8 @@ eliminar_multiples_usuarios() {
         if [[ $conexiones -gt 0 ]]; then
             estado="✅ $conexiones"
             (( total_online += conexiones ))
+
+            # Tiempo en vivo desde tmp_status
             if [[ -f "$tmp_status" ]]; then
                 hora_ini=$(cat "$tmp_status")
                 if [[ -n "$hora_ini" ]]; then
@@ -473,7 +537,7 @@ eliminar_multiples_usuarios() {
                         h=$(( elapsed / 3600 ))
                         m=$(( (elapsed % 3600) / 60 ))
                         s=$(( elapsed % 60 ))
-                        detalle=$(printf "⏰ %02d:%02d:%02d" $h $m $s)
+                        detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
                     else
                         detalle="⏰ Tiempo no disponible"
                     fi
@@ -481,7 +545,9 @@ eliminar_multiples_usuarios() {
             else
                 detalle="⏰ Tiempo no disponible"
             fi
+
         else
+            # Buscar última desconexión en HISTORIAL
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
@@ -500,61 +566,6 @@ eliminar_multiples_usuarios() {
     read -p "Presiona Enter para continuar..."
 }
 
-
-monitorear_conexiones() {
-    LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=5
-
-    while true; do
-        [[ ! -f "$REGISTROS" ]] && { sleep "$INTERVALO"; continue; }
-
-        TEMP_FILE=$(mktemp) || { sleep "$INTERVALO"; continue; }
-        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp) || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        > "$TEMP_FILE_NEW"
-
-        while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
-            usuario=${userpass%%:*}
-            clave=${userpass#*:}
-            [[ -z "$usuario" ]] && continue
-
-            tmp_status="/tmp/status_${usuario}.tmp"
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-
-            if [[ $conexiones -gt 0 ]]; then
-                # Usuario online: crear tmp si no existe
-                if [[ ! -f "$tmp_status" ]]; then
-                    # Intentar obtener la hora real del login desde el sistema
-                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
-                    if [[ -n "$hora_ini_sys" ]]; then
-                        fecha_ini_fmt=$(date -d "$hora_ini_sys" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
-                        [[ -n "$fecha_ini_fmt" ]] && echo "$fecha_ini_fmt" > "$tmp_status" || date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
-                    else
-                        date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
-                    fi
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
-                fi
-            else
-                # Usuario offline: si había tmp, registrar desconexión en historial
-                if [[ -f "$tmp_status" ]]; then
-                    hora_ini=$(cat "$tmp_status")
-                    hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                    rm -f "$tmp_status"
-                    echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-                fi
-            fi
-
-            # Reescribir línea en REGISTROS igual que la original
-            echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
-        done < "$TEMP_FILE"
-
-        mv "$TEMP_FILE_NEW" "$REGISTROS"
-        rm -f "$TEMP_FILE"
-        sleep "$INTERVALO"
-    done
-}
-
                     
 
 
@@ -564,7 +575,7 @@ monitorear_conexiones() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.🐎🐎Crear usuario"
+    echo "1.🫥🫥Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
