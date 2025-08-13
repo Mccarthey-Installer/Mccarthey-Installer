@@ -442,7 +442,7 @@ eliminar_multiples_usuarios() {
     fi
 
     while true; do
-        # Usuarios con sesiones activas (usando ps en lugar de loginctl para mayor fiabilidad con el proxy)
+        # Usuarios desde REGISTROS, validados con id
         usuarios_ps=$(awk -F: '{print $1}' "$REGISTROS" | sort -u | while read -r user; do
             if id "$user" >/dev/null 2>&1; then
                 echo "$user"
@@ -458,18 +458,18 @@ eliminar_multiples_usuarios() {
             [[ -z "$MOVILES_NUM" || ! "$MOVILES_NUM" =~ ^[0-9]+$ ]] && MOVILES_NUM=1
             (( MOVILES_NUM < 1 )) && MOVILES_NUM=1
 
-            # Conexiones actuales (priorizar ps, validar con loginctl)
+            # Conexiones actuales (priorizar ps)
             conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
             conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $conexiones sesiones (loginctl), $conexiones_ps procesos (ps), límite: $MOVILES_NUM" >> "$LOG"
 
-            if [[ $conexiones_ps -gt $MOVILES_NUM || $conexiones -gt $MOVILES_NUM ]]; then
+            if [[ $conexiones_ps -gt $MOVILES_NUM ]]; then
                 # Obtener PIDs de sshd ordenados por tiempo de ejecución (más reciente primero)
-                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | sort -k3 -n | awk '{print $1}')
+                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | sort -k3 -nr | awk '{print $1}')
                 # Obtener sesiones con loginctl como respaldo
                 mapfile -t SESSIONS < <(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | sort -n)
 
-                # Cerrar procesos sshd extras (usar ps como prioridad)
+                # Cerrar procesos sshd extras
                 for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
                     PID="${PIDS[i]}"
                     if [[ -n "$PID" ]]; then
@@ -497,7 +497,7 @@ eliminar_multiples_usuarios() {
                 sleep 0.2
                 conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
                 conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
-                if [[ $conexiones_ps -gt $MOVILES_NUM || $conexiones -gt $MOVILES_NUM ]]; then
+                if [[ $conexiones_ps -gt $MOVILES_NUM ]]; then
                     killall -u "$usuario" -9 -r "sshd" 2>/dev/null
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
                 fi
