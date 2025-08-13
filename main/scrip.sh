@@ -104,6 +104,7 @@ verificar_online() {
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
+        # Contar procesos activos
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + \
                        $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
@@ -116,7 +117,8 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            if [[ -f "$tmp_status" ]]; then
+            # Verificar que el archivo tmp tenga un número válido
+            if [[ -f "$tmp_status" ]] && [[ $(cat "$tmp_status") =~ ^[0-9]+$ ]]; then
                 start_s=$((10#$(cat "$tmp_status")))
                 now_s=$(date +%s)
                 elapsed=$(( now_s - start_s ))
@@ -129,7 +131,7 @@ verificar_online() {
             fi
 
         else
-            # Si está desconectado, mostrar última vez o nunca conectado
+            # Usuario no conectado: mostrar última desconexión si existe
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
@@ -148,6 +150,7 @@ verificar_online() {
     echo "================================================"
     read -p "Presiona Enter para continuar..."
 }
+
 
 
 # Función para calcular la fecha de expiración
@@ -573,7 +576,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 🎉 crear usuario"
+    echo "1. 👀 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
