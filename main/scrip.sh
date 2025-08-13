@@ -437,25 +437,33 @@ monitorear_conexiones() {
         # Usuarios conectados ahora mismo por SSH o Dropbear
         usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
+        # 🚫 Bloquear conexiones extras al instante según límite de móviles
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
-            tmp_status="/tmp/status_${usuario}.tmp"
 
-            # Buscar número de móviles permitidos desde reg.txt
+            # Número de móviles permitidos desde reg.txt
             MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
-            [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1  # Default si no se encuentra
+            [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
 
-            # ¿Cuántas conexiones tiene activas?
+            # Conexiones actuales
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
-            # 🚫 Bloquear nuevas conexiones si excede el límite
             if [[ $conexiones -gt $MOVILES_NUM ]]; then
                 PIDS=($(ps -u "$usuario" -o pid=,comm= | awk '$2=="sshd" || $2=="dropbear"{print $1}' | tail -n +$((MOVILES_NUM+1))))
                 for PID in "${PIDS[@]}"; do
                     kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada por exceder el límite de $MOVILES_NUM." >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada al instante por exceder límite de $MOVILES_NUM." >> "$LOG"
                 done
             fi
+        done
+
+        # Ahora manejar tiempos de conexión como antes
+        for usuario in $usuarios_ps; do
+            [[ -z "$usuario" ]] && continue
+            tmp_status="/tmp/status_${usuario}.tmp"
+
+            # Conexiones actuales
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
                 # Si nunca se ha creado el reloj, créalo ahora
@@ -734,7 +742,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 📧📧 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== 🔒PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
