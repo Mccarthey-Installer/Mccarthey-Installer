@@ -446,11 +446,27 @@ monitorear_conexiones() {
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                # Obtener el PID de la conexión más reciente (la última en iniciarse)
-                PID=$(ps -u "$usuario" -o pid=,comm=,etimes= | awk '$2=="sshd" || $2=="dropbear"{print $1, $3}' | sort -k2 -nr | head -n 1 | awk '{print $1}')
+                # Obtener el PID y la sesión más reciente (ordenado por tiempo de inicio)
+                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,start= | awk '$2=="sshd" || $2=="dropbear"{print $1, $3}' | sort -k2 -r | head -n 1)
+                PID="${PIDS[0]%% *}"
                 if [[ -n "$PID" ]]; then
+                    # Intentar cerrar la sesión más reciente con loginctl si está disponible
+                    SESSION=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | tail -n 1)
+                    if [[ -n "$SESSION" ]]; then
+                        loginctl terminate-session "$SESSION" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    fi
+                    # Forzar cierre del proceso con kill -9
                     kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada al instante por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada con kill -9 por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    # Verificar que la conexión se cerró, reintentar si persiste
+                    sleep 0.5
+                    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+                    if [[ $conexiones -gt $MOVILES_NUM ]]; then
+                        # Último intento con killall para procesos residuales
+                        killall -u "$usuario" -9 -r "sshd|dropbear" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    fi
                 fi
             fi
         done
@@ -739,7 +755,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== 🔒PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== ⏱️PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
