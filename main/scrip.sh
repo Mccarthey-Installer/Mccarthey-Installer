@@ -426,9 +426,6 @@ eliminar_multiples_usuarios() {
 }
 
 
-# ================================
-# FUNCIÓN: MONITOREAR CONEXIONES
-# ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=1
@@ -449,11 +446,12 @@ monitorear_conexiones() {
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                PIDS=($(ps -u "$usuario" -o pid=,comm= | awk '$2=="sshd" || $2=="dropbear"{print $1}' | tail -n +$((MOVILES_NUM+1))))
-                for PID in "${PIDS[@]}"; do
+                # Obtener el PID de la conexión más reciente (la última en iniciarse)
+                PID=$(ps -u "$usuario" -o pid=,comm=,etimes= | awk '$2=="sshd" || $2=="dropbear"{print $1, $3}' | sort -k2 -nr | head -n 1 | awk '{print $1}')
+                if [[ -n "$PID" ]]; then
                     kill -9 "$PID" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada al instante por exceder límite de $MOVILES_NUM." >> "$LOG"
-                done
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada al instante por exceder límite de $MOVILES_NUM." >> "$LOG"
+                fi
             fi
         done
 
@@ -495,7 +493,6 @@ monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-
 
 # ================================
 #  MODO MONITOREO DIRECTO
