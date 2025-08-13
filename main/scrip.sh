@@ -521,14 +521,21 @@ monitorear_conexiones() {
             tmp_status="/tmp/status_${usuario}.tmp"
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
-            # Usuario conectado
             if [[ $conexiones -gt 0 ]]; then
+                # Usuario online: crear tmp si no existe
                 if [[ ! -f "$tmp_status" ]]; then
-                    date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
+                    # Intentar obtener la hora real del login desde el sistema
+                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
+                    if [[ -n "$hora_ini_sys" ]]; then
+                        fecha_ini_fmt=$(date -d "$hora_ini_sys" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+                        [[ -n "$fecha_ini_fmt" ]] && echo "$fecha_ini_fmt" > "$tmp_status" || date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
+                    else
+                        date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
+                    fi
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 fi
             else
-                # Usuario desconectado, registrar si había estado conectado
+                # Usuario offline: si había tmp, registrar desconexión en historial
                 if [[ -f "$tmp_status" ]]; then
                     hora_ini=$(cat "$tmp_status")
                     hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -538,7 +545,7 @@ monitorear_conexiones() {
                 fi
             fi
 
-            # Escribir línea sin modificar formato de REGISTROS
+            # Reescribir línea en REGISTROS igual que la original
             echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
         done < "$TEMP_FILE"
 
@@ -548,7 +555,6 @@ monitorear_conexiones() {
     done
 }
 
-        
                     
 
 
@@ -558,7 +564,7 @@ monitorear_conexiones() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.👏🐈 Crear usuario"
+    echo "1.🐎🐎Crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
