@@ -426,14 +426,12 @@ eliminar_multiples_usuarios() {
 }
 
 
-
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=0.3
 
     while true; do
-        # Detectar usuarios con sesiones SSH activas
-        usuarios_ps=$(ps -eo user=,command= | grep -E "sshd: [a-zA-Z0-9]+ \[priv\]" | awk '{print $1}' | sort -u)
+        usuarios_ps=$(ps -eo command= | grep -Po 'sshd: \K[^\s]+(?= \[priv\])' | sort -u)
 
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
@@ -441,14 +439,12 @@ monitorear_conexiones() {
             MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
             [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
 
-            # Listar PIDs reales del sshd [priv] para ese usuario, ordenados por antigüedad
             mapfile -t PIDS < <(
-                ps -eo pid,user,etimes,command --no-headers \
-                | awk -v u="$usuario" '$2=="root" && $4=="sshd:" && $5==u && $6=="[priv]" {print $1,$3}' \
+                ps -eo pid,etimes,command --no-headers \
+                | grep -P "sshd: ${usuario} \[priv\]" \
                 | sort -k2,2n | awk '{print $1}'
             )
 
-            # Si excede el límite, matar las más nuevas
             if (( ${#PIDS[@]} > MOVILES_NUM )); then
                 for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
                     kill -9 "${PIDS[$i]}" 2>/dev/null
@@ -705,7 +701,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======🤧PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🤧😳PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
