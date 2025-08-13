@@ -17,31 +17,34 @@ mkdir -p "$(dirname "$PIDFILE")"
 # ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=1  # ahora revisa cada segundo
+    INTERVALO=1  # revisa cada segundo
 
     while true; do
-        [[ ! -f "$REGISTROS" ]] && { sleep "$INTERVALO"; continue; }
+        # Obtener lista de usuarios desde $REGISTROS
+        if [[ -f "$REGISTROS" && -s "$REGISTROS" ]]; then
+            usuarios_a_monitorear=$(cut -d: -f1 "$REGISTROS")
+        else
+            usuarios_a_monitorear=""
+        fi
 
-        TEMP_FILE=$(mktemp) || { sleep "$INTERVALO"; continue; }
-        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp) || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        > "$TEMP_FILE_NEW"
+        # Si no hay usuarios en $REGISTROS, seguir esperando
+        [[ -z "$usuarios_a_monitorear" ]] && { sleep "$INTERVALO"; continue; }
 
-        while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
-            usuario=${userpass%%:*}
+        for usuario in $usuarios_a_monitorear; do
             [[ -z "$usuario" ]] && continue
-
             tmp_status="/tmp/status_${usuario}.tmp"
+
+            # Contar conexiones SSH o Dropbear
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
                 # Usuario conectado
                 if [[ ! -f "$tmp_status" ]]; then
-                    # Primera vez detectado → iniciar cronómetro
+                    # Primera vez que lo detectamos -> iniciar cronómetro
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 else
-                    # Si el archivo existe pero no es un número válido, corregirlo
+                    # Si existe pero está corrupto, corregirlo
                     contenido=$(cat "$tmp_status")
                     if ! [[ "$contenido" =~ ^[0-9]+$ ]]; then
                         date +%s > "$tmp_status"
@@ -57,15 +60,12 @@ monitorear_conexiones() {
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
                 fi
             fi
+        done
 
-            echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
-        done < "$TEMP_FILE"
-
-        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null
-        rm -f "$TEMP_FILE"
         sleep "$INTERVALO"
     done
 }
+
 
 # ================================
 #  MODO MONITOREO DIRECTO
@@ -160,7 +160,7 @@ verificar_online() {
 # ================================
 while true; do
     clear
-    echo "===== ✅️🐵MENÚ SSH WEBSOCKET ====="
+    echo "===== 📏📏MENÚ SSH WEBSOCKET ====="
     echo "1. 📧Verificar usuarios online "    
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
