@@ -81,6 +81,7 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 fi
 
 # ================================
+
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
@@ -109,16 +110,17 @@ verificar_online() {
         tmp_status="/tmp/status_${usuario}.tmp"
 
         if [[ $conexiones -gt 0 ]]; then
+            # Usuario actualmente online
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
             if [[ -f "$tmp_status" ]]; then
                 contenido=$(cat "$tmp_status")
                 if [[ "$contenido" =~ ^[0-9]+$ ]]; then
-                    # Ya es segundos UNIX
+                    # Epoch válido
                     start_s=$((10#$contenido))
                 else
-                    # Formato viejo -> reiniciar con hora actual
+                    # Reparar si estaba en formato viejo
                     start_s=$(date +%s)
                     echo $start_s > "$tmp_status"
                 fi
@@ -132,14 +134,16 @@ verificar_online() {
                 detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
             fi
         else
+            # Usuario desconectado ahora
             rm -f "$tmp_status"
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
                 detalle="📅 Última: $ult_fmt"
             else
-                (( inactivos++ ))
+                detalle="😴 Nunca conectado"
             fi
+            (( inactivos++ )) # 📌 Siempre cuenta como inactivo si no está conectado
         fi
 
         printf "%-14s %-14s %-10s %-25s\n" "$usuario" "$estado" "$mov_txt" "$detalle"
@@ -156,8 +160,8 @@ verificar_online() {
 # ================================
 while true; do
     clear
-    echo "===== 💵 MENÚ SSH WEBSOCKET ====="
-    echo "1. 📆erificar usuarios online "    
+    echo "===== MENÚ SSH WEBSOCKET ====="
+    echo "1. 😳Verificar usuarios online "    
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
