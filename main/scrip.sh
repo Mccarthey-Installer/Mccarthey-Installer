@@ -105,7 +105,7 @@ verificar_online() {
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
-        # Ver cuántas conexiones SSH/Dropbear tiene
+        # Contar conexiones SSH y Dropbear activas para el usuario
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
         estado="☑️ 0"
@@ -119,26 +119,26 @@ verificar_online() {
 
             if [[ -f "$tmp_status" ]]; then
                 start_time=$(cat "$tmp_status")
-                # Validar formato del tiempo
-                if [[ "$start_time" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
-                    start_s=$(date -d "$start_time" "+%s" 2>/dev/null)
-                    now_s=$(date "+%s")
-                    if [[ -n "$start_s" && "$start_s" =~ ^[0-9]+$ ]]; then
-                        elapsed=$(( now_s - start_s ))
-                        h=$(( elapsed / 3600 ))
-                        m=$(( (elapsed % 3600) / 60 ))
-                        s=$(( elapsed % 60 ))
-                        detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
-                    else
-                        detalle="⏰ Error en tiempo"
-                    fi
+                # Validar que sea un timestamp UNIX (solo dígitos)
+                if [[ "$start_time" =~ ^[0-9]+$ ]]; then
+                    start_s=$((10#$start_time))
+                    now_s=$(date +%s)
+                    elapsed=$(( now_s - start_s ))
+
+                    h=$(( elapsed / 3600 ))
+                    m=$(( (elapsed % 3600) / 60 ))
+                    s=$(( elapsed % 60 ))
+
+                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
                 else
                     detalle="⏰ Formato inválido"
                 fi
             else
+                # Si no existe archivo de estado, poner 00:00:00
                 detalle="⏰ 00:00:00"
             fi
         else
+            # Usuario desconectado: eliminar archivo estado
             rm -f "$tmp_status"
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
@@ -582,7 +582,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. ⏰ crear usuario"
+    echo "1. 📐crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
