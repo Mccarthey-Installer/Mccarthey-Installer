@@ -293,46 +293,52 @@ bloquear_desbloquear_usuario() {
     read -p "Presiona Enter para continuar... ✨"
 }
 
+# Colores y emojis
+VIOLETA='\033[38;5;141m'
+VERDE='\033[38;5;42m'
+AMARILLO='\033[38;5;220m'
+AZUL='\033[38;5;39m'
+ROJO='\033[1;31m'
+CIAN='\033[38;5;51m'
+FUCHSIA='\033[38;2;255;0;255m'
+AMARILLO_SUAVE='\033[38;2;255;204;0m'
+ROSA='\033[38;2;255;105;180m'
+ROSA_CLARO='\033[1;95m'
+NC='\033[0m'
 
 # Menú principal
-while true; do
-    clear
-    echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.👏 Crear usuario"
-    echo "2. Ver registros"
-    echo "3. Mini registro"
-    echo "4. Crear múltiples usuarios"
-    echo "5. Eliminar múltiples usuarios"
-    echo "6. Verificar usuarios online"
-    echo "0. Salir"
-    read -p "Selecciona una opción: " opcion
-
-    case $opcion in
-        1)
-            crear_usuario
-            ;;
-        2)
-            ver_registros
-            ;;
-        3)
-            mini_registro
-            ;;
-        4)
-            crear_multiples_usuarios
-            ;;
-        5)
-            eliminar_multiples_usuarios
-            ;;
-        6)
-            verificar_online
-            ;;
-        0)
-            echo "Saliendo..."
-            exit 0
-            ;;
-        *)
-            echo "Opción inválida."
-            read -p "Presiona Enter para continuar..."
-            ;;
-    esac
-done
+if [[ -t 0 ]]; then
+    while true; do
+        clear
+        barra_sistema
+        echo
+        echo -e "${VIOLETA}====== 😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
+        echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
+        echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
+        echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
+        echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
+        echo -e "${AMARILLO_SUAVE}9. 💣 Eliminar completamente usuario(s) (modo nuclear)${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
+        echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
+        PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+        read -p "$PROMPT" OPCION
+        case $OPCION in
+            1) crear_registro ;;
+            2) ver_registros ;;
+            3) nuclear_eliminar ;;
+            4) informacion_usuarios ;;
+            5) verificar_online ;;
+            6) bloquear_desbloquear_usuario ;;
+            7) crear_multiples_usuarios ;;
+            8) mini_registro ;;
+            9) eliminar_usuario ;;
+            10) configurar_banner_ssh ;;
+            0) exit 0 ;;
+            *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
+        esac
+    done
+fi
