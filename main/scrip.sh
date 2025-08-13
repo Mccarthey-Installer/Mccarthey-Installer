@@ -427,37 +427,65 @@ eliminar_multiples_usuarios() {
 
 
 
-bloquear_conexiones() {
+monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    REGISTROS="/ruta/a/reg.txt"
+    INTERVALO=0.3  # ⚡ verificación más rápida
 
-    inotifywait -m -e create --format "%f" /proc | while read pid; do
-        # Verificamos si es un PID
-        [[ ! "$pid" =~ ^[0-9]+$ ]] && continue
+    while true; do
+        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
-        # Sacamos info del proceso
-        if [[ -r "/proc/$pid/comm" ]]; then
-            cmd=$(cat /proc/$pid/comm)
-            if [[ "$cmd" == "sshd" || "$cmd" == "dropbear" ]]; then
-                usuario=$(ps -o user= -p $pid 2>/dev/null)
-                [[ -z "$usuario" ]] && continue
+        for usuario in $usuarios_ps; do
+            [[ -z "$usuario" ]] && continue
 
-                MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
-                [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
+            MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
+            [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
 
-                # Contar las conexiones actuales para ese usuario
-                conexiones=$(ps -u "$usuario" -o comm= | grep -Ec "^(sshd|dropbear)$")
+            # Listar todas las sesiones de ese usuario, ordenadas por antigüedad real (segundos)
+            PIDS=($(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers \
+                | awk '$2=="sshd" || $2=="dropbear"{print $1,$3}' \
+                | sort -k2,2n | awk '{print $1}'))
 
-                if (( conexiones > MOVILES_NUM )); then
-                    kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión NUEVA de $usuario (PID $pid) bloqueada al instante. Límite: $MOVILES_NUM" >> "$LOG"
+            if (( ${#PIDS[@]} > MOVILES_NUM )); then
+                # Mata las más nuevas, deja vivas las primeras
+                for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
+                    kill -9 "${PIDS[$i]}" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión de '$usuario' (PID ${PIDS[$i]}) bloqueada, límite $MOVILES_NUM." >> "$LOG"
+                done
+            fi
+        done
+
+        # ------ manejo de tiempos como antes ------
+        for usuario in $usuarios_ps; do
+            [[ -z "$usuario" ]] && continue
+            tmp_status="/tmp/status_${usuario}.tmp"
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            if [[ $conexiones -gt 0 ]]; then
+                if [[ ! -f "$tmp_status" ]]; then
+                    date +%s > "$tmp_status"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                else
+                    contenido=$(cat "$tmp_status")
+                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
                 fi
             fi
-        fi
+        done
+
+        for f in /tmp/status_*.tmp; do
+            [[ ! -f "$f" ]] && continue
+            usuario=$(basename "$f" .tmp | cut -d_ -f2)
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            if [[ $conexiones -eq 0 ]]; then
+                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
+                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                rm -f "$f"
+                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+            fi
+        done
+
+        sleep "$INTERVALO"
     done
 }
-
-
 
 # ================================
 #  MODO MONITOREO DIRECTO
