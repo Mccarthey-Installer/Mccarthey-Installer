@@ -122,9 +122,9 @@ verificar_online() {
                 date +%s > "$tmp_status"
             fi
 
-            start_s=$(cat "$tmp_status")
-            now_s=$(date +%s)
-            elapsed=$(( now_s - start_s ))
+            start_s=$((10#$(cat "$tmp_status")))
+now_s=$(date +%s)
+elapsed=$(( now_s - start_s ))
 
             h=$(( elapsed / 3600 ))
             m=$(( (elapsed % 3600) / 60 ))
@@ -577,7 +577,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 💪💪 crear usuario"
+    echo "1. ⛑️⛑️ crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
