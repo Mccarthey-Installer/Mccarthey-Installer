@@ -17,7 +17,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 # ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=5
+    INTERVALO=1  # ahora revisa cada segundo
 
     while true; do
         [[ ! -f "$REGISTROS" ]] && { sleep "$INTERVALO"; continue; }
@@ -35,12 +35,20 @@ monitorear_conexiones() {
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
+                # Usuario conectado
                 if [[ ! -f "$tmp_status" ]]; then
-                    # Guardar hora en segundos UNIX para cronómetro
+                    # Primera vez detectado → iniciar cronómetro
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                else
+                    # Si el archivo existe pero no es un número válido, corregirlo
+                    contenido=$(cat "$tmp_status")
+                    if ! [[ "$contenido" =~ ^[0-9]+$ ]]; then
+                        date +%s > "$tmp_status"
+                    fi
                 fi
             else
+                # Usuario desconectado
                 if [[ -f "$tmp_status" ]]; then
                     hora_ini=$(date -d @"$(cat "$tmp_status")" "+%Y-%m-%d %H:%M:%S")
                     hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -152,7 +160,7 @@ verificar_online() {
 # ================================
 while true; do
     clear
-    echo "===== ⛑️MENÚ SSH WEBSOCKET ====="
+    echo "===== ✅️🐵MENÚ SSH WEBSOCKET ====="
     echo "1. 📧Verificar usuarios online "    
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
