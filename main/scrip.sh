@@ -426,14 +426,23 @@ eliminar_multiples_usuarios() {
 }
 
 
-monitorear_conexiones() {
+
+
+        monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=0.3  # Verificación rápida
+
+    # Validar permisos de REGISTROS
+    if [[ ! -r "$REGISTROS" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se puede leer $REGISTROS. Verifica permisos." >> "$LOG"
+        sleep "$INTERVALO"
+        continue
+    fi
 
     while true; do
         # Usuarios con sesiones activas (usando loginctl, filtrados por reg.txt)
         usuarios_ps=$(loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | while read -r user; do
-            if grep -q "^$user:" "$REGISTROS" 2>/dev/null; then
+            if grep -E "^${user}:" "$REGISTROS" >/dev/null 2>&1; then
                 echo "$user"
             fi
         done)
@@ -447,20 +456,19 @@ monitorear_conexiones() {
             [[ -z "$MOVILES_NUM" || ! "$MOVILES_NUM" =~ ^[0-9]+$ ]] && MOVILES_NUM=1
             (( MOVILES_NUM < 1 )) && MOVILES_NUM=1
 
-            # Conexiones actuales (usando loginctl y ps para validar)
+            # Conexiones actuales (loginctl y ps para validar)
             conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
             conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $conexiones sesiones (loginctl), $conexiones_ps procesos (ps), límite: $MOVILES_NUM" >> "$LOG"
 
             if [[ $conexiones -gt $MOVILES_NUM || $conexiones_ps -gt $MOVILES_NUM ]]; then
-                # Obtener todas las sesiones del usuario (ordenadas por ID, las más recientes tienen IDs mayores)
+                # Obtener sesiones ordenadas por ID (las más recientes tienen IDs mayores)
                 mapfile -t SESSIONS < <(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | sort -n)
                 # Obtener PIDs de sshd ordenados por tiempo de ejecución (más reciente primero)
-                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | awk '{print $1, $3}' | sort -k2 -n | awk '{print $1}')
-                # Cerrar sesiones extras (manteniendo las MOVILES_NUM más antiguas)
+                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | sort -k3 -n | awk '{print $1}')
+                # Cerrar sesiones extras
                 for ((i=MOVILES_NUM; i<${#SESSIONS[@]}; i++)); do
                     SESSION="${SESSIONS[i]}"
-                    # Cerrar la sesión con loginctl
                     if [[ -n "$SESSION" ]]; then
                         if loginctl terminate-session "$SESSION" 2>/dev/null; then
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
@@ -469,7 +477,7 @@ monitorear_conexiones() {
                         fi
                     fi
                 done
-                # Cerrar procesos sshd extras si persisten
+                # Cerrar procesos sshd extras
                 for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
                     PID="${PIDS[i]}"
                     if [[ -n "$PID" ]]; then
@@ -480,12 +488,11 @@ monitorear_conexiones() {
                         fi
                     fi
                 done
-                # Verificar si la conexión se cerró
+                # Verificar si persisten conexiones
                 sleep 0.2
                 conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
                 conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
                 if [[ $conexiones -gt $MOVILES_NUM || $conexiones_ps -gt $MOVILES_NUM ]]; then
-                    # Reintentar con killall para procesos residuales
                     killall -u "$usuario" -9 -r "sshd" 2>/dev/null
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
                 fi
@@ -532,13 +539,6 @@ monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
-# ================================
-#  MODO MONITOREO DIRECTO
-# ================================
-if [[ "$1" == "mon" ]]; then
-    monitorear_conexiones
-    exit 0
-fi
 
 # ================================
 #  ARRANQUE AUTOMÁTICO DEL MONITOR
@@ -777,7 +777,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}=====📆ANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}=====⏱️📏ANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
