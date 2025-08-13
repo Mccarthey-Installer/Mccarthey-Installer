@@ -156,7 +156,88 @@ verificar_online() {
 }
 
 
+bloquear_desbloquear_usuario() {
+    clear
+    echo "==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ===="
+    echo "===== 📋 USUARIOS REGISTRADOS ====="
+    printf "%-4s %-15s %-15s %-22s %-15s\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "✅ Estado"
+    echo "--------------------------------------------------------------------------"
 
+    # Leer usuarios desde el archivo de registros
+    usuarios=()
+    index=1
+    while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+        usuario=${userpass%%:*}
+        clave=${userpass#*:}
+        estado="desbloqueado"
+        bloqueo_file="/tmp/bloqueo_${usuario}.lock"
+
+        if [[ -f "$bloqueo_file" ]]; then
+            bloqueo_hasta=$(cat "$bloqueo_file")
+            if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
+                estado="bloqueado (hasta $(date -d @$bloqueo_hasta '+%I:%M%p'))"
+            else
+                rm -f "$bloqueo_file"
+                estado="desbloqueado"
+            fi
+        fi
+
+        printf "%-4s %-15s %-15s %-22s %-15s\n" "$index" "$usuario" "$clave" "$fecha_exp" "$estado"
+        usuarios[$index]="$usuario"
+        ((index++))
+    done < "$REGISTROS"
+
+    echo "=========================================================================="
+    read -p "👤 Digite el número o el nombre del usuario: " input
+
+    # Validar entrada
+    if [[ "$input" =~ ^[0-9]+$ ]] && [[ -n "${usuarios[$input]}" ]]; then
+        usuario="${usuarios[$input]}"
+    else
+        usuario="$input"
+    fi
+
+    # Verificar si el usuario existe
+    if ! grep -q "^${usuario}:" "$REGISTROS"; then
+        echo -e "${ROJO}❌ Usuario '$usuario' no encontrado.${NC}"
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    bloqueo_file="/tmp/bloqueo_${usuario}.lock"
+    if [[ -f "$bloqueo_file" ]] && [[ $(date +%s) -lt $(cat "$bloqueo_file") ]]; then
+        echo -e "𒯢 El usuario '$usuario' está BLOQUEADO hasta $(date -d @$(cat "$bloqueo_file") '+%I:%M%p')."
+        read -p "✅ Desea desbloquear al usuario '$usuario'? (s/n) " respuesta
+        if [[ "$respuesta" =~ ^[sS]$ ]]; then
+            rm -f "$bloqueo_file"
+            userdel -f "$usuario" 2>/dev/null
+            pkill -u "$usuario" 2>/dev/null
+            echo -e "${VERDE}🔓 Usuario '$usuario' desbloqueado exitosamente.${NC}"
+        else
+            echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
+        fi
+        read -p "Presiona Enter para continuar..."
+        return
+    else
+        echo -e "𒯢 El usuario '$usuario' está DESBLOQUEADO."
+        read -p "✅ Desea bloquear al usuario '$usuario'? (s/n) " respuesta
+        if [[ "$respuesta" =~ ^[sS]$ ]]; then
+            read -p "Ponga en minutos el tiempo que el usuario estaría bloqueado y confirmar con Enter: " minutos
+            if [[ "$minutos" =~ ^[0-9]+$ ]] && [[ $minutos -gt 0 ]]; then
+                bloqueo_hasta=$(( $(date +%s) + minutos * 60 ))
+                echo "$bloqueo_hasta" > "$bloqueo_file"
+                pkill -u "$usuario" 2>/dev/null
+                echo -e "${VERDE}🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}"
+                echo -e "Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')"
+            else
+                echo -e "${ROJO}❌ Tiempo inválido. Debe ser un número mayor a 0.${NC}"
+            fi
+        else
+            echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
+        fi
+        read -p "Presiona Enter para continuar..."
+    fi
+}
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
