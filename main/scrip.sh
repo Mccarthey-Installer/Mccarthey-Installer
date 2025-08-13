@@ -17,6 +17,64 @@ mkdir -p "$(dirname "$PIDFILE")"
 # Aquí pondrías todas tus funciones de crear_usuario, ver_registros, etc.
 # ================================
 
+# ================================
+#  FUNCIÓN: MONITOREAR CONEXIONES
+# ================================
+monitorear_conexiones() {
+    LOG="/var/log/monitoreo_conexiones.log"
+    INTERVALO=5
+
+    while true; do
+        [[ ! -f "$REGISTROS" ]] && { sleep "$INTERVALO"; continue; }
+
+        TEMP_FILE=$(mktemp) || { sleep "$INTERVALO"; continue; }
+        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp) || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+        > "$TEMP_FILE_NEW"
+
+        while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+            usuario=${userpass%%:*}
+            [[ -z "$usuario" ]] && continue
+
+            tmp_status="/tmp/status_${usuario}.tmp"
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+
+            if [[ $conexiones -gt 0 ]]; then
+                if [[ ! -f "$tmp_status" ]]; then
+                    # Obtener el tiempo real de inicio de la última sesión
+                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
+                    if [[ -n "$hora_ini_sys" ]]; then
+                        # Convertir a timestamp para almacenar
+                        fecha_ini_timestamp=$(date -d "$hora_ini_sys" "+%s" 2>/dev/null)
+                        if [[ -n "$fecha_ini_timestamp" ]]; then
+                            echo "$fecha_ini_timestamp" > "$tmp_status"
+                        else
+                            date "+%s" > "$tmp_status"
+                        fi
+                    else
+                        date "+%s" > "$tmp_status"
+                    fi
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                fi
+            else
+                if [[ -f "$tmp_status" ]]; then
+                    start_timestamp=$(cat "$tmp_status")
+                    hora_ini=$(date -d "@$start_timestamp" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "$(date '+%Y-%m-%d %H:%M:%S')")
+                    hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                    rm -f "$tmp_status"
+                    echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                fi
+            fi
+
+            echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
+        done < "$TEMP_FILE"
+
+        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null
+        rm -f "$TEMP_FILE"
+        sleep "$INTERVALO"
+    done
+}
 
 # ================================
 #  MODO MONITOREO DIRECTO (este bloque va DESPUÉS de la función)
@@ -35,80 +93,6 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
     echo $! > "$PIDFILE"
 fi
 
-
-
-# ================================
-#  FUNCIÓN: MONITOREAR CONEXIONES
-# ================================
-monitorear_conexiones() {
-    LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=5
-
-    # Registrar inicio de monitoreo
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones." >> "$LOG"
-
-    while true; do
-        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No se encontró $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
-
-        TEMP_FILE=$(mktemp) || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al crear archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
-        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al copiar $REGISTROS a $TEMP_FILE." >> "$LOG"; rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp) || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al crear archivo temporal nuevo." >> "$LOG"; rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        > "$TEMP_FILE_NEW"
-
-        while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
-            usuario=${userpass%%:*}
-            [[ -z "$usuario" ]] && continue
-
-            tmp_status="/tmp/status_${usuario}.tmp"
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-
-            if [[ $conexiones -gt 0 ]]; then
-                if [[ ! -f "$tmp_status" ]]; then
-                    # Guardar marca de tiempo en segundos desde epoch
-                    date +%s > "$tmp_status" 2>/dev/null || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al escribir marca de tiempo en $tmp_status para $usuario." >> "$LOG"
-                        continue
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado. Marca de tiempo: $(cat "$tmp_status")" >> "$LOG"
-                else
-                    # Verificar que el archivo contenga un número válido
-                    start_s=$(cat "$tmp_status" 2>/dev/null)
-                    if [[ ! "$start_s" =~ ^[0-9]+$ ]]; then
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status: '$start_s'. Reescribiendo." >> "$LOG"
-                        date +%s > "$tmp_status" 2>/dev/null || {
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al reescribir marca de tiempo en $tmp_status para $usuario." >> "$LOG"
-                            continue
-                        }
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado. Nueva marca de tiempo: $(cat "$tmp_status")" >> "$LOG"
-                    fi
-                fi
-            else
-                if [[ -f "$tmp_status" ]]; then
-                    start_s=$(cat "$tmp_status" 2>/dev/null)
-                    if [[ "$start_s" =~ ^[0-9]+$ ]]; then
-                        hora_ini=$(date -d "@$start_s" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
-                        hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                        echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-                    else
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status al desconectar: '$start_s'. Eliminando." >> "$LOG"
-                    fi
-                    rm -f "$tmp_status" 2>/dev/null
-                fi
-            fi
-
-            echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
-        done < "$TEMP_FILE"
-
-        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null
-        rm -f "$TEMP_FILE"
-        sleep "$INTERVALO"
-    done
-}
-
-# ================================
-#  FUNCIÓN: VERIFICAR USUARIOS ONLINE
-# ================================
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
@@ -141,38 +125,45 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            # Leer la marca de tiempo si existe
-            if [[ -f "$tmp_status" ]]; then
-                start_s=$(cat "$tmp_status" 2>/dev/null)
-                if [[ "$start_s" =~ ^[0-9]+$ ]]; then
-                    now_s=$(date +%s)
-                    elapsed=$(( now_s - start_s ))
-
-                    # Calcular horas, minutos, segundos
-                    h=$(( elapsed / 3600 ))
-                    m=$(( (elapsed % 3600) / 60 ))
-                    s=$(( elapsed % 60 ))
-                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+            # Si el archivo no existe, el monitoreo en background debería haberlo creado
+            # Si por alguna razón no existe, crearlo con el tiempo de última conexión
+            if [[ ! -f "$tmp_status" ]]; then
+                # Obtener el tiempo real de inicio de la última sesión
+                hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
+                if [[ -n "$hora_ini_sys" ]]; then
+                    fecha_ini_timestamp=$(date -d "$hora_ini_sys" "+%s" 2>/dev/null)
+                    if [[ -n "$fecha_ini_timestamp" ]]; then
+                        echo "$fecha_ini_timestamp" > "$tmp_status"
+                    else
+                        date "+%s" > "$tmp_status"
+                    fi
                 else
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status: '$start_s'. Eliminando." >> "/var/log/monitoreo_conexiones.log"
-                    rm -f "$tmp_status" 2>/dev/null
-                    detalle="⏰ Esperando datos..."
+                    date "+%s" > "$tmp_status"
                 fi
+            fi
+
+            # Leer el timestamp y calcular tiempo transcurrido
+            start_timestamp=$(cat "$tmp_status" 2>/dev/null)
+            if [[ "$start_timestamp" =~ ^[0-9]+$ ]]; then
+                now_timestamp=$(date +%s)
+                elapsed=$(( now_timestamp - start_timestamp ))
+
+                # Calcular horas, minutos, segundos
+                h=$(( elapsed / 3600 ))
+                m=$(( (elapsed % 3600) / 60 ))
+                s=$(( elapsed % 60 ))
+                detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
             else
-                detalle="⏰ Esperando datos..."
+                detalle="⏰ 00:00:00"
             fi
+
         else
-            # Si no hay conexiones, eliminar archivo temporal inválido
-            if [[ -f "$tmp_status" ]]; then
-                start_s=$(cat "$tmp_status" 2>/dev/null)
-                if [[ ! "$start_s" =~ ^[0-9]+$ ]]; then
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status al verificar: '$start_s'. Eliminando." >> "/var/log/monitoreo_conexiones.log"
-                    rm -f "$tmp_status" 2>/dev/null
-                fi
-            fi
+            # Si se desconecta, borrar el archivo para reiniciar cronómetro
+            rm -f "$tmp_status"
+
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
-                ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
+                ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p" 2>/dev/null || echo "$ult")
                 detalle="📅 Última: $ult_fmt"
             else
                 (( inactivos++ ))
@@ -612,7 +603,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 👌👌 crear usuario"
+    echo "1. 📧 📆crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
