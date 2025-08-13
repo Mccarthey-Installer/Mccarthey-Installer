@@ -44,12 +44,15 @@ monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=5
 
-    while true; do
-        [[ ! -f "$REGISTROS" ]] && { sleep "$INTERVALO"; continue; }
+    # Registrar inicio de monitoreo
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de conexiones." >> "$LOG"
 
-        TEMP_FILE=$(mktemp) || { sleep "$INTERVALO"; continue; }
-        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp) || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+    while true; do
+        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No se encontró $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
+
+        TEMP_FILE=$(mktemp) || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al crear archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al copiar $REGISTROS a $TEMP_FILE." >> "$LOG"; rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp) || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al crear archivo temporal nuevo." >> "$LOG"; rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
         while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
@@ -63,7 +66,7 @@ monitorear_conexiones() {
                 if [[ ! -f "$tmp_status" ]]; then
                     # Guardar marca de tiempo en segundos desde epoch
                     date +%s > "$tmp_status" 2>/dev/null || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al escribir en $tmp_status" >> "$LOG"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al escribir marca de tiempo en $tmp_status para $usuario." >> "$LOG"
                         continue
                     }
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado. Marca de tiempo: $(cat "$tmp_status")" >> "$LOG"
@@ -73,7 +76,7 @@ monitorear_conexiones() {
                     if [[ ! "$start_s" =~ ^[0-9]+$ ]]; then
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status: '$start_s'. Reescribiendo." >> "$LOG"
                         date +%s > "$tmp_status" 2>/dev/null || {
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al reescribir en $tmp_status" >> "$LOG"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error al reescribir marca de tiempo en $tmp_status para $usuario." >> "$LOG"
                             continue
                         }
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado. Nueva marca de tiempo: $(cat "$tmp_status")" >> "$LOG"
@@ -151,9 +154,9 @@ verificar_online() {
                     s=$(( elapsed % 60 ))
                     detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
                 else
-                    detalle="⏰ Error en cronómetro"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): Contenido inválido en $tmp_status: '$start_s'. Eliminando." >> "/var/log/monitoreo_conexiones.log"
                     rm -f "$tmp_status" 2>/dev/null
+                    detalle="⏰ Esperando datos..."
                 fi
             else
                 detalle="⏰ Esperando datos..."
@@ -609,7 +612,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 😍🤧 crear usuario"
+    echo "1. 👌👌 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
