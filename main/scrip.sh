@@ -427,20 +427,9 @@ eliminar_multiples_usuarios() {
 
 
         
-
-# ================================
-#  MONITOREO EN SEGUNDO PLANO
-# ================================
-# Iniciar monitoreo en segundo plano si no está corriendo
-if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE"
-    nohup bash -c "source $0; monitorear_conexiones" >/dev/null 2>&1 &
-    echo $! > "$PIDFILE"
-fi
-
-# ================================
-#  FUNCIÓN: MONITOREAR CONEXIONES
-# ================================
+# =========================================
+#  FUNCIÓN: MONITOREAR CONEXIONES (misma que ya tienes)
+# =========================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=5
@@ -453,19 +442,14 @@ monitorear_conexiones() {
         TEMP_FILE_NEW=$(mktemp) || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
-        # Leer con el formato real de reg.txt
         while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
             usuario=${userpass%%:*}
-            clave=${userpass#*:}
             [[ -z "$usuario" ]] && continue
 
             tmp_status="/tmp/status_${usuario}.tmp"
-
-            # Detectar conexiones SSH/Dropbear reales
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
-                # Usuario online: crear tmp si no existe
                 if [[ ! -f "$tmp_status" ]]; then
                     hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
                     if [[ -n "$hora_ini_sys" ]]; then
@@ -477,7 +461,6 @@ monitorear_conexiones() {
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 fi
             else
-                # Usuario offline: registrar desconexión si hay tmp
                 if [[ -f "$tmp_status" ]]; then
                     hora_ini=$(cat "$tmp_status")
                     hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -487,7 +470,6 @@ monitorear_conexiones() {
                 fi
             fi
 
-            # Guardar de nuevo la línea original de reg.txt
             echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
         done < "$TEMP_FILE"
 
@@ -496,6 +478,25 @@ monitorear_conexiones() {
         sleep "$INTERVALO"
     done
 }
+
+# =========================================
+#  MODO MONITOREO DIRECTO
+# =========================================
+# Si se ejecuta con el argumento "mon" => sólo corre el monitor
+if [[ "$1" == "mon" ]]; then
+    monitorear_conexiones
+    exit 0
+fi
+
+# =========================================
+#  ARRANQUE AUTOMÁTICO DEL MONITOR
+# =========================================
+if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$PIDFILE"
+    nohup bash "$0" mon >/dev/null 2>&1 &
+    echo $! > "$PIDFILE"
+fi
+
 
 # ================================
 #  FUNCIÓN: VERIFICAR ONLINE
@@ -577,7 +578,7 @@ verificar_online() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 🚫🚫 crear usuario"
+    echo "1. 🐇🐇 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
