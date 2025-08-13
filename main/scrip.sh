@@ -86,9 +86,6 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
     echo $! > "$PIDFILE"
 fi
 
-# ================================
-#  FUNCIÓN: VERIFICAR ONLINE
-# ================================
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
@@ -109,6 +106,7 @@ verificar_online() {
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
+        # Contar procesos activos (SSH o Dropbear)
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
         estado="☑️ 0"
@@ -119,23 +117,31 @@ verificar_online() {
         if [[ $conexiones -gt 0 ]]; then
             estado="✅ $conexiones"
             (( total_online += conexiones ))
+
+            # Calcular tiempo conectado en vivo desde el tmp
             if [[ -f "$tmp_status" ]]; then
                 hora_ini=$(cat "$tmp_status")
-                start_s=$(date -d "$hora_ini" +%s 2>/dev/null)
-                now_s=$(date +%s)
-                if [[ -n "$start_s" ]]; then
-                    elapsed=$(( now_s - start_s ))
-                    h=$(( elapsed / 3600 ))
-                    m=$(( (elapsed % 3600) / 60 ))
-                    s=$(( elapsed % 60 ))
-                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                if [[ -n "$hora_ini" ]]; then
+                    start_s=$(date -d "$hora_ini" +%s 2>/dev/null)
+                    now_s=$(date +%s)
+                    if [[ -n "$start_s" ]]; then
+                        elapsed=$(( now_s - start_s ))
+                        h=$(( elapsed / 3600 ))
+                        m=$(( (elapsed % 3600) / 60 ))
+                        s=$(( elapsed % 60 ))
+                        detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                    else
+                        detalle="⏰ 00:00:00"
+                    fi
                 else
-                    detalle="⏰ Tiempo no disponible"
+                    detalle="⏰ 00:00:00"
                 fi
             else
-                detalle="⏰ Tiempo no disponible"
+                detalle="⏰ 00:00:00"
             fi
+
         else
+            # Si está offline, buscar última conexión/desconexión
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
