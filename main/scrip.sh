@@ -106,7 +106,6 @@ verificar_online() {
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
-        # Contar procesos activos (SSH o Dropbear)
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
         estado="☑️ 0"
@@ -118,30 +117,24 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            # Calcular tiempo conectado en vivo desde el tmp
-            if [[ -f "$tmp_status" ]]; then
-                hora_ini=$(cat "$tmp_status")
-                if [[ -n "$hora_ini" ]]; then
-                    start_s=$(date -d "$hora_ini" +%s 2>/dev/null)
-                    now_s=$(date +%s)
-                    if [[ -n "$start_s" ]]; then
-                        elapsed=$(( now_s - start_s ))
-                        h=$(( elapsed / 3600 ))
-                        m=$(( (elapsed % 3600) / 60 ))
-                        s=$(( elapsed % 60 ))
-                        detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
-                    else
-                        detalle="⏰ 00:00:00"
-                    fi
-                else
-                    detalle="⏰ 00:00:00"
-                fi
-            else
-                detalle="⏰ 00:00:00"
+            # Si no existe el archivo, lo crea con la hora actual (inicio de conexión)
+            if [[ ! -f "$tmp_status" ]]; then
+                date +%s > "$tmp_status"
             fi
 
+            start_s=$(cat "$tmp_status")
+            now_s=$(date +%s)
+            elapsed=$(( now_s - start_s ))
+
+            h=$(( elapsed / 3600 ))
+            m=$(( (elapsed % 3600) / 60 ))
+            s=$(( elapsed % 60 ))
+            detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+
         else
-            # Si está offline, buscar última conexión/desconexión
+            # Si el usuario está desconectado, eliminamos el cronómetro para reiniciarlo cuando vuelva a conectar
+            rm -f "$tmp_status"
+
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
@@ -159,7 +152,6 @@ verificar_online() {
     echo "================================================"
     read -p "Presiona Enter para continuar..."
 }
-
 
 
 # Función para calcular la fecha de expiración
@@ -585,7 +577,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 🐈🐈 crear usuario"
+    echo "1. 💪💪 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
