@@ -433,32 +433,38 @@ monitorear_conexiones() {
     while true; do
         # Usuarios con sesiones activas (usando loginctl, filtrados por reg.txt)
         usuarios_ps=$(loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | while read -r user; do
-            grep -q "^$user:" "$REGISTROS" && echo "$user"
+            if grep -q "^$user:" "$REGISTROS" 2>/dev/null; then
+                echo "$user"
+            fi
         done)
 
         # --- LIMITE DE CONEXIONES POR USUARIO ---
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
 
-            # Límite permitido (campo 4 en REGISTROS, si no es numérico, usa 1)
+            # Límite permitido (campo 4 en REGISTROS)
             MOVILES_NUM=$(awk -F: -v u="$usuario" '$1==u{print $4}' "$REGISTROS" 2>/dev/null)
             [[ -z "$MOVILES_NUM" || ! "$MOVILES_NUM" =~ ^[0-9]+$ ]] && MOVILES_NUM=1
             (( MOVILES_NUM < 1 )) && MOVILES_NUM=1
 
-            # Conexiones actuales (usando loginctl para sesiones activas)
+            # Conexiones actuales (usando loginctl)
             conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $conexiones conexiones, límite: $MOVILES_NUM" >> "$LOG"
 
             if [[ $conexiones -gt $MOVILES_NUM ]]; then
-                # Obtener la sesión más reciente (última en la lista de loginctl)
-                SESSION=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | tail -n 1)
-                if [[ -n "$SESSION" ]]; then
-                    # Obtener el PID asociado (como respaldo)
+                # Obtener todas las sesiones del usuario
+                mapfile -t SESSIONS < <(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | sort -n)
+                # Cerrar todas las sesiones excepto las primeras MOVILES_NUM (las más antiguas)
+                for ((i=MOVILES_NUM; i<${#SESSIONS[@]}; i++)); do
+                    SESSION="${SESSIONS[i]}"
+                    # Obtener el PID asociado como respaldo
                     mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | awk '{print $1, $3}' | sort -k2 -n | head -n 1)
                     PID="${PIDS[0]%% *}"
                     # Cerrar la sesión con loginctl
-                    loginctl terminate-session "$SESSION" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION, PID $PID) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    if [[ -n "$SESSION" ]]; then
+                        loginctl terminate-session "$SESSION" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION, PID $PID) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    fi
                     # Forzar cierre del PID con kill -9 si existe
                     if [[ -n "$PID" ]]; then
                         kill -9 "$PID" 2>/dev/null
@@ -479,9 +485,7 @@ monitorear_conexiones() {
                     else
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Éxito: Conexión extra de '$usuario' cerrada. Conexiones actuales: $conexiones." >> "$LOG"
                     fi
-                else
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se encontró sesión para '$usuario'. Conexiones actuales: $conexiones." >> "$LOG"
-                fi
+                done
             fi
         done
 
@@ -762,7 +766,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}=====🔥=PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}=====⏰⏰ANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
