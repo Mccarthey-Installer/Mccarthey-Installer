@@ -5,12 +5,6 @@ export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
 export PIDFILE="/Abigail/mon.pid"
 
-# Iniciar monitoreo en segundo plano si no está corriendo
-if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE"
-    nohup bash -c "source $0; monitorear_conexiones" >/dev/null 2>&1 &
-    echo $! > "$PIDFILE"
-fi
 
 
 # Crear directorios si no existen
@@ -433,7 +427,21 @@ eliminar_multiples_usuarios() {
 
 
         
-                    monitorear_conexiones() {
+
+# ================================
+#  MONITOREO EN SEGUNDO PLANO
+# ================================
+# Iniciar monitoreo en segundo plano si no está corriendo
+if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$PIDFILE"
+    nohup bash -c "source $0; monitorear_conexiones" >/dev/null 2>&1 &
+    echo $! > "$PIDFILE"
+fi
+
+# ================================
+#  FUNCIÓN: MONITOREAR CONEXIONES
+# ================================
+monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=5
 
@@ -447,8 +455,8 @@ eliminar_multiples_usuarios() {
 
         # Leer con el formato real de reg.txt
         while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
-            usuario=${userpass%%:*}       # antes del :
-            clave=${userpass#*:}          # después del :
+            usuario=${userpass%%:*}
+            clave=${userpass#*:}
             [[ -z "$usuario" ]] && continue
 
             tmp_status="/tmp/status_${usuario}.tmp"
@@ -459,7 +467,6 @@ eliminar_multiples_usuarios() {
             if [[ $conexiones -gt 0 ]]; then
                 # Usuario online: crear tmp si no existe
                 if [[ ! -f "$tmp_status" ]]; then
-                    # Intentar obtener hora real del login
                     hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
                     if [[ -n "$hora_ini_sys" ]]; then
                         fecha_ini_fmt=$(date -d "$hora_ini_sys" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
@@ -490,10 +497,9 @@ eliminar_multiples_usuarios() {
     done
 }
 
-
-
-
-
+# ================================
+#  FUNCIÓN: VERIFICAR ONLINE
+# ================================
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
@@ -514,7 +520,7 @@ verificar_online() {
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
-        # Contar procesos sshd o dropbear del usuario
+        # Contar procesos activos
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
         
         estado="☑️ 0"
@@ -526,7 +532,6 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            # Tiempo en vivo desde tmp_status
             if [[ -f "$tmp_status" ]]; then
                 hora_ini=$(cat "$tmp_status")
                 if [[ -n "$hora_ini" ]]; then
@@ -547,7 +552,6 @@ verificar_online() {
             fi
 
         else
-            # Buscar última desconexión en HISTORIAL
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
@@ -566,8 +570,6 @@ verificar_online() {
     read -p "Presiona Enter para continuar..."
 }
 
-                    
-
 
 
 
@@ -575,7 +577,7 @@ verificar_online() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1.🫥🫥Crear usuario"
+    echo "1. 🚫🚫 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
