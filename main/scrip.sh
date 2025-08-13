@@ -100,9 +100,15 @@ verificar_online() {
 
     while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
         usuario=${userpass%%:*}
+
+        # 🔍 Verificar si el usuario existe, si no, saltar al siguiente
+        if ! id "$usuario" &>/dev/null; then
+            continue
+        fi
+
         (( total_usuarios++ ))
 
-        conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+        conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
         estado="☑️ 0"
         detalle="😴 Nunca conectado"
@@ -302,7 +308,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}====== ⛑️ PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}====== 🎊 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
