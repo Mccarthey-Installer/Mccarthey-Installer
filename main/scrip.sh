@@ -16,6 +16,10 @@ mkdir -p "$(dirname "$PIDFILE")"
 # FUNCIONES YA DEFINIDAS (ejemplo de 2 para mostrar)
 # Aquí pondrías todas tus funciones de crear_usuario, ver_registros, etc.
 # ================================
+
+# ================================
+#  FUNCIÓN: MONITOREAR CONEXIONES
+# ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=5
@@ -37,17 +41,22 @@ monitorear_conexiones() {
 
             if [[ $conexiones -gt 0 ]]; then
                 if [[ ! -f "$tmp_status" ]]; then
-                    # Guardar timestamp UNIX actual (segundos desde 1970)
-                    date +%s > "$tmp_status"
+                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
+                    if [[ -n "$hora_ini_sys" ]]; then
+                        fecha_ini_fmt=$(date -d "$hora_ini_sys" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+                        echo "${fecha_ini_fmt:-$(date '+%Y-%m-%d %H:%M:%S')}" > "$tmp_status"
+                    else
+                        date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
+                    fi
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 fi
             else
                 if [[ -f "$tmp_status" ]]; then
                     hora_ini=$(cat "$tmp_status")
-                    hora_fin=$(date "+%s")
+                    hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
                     rm -f "$tmp_status"
                     echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $(date -d @"$hora_ini" '+%Y-%m-%d %H:%M:%S') Fin: $(date -d @"$hora_fin" '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
                 fi
             fi
 
@@ -79,7 +88,7 @@ fi
 
 verificar_online() {
     clear
-    echo "===== ✅ USUARIOS ONLINE ====="
+    echo "===== ✅   USUARIOS ONLINE ====="
     printf "%-14s %-14s %-10s %-25s\n" "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo "-----------------------------------------------------------------"
 
@@ -97,7 +106,7 @@ verificar_online() {
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
-        # Contar conexiones SSH y Dropbear activas para el usuario
+        # Ver cuántas conexiones SSH/Dropbear tiene
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
         estado="☑️ 0"
@@ -109,32 +118,29 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            if [[ -f "$tmp_status" ]]; then
-                start_time=$(cat "$tmp_status")
-                # Validar que sea un timestamp UNIX (solo dígitos)
-                if [[ "$start_time" =~ ^[0-9]+$ ]]; then
-                    start_s=$((10#$start_time))
-                    now_s=$(date +%s)
-                    elapsed=$(( now_s - start_s ))
-
-                    h=$(( elapsed / 3600 ))
-                    m=$(( (elapsed % 3600) / 60 ))
-                    s=$(( elapsed % 60 ))
-
-                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
-                else
-                    detalle="⏰ Formato inválido"
-                fi
-            else
-                # Si no existe archivo de estado, poner 00:00:00
-                detalle="⏰ 00:00:00"
+            # Si no existe el archivo o no tiene un número, lo creamos/reemplazamos
+            if [[ ! -f "$tmp_status" ]] || ! [[ $(cat "$tmp_status") =~ ^[0-9]+$ ]]; then
+                date +%s > "$tmp_status"
             fi
+
+            # Forzar a base 10 para evitar octales
+            start_s=$((10#$(cat "$tmp_status")))
+            now_s=$(date +%s)
+            elapsed=$(( now_s - start_s ))
+
+            # Calcular horas, minutos, segundos
+            h=$(( elapsed / 3600 ))
+            m=$(( (elapsed % 3600) / 60 ))
+            s=$(( elapsed % 60 ))
+            detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+
         else
-            # Usuario desconectado: eliminar archivo estado
+            # Si se desconecta, borrar el archivo para reiniciar cronómetro
             rm -f "$tmp_status"
+
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
-                ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p" 2>/dev/null || echo "Fecha inválida")
+                ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
                 detalle="📅 Última: $ult_fmt"
             else
                 (( inactivos++ ))
@@ -574,7 +580,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 🎉😎crear usuario"
+    echo "1. 📧 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
