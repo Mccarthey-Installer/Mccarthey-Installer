@@ -17,6 +17,24 @@ mkdir -p "$(dirname "$PIDFILE")"
 # Aquí pondrías todas tus funciones de crear_usuario, ver_registros, etc.
 # ================================
 
+
+# ================================
+#  MODO MONITOREO DIRECTO (este bloque va DESPUÉS de la función)
+# ================================
+if [[ "$1" == "mon" ]]; then
+    monitorear_conexiones
+    exit 0
+fi
+
+# ================================
+#  ARRANQUE AUTOMÁTICO DEL MONITOR
+# ================================
+if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$PIDFILE"
+    nohup bash "$0" mon >/dev/null 2>&1 &
+    echo $! > "$PIDFILE"
+fi
+
 # ================================
 #  FUNCIÓN: MONITOREAR CONEXIONES
 # ================================
@@ -41,18 +59,13 @@ monitorear_conexiones() {
 
             if [[ $conexiones -gt 0 ]]; then
                 if [[ ! -f "$tmp_status" ]]; then
-                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
-                    if [[ -n "$hora_ini_sys" ]]; then
-                        fecha_ini_fmt=$(date -d "$hora_ini_sys" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
-                        echo "${fecha_ini_fmt:-$(date '+%Y-%m-%d %H:%M:%S')}" > "$tmp_status"
-                    else
-                        date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
-                    fi
+                    # Guardar marca de tiempo en segundos desde epoch
+                    date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 fi
             else
                 if [[ -f "$tmp_status" ]]; then
-                    hora_ini=$(cat "$tmp_status")
+                    hora_ini=$(date -d "@$(cat "$tmp_status")" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
                     hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
                     rm -f "$tmp_status"
                     echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
@@ -70,22 +83,8 @@ monitorear_conexiones() {
 }
 
 # ================================
-#  MODO MONITOREO DIRECTO (este bloque va DESPUÉS de la función)
+#  FUNCIÓN: VERIFICAR USUARIOS ONLINE
 # ================================
-if [[ "$1" == "mon" ]]; then
-    monitorear_conexiones
-    exit 0
-fi
-
-# ================================
-#  ARRANQUE AUTOMÁTICO DEL MONITOR
-# ================================
-if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE"
-    nohup bash "$0" mon >/dev/null 2>&1 &
-    echo $! > "$PIDFILE"
-fi
-
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
@@ -118,26 +117,25 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            # Si no existe el archivo o no tiene un número, lo creamos/reemplazamos
-            if [[ ! -f "$tmp_status" ]] || ! [[ $(cat "$tmp_status") =~ ^[0-9]+$ ]]; then
-                date +%s > "$tmp_status"
+            # Leer la marca de tiempo si existe
+            if [[ -f "$tmp_status" ]]; then
+                start_s=$(cat "$tmp_status" 2>/dev/null)
+                if [[ "$start_s" =~ ^[0-9]+$ ]]; then
+                    now_s=$(date +%s)
+                    elapsed=$(( now_s - start_s ))
+
+                    # Calcular horas, minutos, segundos
+                    h=$(( elapsed / 3600 ))
+                    m=$(( (elapsed % 3600) / 60 ))
+                    s=$(( elapsed % 60 ))
+                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                else
+                    detalle="⏰ Error en cronómetro"
+                fi
+            else
+                detalle="⏰ Esperando datos..."
             fi
-
-            # Forzar a base 10 para evitar octales
-            start_s=$((10#$(cat "$tmp_status")))
-            now_s=$(date +%s)
-            elapsed=$(( now_s - start_s ))
-
-            # Calcular horas, minutos, segundos
-            h=$(( elapsed / 3600 ))
-            m=$(( (elapsed % 3600) / 60 ))
-            s=$(( elapsed % 60 ))
-            detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
-
         else
-            # Si se desconecta, borrar el archivo para reiniciar cronómetro
-            rm -f "$tmp_status"
-
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
@@ -580,7 +578,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 📧 crear usuario"
+    echo "1. 📏📏 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
