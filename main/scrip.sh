@@ -20,46 +20,47 @@ monitorear_conexiones() {
     INTERVALO=1
 
     while true; do
-        # 📌 Combinar usuarios en $REGISTROS con usuarios conectados actualmente vía SSH/Dropbear
-        usuarios_archivo=""
-        [[ -f "$REGISTROS" && -s "$REGISTROS" ]] && usuarios_archivo=$(cut -d: -f1 "$REGISTROS")
-
-        # Usuarios conectados detectados por ps
+        # Usuarios conectados ahora mismo por SSH o Dropbear
         usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
-        # Unir listas (quitando duplicados)
-        usuarios_a_monitorear=$(echo -e "$usuarios_archivo\n$usuarios_ps" | sort -u)
-
-        for usuario in $usuarios_a_monitorear; do
+        for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
 
+            # ¿Cuántas conexiones tiene activas?
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
+                # Si nunca se ha creado el reloj, créalo ahora
                 if [[ ! -f "$tmp_status" ]]; then
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 else
+                    # Reparar si está corrupto
                     contenido=$(cat "$tmp_status")
-                    if ! [[ "$contenido" =~ ^[0-9]+$ ]]; then
-                        date +%s > "$tmp_status"
-                    fi
+                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
                 fi
-            else
-                if [[ -f "$tmp_status" ]]; then
-                    hora_ini=$(date -d @"$(cat "$tmp_status")" "+%Y-%m-%d %H:%M:%S")
-                    hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                    rm -f "$tmp_status"
-                    echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-                fi
+            fi
+        done
+
+        # Ahora, ver quién estaba conectado y ya NO está, para cerrarles el tiempo
+        for f in /tmp/status_*.tmp; do
+            [[ ! -f "$f" ]] && continue
+            usuario=$(basename "$f" .tmp | cut -d_ -f2)
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            if [[ $conexiones -eq 0 ]]; then
+                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
+                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                rm -f "$f"
+                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
             fi
         done
 
         sleep "$INTERVALO"
     done
 }
+
 
 
 # ================================
@@ -155,8 +156,8 @@ verificar_online() {
 # ================================
 while true; do
     clear
-    echo "===== 😇 MENÚ SSH WEBSOCKET ====="
-    echo "1. 📧Verificar usuarios online "    
+    echo "===== 💵 MENÚ SSH WEBSOCKET ====="
+    echo "1. 📆erificar usuarios online "    
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
