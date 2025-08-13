@@ -156,18 +156,183 @@ verificar_online() {
 }
 
 # ================================
-#  MENÚ PRINCIPAL
+#  FUNCIÓN: BLOQUEAR/DESBLOQUEAR USUARIO
 # ================================
+bloquear_desbloquear_usuario() {
+    clear
+    echo "==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ===="
+    echo "===== 📋 USUARIOS REGISTRADOS ====="
+    printf "%-4s %-14s %-14s %-20s %-15s\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "✅ Estado"
+    echo "--------------------------------------------------------------------------"
+
+    # Archivo para almacenar bloqueos temporales
+    BLOQUEOS="/tmp/bloqueos_usuarios.txt"
+    touch "$BLOQUEOS"
+
+    # Leer usuarios desde REGISTROS
+    if [[ ! -f "$REGISTROS" ]]; then
+        echo "❌ No hay registros de usuarios."
+        read -p "Presiona Enter para continuar... ✨"
+        return
+    fi
+
+    # Mostrar lista de usuarios
+    declare -A user_map
+    contador=0
+    while IFS=':' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+        usuario=${userpass%%:*}
+        clave=${userpass#*:}
+        (( contador++ ))
+
+        # Verificar estado de bloqueo
+        estado="desbloqueado"
+        if grep -q "^$usuario:" "$BLOQUEOS"; then
+            bloqueo_info=$(grep "^$usuario:" "$BLOQUEOS")
+            tiempo_bloqueo=${bloqueo_info#*:}
+            if [[ $tiempo_bloqueo =~ ^[0-9]+$ ]]; then
+                now_s=$(date +%s)
+                if [[ $now_s -lt $tiempo_bloqueo ]]; then
+                    estado="bloqueado"
+                else
+                    # Eliminar bloqueo si ya expiró
+                    sed -i "/^$usuario:/d" "$BLOQUEOS"
+                    estado="desbloqueado"
+                    passwd -u "$usuario" >/dev/null 2>&1
+                fi
+            else
+                estado="bloqueado"
+            fi
+        fi
+
+        # Formatear fecha de expiración
+        fecha_exp_fmt=$(date -d "$fecha_exp" +"%d/%B/%Y" 2>/dev/null || echo "$fecha_exp")
+        printf "%-4s %-14s %-14s %-20s %-15s\n" "$contador" "$usuario" "$clave" "$fecha_exp_fmt" "$estado"
+        user_map[$contador]="$usuario"
+    done < "$REGISTROS"
+
+    echo "=========================================================================="
+    read -p "👤 Digite el número o el nombre del usuario: " input
+
+    # Validar entrada
+    if [[ -z "$input" ]]; then
+        echo "❌ Entrada inválida."
+        read -p "Presiona Enter para continuar... ✨"
+        return
+    fi
+
+    # Determinar usuario seleccionado
+    if [[ "$input" =~ ^[0-9]+$ && -n "${user_map[$input]}" ]]; then
+        usuario="${user_map[$input]}"
+    else
+        usuario="$input"
+        grep -q "^$usuario:" "$REGISTROS" || {
+            echo "❌ Usuario no encontrado."
+            read -p "Presiona Enter para continuar... ✨"
+            return
+        }
+    fi
+
+    # Verificar estado actual
+    estado="desbloqueado"
+    if grep -q "^$usuario:" "$BLOQUEOS"; then
+        bloqueo_info=$(grep "^$usuario:" "$BLOQUEOS")
+        tiempo_bloqueo=${bloqueo_info#*:}
+        if [[ $tiempo_bloqueo =~ ^[0-9]+$ ]]; then
+            now_s=$(date +%s)
+            if [[ $now_s -lt $tiempo_bloqueo ]]; then
+                estado="bloqueado"
+            else
+                sed -i "/^$usuario:/d" "$BLOQUEOS"
+                passwd -u "$usuario" >/dev/null 2>&1
+                estado="desbloqueado"
+            fi
+        else
+            estado="bloqueado"
+        fi
+    fi
+
+    echo "𒯢 El usuario '$usuario' está ${estado^^}."
+
+    if [[ "$estado" == "desbloqueado" ]]; then
+        read -p "✅ Desea bloquear al usuario '$usuario'? (s/n) " respuesta
+        if [[ "$respuesta" =~ ^[sS]$ ]]; then
+            read -p "Digite el tiempo en minutos para desbloquear al usuario (0 para bloqueo permanente) y confirme con Enter: " minutos
+            if [[ ! "$minutos" =~ ^[0-9]+$ ]]; then
+                echo "❌ Tiempo inválido. Debe ser un número."
+                read -p "Presiona Enter para continuar... ✨"
+                return
+            fi
+
+            # Bloquear usuario
+            passwd -l "$usuario" >/dev/null 2>&1
+            # Terminar sesiones activas
+            pkill -u "$usuario" >/dev/null 2>&1
+
+            # Registrar bloqueo
+            if [[ $minutos -gt 0 ]]; then
+                tiempo_desbloqueo=$(( $(date +%s) + minutos * 60 ))
+                sed -i "/^$usuario:/d" "$BLOQUEOS"  # Eliminar bloqueo anterior
+                echo "$usuario:$tiempo_desbloqueo" >> "$BLOQUEOS"
+            else
+                sed -i "/^$usuario:/d" "$BLOQUEOS"  # Eliminar bloqueo anterior
+                echo "$usuario:permanente" >> "$BLOQUEOS"
+            fi
+
+            echo "🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅"
+        fi
+    else
+        read -p "✅ Desea desbloquear al usuario '$usuario'? (s/n) " respuesta
+        if [[ "$respuesta" =~ ^[sS]$ ]]; then
+            # Desbloquear usuario
+            passwd -u "$usuario" >/dev/null 2>&1
+            sed -i "/^$usuario:/d" "$BLOQUEOS"
+            echo "🔓 Usuario '$usuario' desbloqueado exitosamente. ✅"
+        fi
+    fi
+
+    read -p "Presiona Enter para continuar... ✨"
+}
+
+
+# Menú principal
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 😳Verificar usuarios online "    
+    echo "1.👏 Crear usuario"
+    echo "2. Ver registros"
+    echo "3. Mini registro"
+    echo "4. Crear múltiples usuarios"
+    echo "5. Eliminar múltiples usuarios"
+    echo "6. Verificar usuarios online"
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
 
     case $opcion in
-        1) verificar_online ;;
-        0) echo "Saliendo..."; exit 0 ;;
-        *) echo "Opción inválida."; read -p "Presiona Enter para continuar..." ;;
+        1)
+            crear_usuario
+            ;;
+        2)
+            ver_registros
+            ;;
+        3)
+            mini_registro
+            ;;
+        4)
+            crear_multiples_usuarios
+            ;;
+        5)
+            eliminar_multiples_usuarios
+            ;;
+        6)
+            verificar_online
+            ;;
+        0)
+            echo "Saliendo..."
+            exit 0
+            ;;
+        *)
+            echo "Opción inválida."
+            read -p "Presiona Enter para continuar..."
+            ;;
     esac
 done
