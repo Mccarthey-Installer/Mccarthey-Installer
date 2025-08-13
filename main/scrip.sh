@@ -37,17 +37,13 @@ monitorear_conexiones() {
             [[ -z "$usuario" ]] && continue
 
             tmp_status="/tmp/status_${usuario}.tmp"
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + \
+                           $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
                 if [[ ! -f "$tmp_status" ]]; then
-                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
-                    if [[ -n "$hora_ini_sys" ]]; then
-                        fecha_ini_fmt=$(date -d "$hora_ini_sys" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
-                        echo "${fecha_ini_fmt:-$(date '+%Y-%m-%d %H:%M:%S')}" > "$tmp_status"
-                    else
-                        date "+%Y-%m-%d %H:%M:%S" > "$tmp_status"
-                    fi
+                    # Guardar instante de conexión en segundos desde Epoch
+                    date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 fi
             else
@@ -69,6 +65,7 @@ monitorear_conexiones() {
     done
 }
 
+
 # ================================
 #  MODO MONITOREO DIRECTO (este bloque va DESPUÉS de la función)
 # ================================
@@ -89,7 +86,8 @@ fi
 verificar_online() {
     clear
     echo "===== ✅   USUARIOS ONLINE ====="
-    printf "%-14s %-14s %-10s %-25s\n" "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    printf "%-14s %-14s %-10s %-25s\n" \
+           "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo "-----------------------------------------------------------------"
 
     total_online=0
@@ -106,8 +104,8 @@ verificar_online() {
         usuario=${userpass%%:*}
         (( total_usuarios++ ))
 
-        # Ver cuántas conexiones SSH/Dropbear tiene
-        conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+        conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + \
+                       $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
         estado="☑️ 0"
         detalle="😴 Nunca conectado"
@@ -118,26 +116,20 @@ verificar_online() {
             estado="✅ $conexiones"
             (( total_online += conexiones ))
 
-            # Si no existe el archivo o no tiene un número, lo creamos/reemplazamos
-            if [[ ! -f "$tmp_status" ]] || ! [[ $(cat "$tmp_status") =~ ^[0-9]+$ ]]; then
-                date +%s > "$tmp_status"
+            if [[ -f "$tmp_status" ]]; then
+                start_s=$((10#$(cat "$tmp_status")))
+                now_s=$(date +%s)
+                elapsed=$(( now_s - start_s ))
+                h=$(( elapsed / 3600 ))
+                m=$(( (elapsed % 3600) / 60 ))
+                s=$(( elapsed % 60 ))
+                detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+            else
+                detalle="⏰ 00:00:00"
             fi
 
-            # Forzar a base 10 para evitar octales
-            start_s=$((10#$(cat "$tmp_status")))
-            now_s=$(date +%s)
-            elapsed=$(( now_s - start_s ))
-
-            # Calcular horas, minutos, segundos
-            h=$(( elapsed / 3600 ))
-            m=$(( (elapsed % 3600) / 60 ))
-            s=$(( elapsed % 60 ))
-            detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
-
         else
-            # Si se desconecta, borrar el archivo para reiniciar cronómetro
-            rm -f "$tmp_status"
-
+            # Si está desconectado, mostrar última vez o nunca conectado
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
@@ -147,7 +139,8 @@ verificar_online() {
             fi
         fi
 
-        printf "%-14s %-14s %-10s %-25s\n" "$usuario" "$estado" "$mov_txt" "$detalle"
+        printf "%-14s %-14s %-10s %-25s\n" \
+               "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
 
     echo "-----------------------------------------------------------------"
@@ -580,7 +573,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. 📧 crear usuario"
+    echo "1. 🎉 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
