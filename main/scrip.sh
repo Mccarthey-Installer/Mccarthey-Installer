@@ -18,17 +18,16 @@ mkdir -p "$(dirname "$PIDFILE")"
 # FUNCIONES YA DEFINIDAS (ejemplo de 2 para mostrar)
 # Aquí pondrías todas tus funciones de crear_usuario, ver_registros, etc.
 # ================================
-
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=5
 
     while true; do
-        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS" >> "$LOG"; sleep "$INTERVALO"; continue; }
+        [[ ! -f "$REGISTROS" ]] && { sleep "$INTERVALO"; continue; }
 
-        TEMP_FILE=$(mktemp) || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando TEMP_FILE" >> "$LOG"; sleep "$INTERVALO"; continue; }
-        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS" >> "$LOG"; rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
-        TEMP_FILE_NEW=$(mktemp) || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error creando TEMP_FILE_NEW" >> "$LOG"; rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE=$(mktemp) || { sleep "$INTERVALO"; continue; }
+        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp) || { rm -f "$TEMP_FILE"; sleep "$INTERVALO"; continue; }
         > "$TEMP_FILE_NEW"
 
         while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
@@ -40,25 +39,32 @@ monitorear_conexiones() {
 
             if [[ $conexiones -gt 0 ]]; then
                 if [[ ! -f "$tmp_status" ]]; then
-                    # Usar hora actual como tiempo de inicio
-                    fecha_ini_fmt=$(date "+%Y-%m-%d %H:%M:%S")
-                    echo "$fecha_ini_fmt" > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado. Inicio: $fecha_ini_fmt" >> "$LOG"
+                    hora_ini_sys=$(last -F "$usuario" | head -1 | awk '{print $4" "$5" "$6" "$7}')
+                    if [[ -n "$hora_ini_sys" ]]; then
+                        timestamp_ini=$(date -d "$hora_ini_sys" +%s 2>/dev/null)
+                        if [[ -z "$timestamp_ini" ]]; then
+                            timestamp_ini=$(date +%s)
+                        fi
+                        echo "$timestamp_ini" > "$tmp_status"
+                    else
+                        date +%s > "$tmp_status"
+                    fi
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 fi
             else
                 if [[ -f "$tmp_status" ]]; then
-                    hora_ini=$(cat "$tmp_status")
+                    hora_ini_epoch=$(cat "$tmp_status")
                     hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
                     rm -f "$tmp_status"
-                    echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                    echo "$usuario|$(date -d @"$hora_ini_epoch" "+%Y-%m-%d %H:%M:%S")|$hora_fin" >> "$HISTORIAL"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $(date -d @"$hora_ini_epoch" "+%Y-%m-%d %H:%M:%S") Fin: $hora_fin" >> "$LOG"
                 fi
             fi
 
             echo "$userpass $fecha_exp $dias $moviles $fecha_crea $hora_crea" >> "$TEMP_FILE_NEW"
         done < "$TEMP_FILE"
 
-        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null || echo "$(date '+%Y-%m-%d %H:%M:%S'): Error moviendo $TEMP_FILE_NEW a $REGISTROS" >> "$LOG"
+        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null
         rm -f "$TEMP_FILE"
         sleep "$INTERVALO"
     done
@@ -578,7 +584,7 @@ eliminar_multiples_usuarios() {
 while true; do
     clear
     echo "===== MENÚ SSH WEBSOCKET ====="
-    echo "1. ⛑️ crear usuario"
+    echo "1. ⛑️💯 crear usuario"
     echo "2. Ver registros"
     echo "3. Mini registro"
     echo "4. Crear múltiples usuarios"
