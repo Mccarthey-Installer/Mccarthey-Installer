@@ -427,62 +427,33 @@ eliminar_multiples_usuarios() {
 
 
 
-monitorear_conexiones() {
+bloquear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=0.3  # ⚡ verificación más rápida
-    while true; do
-        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
+    REGISTROS="/ruta/a/reg.txt"
 
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
+    inotifywait -m -e create --format "%f" /proc | while read pid; do
+        # Verificamos si es un PID
+        [[ ! "$pid" =~ ^[0-9]+$ ]] && continue
 
-            MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
-            [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
+        # Sacamos info del proceso
+        if [[ -r "/proc/$pid/comm" ]]; then
+            cmd=$(cat /proc/$pid/comm)
+            if [[ "$cmd" == "sshd" || "$cmd" == "dropbear" ]]; then
+                usuario=$(ps -o user= -p $pid 2>/dev/null)
+                [[ -z "$usuario" ]] && continue
 
-            # Listar todas las sesiones de ese usuario ordenadas por antigüedad
-            PIDS=($(ps -u "$usuario" -o pid=,comm=,etimes= \
-                | awk '$2=="sshd" || $2=="dropbear"' \
-                | sort -k3,3n | awk '{print $1}'))
+                MOVILES_NUM=$(grep "^$usuario:" "$REGISTROS" | awk -F: '{print $5}')
+                [[ -z "$MOVILES_NUM" ]] && MOVILES_NUM=1
 
-            if (( ${#PIDS[@]} > MOVILES_NUM )); then
-                # Mata las más nuevas, deja vivas las primeras
-                for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
-                    kill -9 "${PIDS[$i]}" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Nueva conexión de '$usuario' (PID ${PIDS[$i]}) bloqueada, límite $MOVILES_NUM." >> "$LOG"
-                done
-            fi
-        done
+                # Contar las conexiones actuales para ese usuario
+                conexiones=$(ps -u "$usuario" -o comm= | grep -Ec "^(sshd|dropbear)$")
 
-        # ------ manejo de tiempos como antes ------
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
-            tmp_status="/tmp/status_${usuario}.tmp"
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-            if [[ $conexiones -gt 0 ]]; then
-                if [[ ! -f "$tmp_status" ]]; then
-                    date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
-                else
-                    contenido=$(cat "$tmp_status")
-                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
+                if (( conexiones > MOVILES_NUM )); then
+                    kill -9 "$pid" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión NUEVA de $usuario (PID $pid) bloqueada al instante. Límite: $MOVILES_NUM" >> "$LOG"
                 fi
             fi
-        done
-
-        for f in /tmp/status_*.tmp; do
-            [[ ! -f "$f" ]] && continue
-            usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-            if [[ $conexiones -eq 0 ]]; then
-                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
-                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                rm -f "$f"
-                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-            fi
-        done
-
-        sleep "$INTERVALO"
+        fi
     done
 }
 
@@ -733,7 +704,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======🤴🤴PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🌶️PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
