@@ -17,41 +17,36 @@ mkdir -p "$(dirname "$PIDFILE")"
 # ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=1  # revisa cada segundo
+    INTERVALO=1
 
     while true; do
-        # Obtener lista de usuarios desde $REGISTROS
-        if [[ -f "$REGISTROS" && -s "$REGISTROS" ]]; then
-            usuarios_a_monitorear=$(cut -d: -f1 "$REGISTROS")
-        else
-            usuarios_a_monitorear=""
-        fi
+        # 📌 Combinar usuarios en $REGISTROS con usuarios conectados actualmente vía SSH/Dropbear
+        usuarios_archivo=""
+        [[ -f "$REGISTROS" && -s "$REGISTROS" ]] && usuarios_archivo=$(cut -d: -f1 "$REGISTROS")
 
-        # Si no hay usuarios en $REGISTROS, seguir esperando
-        [[ -z "$usuarios_a_monitorear" ]] && { sleep "$INTERVALO"; continue; }
+        # Usuarios conectados detectados por ps
+        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
+
+        # Unir listas (quitando duplicados)
+        usuarios_a_monitorear=$(echo -e "$usuarios_archivo\n$usuarios_ps" | sort -u)
 
         for usuario in $usuarios_a_monitorear; do
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
 
-            # Contar conexiones SSH o Dropbear
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
-                # Usuario conectado
                 if [[ ! -f "$tmp_status" ]]; then
-                    # Primera vez que lo detectamos -> iniciar cronómetro
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 else
-                    # Si existe pero está corrupto, corregirlo
                     contenido=$(cat "$tmp_status")
                     if ! [[ "$contenido" =~ ^[0-9]+$ ]]; then
                         date +%s > "$tmp_status"
                     fi
                 fi
             else
-                # Usuario desconectado
                 if [[ -f "$tmp_status" ]]; then
                     hora_ini=$(date -d @"$(cat "$tmp_status")" "+%Y-%m-%d %H:%M:%S")
                     hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -160,7 +155,7 @@ verificar_online() {
 # ================================
 while true; do
     clear
-    echo "===== 📏📏MENÚ SSH WEBSOCKET ====="
+    echo "===== 😇 MENÚ SSH WEBSOCKET ====="
     echo "1. 📧Verificar usuarios online "    
     echo "0. Salir"
     read -p "Selecciona una opción: " opcion
