@@ -247,55 +247,55 @@ calcular_dias_restantes() {
     echo $dias_restantes
 }
 # Función para crear usuario
-crear_usuario() {
+function crear_usuario() {
     clear
-    echo "===== 🤪 CREAR USUARIO SSH ====="
-    read -p "👤 Nombre del usuario: " usuario
-    read -p "🔑 Contraseña: " clave
-    read -p "📅 Días de validez: " dias
-    read -p "📱 ¿Cuántos móviles? " moviles
+    echo -e "${VIOLETA}===== 🤪 CREAR USUARIO SSH =====${NC}"
+    read -p "$(echo -e ${AZUL}👤 Nombre del usuario: ${NC})" usuario
+    read -p "$(echo -e ${AZUL}🔑 Contraseña: ${NC})" clave
+    read -p "$(echo -e ${AZUL}📅 Días de validez: ${NC})" dias
+    read -p "$(echo -e ${AZUL}📱 ¿Cuántos móviles? ${NC})" moviles
 
     # Validar entradas
     if [[ -z "$usuario" || -z "$clave" || -z "$dias" || -z "$moviles" ]]; then
-        echo "❌ Todos los campos son obligatorios."
-        read -p "Presiona Enter para continuar..."
+        echo -e "${ROJO}❌ Todos los campos son obligatorios.${NC}"
+        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
     fi
 
     if ! [[ "$dias" =~ ^[0-9]+$ ]] || ! [[ "$moviles" =~ ^[0-9]+$ ]]; then
-        echo "❌ Días y móviles deben ser números."
-        read -p "Presiona Enter para continuar..."
+        echo -e "${ROJO}❌ Días y móviles deben ser números.${NC}"
+        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
     fi
 
     # Verificar si el usuario ya existe en el sistema
     if id "$usuario" >/dev/null 2>&1; then
-        echo "❌ El usuario $usuario ya existe en el sistema."
-        read -p "Presiona Enter para continuar..."
+        echo -e "${ROJO}❌ El usuario $usuario ya existe en el sistema.${NC}"
+        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
     fi
 
     # Crear usuario en el sistema Linux
     if ! useradd -M -s /sbin/nologin "$usuario" 2>/dev/null; then
-        echo "❌ Error al crear el usuario en el sistema."
-        read -p "Presiona Enter para continuar..."
+        echo -e "${ROJO}❌ Error al crear el usuario en el sistema.${NC}"
+        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
     fi
 
     # Establecer la contraseña
     if ! echo "$usuario:$clave" | chpasswd 2>/dev/null; then
-        echo "❌ Error al establecer la contraseña."
+        echo -e "${ROJO}❌ Error al establecer la contraseña.${NC}"
         userdel "$usuario" 2>/dev/null
-        read -p "Presiona Enter para continuar..."
+        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
     fi
 
     # Configurar fecha de expiración en el sistema (a las 00:00 del día siguiente al último día)
     fecha_expiracion_sistema=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
     if ! chage -E "$fecha_expiracion_sistema" "$usuario" 2>/dev/null; then
-        echo "❌ Error al establecer la fecha de expiración."
+        echo -e "${ROJO}❌ Error al establecer la fecha de expiración.${NC}"
         userdel "$usuario" 2>/dev/null
-        read -p "Presiona Enter para continuar..."
+        read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
     fi
 
@@ -310,28 +310,26 @@ crear_usuario() {
     echo "Usuario creado: $usuario, Expira: $fecha_expiracion, Móviles: $moviles, Creado: $fecha_creacion" >> $HISTORIAL
 
     # Mostrar confirmación
-    echo "✅ Usuario creado correctamente:"
-    echo "👤 Usuario: $usuario"
-    echo "🔑 Clave: $clave"
-    echo "📅 Expira: $fecha_expiracion"
-    echo "📱 Límite móviles: $moviles"
-    echo "📅 Creado: $fecha_creacion"
-    echo "===== 📝 RESUMEN DE REGISTRO ====="
-    echo "👤 Usuario    📅 Expira          ⏳ Días       📱 Móviles   📅 Creado"
-    echo "---------------------------------------------------------------"
-    printf "%-12s %-18s %-12s %-12s %s\n" "$usuario:$clave" "$fecha_expiracion" "$dias días" "$moviles" "$fecha_creacion"
-    echo "=============================================================="
-    read -p "Presiona Enter para continuar..."
+    echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
+    echo -e "${AZUL}👤 Usuario: ${AMARILLO}$usuario${NC}"
+    echo -e "${AZUL}🔑 Clave: ${AMARILLO}$clave${NC}"
+    echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
+    echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
+    echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
+    echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
+    echo -e "${AMARILLO}👤 Usuario    📅 Expira          ⏳ Días       📱 Móviles   📅 Creado${NC}"
+    echo -e "${CIAN}---------------------------------------------------------------${NC}"
+    printf "${VERDE}%-12s %-18s %-12s %-12s %s${NC}\n" "$usuario:$clave" "$fecha_expiracion" "$dias días" "$moviles" "$fecha_creacion"
+    echo -e "${CIAN}===============================================================${NC}"
+    read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
 
-# Función para ver registros
-# Función para ver registros
-ver_registros() {
+function ver_registros() {
     clear
-    echo "===== 🌸 REGISTROS ====="
-    echo "Nº 👩 Usuario 🔒 Clave   📅 Expira    ⏳  Días   📲 Móviles"
+    echo -e "${VIOLETA}===== 🌸 REGISTROS =====${NC}"
+    echo -e "${AMARILLO}Nº 👩 Usuario 🔒 Clave   📅 Expira    ⏳  Días   📲 Móviles${NC}"
     if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
-        echo "No hay registros disponibles."
+        echo -e "${ROJO}No hay registros disponibles.${NC}"
     else
         count=1
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
@@ -340,34 +338,38 @@ ver_registros() {
             dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
             fecha_creacion="$fecha_creacion1 $fecha_creacion2"
             # Usar la fecha de expiración directamente, ya está en formato dd/mes/YYYY
-            printf "%-2s %-11s %-10s %-16s %-8s %-8s\n" "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias_restantes" "$moviles"
+            printf "${VERDE}%-2s ${AZUL}%-11s ${AZUL}%-10s ${AMARILLO}%-16s ${AMARILLO}%-8s ${AMARILLO}%-8s${NC}\n" \
+                "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
     fi
-    read -p "Presiona Enter para continuar..."
+    read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
-# Función para mostrar un mini registro
-mini_registro() {
+
+function mini_registro() {
     clear
-    echo "==== 📋 MINI REGISTRO ====="
-    echo "👤 Nombre  🔑 Contraseña   ⏳ Días   📱 Móviles"
+    echo -e "${VIOLETA}==== 📋 MINI REGISTRO ====${NC}"
+    echo -e "${AMARILLO}👤 Nombre  🔑 Contraseña   ⏳ Días   📱 Móviles${NC}"
     if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
-        echo "No hay registros disponibles."
+        echo -e "${ROJO}No hay registros disponibles.${NC}"
     else
         count=0
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
             dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
-            printf "%-12s %-16s %-10s %-10s\n" "$usuario" "$clave" "$dias_restantes" "$moviles"
+            printf "${VERDE}%-12s ${AZUL}%-16s ${AMARILLO}%-10s ${AMARILLO}%-10s${NC}\n" \
+                "$usuario" "$clave" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
-        echo "==========================================="
-        echo "TOTAL: $count usuarios"
+        echo -e "${CIAN}===========================================${NC}"
+        echo -e "${AMARILLO}TOTAL: ${VERDE}$count usuarios${NC}"
     fi
-    echo "Presiona Enter para continuar... ✨"
+    echo -e "${CIAN}Presiona Enter para continuar... ✨${NC}"
     read
 }
+
+
 
 # Función para crear múltiples usuarios
 crear_multiples_usuarios() {
