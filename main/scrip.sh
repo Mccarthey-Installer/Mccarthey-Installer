@@ -427,133 +427,113 @@ eliminar_multiples_usuarios() {
 
 
 
-
-        
-
         monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=0.3  # Verificación rápida
-
-    # Validar permisos de REGISTROS
-    if [[ ! -r "$REGISTROS" ]]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se puede leer $REGISTROS. Verifica permisos." >> "$LOG"
-        sleep "$INTERVALO"
-        return
-    fi
+    REGISTROS="/diana/reg.txt"
+    HISTORIAL="/alexia/log.txt"
+    INTERVALO=5  # Igual que los compas
 
     while true; do
-        # Usuarios desde REGISTROS, validados con id
-        usuarios_ps=$(awk -F: '{print $1}' "$REGISTROS" | sort -u | while read -r user; do
-            if id "$user" >/dev/null 2>&1; then
-                echo "$user"
+        # Validar existencia de REGISTROS
+        [[ ! -f "$REGISTROS" ]] && { echo "$(date '+%Y-%m-%d %H:%M:%S'): No existe $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
+
+        # Usar archivo temporal para evitar corrupciones
+        TEMP_FILE=$(mktemp "${REGISTROS}.tmp.XXXXXX") || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        TEMP_FILE_NEW=$(mktemp "${REGISTROS}.tmp.new.XXXXXX") || { rm -f "$TEMP_FILE"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error archivo temporal nuevo." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        cp "$REGISTROS" "$TEMP_FILE" 2>/dev/null || { rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; echo "$(date '+%Y-%m-%d %H:%M:%S'): Error copiando $REGISTROS." >> "$LOG"; sleep "$INTERVALO"; continue; }
+        > "$TEMP_FILE_NEW"
+
+        # Leer usuarios desde REGISTROS
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
+            usuario=${user_data%%:*}
+            clave=${user_data#*:}
+            [[ -z "$usuario" ]] && continue
+
+            # Validar que el usuario exista
+            if id "$usuario" &>/dev/null; then
+                # Contar conexiones (sshd y dropbear)
+                CONEXIONES=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+                MOVILES_NUM=$(echo "$moviles" | grep -oE '[0-9]+' || echo "1")
+                # Verificar si el usuario está bloqueado en /etc/shadow
+                [[ -n $(grep "^$usuario:!" /etc/shadow) ]] && CONEXIONES=0
+
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $CONEXIONES conexiones (ps), límite: $MOVILES_NUM" >> "$LOG"
+
+                # Cerrar sesiones extras
+                if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
+                    PIDS=($(ps -u "$usuario" -o pid=,comm= | awk '$2=="sshd" || $2=="dropbear"{print $1}' | tail -n +$((MOVILES_NUM+1))))
+                    for PID in "${PIDS[@]}"; do
+                        kill -9 "$PID" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión extra de '$usuario' (PID $PID) cerrada." >> "$LOG"
+                    done
+                    # Intentar cerrar con loginctl como respaldo
+                    mapfile -t SESSIONS < <(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | sort -n)
+                    for ((i=MOVILES_NUM; i<${#SESSIONS[@]}; i++)); do
+                        SESSION="${SESSIONS[i]}"
+                        if [[ -n "$SESSION" ]]; then
+                            if loginctl terminate-session "$SESSION" 2>/dev/null; then
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
+                            else
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Fallo al cerrar sesión de '$usuario' (SESSION $SESSION) con loginctl." >> "$LOG"
+                            fi
+                        fi
+                    done
+                    # Verificación final
+                    CONEXIONES=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+                    if [[ $CONEXIONES -gt $MOVILES_NUM ]]; then
+                        killall -u "$usuario" -9 -r "sshd|dropbear" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
+                    fi
+                fi
+
+                # Gestionar marcas de tiempo
+                TMP_STATUS="/tmp/status_${usuario}.tmp"
+                if [[ $CONEXIONES -gt 0 ]]; then
+                    if [[ ! -f "$TMP_STATUS" ]]; then
+                        NEW_PRIMER_LOGIN=$(date +"%Y-%m-%d %H:%M:%S")
+                        echo "$NEW_PRIMER_LOGIN" > "$TMP_STATUS"
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado en $NEW_PRIMER_LOGIN." >> "$LOG"
+                    fi
+                elif [[ -f "$TMP_STATUS" ]]; then
+                    HORA_CONEXION=$(cat "$TMP_STATUS" 2>/dev/null)
+                    if [[ -n "$HORA_CONEXION" ]]; then
+                        HORA_DESCONEXION=$(date +"%Y-%m-%d %H:%M:%S")
+                        START_SECONDS=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                        END_SECONDS=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
+                        if [[ -n "$START_SECONDS" && -n "$END_SECONDS" ]]; then
+                            DURATION_SECONDS=$((END_SECONDS - START_SECONDS))
+                            DURATION=$(printf '%02d:%02d:%02d' $((DURATION_SECONDS/3600)) $(((DURATION_SECONDS%3600)/60)) $((DURATION_SECONDS%60)))
+                            echo "$usuario|$HORA_CONEXION|$HORA_DESCONEXION|$DURATION" >> "$HISTORIAL"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Duración: $DURATION." >> "$LOG"
+                        fi
+                    fi
+                    rm -f "$TMP_STATUS" 2>/dev/null
+                fi
+
+                # Escribir al archivo temporal nuevo
+                echo "$user_data $fecha_expiracion $dias $moviles $fecha_creacion" >> "$TEMP_FILE_NEW"
             else
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Usuario $user no existe en el sistema." >> "$LOG"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Usuario $usuario no existe en el sistema." >> "$LOG"
+                echo "$user_data $fecha_expiracion $dias $moviles $fecha_creacion" >> "$TEMP_FILE_NEW"
             fi
-        done)
+        done < "$TEMP_FILE"
 
-        # Depuración: registrar usuarios detectados
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuarios detectados: $usuarios_ps" >> "$LOG"
-
-        # --- LIMITE DE CONEXIONES POR USUARIO ---
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
-
-            # Límite permitido (campo 4 en REGISTROS)
-            MOVILES_NUM=$(awk -F'[ :]' -v u="$usuario" '$1==u{print $4}' "$REGISTROS" 2>/dev/null)
-            [[ -z "$MOVILES_NUM" || ! "$MOVILES_NUM" =~ ^[0-9]+$ ]] && MOVILES_NUM=1
-            (( MOVILES_NUM < 1 )) && MOVILES_NUM=1
-
-            # Conexiones actuales (priorizar ps)
-            conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
-            conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Verificando $usuario: $conexiones sesiones (loginctl), $conexiones_ps procesos (ps), límite: $MOVILES_NUM" >> "$LOG"
-
-            if [[ $conexiones_ps -gt $MOVILES_NUM ]]; then
-                # Obtener PIDs de sshd ordenados por tiempo de ejecución (más reciente primero)
-                mapfile -t PIDS < <(ps -u "$usuario" -o pid=,comm=,etimes= --no-headers | grep -E "sshd" | sort -k3 -nr | awk '{print $1}')
-                # Obtener sesiones con loginctl como respaldo
-                mapfile -t SESSIONS < <(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | sort -n)
-
-                # Depuración: registrar PIDs y sesiones
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario - PIDs detectados: ${PIDS[*]}" >> "$LOG"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario - Sesiones detectadas: ${SESSIONS[*]}" >> "$LOG"
-
-                # Cerrar procesos sshd extras
-                for ((i=MOVILES_NUM; i<${#PIDS[@]}; i++)); do
-                    PID="${PIDS[i]}"
-                    if [[ -n "$PID" ]]; then
-                        if kill -9 "$PID" 2>/dev/null; then
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (PID $PID) cerrada con kill -9 por exceder límite de $MOVILES_NUM." >> "$LOG"
-                        else
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Fallo al cerrar sesión de '$usuario' (PID $PID) con kill -9." >> "$LOG"
-                        fi
-                    fi
-                done
-
-                # Cerrar sesiones con loginctl como respaldo
-                for ((i=MOVILES_NUM; i<${#SESSIONS[@]}; i++)); do
-                    SESSION="${SESSIONS[i]}"
-                    if [[ -n "$SESSION" ]]; then
-                        if loginctl terminate-session "$SESSION" 2>/dev/null; then
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión nueva de '$usuario' (SESSION $SESSION) cerrada con loginctl por exceder límite de $MOVILES_NUM." >> "$LOG"
-                        else
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: Fallo al cerrar sesión de '$usuario' (SESSION $SESSION) con loginctl." >> "$LOG"
-                        fi
-                    fi
-                done
-
-                # Verificar si persisten conexiones
-                sleep 0.2
-                conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
-                conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
-                if [[ $conexiones_ps -gt $MOVILES_NUM ]]; then
-                    killall -u "$usuario" -9 -r "sshd" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Sesión persistente de '$usuario' cerrada con killall por exceder límite de $MOVILES_NUM." >> "$LOG"
-                fi
-
-                # Verificación final
-                conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
-                conexiones=$(loginctl list-sessions --no-legend | awk -v user="$usuario" '$3==user{print $1}' | wc -l)
-                if [[ $conexiones_ps -gt $MOVILES_NUM || $conexiones -gt $MOVILES_NUM ]]; then
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): ERROR: No se pudo cerrar sesión extra de '$usuario'. Sesiones: $conexiones (loginctl), $conexiones_ps (ps), límite: $MOVILES_NUM." >> "$LOG"
-                else
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Éxito: Conexión extra de '$usuario' cerrada. Sesiones: $conexiones (loginctl), $conexiones_ps (ps)." >> "$LOG"
-                fi
-            fi
-        done
-
-        # --- MARCA DE TIEMPO DE CONEXIÓN (entrada/salida) ---
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
-            tmp_status="/tmp/status_${usuario}.tmp"
-            conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
-            if [[ $conexiones_ps -gt 0 ]]; then
-                if [[ ! -f "$tmp_status" ]]; then
-                    date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
-                else
-                    contenido=$(cat "$tmp_status" 2>/dev/null)
-                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
-                fi
-            fi
-        done
-
-        for f in /tmp/status_*.tmp; do
-            [[ ! -f "$f" ]] && continue
-            usuario="${f#/tmp/status_}"; usuario="${usuario%.tmp}"
-            conexiones_ps=$(ps -u "$usuario" -o comm= | grep -E "^sshd$" | wc -l)
-            if [[ $conexiones_ps -eq 0 ]]; then
-                hora_ini=$(date -d @"$(cat "$f" 2>/dev/null)" "+%Y-%m-%d %H:%M:%S")
-                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                rm -f "$f"
-                [[ -n "$HISTORIAL" ]] && echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-            fi
-        done
+        # Reemplazar REGISTROS
+        mv "$TEMP_FILE_NEW" "$REGISTROS" 2>/dev/null && sync || { echo "$(date '+%Y-%m-%d %H:%M:%S'): Error reemplazando $REGISTROS." >> "$LOG"; rm -f "$TEMP_FILE" "$TEMP_FILE_NEW"; sleep "$INTERVALO"; continue; }
+        rm -f "$TEMP_FILE" 2>/dev/null
 
         sleep "$INTERVALO"
     done
 }
+
+# ================================
+#  MODO MONITOREO DIRECTO
+# ================================
+if [[ "$1" == "mon" ]]; then
+    monitorear_conexiones
+    exit 0
+fi
+
 # ================================
 #  ARRANQUE AUTOMÁTICO DEL MONITOR
 # ================================
@@ -791,7 +771,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}=====💯👀 ANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======😎 😏PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
