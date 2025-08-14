@@ -686,7 +686,7 @@ fi
 function verificar_online() {
     clear
 
-    # Definir colores exactos de la función que te gusta
+    # Definir colores exactos
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -695,6 +695,8 @@ function verificar_online() {
     HOT_PINK='\033[38;5;198m'
     PASTEL_PURPLE='\033[38;5;189m'
     MINT_GREEN='\033[38;5;159m'
+    VERDE='\033[38;5;42m'
+    VIOLETA='\033[38;5;183m'
     NC='\033[0m'
 
     echo -e "${AZUL_SUAVE}===== ✅   USUARIOS ONLINE =====${NC}"
@@ -715,13 +717,11 @@ function verificar_online() {
     while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
         usuario=${userpass%%:*}
 
-        # 🔍 Verificar si el usuario existe, si no, saltar al siguiente
         if ! id "$usuario" &>/dev/null; then
             continue
         fi
 
         (( total_usuarios++ ))
-
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
         estado="📵 0"
@@ -729,9 +729,9 @@ function verificar_online() {
         mov_txt="✅ $moviles"
         tmp_status="/tmp/status_${usuario}.tmp"
         COLOR_ESTADO="${ROJO}"
+        COLOR_DETALLE="${VIOLETA}"
 
         if [[ $conexiones -gt 0 ]]; then
-            # Usuario actualmente online
             estado="📱 $conexiones"
             COLOR_ESTADO="${MINT_GREEN}"
             (( total_online += conexiones ))
@@ -739,36 +739,35 @@ function verificar_online() {
             if [[ -f "$tmp_status" ]]; then
                 contenido=$(cat "$tmp_status")
                 if [[ "$contenido" =~ ^[0-9]+$ ]]; then
-                    # Epoch válido
                     start_s=$((10#$contenido))
                 else
-                    # Reparar si estaba en formato viejo
                     start_s=$(date +%s)
                     echo $start_s > "$tmp_status"
                 fi
 
                 now_s=$(date +%s)
                 elapsed=$(( now_s - start_s ))
-
                 h=$(( elapsed / 3600 ))
                 m=$(( (elapsed % 3600) / 60 ))
                 s=$(( elapsed % 60 ))
                 detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                COLOR_DETALLE="${VERDE}"
             fi
         else
-            # Usuario desconectado ahora
             rm -f "$tmp_status"
             ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
             if [[ -n "$ult" ]]; then
-                ult_fmt=$(date -d "$ult" +"%d de %B %I:%M %p")
+                ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
                 detalle="📅 Última: $ult_fmt"
+                COLOR_DETALLE="${VIOLETA}"
             else
                 detalle="😴 Nunca conectado"
+                COLOR_DETALLE="${VIOLETA}"
             fi
-            (( inactivos++ )) # 📌 Siempre cuenta como inactivo si no está conectado
+            (( inactivos++ ))
         fi
 
-        printf "${VERDE}%-14s ${COLOR_ESTADO}%-14s ${VERDE}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
+        printf "${VERDE}%-14s ${COLOR_ESTADO}%-14s ${VERDE}%-10s ${COLOR_DETALLE}%-25s${NC}\n" \
             "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
 
