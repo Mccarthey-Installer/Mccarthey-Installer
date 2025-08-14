@@ -13,7 +13,8 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-                    function barra_sistema() {
+                    
+        function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
     AZUL='\033[94m'
@@ -77,6 +78,7 @@ mkdir -p "$(dirname "$PIDFILE")"
                 # Calcular días restantes usando la función calcular_dias_restantes
                 DIAS_RESTANTES=$(calcular_dias_restantes "$EXPIRA")
 
+                # Mostrar solo usuarios con 0 días restantes
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then
                     USUARIOS_EXPIRAN+=("${BLANCO}${USUARIO}${NC} ${AMARILLO}0 Días${NC}")
                 fi
