@@ -681,26 +681,42 @@ fi
 
 # ================================
 
-verificar_online() {
+function verificar_online() {
     clear
-    echo "===== ✅   USUARIOS ONLINE ====="
-    printf "%-14s %-14s %-10s %-25s\n" "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
-    echo "-----------------------------------------------------------------"
+
+    # Definir colores
+    AZUL_SUAVE='\033[38;5;45m'
+    SOFT_PINK='\033[38;5;211m'
+    PASTEL_BLUE='\033[38;5;153m'
+    LILAC='\033[38;5;183m'
+    SOFT_CORAL='\033[38;5;217m'
+    HOT_PINK='\033[38;5;198m'
+    PASTEL_PURPLE='\033[38;5;189m'
+    MINT_GREEN='\033[38;5;159m'
+    NC='\033[0m'
+
+    echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
+
+    # Verificar si el archivo REGISTROS existe
+    if [[ ! -f "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ No hay registros. 📂${NC}"
+        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
+        return
+    fi
+
+    # Encabezado de la tabla
+    printf "${SOFT_PINK}%-14s ${SOFT_PINK}%-14s ${SOFT_PINK}%-10s ${SOFT_PINK}%-25s${NC}\n" \
+        "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     total_online=0
     total_usuarios=0
     inactivos=0
 
-    if [[ ! -f "$REGISTROS" ]]; then
-        echo "❌ No hay registros."
-        read -p "Presiona Enter para continuar..."
-        return
-    fi
-
     while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
         usuario=${userpass%%:*}
 
-        # 🔍 Verificar si el usuario existe, si no, saltar al siguiente
+        # Verificar si el usuario existe, si no, saltar al siguiente
         if ! id "$usuario" &>/dev/null; then
             continue
         fi
@@ -713,10 +729,12 @@ verificar_online() {
         detalle="😴 Nunca conectado"
         mov_txt="📲 $moviles"
         tmp_status="/tmp/status_${usuario}.tmp"
+        COLOR_ESTADO="${HOT_PINK}"
 
         if [[ $conexiones -gt 0 ]]; then
             # Usuario actualmente online
             estado="✅ $conexiones"
+            COLOR_ESTADO="${MINT_GREEN}"
             (( total_online += conexiones ))
 
             if [[ -f "$tmp_status" ]]; then
@@ -748,16 +766,17 @@ verificar_online() {
             else
                 detalle="😴 Nunca conectado"
             fi
-            (( inactivos++ )) # 📌 Siempre cuenta como inactivo si no está conectado
+            (( inactivos++ )) # Siempre cuenta como inactivo si no está conectado
         fi
 
-        printf "%-14s %-14s %-10s %-25s\n" "$usuario" "$estado" "$mov_txt" "$detalle"
+        printf "${PASTEL_BLUE}%-14s ${COLOR_ESTADO}%-14s ${SOFT_CORAL}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
+            "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
 
-    echo "-----------------------------------------------------------------"
-    echo "Total de Online: $total_online  Total usuarios: $total_usuarios  Inactivos: $inactivos"
-    echo "================================================"
-    read -p "Presiona Enter para continuar..."
+    echo -e "${LILAC}-----------------------------------------------------------------${NC}"
+    echo -e "${PASTEL_PURPLE}Total de Online: ${SOFT_PINK}${total_online}${NC}  ${PASTEL_PURPLE}Total usuarios: ${SOFT_PINK}${total_usuarios}${NC}  ${PASTEL_PURPLE}Inactivos: ${SOFT_PINK}${inactivos}${NC}"
+    echo -e "${HOT_PINK}================================================${NC}"
+    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
 }
 
 
