@@ -788,10 +788,10 @@ bloquear_desbloquear_usuario() {
     AMARILLO='\033[38;5;226m'
     NC='\033[0m'
 
-    echo -e "${AZUL_SUAVE}==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ====${NC}"
-    echo -e "${LILAC}===== 📋 USUARIOS REGISTRADOS =====${NC}"
+    printf "${AZUL_SUAVE}==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ====${NC}\n"
+    printf "${LILAC}===== 📋 USUARIOS REGISTRADOS =====${NC}\n"
     printf "${AMARILLO}%-4s %-15s %-15s %-22s %-25s${NC}\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "✅ Estado"
-    echo -e "${LILAC}--------------------------------------------------------------------------${NC}"
+    printf "${LILAC}--------------------------------------------------------------------------${NC}\n"
 
     usuarios=()
     index=1
@@ -815,14 +815,14 @@ bloquear_desbloquear_usuario() {
             fi
         fi
 
-        printf "${NC}%-4s ${VERDE}%-15s ${VERDE}%-15s ${VERDE}%-22s ${COLOR_ESTADO}%-25s${NC}\n" \
+        printf "%-4s ${VERDE}%-15s ${VERDE}%-15s ${VERDE}%-22s ${COLOR_ESTADO}%-25s${NC}\n" \
             "$index" "$usuario" "$clave" "$fecha_exp" "$estado"
 
         usuarios[$index]="$usuario"
         ((index++))
     done < "$REGISTROS"
 
-    echo -e "${LILAC}==========================================================================${NC}"
+    printf "${LILAC}==========================================================================${NC}\n"
     read -p "👤 Digite el número o el nombre del usuario: " input
 
     if [[ "$input" =~ ^[0-9]+$ ]] && [[ -n "${usuarios[$input]}" ]]; then
@@ -832,14 +832,14 @@ bloquear_desbloquear_usuario() {
     fi
 
     if ! grep -q "^${usuario}:" "$REGISTROS"; then
-        echo -e "${ROJO}❌ Usuario '$usuario' no encontrado.${NC}"
+        printf "${ROJO}❌ Usuario '$usuario' no encontrado.${NC}"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
     bloqueo_file="/tmp/bloqueo_${usuario}.lock"
     if [[ -f "$bloqueo_file" ]] && [[ $(date +%s) -lt $(cat "$bloqueo_file") ]]; then
-        echo -e "𒯢 El usuario '$usuario' está ${ROJO}BLOQUEADO${NC} hasta $(date -d @$(cat "$bloqueo_file") '+%I:%M%p')."
+        printf "𒯢 El usuario '$usuario' está ${ROJO}BLOQUEADO${NC} hasta $(date -d @$(cat "$bloqueo_file") '+%I:%M%p').\n"
         read -p "✅ Desea desbloquear al usuario '$usuario'? (s/n) " respuesta
         if [[ "$respuesta" =~ ^[sS]$ ]]; then
             rm -f "$bloqueo_file"
@@ -847,14 +847,14 @@ bloquear_desbloquear_usuario() {
             loginctl terminate-user "$usuario" 2>/dev/null
             pkill -9 -u "$usuario" 2>/dev/null
             killall -u "$usuario" -9 2>/dev/null
-            echo -e "${VERDE}🔓 Usuario '$usuario' desbloqueado exitosamente.${NC}"
+            printf "${VERDE}🔓 Usuario '$usuario' desbloqueado exitosamente.${NC}\n"
         else
-            echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
+            printf "${AMARILLO}⚠️ Operación cancelada.${NC}\n"
         fi
         read -p "Presiona Enter para continuar..."
         return
     else
-        echo -e "𒯢 El usuario '$usuario' está ${VERDE}DESBLOQUEADO${NC}."
+        printf "𒯢 El usuario '$usuario' está ${VERDE}DESBLOQUEADO${NC}.\n"
         read -p "✅ Desea bloquear al usuario '$usuario'? (s/n) " respuesta
         if [[ "$respuesta" =~ ^[sS]$ ]]; then
             read -p "Ponga en minutos el tiempo que el usuario estaría bloqueado y confirmar con Enter: " minutos
@@ -865,13 +865,13 @@ bloquear_desbloquear_usuario() {
                 loginctl terminate-user "$usuario" 2>/dev/null
                 pkill -9 -u "$usuario" 2>/dev/null
                 killall -u "$usuario" -9 2>/dev/null
-                echo -e "${VERDE}🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}"
-                echo -e "Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')"
+                printf "${VERDE}🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}\n"
+                printf "Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')\n"
             else
-                echo -e "${ROJO}❌ Tiempo inválido. Debe ser un número mayor a 0.${NC}"
+                printf "${ROJO}❌ Tiempo inválido. Debe ser un número mayor a 0.${NC}\n"
             fi
         else
-            echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
+            printf "${AMARILLO}⚠️ Operación cancelada.${NC}\n"
         fi
         read -p "Presiona Enter para continuar..."
     fi
