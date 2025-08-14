@@ -12,7 +12,8 @@ mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
-function barra_sistema() {
+
+                    function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
     AZUL='\033[94m'
@@ -20,8 +21,6 @@ function barra_sistema() {
     ROJO='\033[91m'
     AMARILLO='\033[93m'
     NC='\033[0m'
-
-    
 
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
@@ -75,50 +74,8 @@ function barra_sistema() {
                 TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
                 ((TOTAL_USUARIOS++))
 
-                # Calcular días restantes
-                DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
-                if [[ -n "$CREADO" ]]; then
-                    # Manejar ambos formatos
-                    if [[ "$CREADO" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]]; then
-                        fecha_creacion=$(echo "$CREADO" | awk -F'[_-]' '{print $1"-"$2"-"$3" "$4":"$5":"$6}')
-                        fecha_creacion_secs=$(date -d "$fecha_creacion" +%s 2>/dev/null)
-                    else
-                        fecha_creacion_secs=$(date -d "$CREADO" +%s 2>/dev/null)
-                    fi
-                    if [[ -z "$fecha_creacion_secs" ]]; then
-                        fecha_creacion_secs=$(date +%s)
-                        CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
-
-                        safe_user=$(printf '%s' "$USUARIO" | sed 's/[\/&|]/\\&/g')
-                        safe_clave=$(printf '%s' "$CLAVE" | sed 's/[\/&|]/\\&/g')
-                        safe_expira=$(printf '%s' "$EXPIRA" | sed 's/[\/&|]/\\&/g')
-                        safe_dias=$(printf '%s' "$DIAS" | sed 's/[\/&|]/\\&/g')
-                        safe_moviles=$(printf '%s' "$MOVILES" | sed 's/[\/&|]/\\&/g')
-                        safe_creado=$(printf '%s' "$CREADO" | sed 's/[\/&|]/\\&/g')
-
-                        sed -i "s|^${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:.*|${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:${safe_creado}|" "$REGISTROS"
-                        sync
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'):Formato de fecha inválido para '$USUARIO'. Actualizado a $CREADO." >> "$HISTORIAL"
-                    fi
-                    fecha_actual=$(date +%s)
-                    dias_transcurridos=$(( (fecha_actual - fecha_creacion_secs) / 86400 ))
-                    DIAS_RESTANTES=$(( DIAS_NUM - dias_transcurridos ))
-                    [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
-                else
-                    DIAS_RESTANTES="$DIAS_NUM"
-                    CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
-
-                    safe_user=$(printf '%s' "$USUARIO" | sed 's/[\/&|]/\\&/g')
-                    safe_clave=$(printf '%s' "$CLAVE" | sed 's/[\/&|]/\\&/g')
-                    safe_expira=$(printf '%s' "$EXPIRA" | sed 's/[\/&|]/\\&/g')
-                    safe_dias=$(printf '%s' "$DIAS" | sed 's/[\/&|]/\\&/g')
-                    safe_moviles=$(printf '%s' "$MOVILES" | sed 's/[\/&|]/\\&/g')
-                    safe_creado=$(printf '%s' "$CREADO" | sed 's/[\/&|]/\\&/g')
-
-                    sed -i "s|^${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:.*|${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:${safe_creado}|" "$REGISTROS"
-                    sync
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'):Fecha de creación vacía para '$USUARIO'. Actualizada a $CREADO." >> "$HISTORIAL"
-                fi
+                # Calcular días restantes usando la función calcular_dias_restantes
+                DIAS_RESTANTES=$(calcular_dias_restantes "$EXPIRA")
 
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then
                     USUARIOS_EXPIRAN+=("${BLANCO}${USUARIO}${NC} ${AMARILLO}0 Días${NC}")
@@ -145,10 +102,11 @@ function barra_sistema() {
 
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
         echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY${NC}"
-        echo -e "$(printf "%s  " "${USUARIOS_EXPIRAN[@]}")"
+        for usuario in "${USUARIOS_EXPIRAN[@]}"; do
+            echo -e "$usuario"
+        done
     fi
 }
-
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
     local dias=$1
