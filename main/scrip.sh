@@ -697,6 +697,7 @@ function verificar_online() {
     MINT_GREEN='\033[38;5;159m'
     VERDE='\033[38;5;42m'
     VIOLETA='\033[38;5;183m'
+    ROJO='\033[38;5;196m'
     NC='\033[0m'
 
     echo -e "${AZUL_SUAVE}===== ✅   USUARIOS ONLINE =====${NC}"
@@ -759,7 +760,7 @@ function verificar_online() {
             if [[ -n "$ult" ]]; then
                 ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
                 detalle="📅 Última: $ult_fmt"
-                COLOR_DETALLE="${VIOLETA}"
+                COLOR_DETALLE="${ROJO}"
             else
                 detalle="😴 Nunca conectado"
                 COLOR_DETALLE="${VIOLETA}"
