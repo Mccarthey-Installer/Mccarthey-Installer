@@ -159,7 +159,7 @@ function informacion_usuarios() {
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
     
-    
+    }
 
     
 # Función para calcular la fecha de expiración
