@@ -684,7 +684,7 @@ fi
 function verificar_online() {
     clear
 
-    # Definir colores
+    # Definir colores exactos de la función que te gusta
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -695,16 +695,7 @@ function verificar_online() {
     MINT_GREEN='\033[38;5;159m'
     NC='\033[0m'
 
-    echo -e "${AZUL_SUAVE}===== ✅ USUARIOS ONLINE =====${NC}"
-
-    # Verificar si el archivo REGISTROS existe
-    if [[ ! -f "$REGISTROS" ]]; then
-        echo -e "${HOT_PINK}❌ No hay registros. 📂${NC}"
-        read -p "$(echo -e "${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC}")"
-        return
-    fi
-
-    # Encabezado de la tabla
+    echo -e "${AZUL_SUAVE}===== ✅   USUARIOS ONLINE =====${NC}"
     printf "${SOFT_PINK}%-14s ${SOFT_PINK}%-14s ${SOFT_PINK}%-10s ${SOFT_PINK}%-25s${NC}\n" \
         "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
@@ -713,10 +704,16 @@ function verificar_online() {
     total_usuarios=0
     inactivos=0
 
+    if [[ ! -f "$REGISTROS" ]]; then
+        echo -e "${HOT_PINK}❌ No hay registros.${NC}"
+        read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+        return
+    fi
+
     while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
         usuario=${userpass%%:*}
 
-        # Verificar si el usuario existe, si no, saltar al siguiente
+        # 🔍 Verificar si el usuario existe, si no, saltar al siguiente
         if ! id "$usuario" &>/dev/null; then
             continue
         fi
@@ -766,7 +763,7 @@ function verificar_online() {
             else
                 detalle="😴 Nunca conectado"
             fi
-            (( inactivos++ )) # Siempre cuenta como inactivo si no está conectado
+            (( inactivos++ )) # 📌 Siempre cuenta como inactivo si no está conectado
         fi
 
         printf "${PASTEL_BLUE}%-14s ${COLOR_ESTADO}%-14s ${SOFT_CORAL}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
