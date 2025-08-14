@@ -12,7 +12,74 @@ mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
+function informacion_usuarios() {
+    clear
 
+    # Definir colores
+    ROSADO='\033[38;5;211m'
+    LILA='\033[38;5;183m'
+    TURQUESA='\033[38;5;45m'
+    NC='\033[0m'
+
+    echo -e "${ROSADO}🌸✨  INFORMACIÓN DE CONEXIONES 💖✨ 🌸${NC}"
+
+    # Mapa de meses para traducción
+    declare -A month_map=(
+        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
+        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
+        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
+    )
+
+    # Verificar si el archivo HISTORIAL existe
+    if [[ ! -f "$HISTORIAL" ]]; then
+        echo -e "${LILA}😿 ¡Oh no! No hay historial de conexiones aún, pequeña! 💔${NC}"
+        read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"
+        return 1
+    fi
+
+    # Encabezado de la tabla
+    printf "${LILA}%-15s %-22s %-22s %-12s${NC}\n" "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰  Duración"
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+
+    # Obtener lista única de usuarios desde HISTORIAL
+    mapfile -t USUARIOS < <(awk -F'|' '{print $1}' "$HISTORIAL" | sort -u)
+
+    for USUARIO in "${USUARIOS[@]}"; do
+        if id "$USUARIO" &>/dev/null; then
+            # Obtener el último registro del usuario
+            ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)
+            if [[ -n "$ULTIMO_REGISTRO" ]]; then
+                IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION DURACION <<< "$ULTIMO_REGISTRO"
+
+                # Validar formato de fechas
+                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ && \
+                      "$HORA_DESCONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+
+                    # Formatear fechas
+                    CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%b %I:%M %p" 2>/dev/null)
+                    DESCONEXION_FMT=$(date -d "$HORA_DESCONEXION" +"%d/%b %I:%M %p" 2>/dev/null)
+
+                    # Traducir meses a español
+                    for eng in "${!month_map[@]}"; do
+                        esp=${month_map[$eng]}
+                        CONEXION_FMT=${CONEXION_FMT/$eng/$esp}
+                        DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}
+                    done
+
+                    # Usar la duración ya calculada en HISTORIAL
+                    if [[ "$DURACION" =~ ^[0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+                        printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
+                    else
+                        printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "N/A"
+                    fi
+                fi
+            fi
+        fi
+    done
+
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
+}
                     
         function barra_sistema() {
     # Definición colores según tu estilo
