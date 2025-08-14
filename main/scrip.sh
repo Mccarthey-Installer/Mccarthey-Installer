@@ -14,7 +14,8 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                     
-        function barra_sistema() {
+        
+    function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
     AZUL='\033[94m'
@@ -23,13 +24,14 @@ mkdir -p "$(dirname "$PIDFILE")"
     AMARILLO='\033[93m'
     NC='\033[0m'
 
+    # Obtener información de memoria
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
     MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
-
     MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")
 
+    # Función para convertir a formato humano
     human() {
         local value=$1
         if [ "$value" -ge 1024 ]; then
@@ -44,13 +46,15 @@ mkdir -p "$(dirname "$PIDFILE")"
     MEM_USO_H=$(human "$MEM_USO")
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
+    # Obtener uso de CPU
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
     CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
 
+    # Obtener frecuencia de CPU
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
 
-    # IP pública
+    # Obtener IP pública
     if command -v curl &>/dev/null; then
         IP_PUBLICA=$(curl -s ifconfig.me)
     elif command -v wget &>/dev/null; then
@@ -59,49 +63,55 @@ mkdir -p "$(dirname "$PIDFILE")"
         IP_PUBLICA="No disponible"
     fi
 
+    # Obtener fecha actual
     FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
     FECHA_ACTUAL_DIA=$(date +%F)
 
+    # Inicializar variables
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
     USUARIOS_EXPIRAN=()
 
     if [[ -f "$REGISTROS" ]]; then
-        while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO; do
-            if id "$USUARIO" &>/dev/null; then
-                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
-                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
+            usuario=${user_data%%:*}
+            if id "$usuario" &>/dev/null; then
+                # Contar conexiones SSH y Dropbear
+                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
                 ((TOTAL_USUARIOS++))
 
-                # Calcular días restantes usando la función calcular_dias_restantes
-                DIAS_RESTANTES=$(calcular_dias_restantes "$EXPIRA")
+                # Calcular días restantes
+                DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
 
-                # Mostrar solo usuarios con 0 días restantes
+                # Verificar si el usuario expira hoy (0 días restantes)
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then
-                    USUARIOS_EXPIRAN+=("${BLANCO}${USUARIO}${NC} ${AMARILLO}0 Días${NC}")
+                    USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
                 fi
             fi
         done < "$REGISTROS"
     fi
 
+    # Obtener información del sistema operativo
     if [[ -f /etc/os-release ]]; then
         SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
     else
         SO_NAME=$(uname -o)
     fi
 
-    # Imprimir menú
+    # Imprimir barra de sistema
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}⚡ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
     echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}😘😘 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
+    # Mostrar usuarios que expiran hoy
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
         echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY${NC}"
         for usuario in "${USUARIOS_EXPIRAN[@]}"; do
