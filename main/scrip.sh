@@ -12,6 +12,143 @@ mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
+unction barra_sistema() {
+    # Definición colores según tu estilo
+    BLANCO='\033[97m'
+    AZUL='\033[94m'
+    MAGENTA='\033[95m'
+    ROJO='\033[91m'
+    AMARILLO='\033[93m'
+    NC='\033[0m'
+
+    
+
+    MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
+    MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
+    MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
+    MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
+
+    MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")
+
+    human() {
+        local value=$1
+        if [ "$value" -ge 1024 ]; then
+            awk "BEGIN {printf \"%.1fG\", $value/1024}"
+        else
+            echo "${value}M"
+        fi
+    }
+
+    MEM_TOTAL_H=$(human "$MEM_TOTAL")
+    MEM_LIBRE_H=$(human "$MEM_LIBRE")
+    MEM_USO_H=$(human "$MEM_USO")
+    MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
+
+    CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
+    CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
+
+    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
+    [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
+
+    # IP pública
+    if command -v curl &>/dev/null; then
+        IP_PUBLICA=$(curl -s ifconfig.me)
+    elif command -v wget &>/dev/null; then
+        IP_PUBLICA=$(wget -qO- ifconfig.me)
+    else
+        IP_PUBLICA="No disponible"
+    fi
+
+    FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
+    FECHA_ACTUAL_DIA=$(date +%F)
+
+    TOTAL_CONEXIONES=0
+    TOTAL_USUARIOS=0
+    USUARIOS_EXPIRAN=()
+
+    if [[ -f "$REGISTROS" ]]; then
+        while IFS=':' read -r USUARIO CLAVE EXPIRA DIAS MOVILES CREADO; do
+            if id "$USUARIO" &>/dev/null; then
+                CONEXIONES_SSH=$(ps -u "$USUARIO" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$USUARIO" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
+                ((TOTAL_USUARIOS++))
+
+                # Calcular días restantes
+                DIAS_NUM=$(echo "$DIAS" | grep -oE '^[0-9]+')
+                if [[ -n "$CREADO" ]]; then
+                    # Manejar ambos formatos
+                    if [[ "$CREADO" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]]; then
+                        fecha_creacion=$(echo "$CREADO" | awk -F'[_-]' '{print $1"-"$2"-"$3" "$4":"$5":"$6}')
+                        fecha_creacion_secs=$(date -d "$fecha_creacion" +%s 2>/dev/null)
+                    else
+                        fecha_creacion_secs=$(date -d "$CREADO" +%s 2>/dev/null)
+                    fi
+                    if [[ -z "$fecha_creacion_secs" ]]; then
+                        fecha_creacion_secs=$(date +%s)
+                        CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
+
+                        safe_user=$(printf '%s' "$USUARIO" | sed 's/[\/&|]/\\&/g')
+                        safe_clave=$(printf '%s' "$CLAVE" | sed 's/[\/&|]/\\&/g')
+                        safe_expira=$(printf '%s' "$EXPIRA" | sed 's/[\/&|]/\\&/g')
+                        safe_dias=$(printf '%s' "$DIAS" | sed 's/[\/&|]/\\&/g')
+                        safe_moviles=$(printf '%s' "$MOVILES" | sed 's/[\/&|]/\\&/g')
+                        safe_creado=$(printf '%s' "$CREADO" | sed 's/[\/&|]/\\&/g')
+
+                        sed -i "s|^${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:.*|${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:${safe_creado}|" "$REGISTROS"
+                        sync
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'):Formato de fecha inválido para '$USUARIO'. Actualizado a $CREADO." >> "$HISTORIAL"
+                    fi
+                    fecha_actual=$(date +%s)
+                    dias_transcurridos=$(( (fecha_actual - fecha_creacion_secs) / 86400 ))
+                    DIAS_RESTANTES=$(( DIAS_NUM - dias_transcurridos ))
+                    [[ $DIAS_RESTANTES -lt 0 ]] && DIAS_RESTANTES=0
+                else
+                    DIAS_RESTANTES="$DIAS_NUM"
+                    CREADO=$(date +"%Y-%m-%d_%H-%M-%S")
+
+                    safe_user=$(printf '%s' "$USUARIO" | sed 's/[\/&|]/\\&/g')
+                    safe_clave=$(printf '%s' "$CLAVE" | sed 's/[\/&|]/\\&/g')
+                    safe_expira=$(printf '%s' "$EXPIRA" | sed 's/[\/&|]/\\&/g')
+                    safe_dias=$(printf '%s' "$DIAS" | sed 's/[\/&|]/\\&/g')
+                    safe_moviles=$(printf '%s' "$MOVILES" | sed 's/[\/&|]/\\&/g')
+                    safe_creado=$(printf '%s' "$CREADO" | sed 's/[\/&|]/\\&/g')
+
+                    sed -i "s|^${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:.*|${safe_user}:${safe_clave}:${safe_expira}:${safe_dias}:${safe_moviles}:${safe_creado}|" "$REGISTROS"
+                    sync
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'):Fecha de creación vacía para '$USUARIO'. Actualizada a $CREADO." >> "$HISTORIAL"
+                fi
+
+                if [[ $DIAS_RESTANTES -eq 0 ]]; then
+                    USUARIOS_EXPIRAN+=("${BLANCO}${USUARIO}${NC} ${AMARILLO}0 Días${NC}")
+                fi
+            fi
+        done < "$REGISTROS"
+    fi
+
+    if [[ -f /etc/os-release ]]; then
+        SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
+    else
+        SO_NAME=$(uname -o)
+    fi
+
+    # Imprimir menú
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}⚡ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e "${MAGENTA}😘😘 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+
+    if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
+        echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY${NC}"
+        echo -e "$(printf "%s  " "${USUARIOS_EXPIRAN[@]}")"
+    fi
+}
+
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
     local dias=$1
