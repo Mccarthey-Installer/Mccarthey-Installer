@@ -14,8 +14,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                     
-        
-    function barra_sistema() {
+        function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
     AZUL='\033[94m'
@@ -111,14 +110,15 @@ mkdir -p "$(dirname "$PIDFILE")"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
-    # Mostrar usuarios que expiran hoy
+    # Mostrar usuarios que expiran hoy en una sola fila debajo del encabezado
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
-        echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY${NC}"
-        for usuario in "${USUARIOS_EXPIRAN[@]}"; do
-            echo -e "$usuario"
-        done
+        echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
+        echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
 }
+    
+
+    
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
     local dias=$1
