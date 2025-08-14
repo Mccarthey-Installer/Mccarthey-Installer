@@ -66,12 +66,22 @@ function informacion_usuarios() {
                         DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}
                     done
 
-                    # Usar la duración ya calculada en HISTORIAL
-                    if [[ "$DURACION" =~ ^[0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
-                        printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
+                    # Calcular duración
+                    SEC_CON=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
+                    SEC_DES=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
+
+                    if [[ -n "$SEC_CON" && -n "$SEC_DES" && $SEC_DES -ge $SEC_CON ]]; then
+                        DURACION_SEG=$((SEC_DES - SEC_CON))
+                        HORAS=$((DURACION_SEG / 3600))
+                        MINUTOS=$(((DURACION_SEG % 3600) / 60))
+                        SEGUNDOS=$((DURACION_SEG % 60))
+                        DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
                     else
-                        printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "N/A"
+                        DURACION="N/A"
                     fi
+
+                    # Mostrar fila
+                    printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
                 fi
             fi
         fi
