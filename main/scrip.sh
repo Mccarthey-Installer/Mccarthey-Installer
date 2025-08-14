@@ -317,7 +317,7 @@ function crear_usuario() {
     echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
     echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
     echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
-    echo -e "${AMARILLO}👤 Usuario    📅 Expira          ⏳ Días       📱 Móviles   📅 Creado${NC}"
+    echo -e "${AMARILLO}👤 Usuario    📅 Expira        ⏳ Días      📱 Móviles    📅 Creado${NC}"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
     printf "${VERDE}%-12s %-18s %-12s %-12s %s${NC}\n" "$usuario:$clave" "$fecha_expiracion" "$dias días" "$moviles" "$fecha_creacion"
     echo -e "${CIAN}===============================================================${NC}"
@@ -698,7 +698,7 @@ function verificar_online() {
     NC='\033[0m'
 
     echo -e "${AZUL_SUAVE}===== ✅   USUARIOS ONLINE =====${NC}"
-    printf "${SOFT_PINK}%-14s ${SOFT_PINK}%-14s ${SOFT_PINK}%-10s ${SOFT_PINK}%-25s${NC}\n" \
+    printf "${AMARILLO}%-14s ${AMARILLO}%-14s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
         "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
@@ -724,15 +724,15 @@ function verificar_online() {
 
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
-        estado="☑️ 0"
+        estado="📵 0"
         detalle="😴 Nunca conectado"
-        mov_txt="📲 $moviles"
+        mov_txt="✅ $moviles"
         tmp_status="/tmp/status_${usuario}.tmp"
-        COLOR_ESTADO="${HOT_PINK}"
+        COLOR_ESTADO="${ROJO}"
 
         if [[ $conexiones -gt 0 ]]; then
             # Usuario actualmente online
-            estado="✅ $conexiones"
+            estado="📱 $conexiones"
             COLOR_ESTADO="${MINT_GREEN}"
             (( total_online += conexiones ))
 
@@ -768,14 +768,14 @@ function verificar_online() {
             (( inactivos++ )) # 📌 Siempre cuenta como inactivo si no está conectado
         fi
 
-        printf "${PASTEL_BLUE}%-14s ${COLOR_ESTADO}%-14s ${SOFT_CORAL}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
+        printf "${VERDE}%-14s ${COLOR_ESTADO}%-14s ${VERDE}%-10s ${AZUL_SUAVE}%-25s${NC}\n" \
             "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
 
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
-    echo -e "${PASTEL_PURPLE}Total de Online: ${SOFT_PINK}${total_online}${NC}  ${PASTEL_PURPLE}Total usuarios: ${SOFT_PINK}${total_usuarios}${NC}  ${PASTEL_PURPLE}Inactivos: ${SOFT_PINK}${inactivos}${NC}"
+    echo -e "${CIAN}Total de Online: ${AMARILLO}${total_online}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${total_usuarios}${NC}  ${CIAN}Inactivos: ${AMARILLO}${inactivos}${NC}"
     echo -e "${HOT_PINK}================================================${NC}"
-    read -p "$(echo -e ${PASTEL_PURPLE}Presiona Enter para continuar... ✨${NC})"
+    read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar... ✨${NC})"
 }
 
 
