@@ -139,36 +139,7 @@ function informacion_usuarios() {
         IP_PUBLICA="No disponible"
     fi
 
-    # Obtener fecha actual
-    FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
-    FECHA_ACTUAL_DIA=$(date +%F)
-
-    # Inicializar variables
-    TOTAL_CONEXIONES=0
-    TOTAL_USUARIOS=0
-    USUARIOS_EXPIRAN=()
-
-    if [[ -f "$REGISTROS" ]]; then
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
-            usuario=${user_data%%:*}
-            if id "$usuario" &>/dev/null; then
-                # Contar conexiones SSH y Dropbear
-                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
-                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
-                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-                TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
-                ((TOTAL_USUARIOS++))
-
-                # Calcular días restantes
-                DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
-
-                # Verificar si el usuario expira hoy (0 días restantes)
-                if [[ $DIAS_RESTANTES -eq 0 ]]; then
-                    USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
-                fi
-            fi
-        done < "$REGISTROS"
-    fi
+    
 
     # Obtener información del sistema operativo
     if [[ -f /etc/os-release ]]; then
@@ -187,12 +158,7 @@ function informacion_usuarios() {
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
-    # Mostrar usuarios que expiran hoy en una sola fila debajo del encabezado
-    if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
-        echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
-        echo -e "${USUARIOS_EXPIRAN[*]}"
-    fi
-}
+    
     
 
     
