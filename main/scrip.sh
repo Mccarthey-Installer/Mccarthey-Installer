@@ -91,76 +91,7 @@ function informacion_usuarios() {
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
                     
-        function barra_sistema() {
-    # Definición colores según tu estilo
-    BLANCO='\033[97m'
-    AZUL='\033[94m'
-    MAGENTA='\033[95m'
-    ROJO='\033[91m'
-    AMARILLO='\033[93m'
-    NC='\033[0m'
-
-    # Obtener información de memoria
-    MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
-    MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
-    MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
-    MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
-    MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")
-
-    # Función para convertir a formato humano
-    human() {
-        local value=$1
-        if [ "$value" -ge 1024 ]; then
-            awk "BEGIN {printf \"%.1fG\", $value/1024}"
-        else
-            echo "${value}M"
-        fi
-    }
-
-    MEM_TOTAL_H=$(human "$MEM_TOTAL")
-    MEM_LIBRE_H=$(human "$MEM_LIBRE")
-    MEM_USO_H=$(human "$MEM_USO")
-    MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
-
-    # Obtener uso de CPU
-    CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
-    CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
-
-    # Obtener frecuencia de CPU
-    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
-    [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
-
-    # Obtener IP pública
-    if command -v curl &>/dev/null; then
-        IP_PUBLICA=$(curl -s ifconfig.me)
-    elif command -v wget &>/dev/null; then
-        IP_PUBLICA=$(wget -qO- ifconfig.me)
-    else
-        IP_PUBLICA="No disponible"
-    fi
-
-    
-
-    # Obtener información del sistema operativo
-    if [[ -f /etc/os-release ]]; then
-        SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
-    else
-        SO_NAME=$(uname -o)
-    fi
-
-    # Imprimir barra de sistema
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}⚡ EN USO: ${AMARILLO}${MEM_USO_H}${NC}"
-    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-
-    
-    }
-
+        
     
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
