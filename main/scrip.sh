@@ -338,7 +338,7 @@ function ver_registros() {
             dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
             fecha_creacion="$fecha_creacion1 $fecha_creacion2"
             # Usar la fecha de expiración directamente, ya está en formato dd/mes/YYYY
-            printf "${VERDE}%-2s ${AZUL}%-11s ${AZUL}%-10s ${AMARILLO}%-16s ${AMARILLO}%-8s ${AMARILLO}%-8s${NC}\n" \
+            printf "${VERDE}%-2s ${VERDE}%-11s ${AZUL}%-10s ${AMARILLO}%-16s ${VERDE}%-8s ${AMARILLO}%-8s${NC}\n" \
                 "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
