@@ -13,23 +13,26 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-function barra_sistema() {
+
+
+    function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
     AZUL='\033[94m'
     MAGENTA='\033[95m'
     ROJO='\033[91m'
     AMARILLO='\033[93m'
-    VERDE='\033[92m'
+    VERDE='\033[92m'  # Añadido color verde para el porcentaje de disco
     NC='\033[0m'
 
-    # Información de memoria
+    # Obtener información de memoria
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
     MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
     MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")
 
+    # Función para convertir a formato humano
     human() {
         local value=$1
         if [ "$value" -ge 1024 ]; then
@@ -44,13 +47,35 @@ function barra_sistema() {
     MEM_USO_H=$(human "$MEM_USO")
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
-    # CPU
+    # Obtener información del disco duro (raíz)
+    DISCO_TOTAL=$(df -m / | awk '/\// {print $2}')
+    DISCO_USO=$(df -m / | awk '/\// {print $3}')
+    DISCO_DISPONIBLE=$(df -m / | awk '/\// {print $4}')
+    DISCO_PORC=$(df -m / | awk '/\// {print $5}' | tr -d '%')
+
+    # Convertir valores del disco a formato humano
+    DISCO_TOTAL_H=$(human "$DISCO_TOTAL")
+    DISCO_DISPONIBLE_H=$(human "$DISCO_DISPONIBLE")
+    DISCO_USO_H=$(human "$DISCO_USO")
+
+    # Definir color dinámico para el porcentaje de uso del disco
+    if [ "$DISCO_PORC" -ge 80 ]; then
+        DISCO_PORC_COLOR="${ROJO}${DISCO_PORC}%${NC}"  # Rojo si >= 80%
+    elif [ "$DISCO_PORC" -ge 50 ]; then
+        DISCO_PORC_COLOR="${AMARILLO}${DISCO_PORC}%${NC}"  # Amarillo si >= 50%
+    else
+        DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  # Verde si < 50%
+    fi
+
+    # Obtener uso de CPU
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
     CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
+
+    # Obtener frecuencia de CPU
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
 
-    # IP
+    # Obtener IP pública
     if command -v curl &>/dev/null; then
         IP_PUBLICA=$(curl -s ifconfig.me)
     elif command -v wget &>/dev/null; then
@@ -59,8 +84,11 @@ function barra_sistema() {
         IP_PUBLICA="No disponible"
     fi
 
-    FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
+    # Obtener fecha actual
+    FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M")
+    FECHA_ACTUAL_DIA=$(date +%F)
 
+    # Inicializar variables
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
     USUARIOS_EXPIRAN=()
@@ -69,12 +97,17 @@ function barra_sistema() {
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
             usuario=${user_data%%:*}
             if id "$usuario" &>/dev/null; then
+                # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
                 ((TOTAL_USUARIOS++))
+
+                # Calcular días restantes
                 DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
+
+                # Verificar si el usuario expira hoy (0 días restantes)
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then
                     USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
                 fi
@@ -82,42 +115,29 @@ function barra_sistema() {
         done < "$REGISTROS"
     fi
 
-    # SO
+    # Obtener información del sistema operativo
     if [[ -f /etc/os-release ]]; then
         SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
     else
         SO_NAME=$(uname -o)
     fi
 
-    # ==== DISCO ====
-    DISK_TOTAL=$(df -h / | awk 'NR==2 {print $2}')
-    DISK_USADO_PORC=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
-
-    # Color dinámico solo para el porcentaje
-    if [ "$DISK_USADO_PORC" -lt 50 ]; then
-        DISK_COLOR=$VERDE
-    elif [ "$DISK_USADO_PORC" -lt 80 ]; then
-        DISK_COLOR=$AMARILLO
-    else
-        DISK_COLOR=$ROJO
-    fi
-
-    # ==== SALIDA ====
+    # Imprimir barra de sistema
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ 🔥 ${DISK_TOTAL} HDD: USO ${DISK_COLOR}${DISK_USADO_PORC}%${NC}"
-    echo -e "${BLANCO} 📊 U/RAM: ${MEM_PORC}% ∘ 🖥️ U/CPU: ${CPU_PORC}% ∘ 🔧 CPU MHz: ${CPU_MHZ}${NC}"
+    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}🔥 ${DISCO_TOTAL_H} HDD: ${AMARILLO}USO ${DISCO_PORC_COLOR}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 🌍 IP: ${IP_PUBLICA} ∘ 🕒 FECHA: ${FECHA_ACTUAL}${NC}"
+    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${TOTAL_CONEXIONES}   👥 TOTAL:${TOTAL_USUARIOS}   🖼️ SO:${SO_NAME}${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
+    # Mostrar usuarios que expiran hoy en una sola fila debajo del encabezado
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
         echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
         echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
 }
-    
 
 function informacion_usuarios() {
     clear
