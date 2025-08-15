@@ -409,6 +409,11 @@ activar_desactivar_limitador() {
         ESTADO="🟢 Activado"
         INTERVALO_ACTUAL=$(cat "$LIMITADOR_STATUS" 2>/dev/null || echo "1")
     else
+        # Asegurarse de que no haya procesos huérfanos
+        if [[ -f "$LIMITADOR_PIDFILE" ]]; then
+            kill -9 "$(cat "$LIMITADOR_PIDFILE" 2>/dev/null)" 2>/dev/null
+            rm -f "$LIMITADOR_PIDFILE"
+        fi
         ESTADO="🔴 Desactivado"
         INTERVALO_ACTUAL="N/A"
     fi
@@ -449,6 +454,7 @@ activar_desactivar_limitador() {
     echo -ne "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
     read
 }
+
 # ================================
 # MODO LIMITADOR
 # ================================
@@ -461,13 +467,13 @@ if [[ "$1" == "limitador" ]]; then
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
                 if id "$usuario" &>/dev/null; then
-                    # Obtener PIDs ordenados por start_time ascendente (más antiguo primero)
-                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
+                    # Obtener PIDs ordenados por start_time descendente (más nuevo primero)
+                    pids=($(ps -u "$usuario" --sort=-start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
                     conexiones=${#pids[@]}
                     if [[ $conexiones -gt $moviles ]]; then
                         num_extras=$((conexiones - moviles))
                         for ((i=0; i<num_extras; i++)); do
-                            pid=${pids[$((conexiones - 1 - i))]}
+                            pid=${pids[$i]}  # Terminar las conexiones más nuevas
                             kill -9 "$pid" 2>/dev/null
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$LIMITADOR_LOG"
                         done
