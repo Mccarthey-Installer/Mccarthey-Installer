@@ -23,7 +23,7 @@ function barra_sistema() {
     VERDE='\033[92m'
     NC='\033[0m'
 
-    # Obtener información de memoria
+    # Información de memoria
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
     MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
@@ -44,13 +44,13 @@ function barra_sistema() {
     MEM_USO_H=$(human "$MEM_USO")
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
-    # Uso CPU
+    # CPU
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
     CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
 
-    # IP pública
+    # IP
     if command -v curl &>/dev/null; then
         IP_PUBLICA=$(curl -s ifconfig.me)
     elif command -v wget &>/dev/null; then
@@ -60,7 +60,6 @@ function barra_sistema() {
     fi
 
     FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M %p")
-    FECHA_ACTUAL_DIA=$(date +%F)
 
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
@@ -83,7 +82,7 @@ function barra_sistema() {
         done < "$REGISTROS"
     fi
 
-    # Nombre SO
+    # SO
     if [[ -f /etc/os-release ]]; then
         SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
     else
@@ -94,30 +93,23 @@ function barra_sistema() {
     DISK_TOTAL=$(df -h / | awk 'NR==2 {print $2}')
     DISK_USADO_PORC=$(df / | awk 'NR==2 {print $5}' | tr -d '%')
 
-    # Barrita
-    BAR_LENGTH=10
-    FILLED=$((DISK_USADO_PORC * BAR_LENGTH / 100))
-    EMPTY=$((BAR_LENGTH - FILLED))
-
-    # Color dinámico
+    # Color dinámico solo para el porcentaje
     if [ "$DISK_USADO_PORC" -lt 50 ]; then
-        BAR_COLOR=$VERDE
+        DISK_COLOR=$VERDE
     elif [ "$DISK_USADO_PORC" -lt 80 ]; then
-        BAR_COLOR=$AMARILLO
+        DISK_COLOR=$AMARILLO
     else
-        BAR_COLOR=$ROJO
+        DISK_COLOR=$ROJO
     fi
-
-    BAR="[${BAR_COLOR}$(printf '■%.0s' $(seq 1 $FILLED))${NC}$(printf '□%.0s' $(seq 1 $EMPTY))]"
 
     # ==== SALIDA ====
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}⚡ ${DISK_TOTAL} HDD: USO ${AMARILLO}${DISK_USADO_PORC}%${NC} ${BAR}"
-    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ 🔥 ${DISK_TOTAL} HDD: USO ${DISK_COLOR}${DISK_USADO_PORC}%${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
