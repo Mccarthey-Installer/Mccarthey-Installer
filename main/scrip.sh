@@ -388,7 +388,89 @@ function mini_registro() {
     read
 }
 
+# ================================
+# FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
+# ================================
+activar_desactivar_limitador() {
+    clear
+    AZUL_SUAVE='\033[38;5;45m'
+    VERDE='\033[38;5;42m'
+    ROJO='\033[38;5;196m'
+    AMARILLO='\033[38;5;226m'
+    NC='\033[0m'
+    LIMITADOR_PIDFILE="/Abigail/limitador.pid"
+    LIMITADOR_LOG="/var/log/limitador_conexiones.log"
+    LIMITADOR_STATUS="/tmp/limitador_status"
 
+    echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
+    
+    # Verificar estado actual del limitador
+    if [[ -f "$LIMITADOR_PIDFILE" ]] && ps -p "$(cat "$LIMITADOR_PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        ESTADO="🟢 Activado"
+        INTERVALO_ACTUAL=$(cat "$LIMITADOR_STATUS" 2>/dev/null || echo "1")
+    else
+        ESTADO="🔴 Desactivado"
+        INTERVALO_ACTUAL="N/A"
+    fi
+
+    echo -e "${AMARILLO}Estado actual: ${ESTADO}${NC}"
+    echo -e "${AMARILLO}Intervalo actual: ${AMARILLO}${INTERVALO_ACTUAL} segundo(s)${NC}"
+    echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
+    read -p "$(echo -e ${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC})" respuesta
+
+    if [[ "$respuesta" =~ ^[sS]$ ]]; then
+        if [[ "$ESTADO" == "🟢 Activado" ]]; then
+            # Desactivar limitador
+            kill -9 "$(cat "$LIMITADOR_PIDFILE" 2>/dev/null)" 2>/dev/null
+            rm -f "$LIMITADOR_PIDFILE" "$LIMITADOR_STATUS"
+            echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$LIMITADOR_LOG"
+        else
+            # Activar limitador
+            read -p "$(echo -e ${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC})" intervalo
+            if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
+                echo "$intervalo" > "$LIMITADOR_STATUS"
+                nohup bash "$0" limitador >/dev/null 2>&1 &
+                echo $! > "$LIMITADOR_PIDFILE"
+                echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$LIMITADOR_LOG"
+            else
+                echo -e "${ROJO}❌ Intervalo inválido. Debe ser un número entre 1 y 60.${NC}"
+            fi
+        fi
+    else
+        echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
+    fi
+    read -p "$(echo -e ${AZUL_SUAVE}Presiona Enter para continuar...${NC})"
+}
+
+# ================================
+# MODO LIMITADOR
+# ================================
+if [[ "$1" == "limitador" ]]; then
+    LIMITADOR_LOG="/var/log/limitador_conexiones.log"
+    INTERVALO=$(cat "/tmp/limitador_status" 2>/dev/null || echo "1")
+
+    while true; do
+        if [[ -f "$REGISTROS" ]]; then
+            while IFS=' ' read -r user_data _ _ moviles _; do
+                usuario=${user_data%%:*}
+                if id "$usuario" &>/dev/null; then
+                    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+                    if [[ $conexiones -gt $moviles ]]; then
+                        # Terminar conexiones sobrantes
+                        pids=($(ps -u "$usuario" -o pid,comm | grep -E 'sshd|dropbear' | head -n $((conexiones - moviles)) | awk '{print $1}'))
+                        for pid in "${pids[@]}"; do
+                            kill -9 "$pid" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$LIMITADOR_LOG"
+                        done
+                    fi
+                fi
+            done < "$REGISTROS"
+        fi
+        sleep "$INTERVALO"
+    done
+fi
 
 # Función para crear múltiples usuarios
 crear_multiples_usuarios() {
@@ -701,6 +783,17 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 fi
 
 # ================================
+
+# ================================
+# ARRANQUE AUTOMÁTICO DEL LIMITADOR
+# ================================
+if [[ ! -f "$LIMITADOR_PIDFILE" ]] || ! ps -p "$(cat "$LIMITADOR_PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$LIMITADOR_PIDFILE"
+    if [[ -f "/tmp/limitador_status" ]]; then
+        nohup bash "$0" limitador >/dev/null 2>&1 &
+        echo $! > "$LIMITADOR_PIDFILE"
+    fi
+fi
 
 function verificar_online() {
     clear
