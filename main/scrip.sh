@@ -461,13 +461,26 @@ if [[ "$1" == "limitador" ]]; then
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
                 if id "$usuario" &>/dev/null; then
-                    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+                    # Obtener PIDs de conexiones sshd y dropbear
+                    pids=($(ps -u "$usuario" -o pid,comm | grep -E 'sshd|dropbear' | awk '{print $1}'))
+                    conexiones=${#pids[@]}
                     if [[ $conexiones -gt $moviles ]]; then
-                        # Terminar conexiones sobrantes
-                        pids=($(ps -u "$usuario" -o pid,comm | grep -E 'sshd|dropbear' | head -n $((conexiones - moviles)) | awk '{print $1}'))
+                        # Recopilar elapsed time y PID
+                        declare -a pid_elapsed
                         for pid in "${pids[@]}"; do
+                            elapsed=$(ps -p "$pid" -o etimes= | tr -d ' ')
+                            pid_elapsed+=("$elapsed:$pid")
+                        done
+                        # Ordenar por elapsed ascendente (menor elapsed = más nuevo)
+                        IFS=$'\n' sorted=($(printf '%s\n' "${pid_elapsed[@]}" | sort -n -t: -k1))
+                        unset IFS
+                        # Terminar las conexiones más nuevas (extras)
+                        num_extras=$((conexiones - moviles))
+                        for ((i=0; i<num_extras; i++)); do
+                            line="${sorted[$i]}"
+                            pid="${line#*:}"
                             kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$LIMITADOR_LOG"
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid, elapsed: ${line%%:*}) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$LIMITADOR_LOG"
                         done
                     fi
                 fi
@@ -1051,7 +1064,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======🦁🐇PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======💯❤️PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
