@@ -414,9 +414,11 @@ activar_desactivar_limitador() {
     fi
 
     echo -e "${AMARILLO}Estado actual: ${ESTADO}${NC}"
-    echo -e "${AMARILLO}Intervalo actual: ${AMARILLO}${INTERVALO_ACTUAL} segundo(s)${NC}"
+    echo -e "${AMARILLO}Intervalo actual: ${INTERVALO_ACTUAL} segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
-    read -p "$(echo -e ${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC})" respuesta
+
+    # Corregido: eliminada la sustitución de comandos
+    read -p "${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC}" respuesta
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
         if [[ "$ESTADO" == "🟢 Activado" ]]; then
@@ -427,7 +429,7 @@ activar_desactivar_limitador() {
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$LIMITADOR_LOG"
         else
             # Activar limitador
-            read -p "$(echo -e ${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC})" intervalo
+            read -p "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}" intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
                 echo "$intervalo" > "$LIMITADOR_STATUS"
                 nohup bash "$0" limitador >/dev/null 2>&1 &
@@ -441,9 +443,9 @@ activar_desactivar_limitador() {
     else
         echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
     fi
-    read -p "$(echo -e ${AZUL_SUAVE}Presiona Enter para continuar...${NC})"
-}
 
+    read -p "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
+}
 # ================================
 # MODO LIMITADOR
 # ================================
