@@ -15,14 +15,15 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 
-    function barra_sistema() {
+    
+function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
     AZUL='\033[94m'
     MAGENTA='\033[95m'
     ROJO='\033[91m'
     AMARILLO='\033[93m'
-    VERDE='\033[92m'  # Añadido color verde para el porcentaje de disco
+    VERDE='\033[92m'
     NC='\033[0m'
 
     # Obtener información de memoria
@@ -48,20 +49,14 @@ mkdir -p "$(dirname "$PIDFILE")"
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
     # Obtener información del disco duro (raíz)
-    DISCO_TOTAL=$(df -m / | awk '/\// {print $2}')
-    DISCO_USO=$(df -m / | awk '/\// {print $3}')
-    DISCO_DISPONIBLE=$(df -m / | awk '/\// {print $4}')
-    DISCO_PORC=$(df -m / | awk '/\// {print $5}' | tr -d '%')
-
-    # Convertir valores del disco a formato humano
-    DISCO_TOTAL_H=$(human "$DISCO_TOTAL")
-    DISCO_DISPONIBLE_H=$(human "$DISCO_DISPONIBLE")
-    DISCO_USO_H=$(human "$DISCO_USO")
+    # Usamos df -h para obtener valores en formato humano y asegurarnos de que coincidan con el panel
+    DISCO_INFO=$(df -h / | awk '/\// {print $2, $3, $4, $5}' | tr -d '%')
+    read -r DISCO_TOTAL_H DISCO_USO_H DISCO_DISPONIBLE_H DISCO_PORC <<< "$DISCO_INFO"
 
     # Definir color dinámico para el porcentaje de uso del disco
-    if [ "$DISCO_PORC" -ge 80 ]; then
+    if [ "${DISCO_PORC%.*}" -ge 80 ]; then
         DISCO_PORC_COLOR="${ROJO}${DISCO_PORC}%${NC}"  # Rojo si >= 80%
-    elif [ "$DISCO_PORC" -ge 50 ]; then
+    elif [ "${DISCO_PORC%.*}" -ge 50 ]; then
         DISCO_PORC_COLOR="${AMARILLO}${DISCO_PORC}%${NC}"  # Amarillo si >= 50%
     else
         DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  # Verde si < 50%
