@@ -105,11 +105,11 @@ function barra_sistema() {
     # ==== SALIDA ====
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ 🔥 ${DISK_TOTAL} HDD: USO ${DISK_COLOR}${DISK_USADO_PORC}%${NC}"
-    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${MEM_PORC}% ∘ 🖥️ U/CPU: ${CPU_PORC}% ∘ 🔧 CPU MHz: ${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e "${BLANCO} 🌍 IP: ${IP_PUBLICA} ∘ 🕒 FECHA: ${FECHA_ACTUAL}${NC}"
     echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${TOTAL_CONEXIONES}   👥 TOTAL:${TOTAL_USUARIOS}   🖼️ SO:${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
