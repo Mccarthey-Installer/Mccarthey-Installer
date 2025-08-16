@@ -737,15 +737,15 @@ activar_desactivar_limitador() {
     else
         # Eliminar procesos huérfanos si existen
         if [[ -f "$PIDFILE" ]]; then
-            pkill -f "$SCRIPT_PATH limitador" 2>/dev/null
+            pkill -f "$0 limitador" 2>/dev/null
             rm -f "$PIDFILE"
         fi
         ESTADO="🔴 Desactivado"
         INTERVALO_ACTUAL="N/A"
     fi
 
-    echo -e "${CIAN}Estado actual: ${ESTADO}${NC}"
-    echo -e "${VERDE}Intervalo actual: ${INTERVALO_ACTUAL} segundo(s)${NC}"
+    echo -e "${AMARILLO}Estado actual: ${ESTADO}${NC}"
+    echo -e "${AMARILLO}Intervalo actual: ${INTERVALO_ACTUAL} segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
 
     echo -ne "${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC}"
@@ -754,7 +754,7 @@ activar_desactivar_limitador() {
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
         if [[ "$ESTADO" == "🟢 Activado" ]]; then
             # Desactivar limitador
-            pkill -f "$SCRIPT_PATH limitador" 2>/dev/null
+            pkill -f "$0 limitador" 2>/dev/null
             rm -f "$PIDFILE" "$STATUS"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$HISTORIAL"
@@ -763,8 +763,16 @@ activar_desactivar_limitador() {
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
+                # Ensure STATUS file is writable
+                touch "$STATUS" 2>/dev/null
+                if [[ $? -ne 0 ]]; then
+                    echo -e "${ROJO}❌ Error: No se puede escribir en $STATUS. Verifica permisos o ruta.${NC}"
+                    echo -ne "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
+                    read
+                    return
+                fi
                 echo "$intervalo" > "$STATUS"
-                nohup bash "$SCRIPT_PATH" limitador >/dev/null 2>&1 &
+                nohup bash "$0" limitador >/dev/null 2>&1 &
                 echo $! > "$PIDFILE"
                 echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
@@ -1073,7 +1081,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======📱PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🔴PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
