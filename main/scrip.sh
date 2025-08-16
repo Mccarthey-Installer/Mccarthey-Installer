@@ -740,7 +740,6 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
     echo $! > "$PIDFILE"
 fi
 
-# 
 
 # ================================
 # VARIABLES Y RUTAS
@@ -749,7 +748,7 @@ export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
 export PIDFILE="/Abigail/mon.pid"
 export STATUS="/tmp/limitador_status"
-export ENABLED="/tmp/limitador_enabled"   # << NUEVO CONTROL DE ESTADO
+export ENABLED="/tmp/limitador_enabled"   # Control estricto de activación
 
 # Crear directorios si no existen
 mkdir -p "$(dirname "$REGISTROS")"
@@ -772,12 +771,12 @@ activar_desactivar_limitador() {
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
     
-    # Verificar estado actual
-    if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    # Verificar estado actual: chequea si proceso y archivo ENABLED existen
+    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         ESTADO="${VERDE}🟢 Activado${NC}"
         INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
     else
-        # Eliminar procesos huérfanos si existen
+        # Limpieza procesos huérfanos si existen
         if [[ -f "$PIDFILE" ]]; then
             pkill -f "$0 limitador" 2>/dev/null
             rm -f "$PIDFILE"
@@ -786,7 +785,7 @@ activar_desactivar_limitador() {
         INTERVALO_ACTUAL="N/A"
     fi
 
-    # Bloque de presentación con colores combinados
+    # Presentar estado con colores combinados
     echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
     echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
@@ -795,8 +794,8 @@ activar_desactivar_limitador() {
     read respuesta
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
-        if ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-            # Desactivar limitador
+        if [[ "$ESTADO" == *"Activado"* ]]; then
+            # Desactivar limitador - BORRANDO TODOS LOS ARCHIVOS DE CONTROL
             pkill -f "$0 limitador" 2>/dev/null
             rm -f "$PIDFILE" "$STATUS" "$ENABLED"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
@@ -807,7 +806,7 @@ activar_desactivar_limitador() {
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
                 echo "$intervalo" > "$STATUS"
-                touch "$ENABLED"   # << CREA EL ARCHIVO DE CONTROL
+                touch "$ENABLED"  # CREA EL ARCHIVO DE CONTROL PARA INDICAR QUE ESTÁ ACTIVO
                 nohup bash "$0" limitador >/dev/null 2>&1 &
                 echo $! > "$PIDFILE"
                 echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
@@ -840,7 +839,6 @@ if [[ "$1" == "limitador" ]]; then
                     conexiones=${#pids[@]}
 
                     if [[ $conexiones -gt $moviles ]]; then
-                        # Matar conexiones extra (dejando vivas las primeras)
                         for ((i=moviles; i<conexiones; i++)); do
                             pid=${pids[$i]}
                             kill -9 "$pid" 2>/dev/null
@@ -863,6 +861,7 @@ if [[ -f "$ENABLED" ]]; then
         echo $! > "$PIDFILE"
     fi
 fi
+
 
 
 
