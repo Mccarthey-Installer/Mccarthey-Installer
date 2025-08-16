@@ -118,9 +118,10 @@ mkdir -p "$(dirname "$PIDFILE")"
         SO_NAME=$(uname -o)
     fi
 
-    # Verificar estado del limitador
+        # Verificar estado del limitador (con nuevo archivo ENABLED)
+    ENABLED="/tmp/limitador_enabled"
     PIDFILE="/Abigail/mon.pid"
-    if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         LIMITADOR_ESTADO="${VERDE}ACTIVO 🟢${NC}"
     else
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"
@@ -1116,7 +1117,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======🛍PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🚫PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
