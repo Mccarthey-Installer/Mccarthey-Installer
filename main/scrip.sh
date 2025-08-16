@@ -963,17 +963,19 @@ function verificar_online() {
 
 bloquear_desbloquear_usuario() {
     clear
+    # 🎨 Colores más vivos y definidos
     AZUL_SUAVE='\033[38;5;45m'
     LILAC='\033[38;5;183m'
-    VERDE='\033[38;5;42m'
+    VERDE='\033[38;5;82m'
     ROJO='\033[38;5;196m'
     AMARILLO='\033[38;5;226m'
+    CYAN='\033[38;5;51m'
     NC='\033[0m'
 
-    printf "${AZUL_SUAVE}==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ====${NC}\n"
+    printf "\n${AZUL_SUAVE}==== 🔒 BLOQUEAR/DESBLOQUEAR USUARIO ====${NC}\n"
     printf "${LILAC}===== 📋 USUARIOS REGISTRADOS =====${NC}\n"
-    printf "${AMARILLO}%-4s %-15s %-15s %-22s %-25s${NC}\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "✅ Estado"
-    printf "${LILAC}--------------------------------------------------------------------------${NC}\n"
+    printf "${AMARILLO}%-3s %-12s %-10s %-16s %-22s${NC}\n" "Nº" "👤 Usuario" "🔑 Clave" "📅 Expira" "✅ Estado"
+    printf "${CYAN}----------------------------------------------------------------------------${NC}\n"
 
     usuarios=()
     index=1
@@ -997,14 +999,15 @@ bloquear_desbloquear_usuario() {
             fi
         fi
 
-        printf "%-4s ${VERDE}%-15s ${VERDE}%-15s ${VERDE}%-22s ${COLOR_ESTADO}%-25s${NC}\n" \
+        # 🎨 Fila de datos con colores más sutiles
+        printf "%-3s ${VERDE}%-12s ${CYAN}%-10s ${AMARILLO}%-16s ${COLOR_ESTADO}%-22s${NC}\n" \
             "$index" "$usuario" "$clave" "$fecha_exp" "$estado"
 
         usuarios[$index]="$usuario"
         ((index++))
     done < "$REGISTROS"
 
-    printf "${LILAC}==========================================================================${NC}\n"
+    printf "${CYAN}============================================================================${NC}\n"
     read -p "👤 Digite el número o el nombre del usuario: " input
 
     if [[ "$input" =~ ^[0-9]+$ ]] && [[ -n "${usuarios[$input]}" ]]; then
@@ -1014,7 +1017,7 @@ bloquear_desbloquear_usuario() {
     fi
 
     if ! grep -q "^${usuario}:" "$REGISTROS"; then
-        printf "${ROJO}❌ Usuario '$usuario' no encontrado.${NC}"
+        printf "${ROJO}❌ Usuario '$usuario' no encontrado.${NC}\n"
         read -p "Presiona Enter para continuar..."
         return
     fi
@@ -1039,7 +1042,7 @@ bloquear_desbloquear_usuario() {
         printf "𒯢 El usuario '$usuario' está ${VERDE}DESBLOQUEADO${NC}.\n"
         read -p "✅ Desea bloquear al usuario '$usuario'? (s/n) " respuesta
         if [[ "$respuesta" =~ ^[sS]$ ]]; then
-            read -p "Ponga en minutos el tiempo que el usuario estaría bloqueado y confirmar con Enter: " minutos
+            read -p "⏳ Ponga en minutos el tiempo que el usuario estaría bloqueado y confirmar con Enter: " minutos
             if [[ "$minutos" =~ ^[0-9]+$ ]] && [[ $minutos -gt 0 ]]; then
                 bloqueo_hasta=$(( $(date +%s) + minutos * 60 ))
                 echo "$bloqueo_hasta" > "$bloqueo_file"
@@ -1048,7 +1051,7 @@ bloquear_desbloquear_usuario() {
                 pkill -9 -u "$usuario" 2>/dev/null
                 killall -u "$usuario" -9 2>/dev/null
                 printf "${VERDE}🔒 Usuario '$usuario' bloqueado exitosamente y sesiones SSH terminadas. ✅${NC}\n"
-                printf "Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')\n"
+                printf "⏰ Desbloqueado automáticamente hasta las $(date -d @$bloqueo_hasta '+%I:%M%p')\n"
             else
                 printf "${ROJO}❌ Tiempo inválido. Debe ser un número mayor a 0.${NC}\n"
             fi
@@ -1058,6 +1061,7 @@ bloquear_desbloquear_usuario() {
         read -p "Presiona Enter para continuar..."
     fi
 }
+
 
 monitorear_bloqueos() {
     LOG="/var/log/monitoreo_bloqueos.log"
