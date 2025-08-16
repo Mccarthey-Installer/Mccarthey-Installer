@@ -701,6 +701,28 @@ fi
 
 
 
+
+# VARIABLES Y RUTAS
+# ================================
+export REGISTROS="/diana/reg.txt"
+export HISTORIAL="/alexia/log.txt"
+export PIDFILE="/Abigail/mon.pid"
+export STATUS="/tmp/limitador_status"
+SCRIPT_PATH="$(realpath "$0")"
+
+# Crear directorios si no existen
+mkdir -p "$(dirname "$REGISTROS")"
+mkdir -p "$(dirname "$HISTORIAL")"
+mkdir -p "$(dirname "$PIDFILE")"
+
+# Colores bonitos
+AZUL_SUAVE='\033[38;5;45m'
+VERDE='\033[38;5;42m'
+ROJO='\033[38;5;196m'
+AMARILLO='\033[38;5;226m'
+CIAN='\033[38;5;51m'
+NC='\033[0m'
+
 # ================================
 # FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
 # ================================
@@ -715,15 +737,15 @@ activar_desactivar_limitador() {
     else
         # Eliminar procesos huérfanos si existen
         if [[ -f "$PIDFILE" ]]; then
-            pkill -f "$0 limitador" 2>/dev/null
+            pkill -f "$SCRIPT_PATH limitador" 2>/dev/null
             rm -f "$PIDFILE"
         fi
         ESTADO="🔴 Desactivado"
         INTERVALO_ACTUAL="N/A"
     fi
 
-    echo -e "${AMARILLO}Estado actual: ${ESTADO}${NC}"
-    echo -e "${AMARILLO}Intervalo actual: ${INTERVALO_ACTUAL} segundo(s)${NC}"
+    echo -e "${CIAN}Estado actual: ${ESTADO}${NC}"
+    echo -e "${VERDE}Intervalo actual: ${INTERVALO_ACTUAL} segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
 
     echo -ne "${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC}"
@@ -732,7 +754,7 @@ activar_desactivar_limitador() {
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
         if [[ "$ESTADO" == "🟢 Activado" ]]; then
             # Desactivar limitador
-            pkill -f "$0 limitador" 2>/dev/null
+            pkill -f "$SCRIPT_PATH limitador" 2>/dev/null
             rm -f "$PIDFILE" "$STATUS"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$HISTORIAL"
@@ -742,7 +764,7 @@ activar_desactivar_limitador() {
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
                 echo "$intervalo" > "$STATUS"
-                nohup bash "$0" limitador >/dev/null 2>&1 &
+                nohup bash "$SCRIPT_PATH" limitador >/dev/null 2>&1 &
                 echo $! > "$PIDFILE"
                 echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
@@ -793,7 +815,7 @@ fi
 # ================================
 if [[ -f "$STATUS" ]]; then
     if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        nohup bash "$0" limitador >/dev/null 2>&1 &
+        nohup bash "$SCRIPT_PATH" limitador >/dev/null 2>&1 &
         echo $! > "$PIDFILE"
     fi
 fi
