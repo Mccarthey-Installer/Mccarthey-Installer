@@ -534,7 +534,9 @@ crear_multiples_usuarios() {
 
 
 # Función para eliminar múltiples usuarios
-eliminar_multiples_usuarios() {
+
+
+    eliminar_multiples_usuarios() {
     clear
     echo "===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 ====="
     echo "Nº      👤 Usuario"
@@ -606,33 +608,63 @@ eliminar_multiples_usuarios() {
 
     # Eliminar usuarios
     count=0
+    failed_count=0
     fecha_eliminacion=$(date "+%Y-%m-%d %H:%M:%S")
     for usuario in "${usuarios_a_eliminar[@]}"; do
-        # Terminar sesiones activas si existen (usando loginctl si está disponible)
-        if command -v loginctl >/dev/null 2>&1; then
-            loginctl terminate-user "$usuario" 2>/dev/null
+        # Terminar todas las sesiones y procesos de manera forzada
+        pkill -KILL -u "$usuario" 2>/dev/null
+        sleep 1  # Dar tiempo para que los procesos terminen
+
+        # Intentar eliminar el usuario con remoción de home y mail spool
+        if userdel -r -f "$usuario" >/dev/null 2>&1; then
+            # Verificar si el usuario realmente se eliminó
+            if ! id "$usuario" &>/dev/null; then
+                # Eliminar del registro
+                sed -i "/^$usuario:/d" $REGISTROS
+
+                # Registrar en historial
+                echo "Usuario eliminado: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+
+                ((count++))
+            else
+                # Si aún existe, intentar limpieza manual
+                rm -rf "/home/$usuario" 2>/dev/null
+                rm -f "/var/mail/$usuario" 2>/dev/null
+                rm -f "/var/spool/mail/$usuario" 2>/dev/null
+                # Forzar eliminación de entradas en /etc/passwd y /etc/shadow si es necesario (peligroso, pero robusto)
+                sed -i "/^$usuario:/d" /etc/passwd
+                sed -i "/^$usuario:/d" /etc/shadow
+                sed -i "/^$usuario:/d" /etc/group
+                sed -i "/^$usuario:/d" /etc/gshadow
+
+                # Verificar nuevamente
+                if ! id "$usuario" &>/dev/null; then
+                    # Eliminar del registro
+                    sed -i "/^$usuario:/d" $REGISTROS
+
+                    # Registrar en historial
+                    echo "Usuario eliminado forzosamente: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+
+                    ((count++))
+                else
+                    echo "❌ Fallo persistente al eliminar el usuario $usuario."
+                    echo "Error al eliminar usuario persistente: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+                    ((failed_count++))
+                fi
+            fi
         else
-            # Alternativa: matar procesos del usuario
-            pkill -9 -u "$usuario" 2>/dev/null
-        fi
-
-        # Eliminar usuario del sistema
-        if userdel "$usuario" 2>/dev/null; then
-            # Eliminar del registro
-            sed -i "/^$usuario:/d" $REGISTROS
-
-            # Registrar en historial
-            echo "Usuario eliminado: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
-
-            ((count++))
-        else
-            echo "❌ Error al eliminar el usuario $usuario del sistema."
+            echo "❌ Error inicial al eliminar el usuario $usuario."
+            echo "Error al eliminar usuario: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+            ((failed_count++))
         fi
     done
 
     # Mostrar resumen
     echo "===== 📊 RESUMEN DE ELIMINACIÓN ====="
     echo "✅ Usuarios eliminados exitosamente: $count"
+    if [[ $failed_count -gt 0 ]]; then
+        echo "❌ Usuarios con fallos: $failed_count"
+    fi
     echo "Presiona Enter para continuar... ✨"
     read
 }
