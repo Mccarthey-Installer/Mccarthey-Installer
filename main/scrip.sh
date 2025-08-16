@@ -739,12 +739,7 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
     echo $! > "$PIDFILE"
 fi
 
-# ============================================
-# LIMITADOR DE CONEXIONES SSH
-# Mantiene vivas las conexiones antiguas
-# y corta las extras que excedan el límite
-# Usando rutas personalizadas
-# ============================================
+# 
 
 # ================================
 # VARIABLES Y RUTAS
@@ -753,6 +748,7 @@ export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
 export PIDFILE="/Abigail/mon.pid"
 export STATUS="/tmp/limitador_status"
+export ENABLED="/tmp/limitador_enabled"   # << NUEVO CONTROL DE ESTADO
 
 # Crear directorios si no existen
 mkdir -p "$(dirname "$REGISTROS")"
@@ -764,6 +760,8 @@ AZUL_SUAVE='\033[38;5;45m'
 VERDE='\033[38;5;42m'
 ROJO='\033[38;5;196m'
 AMARILLO='\033[38;5;226m'
+BLANCO='\033[38;5;15m'
+GRIS='\033[38;5;245m'
 NC='\033[0m'
 
 # ================================
@@ -775,7 +773,7 @@ activar_desactivar_limitador() {
     
     # Verificar estado actual
     if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        ESTADO="🟢 Activado"
+        ESTADO="${VERDE}🟢 Activado${NC}"
         INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
     else
         # Eliminar procesos huérfanos si existen
@@ -783,22 +781,23 @@ activar_desactivar_limitador() {
             pkill -f "$0 limitador" 2>/dev/null
             rm -f "$PIDFILE"
         fi
-        ESTADO="🔴 Desactivado"
+        ESTADO="${ROJO}🔴 Desactivado${NC}"
         INTERVALO_ACTUAL="N/A"
     fi
 
-    echo -e "${AMARILLO}Estado actual: ${ESTADO}${NC}"
-    echo -e "${AMARILLO}Intervalo actual: ${INTERVALO_ACTUAL} segundo(s)${NC}"
+    # Bloque de presentación con colores combinados
+    echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
+    echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
 
     echo -ne "${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC}"
     read respuesta
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
-        if [[ "$ESTADO" == "🟢 Activado" ]]; then
+        if ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
             # Desactivar limitador
             pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE" "$STATUS"
+            rm -f "$PIDFILE" "$STATUS" "$ENABLED"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$HISTORIAL"
         else
@@ -806,15 +805,8 @@ activar_desactivar_limitador() {
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
-                # Ensure STATUS file is writable
-                touch "$STATUS" 2>/dev/null
-                if [[ $? -ne 0 ]]; then
-                    echo -e "${ROJO}❌ Error: No se puede escribir en $STATUS. Verifica permisos o ruta.${NC}"
-                    echo -ne "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
-                    read
-                    return
-                fi
                 echo "$intervalo" > "$STATUS"
+                touch "$ENABLED"   # << CREA EL ARCHIVO DE CONTROL
                 nohup bash "$0" limitador >/dev/null 2>&1 &
                 echo $! > "$PIDFILE"
                 echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
@@ -847,7 +839,7 @@ if [[ "$1" == "limitador" ]]; then
                     conexiones=${#pids[@]}
 
                     if [[ $conexiones -gt $moviles ]]; then
-                        # Matar de la "extra" hacia arriba (dejando vivas las primeras)
+                        # Matar conexiones extra (dejando vivas las primeras)
                         for ((i=moviles; i<conexiones; i++)); do
                             pid=${pids[$i]}
                             kill -9 "$pid" 2>/dev/null
@@ -862,13 +854,12 @@ if [[ "$1" == "limitador" ]]; then
 fi
 
 # ================================
-# ARRANQUE AUTOMÁTICO DEL LIMITADOR
+# ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
 # ================================
-if [[ -f "$STATUS" && -f "$PIDFILE" ]]; then
+if [[ -f "$ENABLED" ]]; then
     if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         nohup bash "$0" limitador >/dev/null 2>&1 &
         echo $! > "$PIDFILE"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador reactivado automáticamente." >> "$HISTORIAL"
     fi
 fi
 
@@ -1125,7 +1116,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======✅PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🛍PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
