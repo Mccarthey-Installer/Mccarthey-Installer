@@ -759,7 +759,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 AZUL_SUAVE='\033[38;5;45m'
 VERDE='\033[38;5;42m'
 ROJO='\033[38;5;196m'
-AMARILLO='\033[38;5;226m'
+
 BLANCO='\033[38;5;15m'
 GRIS='\033[38;5;245m'
 NC='\033[0m'
@@ -880,7 +880,7 @@ function verificar_online() {
     VERDE='\033[38;5;42m'
     VIOLETA='\033[38;5;183m'
     ROJO='\033[38;5;196m'
-    AMARILLO='\033[38;5;226m'
+    
     CIAN='\033[38;5;51m'
     NC='\033[0m'
 
@@ -986,10 +986,10 @@ bloquear_desbloquear_usuario() {
     clear
     # 🎨 Colores más vivos y definidos
     AZUL_SUAVE='\033[38;5;45m'
-    LILAC='\033[38;5;183m'
-    VERDE='\033[38;5;82m'
+    
+    
     ROJO='\033[38;5;196m'
-    AMARILLO='\033[38;5;226m'
+    
     CYAN='\033[38;5;51m'
     NC='\033[0m'
 
