@@ -16,7 +16,8 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
     
-function barra_sistema() {
+
+    function barra_sistema() {
     # Definición colores según tu estilo
     BLANCO='\033[97m'
     AZUL='\033[94m'
@@ -117,6 +118,14 @@ function barra_sistema() {
         SO_NAME=$(uname -o)
     fi
 
+    # Verificar estado del limitador
+    PIDFILE="/Abigail/mon.pid"
+    if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        LIMITADOR_ESTADO="${VERDE}ACTIVO 🟢${NC}"
+    else
+        LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"
+    fi
+
     # Imprimir barra de sistema
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}🔥 ${DISCO_TOTAL_H} HDD: ${AMARILLO}USO ${DISCO_PORC_COLOR}${NC}"
@@ -126,8 +135,7 @@ function barra_sistema() {
     echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
     echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-
-    # Mostrar usuarios que expiran hoy en una sola fila debajo del encabezado
+    echo -e "${BLANCO}LIMITADOR: ${LIMITADOR_ESTADO}${NC}"
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
         echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
         echo -e "${USUARIOS_EXPIRAN[*]}"
