@@ -880,6 +880,8 @@ function verificar_online() {
     VERDE='\033[38;5;42m'
     VIOLETA='\033[38;5;183m'
     ROJO='\033[38;5;196m'
+    AMARILLO='\033[38;5;226m'
+    CIAN='\033[38;5;51m'
     NC='\033[0m'
 
     echo -e "${AZUL_SUAVE}===== ✅   USUARIOS ONLINE =====${NC}"
@@ -911,9 +913,23 @@ function verificar_online() {
         detalle="😴 Nunca conectado"
         mov_txt="✅ $moviles"
         tmp_status="/tmp/status_${usuario}.tmp"
+        bloqueo_file="/tmp/bloqueo_${usuario}.lock"
+
         COLOR_ESTADO="${ROJO}"
         COLOR_DETALLE="${VIOLETA}"
 
+        # 🔒 Verificar si está bloqueado primero
+        if [[ -f "$bloqueo_file" ]]; then
+            bloqueo_hasta=$(cat "$bloqueo_file")
+            if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
+                detalle="🚫 bloqueado (hasta $(date -d @$bloqueo_hasta '+%I:%M%p'))"
+                COLOR_DETALLE="${ROJO}"
+            else
+                rm -f "$bloqueo_file"
+            fi
+        fi
+
+        # 📱 Si el usuario está conectado normalmente
         if [[ $conexiones -gt 0 ]]; then
             estado="📱 $conexiones"
             COLOR_ESTADO="${MINT_GREEN}"
@@ -937,19 +953,23 @@ function verificar_online() {
                 COLOR_DETALLE="${VERDE}"
             fi
         else
-            rm -f "$tmp_status"
-            ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
-            if [[ -n "$ult" ]]; then
-                ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
-                detalle="📅 Última: $ult_fmt"
-                COLOR_DETALLE="${ROJO}"
-            else
-                detalle="😴 Nunca conectado"
-                COLOR_DETALLE="${VIOLETA}"
+            # ❌ Solo mostramos última conexión si NO está bloqueado
+            if [[ ! $detalle =~ "🚫 bloqueado" ]]; then
+                rm -f "$tmp_status"
+                ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
+                if [[ -n "$ult" ]]; then
+                    ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
+                    detalle="📅 Última: $ult_fmt"
+                    COLOR_DETALLE="${ROJO}"
+                else
+                    detalle="😴 Nunca conectado"
+                    COLOR_DETALLE="${VIOLETA}"
+                fi
             fi
             (( inactivos++ ))
         fi
 
+        # Imprimir cada fila bien coloreada
         printf "${VERDE}%-14s ${COLOR_ESTADO}%-14s ${VERDE}%-10s ${COLOR_DETALLE}%-25s${NC}\n" \
             "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
@@ -959,6 +979,7 @@ function verificar_online() {
     echo -e "${HOT_PINK}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar... ✨${NC})"
 }
+
 
 
 bloquear_desbloquear_usuario() {
