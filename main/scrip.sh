@@ -739,16 +739,20 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
     echo $! > "$PIDFILE"
 fi
 
+# ============================================
+# LIMITADOR DE CONEXIONES SSH
+# Mantiene vivas las conexiones antiguas
+# y corta las extras que excedan el límite
+# Usando rutas personalizadas
+# ============================================
 
-
-
+# ================================
 # VARIABLES Y RUTAS
 # ================================
 export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
 export PIDFILE="/Abigail/mon.pid"
 export STATUS="/tmp/limitador_status"
-SCRIPT_PATH="$(realpath "$0")"
 
 # Crear directorios si no existen
 mkdir -p "$(dirname "$REGISTROS")"
@@ -760,7 +764,6 @@ AZUL_SUAVE='\033[38;5;45m'
 VERDE='\033[38;5;42m'
 ROJO='\033[38;5;196m'
 AMARILLO='\033[38;5;226m'
-CIAN='\033[38;5;51m'
 NC='\033[0m'
 
 # ================================
@@ -861,10 +864,11 @@ fi
 # ================================
 # ARRANQUE AUTOMÁTICO DEL LIMITADOR
 # ================================
-if [[ -f "$STATUS" ]]; then
+if [[ -f "$STATUS" && -f "$PIDFILE" ]]; then
     if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        nohup bash "$SCRIPT_PATH" limitador >/dev/null 2>&1 &
+        nohup bash "$0" limitador >/dev/null 2>&1 &
         echo $! > "$PIDFILE"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador reactivado automáticamente." >> "$HISTORIAL"
     fi
 fi
 
@@ -1121,7 +1125,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======🔴PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======✅PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
