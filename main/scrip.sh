@@ -885,7 +885,7 @@ function verificar_online() {
 
     echo -e "${AZUL_SUAVE}===== ✅   USUARIOS ONLINE =====${NC}"
     printf "${AMARILLO}%-14s ${AMARILLO}%-14s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
-        "👤 USUARIO" "✅ CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+        "👤 USUARIO" "📲 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     total_online=0
@@ -908,9 +908,9 @@ function verificar_online() {
         (( total_usuarios++ ))
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
-        estado="📵 0"
+        estado="OFF 0"
         detalle="😴 Nunca conectado"
-        mov_txt="✅ $moviles"
+        mov_txt=" $moviles"
         tmp_status="/tmp/status_${usuario}.tmp"
         bloqueo_file="/tmp/bloqueo_${usuario}.lock"
 
@@ -930,7 +930,7 @@ function verificar_online() {
 
         # 📱 Si el usuario está conectado normalmente
         if [[ $conexiones -gt 0 ]]; then
-            estado="📱 $conexiones"
+            estado="📲 $conexiones"
             COLOR_ESTADO="${MINT_GREEN}"
             (( total_online += conexiones ))
 
