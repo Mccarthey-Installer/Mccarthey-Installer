@@ -909,8 +909,8 @@ function verificar_online() {
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
         estado="OFF 0"
-        detalle="😴 Nunca conectado"
-        mov_txt=" $moviles"
+        detalle="☑️ Nunca conectado"
+        mov_txt="📲 $moviles"
         tmp_status="/tmp/status_${usuario}.tmp"
         bloqueo_file="/tmp/bloqueo_${usuario}.lock"
 
@@ -928,9 +928,9 @@ function verificar_online() {
             fi
         fi
 
-        # 📱 Si el usuario está conectado normalmente
+        # 🛜 Si el usuario está conectado normalmente
         if [[ $conexiones -gt 0 ]]; then
-            estado="📲 $conexiones"
+            estado="🛜 $conexiones"
             COLOR_ESTADO="${MINT_GREEN}"
             (( total_online += conexiones ))
 
