@@ -879,7 +879,6 @@ function verificar_online() {
     MINT_GREEN='\033[38;5;159m'
     VERDE='\033[38;5;42m'
     VIOLETA='\033[38;5;183m'
-    ROJO='\033[38;5;196m'
     
     CIAN='\033[38;5;51m'
     NC='\033[0m'
