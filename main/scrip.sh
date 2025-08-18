@@ -17,8 +17,9 @@ mkdir -p "$(dirname "$PIDFILE")"
 
     
 
-    function barra_sistema() {
-    # Definición colores según tu estilo
+    
+        function barra_sistema() {
+    # ================= Colores =================
     BLANCO='\033[97m'
     AZUL='\033[94m'
     MAGENTA='\033[95m'
@@ -27,14 +28,12 @@ mkdir -p "$(dirname "$PIDFILE")"
     VERDE='\033[92m'
     NC='\033[0m'
 
-    # Obtener información de memoria
+    # ================= Memoria =================
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
-    MEM_LIBRE=$(free -m | awk '/^Mem:/ {print $4}')
     MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')
     MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")
 
-    # Función para convertir a formato humano
     human() {
         local value=$1
         if [ "$value" -ge 1024 ]; then
@@ -45,33 +44,26 @@ mkdir -p "$(dirname "$PIDFILE")"
     }
 
     MEM_TOTAL_H=$(human "$MEM_TOTAL")
-    MEM_LIBRE_H=$(human "$MEM_LIBRE")
-    MEM_USO_H=$(human "$MEM_USO")
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
-    # Obtener información del disco duro (raíz)
-    # Usamos df -h para obtener valores en formato humano y asegurarnos de que coincidan con el panel
+    # ================= Disco =================
     DISCO_INFO=$(df -h / | awk '/\// {print $2, $3, $4, $5}' | tr -d '%')
     read -r DISCO_TOTAL_H DISCO_USO_H DISCO_DISPONIBLE_H DISCO_PORC <<< "$DISCO_INFO"
-
-    # Definir color dinámico para el porcentaje de uso del disco
     if [ "${DISCO_PORC%.*}" -ge 80 ]; then
-        DISCO_PORC_COLOR="${ROJO}${DISCO_PORC}%${NC}"  # Rojo si >= 80%
+        DISCO_PORC_COLOR="${ROJO}${DISCO_PORC}%${NC}"
     elif [ "${DISCO_PORC%.*}" -ge 50 ]; then
-        DISCO_PORC_COLOR="${AMARILLO}${DISCO_PORC}%${NC}"  # Amarillo si >= 50%
+        DISCO_PORC_COLOR="${AMARILLO}${DISCO_PORC}%${NC}"
     else
-        DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  # Verde si < 50%
+        DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"
     fi
 
-    # Obtener uso de CPU
+    # ================= CPU =================
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
     CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")
-
-    # Obtener frecuencia de CPU
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"
 
-    # Obtener IP pública
+    # ================= IP y fecha =================
     if command -v curl &>/dev/null; then
         IP_PUBLICA=$(curl -s ifconfig.me)
     elif command -v wget &>/dev/null; then
@@ -79,31 +71,22 @@ mkdir -p "$(dirname "$PIDFILE")"
     else
         IP_PUBLICA="No disponible"
     fi
-
-    # Obtener fecha actual
     FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M")
-    FECHA_ACTUAL_DIA=$(date +%F)
 
-    # Inicializar variables
+    # ================= Usuarios =================
     TOTAL_CONEXIONES=0
     TOTAL_USUARIOS=0
     USUARIOS_EXPIRAN=()
-
     if [[ -f "$REGISTROS" ]]; then
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
             usuario=${user_data%%:*}
             if id "$usuario" &>/dev/null; then
-                # Contar conexiones SSH y Dropbear
                 CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
                 CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
                 CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
                 TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
                 ((TOTAL_USUARIOS++))
-
-                # Calcular días restantes
                 DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
-
-                # Verificar si el usuario expira hoy (0 días restantes)
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then
                     USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
                 fi
@@ -111,14 +94,13 @@ mkdir -p "$(dirname "$PIDFILE")"
         done < "$REGISTROS"
     fi
 
-    # Obtener información del sistema operativo
+    # ================= Sistema =================
     if [[ -f /etc/os-release ]]; then
         SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
     else
         SO_NAME=$(uname -o)
     fi
 
-        # Verificar estado del limitador (con nuevo archivo ENABLED)
     ENABLED="/tmp/limitador_enabled"
     PIDFILE="/Abigail/mon.pid"
     if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
@@ -127,16 +109,53 @@ mkdir -p "$(dirname "$PIDFILE")"
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"
     fi
 
-    # Imprimir barra de sistema
+    # ================= RED =================
+    # Tomar dos snapshots de /proc/net/dev para calcular velocidad
+    read RX1 TX1 < <(awk '/eth0|ens|enp|wlan|wifi/{rx=$2; tx=$10} END{print rx, tx}' /proc/net/dev)
+    sleep 1
+    read RX2 TX2 < <(awk '/eth0|ens|enp|wlan|wifi/{rx=$2; tx=$10} END{print rx, tx}' /proc/net/dev)
+
+    DOWN_BPS=$((RX2 - RX1))
+    UP_BPS=$((TX2 - TX1))
+
+    # Función para convertir a unidad legible
+    format_speed() {
+        local bytes=$1
+        local unit
+        if [ "$bytes" -ge 1000000000 ]; then
+            speed=$(awk "BEGIN {printf \"%.2f\", $bytes/1000000000}")
+            unit="Gbps"
+        elif [ "$bytes" -ge 1000000 ]; then
+            speed=$(awk "BEGIN {printf \"%.2f\", $bytes/1000000}")
+            unit="Mbps"
+        elif [ "$bytes" -ge 1000 ]; then
+            speed=$(awk "BEGIN {printf \"%.2f\", $bytes/1000}")
+            unit="KB/s"
+        else
+            speed=$bytes
+            unit="B/s"
+        fi
+        echo "$speed $unit"
+    }
+
+    DOWN_DISPLAY=$(format_speed $((DOWN_BPS*8)))  # bits/s
+    UP_DISPLAY=$(format_speed $((UP_BPS*8)))
+
+    # Colores según magnitud
+    [[ ${DOWN_BPS} -ge 1000000 ]] && DOWN_DISPLAY="${ROJO}${DOWN_DISPLAY}${NC}" || DOWN_DISPLAY="${VERDE}${DOWN_DISPLAY}${NC}"
+    [[ ${UP_BPS} -ge 1000000 ]] && UP_DISPLAY="${ROJO}${UP_DISPLAY}${NC}" || UP_DISPLAY="${VERDE}${UP_DISPLAY}${NC}"
+
+    # ================= Imprimir todo =================
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ ${BLANCO}💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ ${BLANCO}🔥 ${DISCO_TOTAL_H} HDD: ${AMARILLO}USO ${DISCO_PORC_COLOR}${NC}"
-    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ ${BLANCO}🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ ${BLANCO}🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ 🔥 ${DISCO_TOTAL_H} HDD: ${DISCO_PORC_COLOR}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ ${BLANCO}🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
     echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   ${BLANCO}👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   ${BLANCO}🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO}LIMITADOR: ${LIMITADOR_ESTADO}${NC}"
+    echo -e "${BLANCO}\n📡 RED: ↓ ${DOWN_DISPLAY} ↑ ${UP_DISPLAY}${NC}"
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
         echo -e "\n${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
         echo -e "${USUARIOS_EXPIRAN[*]}"
