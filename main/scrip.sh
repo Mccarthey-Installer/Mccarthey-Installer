@@ -159,6 +159,7 @@ if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
     echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
     echo -e "${USUARIOS_EXPIRAN[*]}"
 fi
+}
 
 function informacion_usuarios() {
     clear
