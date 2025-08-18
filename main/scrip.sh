@@ -15,10 +15,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 
-    
-
-    
-        function barra_sistema() {
+    function barra_sistema() {
     # ================= Colores =================
     BLANCO='\033[97m'
     AZUL='\033[94m'
@@ -109,57 +106,58 @@ mkdir -p "$(dirname "$PIDFILE")"
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"
     fi
 
-    # ================= RED =================
-    # Tomar dos snapshots de /proc/net/dev para calcular velocidad
-    read RX1 TX1 < <(awk '/eth0|ens|enp|wlan|wifi/{rx=$2; tx=$10} END{print rx, tx}' /proc/net/dev)
-    sleep 1
-    read RX2 TX2 < <(awk '/eth0|ens|enp|wlan|wifi/{rx=$2; tx=$10} END{print rx, tx}' /proc/net/dev)
+    # ================= Transferencia acumulada =================
+    TRANSFER_FILE="/tmp/vps_transfer_total"
+    LAST_FILE="/tmp/vps_transfer_last"
 
-    DOWN_BPS=$((RX2 - RX1))
-    UP_BPS=$((TX2 - TX1))
+    # Leer valores previos
+    [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
+    [[ -f "$LAST_FILE" ]] && LAST_TOTAL=$(cat "$LAST_FILE") || LAST_TOTAL=0
 
-    # Función para convertir a unidad legible
-    format_speed() {
+    # Total de bytes actuales en interfaces
+    RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)
+    TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)
+    TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
+
+    # Calcular diferencia desde última vez
+    DIFF=$((TOTAL_BYTES - LAST_TOTAL))
+    TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
+
+    # Guardar valores para la próxima ejecución
+    echo "$TOTAL_BYTES" > "$LAST_FILE"
+    echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
+
+    human_transfer() {
         local bytes=$1
-        local unit
-        if [ "$bytes" -ge 1000000000 ]; then
-            speed=$(awk "BEGIN {printf \"%.2f\", $bytes/1000000000}")
-            unit="Gbps"
-        elif [ "$bytes" -ge 1000000 ]; then
-            speed=$(awk "BEGIN {printf \"%.2f\", $bytes/1000000}")
-            unit="Mbps"
-        elif [ "$bytes" -ge 1000 ]; then
-            speed=$(awk "BEGIN {printf \"%.2f\", $bytes/1000}")
-            unit="KB/s"
+        if [ "$bytes" -ge 1073741824 ]; then
+            awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"
         else
-            speed=$bytes
-            unit="B/s"
+            awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"
         fi
-        echo "$speed $unit"
     }
 
-    DOWN_DISPLAY=$(format_speed $((DOWN_BPS*8)))  # bits/s
-    UP_DISPLAY=$(format_speed $((UP_BPS*8)))
-
-    # Colores según magnitud
-    [[ ${DOWN_BPS} -ge 1000000 ]] && DOWN_DISPLAY="${ROJO}${DOWN_DISPLAY}${NC}" || DOWN_DISPLAY="${VERDE}${DOWN_DISPLAY}${NC}"
-    [[ ${UP_BPS} -ge 1000000 ]] && UP_DISPLAY="${ROJO}${UP_DISPLAY}${NC}" || UP_DISPLAY="${VERDE}${UP_DISPLAY}${NC}"
+    TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
     # ================= Imprimir todo =================
-echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ 🔥 ${DISCO_TOTAL_H} HDD: ${DISCO_PORC_COLOR}${NC}"
-echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
-echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}        ${BLANCO}📡 RED: ↓ ${DOWN_DISPLAY} ↑ ${UP_DISPLAY}${NC}"
-echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
-echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-echo -e "${BLANCO}LIMITADOR: ${LIMITADOR_ESTADO}${NC}"
-if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
-    echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
-    echo -e "${USUARIOS_EXPIRAN[*]}"
-fi
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ 🔥 ${DISCO_TOTAL_H} HDD: ${DISCO_PORC_COLOR}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
+    echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL: ${AMARILLO}${TRANSFER_DISPLAY}${NC}"
+    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO}LIMITADOR: ${LIMITADOR_ESTADO}${NC}"
+    if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
+        echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
+        echo -e "${USUARIOS_EXPIRAN[*]}"
+    fi
 }
+
+    
+        
+
+    
 
 function informacion_usuarios() {
     clear
