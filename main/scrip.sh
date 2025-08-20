@@ -138,20 +138,19 @@ mkdir -p "$(dirname "$PIDFILE")"
 
     TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
-    # ================= Imprimir todo =================
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 💾 TOTAL: ${AMARILLO}${MEM_TOTAL_H}${NC} ∘ 💿 DISPONIBLE: ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ∘ 🔥 ${DISCO_TOTAL_H} HDD: ${DISCO_PORC_COLOR}${NC}"
-    echo -e "${BLANCO} 📊 U/RAM: ${AMARILLO}${MEM_PORC}%${NC} ∘ 🖥️ U/CPU: ${AMARILLO}${CPU_PORC}%${NC} ∘ 🔧 CPU MHz: ${AMARILLO}${CPU_MHZ}${NC}"
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO} 🌍 IP: ${AMARILLO}${IP_PUBLICA}${NC} ∘ 🕒 FECHA: ${AMARILLO}${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL: ${AMARILLO}${TRANSFER_DISPLAY}${NC}"
-    echo -e "${BLANCO}🔗 ONLINE:${AMARILLO}${TOTAL_CONEXIONES}${NC}   👥 TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}   🖼️ SO:${AMARILLO}${SO_NAME}${NC}"
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLANCO}LIMITADOR: ${LIMITADOR_ESTADO}${NC}"
-    if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
-        echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
-        echo -e "${USUARIOS_EXPIRAN[*]}"
-    fi
+    # ================= Imprimir todo ================= echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+echo -e "${BLANCO} 💾 TOTAL:${AMARILLO} ${MEM_TOTAL_H}${NC} ${BLANCO}∘ 💿 DISPONIBLE:${AMARILLO} ${MEM_DISPONIBLE_H}${NC} ${BLANCO}∘ 🔥 HDD:${AMARILLO} ${DISCO_TOTAL_H}${NC} ${DISCO_PORC_COLOR}"
+echo -e "${BLANCO} 📊 U/RAM:${AMARILLO} ${MEM_PORC}%${NC} ${BLANCO}∘ 🖥️ U/CPU:${AMARILLO} ${CPU_PORC}%${NC} ${BLANCO}∘ 🔧 CPU MHz:${AMARILLO} ${CPU_MHZ}${NC}"
+echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC} ${BLANCO}∘ 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
+echo -e "${MAGENTA}🤴 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
+echo -e "${BLANCO} 🔗 ONLINE:${AMARILLO} ${TOTAL_CONEXIONES}${NC} ${BLANCO}👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC} ${BLANCO}🖼️ SO:${AMARILLO} ${SO_NAME}${NC}"
+echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
+if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
+    echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
+    echo -e "${USUARIOS_EXPIRAN[*]}"
+fi
 }
 
     
