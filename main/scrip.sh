@@ -43,6 +43,17 @@ mkdir -p "$(dirname "$PIDFILE")"
     MEM_TOTAL_H=$(human "$MEM_TOTAL")
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
+# ================= Disco =================
+    DISCO_INFO=$(df -h / | awk '/\// {print $2, $3, $4, $5}' | tr -d '%')
+    read -r DISCO_TOTAL_H DISCO_USO_H DISCO_DISPONIBLE_H DISCO_PORC <<< "$DISCO_INFO"
+    if [ "${DISCO_PORC%.*}" -ge 80 ]; then
+        DISCO_PORC_COLOR="${ROJO}${DISCO_PORC}%${NC}"
+    elif [ "${DISCO_PORC%.*}" -ge 50 ]; then
+        DISCO_PORC_COLOR="${AMARILLO}${DISCO_PORC}%${NC}"
+    else
+        DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"
+    fi
+
     
     # ================= CPU =================
     CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')
@@ -1313,7 +1324,7 @@ NC='\033[0m'
 # Menú principal
 if [[ -t 0 ]]; then
     while true; do
-        clear
+        
         barra_sistema
         echo
         echo -e "${VIOLETA}======🚫PANEL DE USUARIOS VPN/SSH ======${NC}"
