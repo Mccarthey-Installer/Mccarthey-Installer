@@ -71,26 +71,7 @@ mkdir -p "$(dirname "$PIDFILE")"
     fi
     FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M")
 
-    # ================= Usuarios =================
-    TOTAL_CONEXIONES=0
-    TOTAL_USUARIOS=0
-    USUARIOS_EXPIRAN=()
-    if [[ -f "$REGISTROS" ]]; then
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
-            usuario=${user_data%%:*}
-            if id "$usuario" &>/dev/null; then
-                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
-                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
-                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
-                TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
-                ((TOTAL_USUARIOS++))
-                DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
-                if [[ $DIAS_RESTANTES -eq 0 ]]; then
-                    USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
-                fi
-            fi
-        done < "$REGISTROS"
-    fi
+    
 
     # ================= Sistema =================
     if [[ -f /etc/os-release ]]; then
