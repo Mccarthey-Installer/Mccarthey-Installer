@@ -1324,7 +1324,7 @@ NC='\033[0m'
 # Menú principal
 if [[ -t 0 ]]; then
     while true; do
-        
+        clear
         barra_sistema
         echo
         echo -e "${VIOLETA}======🚫PANEL DE USUARIOS VPN/SSH ======${NC}"
