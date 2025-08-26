@@ -106,7 +106,37 @@ mkdir -p "$(dirname "$PIDFILE")"
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"
     fi
 
+    # ================= Transferencia acumulada =================
+    TRANSFER_FILE="/tmp/vps_transfer_total"
+    LAST_FILE="/tmp/vps_transfer_last"
 
+    # Leer valores previos
+    [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
+    [[ -f "$LAST_FILE" ]] && LAST_TOTAL=$(cat "$LAST_FILE") || LAST_TOTAL=0
+
+    # Total de bytes actuales en interfaces
+    RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)
+    TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)
+    TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
+
+    # Calcular diferencia desde última vez
+    DIFF=$((TOTAL_BYTES - LAST_TOTAL))
+    TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
+
+    # Guardar valores para la próxima ejecución
+    echo "$TOTAL_BYTES" > "$LAST_FILE"
+    echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
+
+    human_transfer() {
+        local bytes=$1
+        if [ "$bytes" -ge 1073741824 ]; then
+            awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"
+        else
+            awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"
+        fi
+    }
+
+    TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
     # ================= Imprimir todo ================= echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 echo -e "${BLANCO} 💾 TOTAL:${AMARILLO} ${MEM_TOTAL_H}${NC} ${BLANCO}∘ ⚡ DISPONIBLE:${AMARILLO} ${MEM_DISPONIBLE_H}${NC} ${BLANCO}∘ 💿 HDD:${AMARILLO} ${DISCO_TOTAL_H}${NC} ${DISCO_PORC_COLOR}"
 echo -e "${BLANCO} 📊 U/RAM:${AMARILLO} ${MEM_PORC}%${NC} ${BLANCO}∘ 🖥️ U/CPU:${AMARILLO} ${CPU_PORC}%${NC} ${BLANCO}∘ 🔧 CPU MHz:${AMARILLO} ${CPU_MHZ}${NC}"
@@ -1276,9 +1306,6 @@ function configurar_banner_ssh() {
             ;;
     esac
 }
-
-
-
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
