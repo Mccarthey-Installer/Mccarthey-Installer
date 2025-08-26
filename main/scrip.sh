@@ -1310,6 +1310,7 @@ function configurar_banner_ssh() {
 
 
 
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -1321,6 +1322,7 @@ FUCHSIA='\033[38;2;255;0;255m'
 AMARILLO_SUAVE='\033[38;2;255;204;0m'
 ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
+BLANCO='\033[97m'
 NC='\033[0m'
 
 # Función para mostrar mensaje de carga
@@ -1333,18 +1335,20 @@ cargar_panel() {
     echo -e "${NC}"
 }
 
-# Menú principal
+# ==================== Menú principal ====================
 if [[ -t 0 ]]; then
     while true; do
         clear
 
-        # Mostrar mensaje de carga mientras se ejecuta barra_sistema
+        # Mostrar mensaje de carga
         cargar_panel
-        barra_sistema &  # Se ejecuta en segundo plano para que no bloquee el menú
 
-        # Menú interactivo
+        # Mostrar la info del sistema (barra_sistema)
+        barra_sistema   # Esto **no debe ir en segundo plano** (&)
+
+        # ==================== Menú interactivo ====================
         echo
-        echo -e "${VIOLETA}======🍔PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🚫PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
