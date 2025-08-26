@@ -1308,6 +1308,8 @@ function configurar_banner_ssh() {
     esac
 }
 
+
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -1321,13 +1323,28 @@ ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
+# Función para mostrar mensaje de carga
+cargar_panel() {
+    echo -ne "${CIAN}Cargando panel...⏳${NC}"
+    for i in {1..6}; do
+        echo -n "."
+        sleep 0.2
+    done
+    echo -e "${NC}"
+}
+
 # Menú principal
 if [[ -t 0 ]]; then
     while true; do
         clear
-        barra_sistema
+
+        # Mostrar mensaje de carga mientras se ejecuta barra_sistema
+        cargar_panel
+        barra_sistema &  # Se ejecuta en segundo plano para que no bloquee el menú
+
+        # Menú interactivo
         echo
-        echo -e "${VIOLETA}======🚫PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🍔PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -1339,8 +1356,10 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
         echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
+
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
         read -p "$PROMPT" OPCION
+
         case $OPCION in
             1) crear_usuario ;;
             2) ver_registros ;;
@@ -1350,10 +1369,11 @@ if [[ -t 0 ]]; then
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
             8) mini_registro ;;
-            9) activar_desactivar_limitador ;;  # Añade esta línea
+            9) activar_desactivar_limitador ;;
            10) configurar_banner_ssh ;;
             0) exit 0 ;;
-            *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
+            *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+               read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
         esac
     done
 fi
