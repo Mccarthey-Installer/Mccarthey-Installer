@@ -18,6 +18,8 @@ mkdir -p "$(dirname "$PIDFILE")"
     
     
     
+
+
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
@@ -28,12 +30,14 @@ function barra_sistema() {
     VERDE='\033[92m'  
     NC='\033[0m'  
 
+    # ================= Config persistente =================
+    STATE_FILE="/etc/mi_script/contador_online.conf"
+
     # ================= Usuarios =================  
     TOTAL_CONEXIONES=0  
     TOTAL_USUARIOS=0  
     USUARIOS_EXPIRAN=()  
 
-    # Calcular TOTAL_USUARIOS siempre
     if [[ -f "$REGISTROS" ]]; then  
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
             usuario=${user_data%%:*}  
@@ -47,25 +51,25 @@ function barra_sistema() {
         done < "$REGISTROS"  
     fi  
 
- # Initialize counter state
-TOTAL_CONEXIONES=0
-if [[ -f "/etc/contador_online_enabled" ]]; then
-    if [[ -f "$REGISTROS" ]]; then  
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
-            usuario=${user_data%%:*}  
-            if id "$usuario" &>/dev/null; then  
-                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")  
-                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")  
-                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))  
-                TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))  
-            fi  
-        done < "$REGISTROS"  
-    fi  
-    ONLINE_STATUS="${VERDE}🟢 ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"  
-else  
-    ONLINE_STATUS="${ROJO}🔴 ONLINE OFF${NC}"  
-    TOTAL_CONEXIONES=0  
-fi
+    # ================= Contador Online =================  
+    TOTAL_CONEXIONES=0
+    if [[ -f "$STATE_FILE" ]] && [[ "$(cat "$STATE_FILE")" == "ON" ]]; then
+        if [[ -f "$REGISTROS" ]]; then  
+            while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
+                usuario=${user_data%%:*}  
+                if id "$usuario" &>/dev/null; then  
+                    CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")  
+                    CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")  
+                    CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))  
+                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))  
+                fi  
+            done < "$REGISTROS"  
+        fi  
+        ONLINE_STATUS="${VERDE}🟢 ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"  
+    else  
+        ONLINE_STATUS="${ROJO}🔴 ONLINE OFF${NC}"  
+        TOTAL_CONEXIONES=0  
+    fi
 
     # ================= Memoria =================  
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')  
@@ -131,20 +135,16 @@ fi
     TRANSFER_FILE="/tmp/vps_transfer_total"  
     LAST_FILE="/tmp/vps_transfer_last"  
 
-    # Leer valores previos  
     [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0  
     [[ -f "$LAST_FILE" ]] && LAST_TOTAL=$(cat "$LAST_FILE") || LAST_TOTAL=0  
 
-    # Total de bytes actuales en interfaces  
     RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
     TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
     TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))  
 
-    # Calcular diferencia desde última vez  
     DIFF=$((TOTAL_BYTES - LAST_TOTAL))  
     TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))  
 
-    # Guardar valores para la próxima ejecución  
     echo "$TOTAL_BYTES" > "$LAST_FILE"  
     echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"  
 
@@ -176,14 +176,16 @@ fi
 }
 
 function contador_online() {
-    if [[ -f "/etc/contador_online_enabled" ]]; then
-        rm -f "/etc/contador_online_enabled"
+    STATE_FILE="/etc/mi_script/contador_online.conf"
+    mkdir -p /etc/mi_script
+    if [[ -f "$STATE_FILE" ]] && [[ "$(cat "$STATE_FILE")" == "ON" ]]; then
+        echo "OFF" > "$STATE_FILE"
         echo -e "${VERDE}Contador de usuarios en línea desactivado 🔴${NC}"
     else
-        touch "/etc/contador_online_enabled"
+        echo "ON" > "$STATE_FILE"
         echo -e "${VERDE}Contador de usuarios en línea activado 🟢${NC}"
     fi
-    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+    read -p "$(echo -e ${BLANCO}Presiona Enter para continuar...${NC})"
 }
     
 
