@@ -175,19 +175,21 @@ function barra_sistema() {
     fi
 }
 
-function contador_online() {
+
+    function contador_online() {
     STATE_FILE="/etc/mi_script/contador_online.conf"
     mkdir -p /etc/mi_script
+
     if [[ -f "$STATE_FILE" ]] && [[ "$(cat "$STATE_FILE")" == "ON" ]]; then
-        echo "OFF" > "$STATE_FILE"
+        nohup bash -c "echo 'OFF' > '$STATE_FILE'" >/dev/null 2>&1 &
         echo -e "${VERDE}Contador de usuarios en línea desactivado 🔴${NC}"
     else
-        echo "ON" > "$STATE_FILE"
+        nohup bash -c "echo 'ON' > '$STATE_FILE'" >/dev/null 2>&1 &
         echo -e "${VERDE}Contador de usuarios en línea activado 🟢${NC}"
     fi
+
     read -p "$(echo -e ${BLANCO}Presiona Enter para continuar...${NC})"
 }
-    
 
 function informacion_usuarios() {
     clear
@@ -1358,7 +1360,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😶‍🌫️PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💯PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
