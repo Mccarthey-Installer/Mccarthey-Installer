@@ -17,7 +17,8 @@ mkdir -p "$(dirname "$PIDFILE")"
 
     
     
-    function barra_sistema() {  
+    
+function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
     AZUL='\033[94m'  
@@ -31,6 +32,22 @@ mkdir -p "$(dirname "$PIDFILE")"
     TOTAL_CONEXIONES=0  
     TOTAL_USUARIOS=0  
     USUARIOS_EXPIRAN=()  
+
+    # Calcular TOTAL_USUARIOS siempre
+    if [[ -f "$REGISTROS" ]]; then  
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
+            usuario=${user_data%%:*}  
+            if id "$usuario" &>/dev/null; then  
+                ((TOTAL_USUARIOS++))  
+                DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")  
+                if [[ $DIAS_RESTANTES -eq 0 ]]; then  
+                    USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
+                fi  
+            fi  
+        done < "$REGISTROS"  
+    fi  
+
+    # Calcular TOTAL_CONEXIONES solo si el contador está activado
     if [[ -f "/tmp/contador_online_enabled" ]]; then
         if [[ -f "$REGISTROS" ]]; then  
             while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
@@ -40,11 +57,6 @@ mkdir -p "$(dirname "$PIDFILE")"
                     CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")  
                     CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))  
                     TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))  
-                    ((TOTAL_USUARIOS++))  
-                    DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")  
-                    if [[ $DIAS_RESTANTES -eq 0 ]]; then  
-                        USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
-                    fi  
                 fi  
             done < "$REGISTROS"  
         fi  
@@ -52,7 +64,6 @@ mkdir -p "$(dirname "$PIDFILE")"
     else  
         ONLINE_STATUS="${ROJO}🔴 ONLINE OFF${NC}"  
         TOTAL_CONEXIONES=0  
-        TOTAL_USUARIOS=0  
     fi  
 
     # ================= Memoria =================  
@@ -161,18 +172,6 @@ mkdir -p "$(dirname "$PIDFILE")"
         echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
         echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
-}
-
-    
-        function contador_online() {
-    if [[ -f "/tmp/contador_online_enabled" ]]; then
-        rm -f "/tmp/contador_online_enabled"
-        echo -e "${VERDE}Contador de usuarios en línea desactivado 🔴${NC}"
-    else
-        touch "/tmp/contador_online_enabled"
-        echo -e "${VERDE}Contador de usuarios en línea activado 🟢${NC}"
-    fi
-    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
 }
 
     
