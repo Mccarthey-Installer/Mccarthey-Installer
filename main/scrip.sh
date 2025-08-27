@@ -47,24 +47,25 @@ function barra_sistema() {
         done < "$REGISTROS"  
     fi  
 
-    # Calcular TOTAL_CONEXIONES solo si el contador está activado
-    if [[ -f "/tmp/contador_online_enabled" ]]; then
-        if [[ -f "$REGISTROS" ]]; then  
-            while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
-                usuario=${user_data%%:*}  
-                if id "$usuario" &>/dev/null; then  
-                    CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")  
-                    CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")  
-                    CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))  
-                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))  
-                fi  
-            done < "$REGISTROS"  
-        fi  
-        ONLINE_STATUS="${VERDE}🟢 ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"  
-    else  
-        ONLINE_STATUS="${ROJO}🔴 ONLINE OFF${NC}"  
-        TOTAL_CONEXIONES=0  
+ # Initialize counter state
+TOTAL_CONEXIONES=0
+if [[ -f "/etc/contador_online_enabled" ]]; then
+    if [[ -f "$REGISTROS" ]]; then  
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
+            usuario=${user_data%%:*}  
+            if id "$usuario" &>/dev/null; then  
+                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")  
+                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")  
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))  
+                TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))  
+            fi  
+        done < "$REGISTROS"  
     fi  
+    ONLINE_STATUS="${VERDE}🟢 ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"  
+else  
+    ONLINE_STATUS="${ROJO}🔴 ONLINE OFF${NC}"  
+    TOTAL_CONEXIONES=0  
+fi
 
     # ================= Memoria =================  
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')  
@@ -175,11 +176,11 @@ function barra_sistema() {
 }
 
 function contador_online() {
-    if [[ -f "/tmp/contador_online_enabled" ]]; then
-        rm -f "/tmp/contador_online_enabled"
+    if [[ -f "/etc/contador_online_enabled" ]]; then
+        rm -f "/etc/contador_online_enabled"
         echo -e "${VERDE}Contador de usuarios en línea desactivado 🔴${NC}"
     else
-        touch "/tmp/contador_online_enabled"
+        touch "/etc/contador_online_enabled"
         echo -e "${VERDE}Contador de usuarios en línea activado 🟢${NC}"
     fi
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
