@@ -25,48 +25,26 @@ mkdir -p "$(dirname "$PIDFILE")"
     VERDE='\033[92m'
     NC='\033[0m'
 
-# ================= Usuarios =================
-
-TOTAL_CONEXIONES=0
-TOTAL_USUARIOS=0
-USUARIOS_EXPIRAN=()
-
-if [[ -f "$REGISTROS" ]]; then  
-    # Procesos actuales (solo una vez, usamos args para no perder coincidencias)
-    declare -A CONEXIONES_USUARIOS
-    while read -r usr cmd; do
-        if [[ $cmd =~ (sshd|dropbear) ]]; then
-            ((CONEXIONES_USUARIOS[$usr]++))
-        fi
-    done < <(ps -eo user,args=)
-
-    # Guardamos timestamp actual para no recalcular en cada usuario
-    FECHA_ACTUAL=$(date +%s)
-
-    while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
-        usuario=${user_data%%:*}  
-
-        # Validar usuario en /etc/passwd (más rápido que "id")
-        if getent passwd "$usuario" >/dev/null; then  
-            CONEXIONES=${CONEXIONES_USUARIOS[$usuario]:-0}  
-
-            TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))  
-            ((TOTAL_USUARIOS++))  
-
-            # Calcular días restantes sin repetir "date" en cada iteración
-            fecha_exp_s=$(date -d "$fecha_expiracion" +%s 2>/dev/null || echo 0)
-            if [[ $fecha_exp_s -gt 0 ]]; then
-                DIAS_RESTANTES=$(( (fecha_exp_s - FECHA_ACTUAL) / 86400 ))
-            else
-                DIAS_RESTANTES=-1
+    # ================= Usuarios =================
+    TOTAL_CONEXIONES=0
+    TOTAL_USUARIOS=0
+    USUARIOS_EXPIRAN=()
+    if [[ -f "$REGISTROS" ]]; then
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
+            usuario=${user_data%%:*}
+            if id "$usuario" &>/dev/null; then
+                CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")
+                CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")
+                CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))
+                TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
+                ((TOTAL_USUARIOS++))
+                DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
+                if [[ $DIAS_RESTANTES -eq 0 ]]; then
+                    USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
+                fi
             fi
-
-            if [[ $DIAS_RESTANTES -eq 0 ]]; then  
-                USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
-            fi  
-        fi  
-    done < "$REGISTROS"  
-fi
+        done < "$REGISTROS"
+    fi
 
     # ================= Memoria =================
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
