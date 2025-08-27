@@ -25,6 +25,38 @@ mkdir -p "$(dirname "$PIDFILE")"
     VERDE='\033[92m'
     NC='\033[0m'
 
+    # ================= Usuarios =================
+TOTAL_CONEXIONES=0
+TOTAL_USUARIOS=0
+USUARIOS_EXPIRAN=()
+
+if [[ -f "$REGISTROS" ]]; then
+    # Cargar de una sola vez todos los procesos sshd y dropbear con sus usuarios
+    MAPA_CONEXIONES=$(ps -eo user,comm= | awk '
+        $2=="sshd" || $2=="dropbear" {++c[$1]}
+        END {for (u in c) print u,c[u]}'
+    )
+
+    while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
+        usuario=${user_data%%:*}
+
+        # Validar existencia de usuario solo una vez
+        if id -u "$usuario" &>/dev/null; then
+            # Buscar conexiones ya contadas en MAPA_CONEXIONES
+            CONEXIONES=$(awk -v u="$usuario" '$1==u {print $2}' <<< "$MAPA_CONEXIONES")
+            CONEXIONES=${CONEXIONES:-0}
+
+            TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))
+            ((TOTAL_USUARIOS++))
+
+            DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
+            if [[ $DIAS_RESTANTES -eq 0 ]]; then
+                USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
+            fi
+        fi
+    done < "$REGISTROS"
+fi
+
     # ================= Memoria =================
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')
