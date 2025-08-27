@@ -174,6 +174,16 @@ function barra_sistema() {
     fi
 }
 
+function contador_online() {
+    if [[ -f "/tmp/contador_online_enabled" ]]; then
+        rm -f "/tmp/contador_online_enabled"
+        echo -e "${VERDE}Contador de usuarios en línea desactivado 🔴${NC}"
+    else
+        touch "/tmp/contador_online_enabled"
+        echo -e "${VERDE}Contador de usuarios en línea activado 🟢${NC}"
+    fi
+    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+}
     
 
 function informacion_usuarios() {
