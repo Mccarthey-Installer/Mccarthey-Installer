@@ -25,18 +25,20 @@ mkdir -p "$(dirname "$PIDFILE")"
     VERDE='\033[92m'
     NC='\033[0m'
 
-   # ================= Usuarios =================
+# ================= Usuarios =================
 
 TOTAL_CONEXIONES=0
 TOTAL_USUARIOS=0
 USUARIOS_EXPIRAN=()
 
 if [[ -f "$REGISTROS" ]]; then  
-    # Procesos actuales (solo una vez)
+    # Procesos actuales (solo una vez, usamos args para no perder coincidencias)
     declare -A CONEXIONES_USUARIOS
     while read -r usr cmd; do
-        [[ $cmd =~ ^(sshd|dropbear)$ ]] && ((CONEXIONES_USUARIOS[$usr]++))
-    done < <(ps -eo user,comm=)
+        if [[ $cmd =~ (sshd|dropbear) ]]; then
+            ((CONEXIONES_USUARIOS[$usr]++))
+        fi
+    done < <(ps -eo user,args=)
 
     # Guardamos timestamp actual para no recalcular en cada usuario
     FECHA_ACTUAL=$(date +%s)
