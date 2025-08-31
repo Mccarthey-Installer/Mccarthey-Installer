@@ -10,38 +10,7 @@ sudo apt upgrade -y
 
 # Instalar paquetes necesarios (corregido)
 sudo apt install -y util-linux git cmake build-essential curl unzip wget \
-python2 python2-dev python-is-python3 screen net-tools python3 python3-pip locales stunnel4
-
-# ===========================
-# 2. STUNNEL4 PUERTO 443 → 80 CON CERTIFICADO PERSONALIZADO
-# ===========================
-echo "🔐 Generando certificado SSL autofirmado para Stunnel con tu firma personalizada..."
-mkdir -p /etc/stunnel/certs
-
-openssl req -x509 -nodes -days 1095 -newkey rsa:2048 \
-  -keyout /etc/stunnel/certs/stunnel.key \
-  -out /etc/stunnel/certs/stunnel.crt \
-  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=McCPanel/CN=SSLService/emailAddress=admin@mccarthey.net"
-
-cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
-chmod 600 /etc/stunnel/certs/stunnel.pem
-
-echo "🧩 Configurando Stunnel..."
-cat > /etc/stunnel/stunnel.conf <<EOF
-cert = /etc/stunnel/certs/stunnel.pem
-pid = /var/run/stunnel4.pid
-client = no
-foreground = no
-socket = l:TCP_NODELAY=1
-socket = r:TCP_NODELAY=1
-
-[ssh-https]
-accept = 443
-connect = 80
-EOF
-
-systemctl restart stunnel4
-systemctl enable stunnel4
+python2 python2-dev python-is-python3 screen net-tools python3 python3-pip locales
 
 # Configurar locales
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
@@ -325,7 +294,7 @@ echo ""
 echo "======================================"
 echo "✅ INSTALACIÓN COMPLETA DE MCCARTHY VPN"
 echo "📦 Puertos activos:"
-ss -tulnp | grep -E ':80|:443|:7200|:7300' || true
+ss -tulnp | grep -E ':80|:7200|:7300' || true
 echo ""
 echo "🛡️  Proxy HTTP (80 -> 22) ACTIVO via Nohup"
 echo "🎯 Listo para usar con HTTP Injector"
