@@ -50,7 +50,7 @@ ssh_bot() {
 
                     if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                         if [[ \"\$MSG_TEXT\" == 'Hola' || \"\$MSG_TEXT\" == 'hola' ]]; then
-                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d parse_mode=HTML -d text=\"Hola, 😏 <b>\$USERNAME</b>. Te invito a seleccionar una de estas opciones:<br><br>Presiona 1 para crear usuario<br>Presiona 2 para eliminar usuario<br>Presiona 3 para ver los usuarios registrados<br>Presiona 0 para volver al menú principal\" >/dev/null
+                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d parse_mode=HTML -d text=\"Hola, 😇 <b>\$USERNAME</b>. Te invito a seleccionar una de estas opciones:<br><br>Presiona 1 para crear usuario<br>Presiona 2 para eliminar usuario<br>Presiona 3 para ver los usuarios registrados<br>Presiona 0 para volver al menú principal\" >/dev/null
                         fi
                     fi
                 done
