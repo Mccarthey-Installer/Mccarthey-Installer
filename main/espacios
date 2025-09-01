@@ -14,7 +14,59 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 
+ssh_bot() {
+    # Asegurar que jq esté instalado
+    if ! command -v jq &>/dev/null; then
+        echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
+        curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
+        chmod +x /usr/bin/jq
+    fi
 
+    clear
+    echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
+    echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
+    echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
+    echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
+    read -p "➡️ Selecciona una opción: " BOT_OPCION
+
+    case $BOT_OPCION in
+        1)
+            read -p "👉 Ingresa tu Token ID: " TOKEN_ID
+            read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
+            echo "$TOKEN_ID" > /root/sshbot_token
+            echo "$USER_ID" > /root/sshbot_userid
+            echo -e "${VERDE}✅ Bot activado, escuchando mensajes... (Ctrl+C para detener)${NC}"
+
+            URL="https://api.telegram.org/bot$TOKEN_ID"
+            OFFSET=0
+            while true; do
+                UPDATES=$(curl -s "$URL/getUpdates?offset=$OFFSET&timeout=10")
+                for row in $(echo "$UPDATES" | jq -c '.result[]'); do
+                    OFFSET=$(echo $row | jq '.update_id')
+                    OFFSET=$((OFFSET+1))
+                    MSG_TEXT=$(echo $row | jq -r '.message.text')
+                    CHAT_ID=$(echo $row | jq -r '.message.chat.id')
+                    USERNAME=$(echo $row | jq -r '.message.from.username')
+
+                    if [[ "$CHAT_ID" == "$USER_ID" ]]; then
+                        if [[ "$MSG_TEXT" == "Hola" || "$MSG_TEXT" == "hola" ]]; then
+                            curl -s -X POST "$URL/sendMessage" \
+                                -d chat_id=$CHAT_ID \
+                                -d text="Hola $USERNAME 👀" >/dev/null
+                        fi
+                    fi
+                done
+            done
+            ;;
+        2)
+            rm -f /root/sshbot_token /root/sshbot_userid
+            echo -e "${ROJO}❌ Token eliminado.${NC}"
+            ;;
+        0) return ;;
+        *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}" ;;
+    esac
+    read -p "Presiona Enter para continuar..."
+}
     
     
     
