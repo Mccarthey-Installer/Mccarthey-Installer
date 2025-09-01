@@ -225,23 +225,22 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                         EXPECTING_USER_DATA=1
                                         USER_DATA_STEP=1
                                         ;;
-                                    '2')
-                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
-                                        else
-                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈\n\n\\\`\\\`\\\`\nNº | Usuario\n---|--------\"
-                                            count=1
-                                            while IFS=' ' read -r user_data _; do
-                                                usuario=\${user_data%%:*}
-                                                LISTA=\"\$LISTA\n\${count}  | \\\`\${usuario}\\\`\"
-                                                ((count++))
-                                            done < \"\$REGISTROS\"
-                                            LISTA=\"\$LISTA\n\\\`\\\`\\\`\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
-                                            EXPECTING_DELETE_USER=1
-                                        fi
-                                        ;;
+                                    # Dentro del bloque case "$MSG_TEXT" in '2')
+'2')
+    if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+    else
+        LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈\n\n\\\`\\\`\\\`\n\"
+        while IFS=' ' read -r user_data _; do
+            usuario=\${user_data%%:*}
+            LISTA=\"\$LISTA\\\`\${usuario}\\\`\n\"
+        done < \"\$REGISTROS\"
+        LISTA=\"\$LISTA\\\`\\\`\\\`\"
+        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
+        EXPECTING_DELETE_USER=1
+    fi
+    ;;
                                     '3')
                                         USUARIOS=\$(cut -d: -f1 /etc/passwd | grep -E '^[a-z]' | grep -v -E '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd-|syslog|messagebus|_apt|uuidd|avahi-autoipd|usbmux|dnsmasq|rtkit|cups-pk-helper|speech-dispatcher|whoopsie|kernoops|saned|pulse|avahi|colord|hplip|geoclue|gnome-initial-setup|gdm|ubuntu)' | head -10)
                                         if [[ -n \"\$USUARIOS\" ]]; then
