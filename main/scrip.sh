@@ -131,33 +131,38 @@ function barra_sistema() {
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"  
     fi  
 
-    # ================= Transferencia acumulada =================  
-    TRANSFER_FILE="/tmp/vps_transfer_total"  
-    LAST_FILE="/tmp/vps_transfer_last"  
+# ================= Transferencia acumulada =================  
+TRANSFER_FILE="/tmp/vps_transfer_total"  
+LAST_FILE="/tmp/vps_transfer_last"  
 
-    [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0  
-    [[ -f "$LAST_FILE" ]] && LAST_TOTAL=$(cat "$LAST_FILE") || LAST_TOTAL=0  
+RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
+TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
+TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
 
-    RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
-    TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
-    TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))  
+# Si no existe LAST_FILE, se inicializa sin contar los bytes previos
+if [[ ! -f "$LAST_FILE" ]]; then
+    TRANSFER_ACUM=0
+    DIFF=0
+    echo "$TOTAL_BYTES" > "$LAST_FILE"
+else
+    LAST_TOTAL=$(cat "$LAST_FILE")
+    DIFF=$((TOTAL_BYTES - LAST_TOTAL))
+    [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
+    TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
+    echo "$TOTAL_BYTES" > "$LAST_FILE"
+    echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
+fi
 
-    DIFF=$((TOTAL_BYTES - LAST_TOTAL))  
-    TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))  
+human_transfer() {  
+    local bytes=$1  
+    if [ "$bytes" -ge 1073741824 ]; then  
+        awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"  
+    else  
+        awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
+    fi  
+}  
 
-    echo "$TOTAL_BYTES" > "$LAST_FILE"  
-    echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"  
-
-    human_transfer() {  
-        local bytes=$1  
-        if [ "$bytes" -ge 1073741824 ]; then  
-            awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"  
-        else  
-            awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
-        fi  
-    }  
-
-    TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)  
+TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
     # ================= Imprimir todo =================  
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
