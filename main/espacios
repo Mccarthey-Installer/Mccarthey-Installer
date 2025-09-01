@@ -21,6 +21,16 @@ ssh_bot() {
         chmod +x /usr/bin/jq
     fi
 
+    # Definir rutas de archivos
+    export REGISTROS="/diana/reg.txt"
+    export HISTORIAL="/alexia/log.txt"
+    export PIDFILE="/Abigail/mon.pid"
+
+    # Crear directorios si no existen
+    mkdir -p "$(dirname "$REGISTROS")"
+    mkdir -p "$(dirname "$HISTORIAL")"
+    mkdir -p "$(dirname "$PIDFILE")"
+
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
@@ -39,6 +49,16 @@ ssh_bot() {
 
             # Ejecutar bot en segundo plano
             nohup bash -c "
+                # Exportar variables para el proceso en segundo plano
+                export REGISTROS='$REGISTROS'
+                export HISTORIAL='$HISTORIAL'
+                export PIDFILE='$PIDFILE'
+
+                # Crear directorios nuevamente para asegurar acceso
+                mkdir -p \"\$(dirname \"\$REGISTROS\")\"
+                mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
+                mkdir -p \"\$(dirname \"\$PIDFILE\")\"
+
                 URL='https://api.telegram.org/bot$TOKEN_ID'
                 OFFSET=0
                 EXPECTING_USER_DATA=0
@@ -106,9 +126,9 @@ ssh_bot() {
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
                                                             fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%Y-%m-%d %H:%M:%S\")
                                                             # Guardar en archivo de registros
-                                                            echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> $REGISTROS
+                                                            echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             # Guardar en historial
-                                                            echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> $HISTORIAL
+                                                            echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
                                                             # Mostrar resumen
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
 
@@ -120,9 +140,9 @@ ssh_bot() {
 
 ===== 📝 *RESUMEN DE REGISTRO* =====
 👤 *Usuario*    📅 *Expira*        ⏳ *Días*      📱 *Móviles*    📅 *Creado*
-\`\`\`
+\\\`\\\`\\\`
 \${USERNAME}:\${PASSWORD}  \${fecha_expiracion}  \${DAYS} días  \${MOBILES}  \${fecha_creacion}
-\`\`\`\"
+\\\`\\\`\\\`\"
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
                                                         fi
                                                     fi
@@ -210,7 +230,7 @@ ssh_bot() {
             ;;
     esac
 }
-
+                                                  
 
 
 function barra_sistema() {  
