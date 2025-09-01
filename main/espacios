@@ -15,7 +15,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                     
-                            ssh_bot() {
+   ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -234,7 +234,7 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                             LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈\n\n\"
                                             while IFS=' ' read -r user_data _; do
                                                 usuario=\${user_data%%:*}
-                                                LISTA=\"\$LISTA\\\`\${usuario}\\\`\n\"
+                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`\n\"
                                             done < \"\$REGISTROS\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
@@ -282,7 +282,10 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}                         
+                                        
+                                    
+                                    
                                                   
 
 
