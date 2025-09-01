@@ -37,22 +37,12 @@ ssh_bot() {
             echo "$USER_ID" > /root/sshbot_userid
             echo "$USER_NAME" > /root/sshbot_username
 
-            # Crear archivo de log para depuración
-            LOG_FILE="/tmp/sshbot.log"
-            echo "Iniciando bot - $(date)" > "$LOG_FILE"
-
             # Ejecutar bot en segundo plano
             nohup bash -c "
             URL='https://api.telegram.org/bot$TOKEN_ID'
             OFFSET=0
             while true; do
                 UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
-                echo \"[$(date)] Respuesta de getUpdates: \$UPDATES\" >> $LOG_FILE
-                if [[ -z \"\$UPDATES\" ]]; then
-                    echo \"[$(date)] Error: No se recibieron actualizaciones\" >> $LOG_FILE
-                    sleep 5
-                    continue
-                fi
                 for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
                     OFFSET=\$(echo \$row | jq '.update_id')
                     OFFSET=\$((OFFSET+1))
@@ -60,53 +50,68 @@ ssh_bot() {
                     CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
                     USERNAME=\$(echo \$row | jq -r '.message.from.username')
 
-                    echo \"[$(date)] Mensaje recibido: \$MSG_TEXT, Chat ID: \$CHAT_ID, Username: \$USERNAME\" >> $LOG_FILE
-
                     if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                         case \"\$MSG_TEXT\" in
                             'Hola'|'hola'|'/start')
-                                MENU=\"Hola 😏 *\$USER_NAME* ❗ Te invito a seleccionar una de estas opciones:\n\n🔧 Presiona *1* para crear usuario\n🗑️ Presiona *2* para eliminar usuario\n📋 Presiona *3* para ver los usuarios registrados\n🏠 Presiona *0* para volver al menú principal\"
-                                RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown)
-                                echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
+                                MENU=\"¡Hola! 😏 *$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
+
+🔧 Presiona 1 para crear usuario
+🗑️ Presiona 2 para eliminar usuario  
+📋 Presiona 3 para ver los usuarios registrados
+🏠 Presiona 0 para volver al menú principal\"
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
                                 ;;
                             '1')
-                                RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔧 *Creando usuario* 🚧 - En desarrollo\" -d parse_mode=Markdown)
-                                echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔧 *Crear Usuario SSH* 🆕
+
+⚙️ Función en desarrollo... 
+🚀 Próximamente disponible!\" -d parse_mode=Markdown >/dev/null
                                 ;;
                             '2')
-                                RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ *Eliminando usuario* 🚨 - En desarrollo\" -d parse_mode=Markdown)
-                                echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ *Eliminar Usuario SSH* ❌
+
+⚙️ Función en desarrollo...
+🚀 Próximamente disponible!\" -d parse_mode=Markdown >/dev/null
                                 ;;
                             '3')
                                 # Mostrar usuarios SSH existentes
-                                USUARIOS=\$(cut -d: -f1 /etc/passwd | grep -E '^[a-z]' | grep -v -E '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd-|syslog|messagebus|_apt|uuidd|avahi-autoipd|usbmux|dnsmasq|rtkit|c activistus-pk-helper|speech-dispatcher|whoopsie|kernoops|saned|pulse|avahi|colord|hplip|geoclue|gnome-initial-setup|gdm|ubuntu)' | head -10 | tr '\n' '\n')
+                                USUARIOS=\$(cut -d: -f1 /etc/passwd | grep -E '^[a-z]' | grep -v -E '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd-|syslog|messagebus|_apt|uuidd|avahi-autoipd|usbmux|dnsmasq|rtkit|cups-pk-helper|speech-dispatcher|whoopsie|kernoops|saned|pulse|avahi|colord|hplip|geoclue|gnome-initial-setup|gdm|ubuntu)' | head -10)
                                 if [[ -n \"\$USUARIOS\" ]]; then
-                                    LISTA=\"📋 *Usuarios SSH registrados*:\n\n\`\`\`\n\$USUARIOS\n\`\`\`\"
+                                    LISTA=\"📋 *Usuarios SSH Registrados* 👥
+
+🟢 Usuarios activos:
+\$(echo \"\$USUARIOS\" | sed 's/^/👤 /')
+
+✅ Total encontrados: \$(echo \"\$USUARIOS\" | wc -l)\"
                                 else
-                                    LISTA=\"❌ *No hay usuarios SSH registrados* 😕\"
+                                    LISTA=\"📋 *Lista de Usuarios* ❌
+
+🔍 No hay usuarios SSH registrados
+💡 Usa la opción 1 para crear uno\"
                                 fi
-                                RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown)
-                                echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                 ;;
                             '0')
-                                RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Volviendo al menú principal*... 🔄\" -d parse_mode=Markdown)
-                                echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
+
+✅ Regresando al menú...
+👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
                                 ;;
                             *)
-                                RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* 😕. Escribe *hola* para ver el menú.\" -d parse_mode=Markdown)
-                                echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️
+
+🤔 No entiendo esa opción...
+💡 Escribe *hola* para ver el menú
+🔢 O usa: 1, 2, 3, 0\" -d parse_mode=Markdown >/dev/null
                                 ;;
                         esac
-                    else
-                        echo \"[$(date)] Chat ID no autorizado: \$CHAT_ID (Esperado: $USER_ID)\" >> $LOG_FILE
                     fi
                 done
-                sleep 1
             done
             " >/dev/null 2>&1 &
 
             echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano.${NC}"
-            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' o '/start' con el menú interactivo. ${NC}"
+            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
             ;;
         2)
             rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
