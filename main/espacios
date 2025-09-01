@@ -53,13 +53,13 @@ ssh_bot() {
                     if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                         case \"\$MSG_TEXT\" in
                             'Hola'|'hola'|'/start')
-                                MENU=\"Hola 😏 $USER_NAME. Te invito a seleccionar una de estas opciones:
+                                MENU=\"Hola 😏 *$USER_NAME*. Te invito a seleccionar una de estas opciones:
 
 Presiona 1 para crear usuario
 Presiona 2 para eliminar usuario  
 Presiona 3 para ver los usuarios registrados
 Presiona 0 para volver al menú principal\"
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" >/dev/null
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
                                 ;;
                             '1')
                                 curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔧 Función crear usuario - En desarrollo\" >/dev/null
