@@ -133,7 +133,6 @@ ssh_bot() {
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
 
 
-
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 📅 *Expira*: \\\`\${fecha_expiracion}\\\`
@@ -153,6 +152,7 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
  📥 Prohibido torrents o descargas abusivas
  🔒 No cambies tu clave ni uses accesos de otros
  ⚠️ Nada de usos ilegales (spam/ataques)
+ 💬 Soporte: envía tu mensaje una sola vez y espera respuesta. 🚫 No hagas spam.
 
 ⚡👉 El incumplimiento resultará en suspensión inmediata.
 \\\`\\\`\\\`\"
