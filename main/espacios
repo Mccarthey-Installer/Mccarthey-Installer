@@ -47,7 +47,7 @@ ssh_bot() {
             echo "$USER_ID" > /root/sshbot_userid
             echo "$USER_NAME" > /root/sshbot_username
 
-            # Ejecutar bot en segundo plano
+            # Guardar PID del proceso
             nohup bash -c "
                 # Exportar variables para el proceso en segundo plano
                 export REGISTROS='$REGISTROS'
@@ -124,7 +124,7 @@ ssh_bot() {
                                                         else
                                                             # Obtener fechas
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
-                                                            fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%Y-%m-%d %H:%M:%S\")
+                                                            fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
                                                             # Guardar en archivo de registros
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             # Guardar en historial
@@ -141,7 +141,7 @@ ssh_bot() {
 ===== 📝 *RESUMEN DE REGISTRO* =====
 👤 *Usuario*    📅 *Expira*        ⏳ *Días*      📱 *Móviles*    📅 *Creado*
 \\\`\\\`\\\`
-\${USERNAME}:\${PASSWORD}  \${fecha_expiracion}  \${DAYS} días  \${MOBILES}  \${fecha_creacion}
+\${USERNAME}:\${PASSWORD}  \${fecha_expiracion}  \$DAYS días  \${MOBILES}  \${fecha_creacion}
 \\\`\\\`\\\`\"
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
                                                         fi
@@ -213,11 +213,15 @@ ssh_bot() {
                     done
                 done
             " >/dev/null 2>&1 &
-
-            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano.${NC}"
+            echo $! > "$PIDFILE"
+            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano (PID: $(cat $PIDFILE)).${NC}"
             echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
             ;;
         2)
+            if [[ -f "$PIDFILE" ]]; then
+                kill -9 $(cat "$PIDFILE") 2>/dev/null
+                rm -f "$PIDFILE"
+            fi
             rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
             pkill -f "api.telegram.org"
             echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
