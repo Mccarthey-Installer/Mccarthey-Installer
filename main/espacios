@@ -123,6 +123,7 @@ ssh_bot() {
     esac
 }
 
+
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
