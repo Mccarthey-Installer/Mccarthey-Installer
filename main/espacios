@@ -132,6 +132,8 @@ ssh_bot() {
                                                             # Mostrar resumen
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
 
+
+
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 📅 *Expira*: \\\`\${fecha_expiracion}\\\`
@@ -139,12 +141,23 @@ ssh_bot() {
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
 
-===== 📝 *RESUMEN DE REGISTRO* =====
-👤 *Usuario*    📅 *Expira*        ⏳ *Días*      📱 *Móviles*    📅 *Creado*
 \\\`\\\`\\\`
-\${USERNAME}:\${PASSWORD}  \${fecha_expiracion}  \$DAYS días  \${MOBILES}  \${fecha_creacion}
+🌐✨ Reglas SSH WebSocket ✨🌐
+
+👋 Hola, \${USERNAME}
+Por favor cumple con estas reglas para mantener tu acceso activo:
+
+ 🚫 No compartas tu cuenta
+ 📱 Máx. \${MOBILES} móviles conectados
+ 📅 Respeta tu fecha de expiración
+ 📥 Prohibido torrents o descargas abusivas
+ 🔒 No cambies tu clave ni uses accesos de otros
+ ⚠️ Nada de usos ilegales (spam/ataques)
+
+⚡👉 El incumplimiento resultará en suspensión inmediata.
 \\\`\\\`\\\`\"
-                                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
+curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
+
                                                         fi
                                                     fi
                                                 fi
