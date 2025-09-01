@@ -13,7 +13,6 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-
 ssh_bot() {
     # Verificar jq
     if ! command -v jq &>/dev/null; then
@@ -91,6 +90,8 @@ ssh_bot() {
     esac
     read -p "Presiona Enter para continuar..."
 }
+
+
 
 
 function barra_sistema() {  
