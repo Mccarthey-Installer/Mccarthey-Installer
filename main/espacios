@@ -132,7 +132,6 @@ ssh_bot() {
                                                             # Mostrar resumen
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
 
-
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 📅 *Expira*: \\\`\${fecha_expiracion}\\\`
@@ -147,12 +146,12 @@ ssh_bot() {
 Por favor cumple con estas reglas para mantener tu acceso activo:
 
  🚫 No compartas tu cuenta
- 📱 Máx. \${MOBILES} móviles conectados
+ 📱 Máx. \${MOBILES} móviles conectados 🚨 → Si excedes el límite tu usuario será bloqueado temporalmente.
  📅 Respeta tu fecha de expiración
  📥 Prohibido torrents o descargas abusivas
  🔒 No cambies tu clave ni uses accesos de otros
  ⚠️ Nada de usos ilegales (spam/ataques)
- 💬 Soporte: envía tu mensaje una sola vez y espera respuesta. 🚫 No hagas spam.
+ 💬 SOPORTE: ENVÍA TU MENSAJE UNA SOLA VEZ Y ESPERA RESPUESTA. 🚫 NO HAGAS SPAM.
 
 ⚡👉 El incumplimiento resultará en suspensión inmediata.
 \\\`\\\`\\\`\"
