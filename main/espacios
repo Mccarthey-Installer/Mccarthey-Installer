@@ -58,7 +58,7 @@ ssh_bot() {
                     OFFSET=\$((OFFSET+1))
                     MSG_TEXT=\$(echo \$row | jq -r '.message.text')
                     CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
-                    USERNAME=\$(echo Wrote \$row | jq -r '.message.from.username')
+                    USERNAME=\$(echo \$row | jq -r '.message.from.username')
 
                     echo \"[$(date)] Mensaje recibido: \$MSG_TEXT, Chat ID: \$CHAT_ID, Username: \$USERNAME\" >> $LOG_FILE
 
@@ -77,9 +77,9 @@ ssh_bot() {
                                 RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ *Eliminando usuario* 🚨 - En desarrollo\" -d parse_mode=Markdown)
                                 echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
                                 ;;
-                           चा'3')
+                            '3')
                                 # Mostrar usuarios SSH existentes
-                                USUARIOS=\$(cut -d: -f1 /etc/passwd | grep -E '^[a-z]' | grep -v -E '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd-|syslog|messagebus|_apt|uuidd|avahi-autoipd|usbmux|dnsmasq|rtkit|cups-pk-helper|speech-dispatcher|whoopsie|kernoops|saned|pulse|avahi|colord|hplip|geocl 솜ue|gnome-initial-setup|gdm|ubuntu)' | head -10 | tr '\n' '\n')
+                                USUARIOS=\$(cut -d: -f1 /etc/passwd | grep -E '^[a-z]' | grep -v -E '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd-|syslog|messagebus|_apt|uuidd|avahi-autoipd|usbmux|dnsmasq|rtkit|c activistus-pk-helper|speech-dispatcher|whoopsie|kernoops|saned|pulse|avahi|colord|hplip|geoclue|gnome-initial-setup|gdm|ubuntu)' | head -10 | tr '\n' '\n')
                                 if [[ -n \"\$USUARIOS\" ]]; then
                                     LISTA=\"📋 *Usuarios SSH registrados*:\n\n\`\`\`\n\$USUARIOS\n\`\`\`\"
                                 else
