@@ -15,9 +15,8 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 ssh_bot() {
-    # Asegurar que jq esté instalado
+    # Verificar jq
     if ! command -v jq &>/dev/null; then
-        echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
         curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
         chmod +x /usr/bin/jq
     fi
@@ -36,54 +35,63 @@ ssh_bot() {
             echo "$TOKEN_ID" > /root/sshbot_token
             echo "$USER_ID" > /root/sshbot_userid
 
-            # Ejecutar bot en segundo plano
-            nohup bash -c "
-            URL='https://api.telegram.org/bot$TOKEN_ID'
+            echo -e "${VERDE}✅ Bot activado en segundo plano...${NC}"
+            URL="https://api.telegram.org/bot$TOKEN_ID"
             OFFSET=0
-            while true; do
-                UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
-                for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
-                    OFFSET=\$(echo \$row | jq '.update_id')
-                    OFFSET=\$((OFFSET+1))
-                    MSG_TEXT=\$(echo \$row | jq -r '.message.text')
-                    CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
-                    USERNAME=\$(echo \$row | jq -r '.message.from.username')
 
-                    if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
-                        case \"\$MSG_TEXT\" in
-                            'hola'|'Hola')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"Hola 😏 \$USERNAME. Te invito a seleccionar una de estas opciones:\n\n1️⃣ Crear usuario\n2️⃣ Eliminar usuario\n3️⃣ Ver usuarios registrados\n0️⃣ Volver al menú principal\" >/dev/null
-                            ;;
-                            '1')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🟢 Crear usuario: (Aquí pondrás la lógica para crear usuarios SSH)\" >/dev/null
-                            ;;
-                            '2')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔴 Eliminar usuario: (Aquí pondrás la lógica para eliminar usuarios SSH)\" >/dev/null
-                            ;;
-                            '3')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 Usuarios registrados:\n\$(cut -d: -f1 /etc/passwd | grep -E '^[a-zA-Z0-9._-]+')\" >/dev/null
-                            ;;
-                            '0')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🚪 Volviendo al menú principal...\" >/dev/null
-                            ;;
-                        esac
-                    fi
+            nohup bash -c "
+                while true; do
+                    UPDATES=\$(curl -s \"$URL/getUpdates?offset=\$OFFSET&timeout=10\")
+                    for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
+                        OFFSET=\$(echo \$row | jq '.update_id')
+                        OFFSET=\$((OFFSET+1))
+                        MSG_TEXT=\$(echo \$row | jq -r '.message.text')
+                        CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
+                        USERNAME=\$(echo \$row | jq -r '.message.from.username')
+
+                        if [[ \"\$CHAT_ID\" == \"\$USER_ID\" ]]; then
+                            case \"\$MSG_TEXT\" in
+                                [Hh]ola)
+                                    curl -s -X POST \"$URL/sendMessage\" \
+                                    -d chat_id=\$CHAT_ID \
+                                    -d parse_mode=\"Markdown\" \
+                                    -d text=\$'Hola, 😏 '\$USERNAME$'. Te invito a seleccionar una de estas opciones:\n\nPresiona 1 para crear usuario\nPresiona 2 para eliminar usuario\nPresiona 3 para ver los usuarios registrados\nPresiona 0 para volver al menú principal' >/dev/null
+                                    ;;
+                                1)
+                                    curl -s -X POST \"$URL/sendMessage\" \
+                                    -d chat_id=\$CHAT_ID \
+                                    -d text=\"🔑 Crear usuario seleccionado.\" >/dev/null
+                                    ;;
+                                2)
+                                    curl -s -X POST \"$URL/sendMessage\" \
+                                    -d chat_id=\$CHAT_ID \
+                                    -d text=\"🗑️ Eliminar usuario seleccionado.\" >/dev/null
+                                    ;;
+                                3)
+                                    curl -s -X POST \"$URL/sendMessage\" \
+                                    -d chat_id=\$CHAT_ID \
+                                    -d text=\"👥 Lista de usuarios registrados.\" >/dev/null
+                                    ;;
+                                0)
+                                    curl -s -X POST \"$URL/sendMessage\" \
+                                    -d chat_id=\$CHAT_ID \
+                                    -d text=\"🚪 Volviendo al menú principal.\" >/dev/null
+                                    ;;
+                            esac
+                        fi
+                    done
                 done
-            done
             " >/dev/null 2>&1 &
-
-            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano.${NC}"
             ;;
         2)
             rm -f /root/sshbot_token /root/sshbot_userid
-            pkill -f "bot$TOKEN_ID"
-            echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
+            echo -e "${ROJO}❌ Token eliminado.${NC}"
             ;;
         0) return ;;
         *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}" ;;
     esac
+    read -p "Presiona Enter para continuar..."
 }
-    
 
 
 function barra_sistema() {  
