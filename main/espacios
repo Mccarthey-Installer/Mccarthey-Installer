@@ -12,116 +12,118 @@ mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
-
 ssh_bot() {
-    # Asegurar que jq esté instalado
-    if ! command -v jq &>/dev/null; then
-        echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
-        curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
-        chmod +x /usr/bin/jq
-    fi
+    # Variables de rutas personalizadas
+    export REGISTROS="/diana/reg.txt"
+    export HISTORIAL="/alexia/log.txt"
+    export PIDFILE="/Abigail/mon.pid"
 
-    clear
-    echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
-    echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
-    echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
-    read -p "➡️ Selecciona una opción: " BOT_OPCION
+    TOKEN="TU_TOKEN_AQUI"
+    URL="https://api.telegram.org/bot$TOKEN"
+    OFFSET=0
 
-    case $BOT_OPCION in
-        1)
-            read -p "👉 Ingresa tu Token ID: " TOKEN_ID
-            read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
-            read -p "👉 Ingresa tu nombre: " USER_NAME
-            echo "$TOKEN_ID" > /root/sshbot_token
-            echo "$USER_ID" > /root/sshbot_userid
-            echo "$USER_NAME" > /root/sshbot_username
+    while true; do
+        UPDATES=$(curl -s "$URL/getUpdates?offset=$OFFSET&timeout=30")
+        echo "$UPDATES" | jq -c '.result[]' | while read -r update; do
+            OFFSET=$(echo "$update" | jq '.update_id') 
+            OFFSET=$((OFFSET+1))
+            CHAT_ID=$(echo "$update" | jq -r '.message.chat.id')
+            MSG_TEXT=$(echo "$update" | jq -r '.message.text')
 
-            # Ejecutar bot en segundo plano
-            nohup bash -c "
-            URL='https://api.telegram.org/bot$TOKEN_ID'
-            OFFSET=0
-            while true; do
-                UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
-                for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
-                    OFFSET=\$(echo \$row | jq '.update_id')
-                    OFFSET=\$((OFFSET+1))
-                    MSG_TEXT=\$(echo \$row | jq -r '.message.text')
-                    CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
-                    USERNAME=\$(echo \$row | jq -r '.message.from.username')
+            # --- Manejo de flujo creación de usuario ---
+            if [[ -f /root/sshbot_creacion_state ]]; then
+                STEP=$(cut -d= -f2 /root/sshbot_creacion_state)
+                DATA_FILE="/root/sshbot_creacion_data"
+                case "$STEP" in
+                    usuario)
+                        echo "usuario=$MSG_TEXT" >> $DATA_FILE
+                        echo "step=clave" > /root/sshbot_creacion_state
+                        curl -s -X POST "$URL/sendMessage" \
+                            -d chat_id=$CHAT_ID \
+                            -d text="🔑 Ahora escribe la *contraseña*:" \
+                            -d parse_mode=Markdown >/dev/null
+                        continue
+                        ;;
+                    clave)
+                        echo "clave=$MSG_TEXT" >> $DATA_FILE
+                        echo "step=dias" > /root/sshbot_creacion_state
+                        curl -s -X POST "$URL/sendMessage" \
+                            -d chat_id=$CHAT_ID \
+                            -d text="📅 Ingresa los *días de validez*:" \
+                            -d parse_mode=Markdown >/dev/null
+                        continue
+                        ;;
+                    dias)
+                        echo "dias=$MSG_TEXT" >> $DATA_FILE
+                        echo "step=moviles" > /root/sshbot_creacion_state
+                        curl -s -X POST "$URL/sendMessage" \
+                            -d chat_id=$CHAT_ID \
+                            -d text="📱 Ingresa el *límite de móviles*:" \
+                            -d parse_mode=Markdown >/dev/null
+                        continue
+                        ;;
+                    moviles)
+                        echo "moviles=$MSG_TEXT" >> $DATA_FILE
+                        echo "step=done" > /root/sshbot_creacion_state
 
-                    if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
-                        case \"\$MSG_TEXT\" in
-                            'Hola'|'hola'|'/start')
-                                MENU=\"¡Hola! 😏 *$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
+                        # Leer datos recogidos
+                        source $DATA_FILE
+                        rm -f /root/sshbot_creacion_state
 
-🔧 Presiona 1 para crear usuario
-🗑️ Presiona 2 para eliminar usuario  
-📋 Presiona 3 para ver los usuarios registrados
-🏠 Presiona 0 para volver al menú principal\"
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
-                                ;;
-                            '1')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔧 *Crear Usuario SSH* 🆕
+                        # Crear usuario en el sistema
+                        useradd -M -s /sbin/nologin "$usuario" 2>/dev/null
+                        echo "$usuario:$clave" | chpasswd 2>/dev/null
+                        fecha_expiracion_sistema=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
+                        chage -E "$fecha_expiracion_sistema" "$usuario"
 
-⚙️ Función en desarrollo... 
-🚀 Próximamente disponible!\" -d parse_mode=Markdown >/dev/null
-                                ;;
-                            '2')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ *Eliminar Usuario SSH* ❌
+                        fecha_creacion=$(date "+%Y-%m-%d %H:%M:%S")
+                        fecha_expiracion=$(date -d "+$dias days" "+%Y-%m-%d")
 
-⚙️ Función en desarrollo...
-🚀 Próximamente disponible!\" -d parse_mode=Markdown >/dev/null
-                                ;;
-                            '3')
-                                # Mostrar usuarios SSH existentes
-                                USUARIOS=\$(cut -d: -f1 /etc/passwd | grep -E '^[a-z]' | grep -v -E '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd-|syslog|messagebus|_apt|uuidd|avahi-autoipd|usbmux|dnsmasq|rtkit|cups-pk-helper|speech-dispatcher|whoopsie|kernoops|saned|pulse|avahi|colord|hplip|geoclue|gnome-initial-setup|gdm|ubuntu)' | head -10)
-                                if [[ -n \"\$USUARIOS\" ]]; then
-                                    LISTA=\"📋 *Usuarios SSH Registrados* 👥
+                        # Guardar en registros e historial
+                        echo "$fecha_creacion | Usuario:$usuario | Expira:$fecha_expiracion | Moviles:$moviles" >> "$REGISTROS"
+                        echo "$fecha_creacion | Creado por BOT -> $usuario" >> "$HISTORIAL"
 
-🟢 Usuarios activos:
-\$(echo \"\$USUARIOS\" | sed 's/^/👤 /')
+                        # Resumen (solo datos en monoespaciado)
+                        RESUMEN="\`\`\`
+Usuario:   $usuario
+Clave:     $clave
+Expira:    $fecha_expiracion
+Días:      $dias
+Móviles:   $moviles
+Creado:    $fecha_creacion
+\`\`\`"
 
-✅ Total encontrados: \$(echo \"\$USUARIOS\" | wc -l)\"
-                                else
-                                    LISTA=\"📋 *Lista de Usuarios* ❌
+                        curl -s -X POST "$URL/sendMessage" \
+                            -d chat_id=$CHAT_ID \
+                            -d text="✅ *Usuario SSH creado correctamente* 🚀\n$RESUMEN" \
+                            -d parse_mode=Markdown >/dev/null
+                        continue
+                        ;;
+                esac
+            fi
 
-🔍 No hay usuarios SSH registrados
-💡 Usa la opción 1 para crear uno\"
-                                fi
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                ;;
-                            '0')
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
-
-✅ Regresando al menú...
-👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
-                                ;;
-                            *)
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️
-
-🤔 No entiendo esa opción...
-💡 Escribe *hola* para ver el menú
-🔢 O usa: 1, 2, 3, 0\" -d parse_mode=Markdown >/dev/null
-                                ;;
-                        esac
-                    fi
-                done
-            done
-            " >/dev/null 2>&1 &
-
-            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano.${NC}"
-            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
-            ;;
-        2)
-            rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
-            pkill -f "api.telegram.org"
-            echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
-            ;;
-        0) return ;;
-        *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}" ;;
-    esac
+            # --- Menú principal ---
+            case "$MSG_TEXT" in
+                '1')
+                    echo "step=usuario" > /root/sshbot_creacion_state
+                    echo "" > /root/sshbot_creacion_data
+                    curl -s -X POST "$URL/sendMessage" \
+                        -d chat_id=$CHAT_ID \
+                        -d text="👤 *Crear Usuario SSH* 🆕\n\nEscribe el *nombre de usuario*:" \
+                        -d parse_mode=Markdown >/dev/null
+                    ;;
+                '0')
+                    curl -s -X POST "$URL/sendMessage" \
+                        -d chat_id=$CHAT_ID \
+                        -d text="📋 *Menú principal*\n1️⃣ Crear usuario\n2️⃣ Eliminar usuario\n3️⃣ Ver registros\n0️⃣ Volver aquí" \
+                        -d parse_mode=Markdown >/dev/null
+                    ;;
+            esac
+        done
+    done
 }
+
+
 
 
 function barra_sistema() {  
