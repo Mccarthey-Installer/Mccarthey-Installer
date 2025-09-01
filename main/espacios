@@ -35,12 +35,23 @@ ssh_bot() {
             echo "$TOKEN_ID" > /root/sshbot_token
             echo "$USER_ID" > /root/sshbot_userid
 
+            # Crear archivo de log para depuración
+            LOG_FILE="/tmp/sshbot.log"
+            echo "Iniciando bot - $(date)" > "$LOG_FILE"
+
             # Ejecutar bot en segundo plano
             nohup bash -c "
             URL='https://api.telegram.org/bot$TOKEN_ID'
             OFFSET=0
             while true; do
+                # Obtener actualizaciones
                 UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
+                echo \"[$(date)] Respuesta de getUpdates: \$UPDATES\" >> $LOG_FILE
+                if [[ -z \"\$UPDATES\" ]]; then
+                    echo \"[$(date)] Error: No se recibieron actualizaciones\" >> $LOG_FILE
+                    sleep 5
+                    continue
+                fi
                 for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
                     OFFSET=\$(echo \$row | jq '.update_id')
                     OFFSET=\$((OFFSET+1))
@@ -48,17 +59,23 @@ ssh_bot() {
                     CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
                     USERNAME=\$(echo \$row | jq -r '.message.from.username')
 
+                    echo \"[$(date)] Mensaje recibido: \$MSG_TEXT, Chat ID: \$CHAT_ID, Username: \$USERNAME\" >> $LOG_FILE
+
                     if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                         if [[ \"\$MSG_TEXT\" == 'Hola' || \"\$MSG_TEXT\" == 'hola' ]]; then
                             MESSAGE=\"Hola, 😏 <b>\$USERNAME</b>. Te invito a seleccionar una de estas opciones:<br><br>Presiona 1 para crear usuario<br>Presiona 2 para eliminar usuario<br>Presiona 3 para ver los usuarios registrados<br>Presiona 0 para volver al menú principal\"
-                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d parse_mode=HTML -d \"text=\$MESSAGE\" >/dev/null
+                            RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d parse_mode=HTML -d \"text=\$MESSAGE\")
+                            echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
                         fi
+                    else
+                        echo \"[$(date)] Chat ID no autorizado: \$CHAT_ID (Esperado: $USER_ID)\" >> $LOG_FILE
                     fi
                 done
+                sleep 1
             done
             " >/dev/null 2>&1 &
 
-            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano.${NC}"
+            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano. Revisa /tmp/sshbot.log para depuración.${NC}"
             ;;
         2)
             rm -f /root/sshbot_token /root/sshbot_userid
@@ -69,7 +86,6 @@ ssh_bot() {
         *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}" ;;
     esac
 }
-
 
 function barra_sistema() {  
     # ================= Colores =================  
@@ -221,7 +237,7 @@ TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
     echo -e "${BLANCO} 📊 U/RAM:${AMARILLO} ${MEM_PORC}%${NC} ${BLANCO}∘ 🖥️ U/CPU:${AMARILLO} ${CPU_PORC}%${NC} ${BLANCO}∘ 🔧 CPU MHz:${AMARILLO} ${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC} ${BLANCO}∘ 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🔔 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}    ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
+    echo -e "${MAGENTA}🇭🇳 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}    ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
     echo -e "${BLANCO} ${ONLINE_STATUS}${NC} ${BLANCO}👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC} ${BLANCO}🖼️ SO:${AMARILLO} ${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
