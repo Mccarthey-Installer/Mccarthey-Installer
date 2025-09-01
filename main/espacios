@@ -50,9 +50,23 @@ ssh_bot() {
                     USERNAME=\$(echo \$row | jq -r '.message.from.username')
 
                     if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
-                        if [[ \"\$MSG_TEXT\" == 'Hola' || \"\$MSG_TEXT\" == 'hola' ]]; then
-                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"Hola \$USERNAME 👀\" >/dev/null
-                        fi
+                        case \"\$MSG_TEXT\" in
+                            'hola'|'Hola')
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"Hola 😏 \$USERNAME. Te invito a seleccionar una de estas opciones:\n\n1️⃣ Crear usuario\n2️⃣ Eliminar usuario\n3️⃣ Ver usuarios registrados\n0️⃣ Volver al menú principal\" >/dev/null
+                            ;;
+                            '1')
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🟢 Crear usuario: (Aquí pondrás la lógica para crear usuarios SSH)\" >/dev/null
+                            ;;
+                            '2')
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔴 Eliminar usuario: (Aquí pondrás la lógica para eliminar usuarios SSH)\" >/dev/null
+                            ;;
+                            '3')
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 Usuarios registrados:\n\$(cut -d: -f1 /etc/passwd | grep -E '^[a-zA-Z0-9._-]+')\" >/dev/null
+                            ;;
+                            '0')
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🚪 Volviendo al menú principal...\" >/dev/null
+                            ;;
+                        esac
                     fi
                 done
             done
