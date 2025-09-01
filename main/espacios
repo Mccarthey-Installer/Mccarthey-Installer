@@ -35,40 +35,40 @@ ssh_bot() {
             read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
             echo "$TOKEN_ID" > /root/sshbot_token
             echo "$USER_ID" > /root/sshbot_userid
-            echo -e "${VERDE}✅ Bot activado, escuchando mensajes... (Ctrl+C para detener)${NC}"
 
-            URL="https://api.telegram.org/bot$TOKEN_ID"
+            # Ejecutar bot en segundo plano
+            nohup bash -c "
+            URL='https://api.telegram.org/bot$TOKEN_ID'
             OFFSET=0
             while true; do
-                UPDATES=$(curl -s "$URL/getUpdates?offset=$OFFSET&timeout=10")
-                for row in $(echo "$UPDATES" | jq -c '.result[]'); do
-                    OFFSET=$(echo $row | jq '.update_id')
-                    OFFSET=$((OFFSET+1))
-                    MSG_TEXT=$(echo $row | jq -r '.message.text')
-                    CHAT_ID=$(echo $row | jq -r '.message.chat.id')
-                    USERNAME=$(echo $row | jq -r '.message.from.username')
+                UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
+                for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
+                    OFFSET=\$(echo \$row | jq '.update_id')
+                    OFFSET=\$((OFFSET+1))
+                    MSG_TEXT=\$(echo \$row | jq -r '.message.text')
+                    CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
+                    USERNAME=\$(echo \$row | jq -r '.message.from.username')
 
-                    if [[ "$CHAT_ID" == "$USER_ID" ]]; then
-                        if [[ "$MSG_TEXT" == "Hola" || "$MSG_TEXT" == "hola" ]]; then
-                            curl -s -X POST "$URL/sendMessage" \
-                                -d chat_id=$CHAT_ID \
-                                -d text="Hola $USERNAME 👀" >/dev/null
+                    if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
+                        if [[ \"\$MSG_TEXT\" == 'Hola' || \"\$MSG_TEXT\" == 'hola' ]]; then
+                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"Hola \$USERNAME 👀\" >/dev/null
                         fi
                     fi
                 done
             done
+            " >/dev/null 2>&1 &
+
+            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano.${NC}"
             ;;
         2)
             rm -f /root/sshbot_token /root/sshbot_userid
-            echo -e "${ROJO}❌ Token eliminado.${NC}"
+            pkill -f "bot$TOKEN_ID"
+            echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
             ;;
         0) return ;;
         *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}" ;;
     esac
-    read -p "Presiona Enter para continuar..."
 }
-    
-    
     
 
 
