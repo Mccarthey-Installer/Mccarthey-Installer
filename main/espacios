@@ -63,8 +63,8 @@ ssh_bot() {
 
                     if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                         if [[ \"\$MSG_TEXT\" == 'Hola' || \"\$MSG_TEXT\" == 'hola' ]]; then
-                            MESSAGE=\"Hola, 😏 <b>\$USERNAME</b>. Te invito a seleccionar una de estas opciones:<br><br>Presiona 1 para crear usuario<br>Presiona 2 para eliminar usuario<br>Presiona 3 para ver los usuarios registrados<br>Presiona 0 para volver al menú principal\"
-                            RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d parse_mode=HTML -d \"text=\$MESSAGE\")
+                            MESSAGE=\"Hola, 😏 *\$USERNAME*. Te invito a seleccionar una de estas opciones:\n\nPresiona 1 para crear usuario\nPresiona 2 para eliminar usuario\nPresiona 3 para ver los usuarios registrados\nPresiona 0 para volver al menú principal\"
+                            RESPONSE=\$(curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d parse_mode=Markdown -d \"text=\$MESSAGE\")
                             echo \"[$(date)] Respuesta de sendMessage: \$RESPONSE\" >> $LOG_FILE
                         fi
                     else
