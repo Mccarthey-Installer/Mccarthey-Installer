@@ -54,8 +54,7 @@ ssh_bot() {
                                 [Hh]ola)
                                     curl -s -X POST \"$URL/sendMessage\" \
                                     -d chat_id=\$CHAT_ID \
-                                    -d parse_mode=\"Markdown\" \
-                                    -d text=\$'Hola, 😏 '\$USERNAME$'. Te invito a seleccionar una de estas opciones:\n\nPresiona 1 para crear usuario\nPresiona 2 para eliminar usuario\nPresiona 3 para ver los usuarios registrados\nPresiona 0 para volver al menú principal' >/dev/null
+                                    -d text=$'Hola, 😏 '\$USERNAME$'. Te invito a seleccionar una de estas opciones:\n\nPresiona 1 para crear usuario\nPresiona 2 para eliminar usuario\nPresiona 3 para ver los usuarios registrados\nPresiona 0 para volver al menú principal' >/dev/null
                                     ;;
                                 1)
                                     curl -s -X POST \"$URL/sendMessage\" \
