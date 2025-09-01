@@ -137,6 +137,7 @@ ssh_bot() {
 📅 *Expira*: \\\`\${fecha_expiracion}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
+📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
 
 ===== 📝 *RESUMEN DE REGISTRO* =====
 👤 *Usuario*    📅 *Expira*        ⏳ *Días*      📱 *Móviles*    📅 *Creado*
