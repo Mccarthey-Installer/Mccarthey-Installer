@@ -14,9 +14,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-    
-
-                                ssh_bot() {
+    ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -450,6 +448,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
+
+                                
 
 
 function barra_sistema() {  
