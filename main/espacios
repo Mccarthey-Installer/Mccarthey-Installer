@@ -14,7 +14,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-            ssh_bot() {
+    ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -69,6 +69,74 @@ mkdir -p "$(dirname "$PIDFILE")"
                 PASSWORD=''
                 DAYS=''
                 MOBILES=''
+
+                # Función para calcular días restantes
+                calcular_dias_restantes() {
+                    local fecha_expiracion=\"\$1\"
+                    local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
+                    local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                    local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
+
+                    # Convertir mes español a número
+                    case \$mes in
+                        \"enero\") mes_num=\"01\" ;;
+                        \"febrero\") mes_num=\"02\" ;;
+                        \"marzo\") mes_num=\"03\" ;;
+                        \"abril\") mes_num=\"04\" ;;
+                        \"mayo\") mes_num=\"05\" ;;
+                        \"junio\") mes_num=\"06\" ;;
+                        \"julio\") mes_num=\"07\" ;;
+                        \"agosto\") mes_num=\"08\" ;;
+                        \"septiembre\") mes_num=\"09\" ;;
+                        \"octubre\") mes_num=\"10\" ;;
+                        \"noviembre\") mes_num=\"11\" ;;
+                        \"diciembre\") mes_num=\"12\" ;;
+                        *) echo 0; return ;;
+                    esac
+
+                    local fecha_formateada=\"\$anio-\$mes_num-\$dia\"
+                    local fecha_actual=\$(date \"+%Y-%m-%d\")
+
+                    local fecha_exp_epoch=\$(date -d \"\$fecha_formateada\" \"+%s\" 2>/dev/null)
+                    local fecha_act_epoch=\$(date -d \"\$fecha_actual\" \"+%s\")
+
+                    if [[ -z \"\$fecha_exp_epoch\" ]]; then
+                        echo 0
+                        return
+                    fi
+
+                    local diff_segundos=\$((fecha_exp_epoch - fecha_act_epoch))
+                    local dias_restantes=\$((diff_segundos / 86400))
+
+                    if [ \$dias_restantes -lt 0 ]; then
+                        dias_restantes=0
+                    fi
+
+                    echo \$dias_restantes
+                }
+
+                # Función para abreviar meses en español para formato de fecha corto
+                abreviar_mes() {
+                    local fecha=\"\$1\"
+                    local dia=\$(echo \"\$fecha\" | cut -d'/' -f1)
+                    local mes=\$(echo \"\$fecha\" | cut -d'/' -f2)
+                    local anio=\$(echo \"\$fecha\" | cut -d'/' -f3)
+                    case \$mes in
+                        enero) mes=\"ene\" ;;
+                        febrero) mes=\"feb\" ;;
+                        marzo) mes=\"mar\" ;;
+                        abril) mes=\"abr\" ;;
+                        mayo) mes=\"may\" ;;
+                        junio) mes=\"jun\" ;;
+                        julio) mes=\"jul\" ;;
+                        agosto) mes=\"ago\" ;;
+                        septiembre) mes=\"sep\" ;;
+                        octubre) mes=\"oct\" ;;
+                        noviembre) mes=\"nov\" ;;
+                        diciembre) mes=\"dic\" ;;
+                    esac
+                    echo \"\$dia/\$mes/\$anio\"
+                }
 
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
@@ -249,79 +317,34 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
                                     '3')
-                                        # Función para calcular días restantes (integrada en el bot)
-                                        calcular_dias_restantes() {
-                                            local fecha_expiracion=\"\$1\"
-                                            local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
-                                            local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
-                                            local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
-
-                                            # Convertir mes español a número
-                                            case \$mes in
-                                                \"enero\") mes_num=\"01\" ;;
-                                                \"febrero\") mes_num=\"02\" ;;
-                                                \"marzo\") mes_num=\"03\" ;;
-                                                \"abril\") mes_num=\"04\" ;;
-                                                \"mayo\") mes_num=\"05\" ;;
-                                                \"junio\") mes_num=\"06\" ;;
-                                                \"julio\") mes_num=\"07\" ;;
-                                                \"agosto\") mes_num=\"08\" ;;
-                                                \"septiembre\") mes_num=\"09\" ;;
-                                                \"octubre\") mes_num=\"10\" ;;
-                                                \"noviembre\") mes_num=\"11\" ;;
-                                                \"diciembre\") mes_num=\"12\" ;;
-                                                *) echo 0; return ;;
-                                            esac
-
-                                            local fecha_formateada=\"\$anio-\$mes_num-\$dia\"
-                                            local fecha_actual=\$(date \"+%Y-%m-%d\")
-
-                                            local fecha_exp_epoch=\$(date -d \"\$fecha_formateada\" \"+%s\" 2>/dev/null)
-                                            local fecha_act_epoch=\$(date -d \"\$fecha_actual\" \"+%s\")
-
-                                            if [[ -z \"\$fecha_exp_epoch\" ]]; then
-                                                echo 0
-                                                return
-                                            fi
-
-                                            local diff_segundos=\$((fecha_exp_epoch - fecha_act_epoch))
-                                            local dias_restantes=\$((diff_segundos / 86400))
-
-                                            if [ \$dias_restantes -lt 0 ]; then
-                                                dias_restantes=0
-                                            fi
-
-                                            echo \$dias_restantes
-                                        }
-
+                                        # Aquí se formatea la lista como quieres
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
 
 🔍 No hay usuarios SSH registrados
 💡 Usa la opción 1 para crear uno\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"🌸 *REGISTROS DE USUARIOS* 🌸
-
-👩 *Usuario* | 🔒 *Clave* | 📅 *Expira* | ⏳ *Días* | 📲 *Móviles*
-────────────────────────────
+                                            LISTA=\"🌸 REGISTROS DE USUARIOS 🌸
 
 \"
                                             count=1
-                                            while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+                                            while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
                                                 usuario=\${user_data%%:*}
                                                 clave=\${user_data#*:}
                                                 dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
-                                                
-                                                # Formatear la línea de usuario
-                                                LISTA=\"\${LISTA}\${count}. 👤 \\\`\${usuario}\\\` | 🔑 \\\`\${clave}\\\` | 📅 \\\`\${fecha_expiracion}\\\` | ⏳ \\\`\${dias_restantes}d\\\` | 📱 \\\`\${moviles}\\\`
-\"
+                                                fecha_corta=\$(abreviar_mes \"\$fecha_expiracion\")
+                                                LISTA+=\$(printf \"%d. %-11s | %-5s | %-10s | %-3sd | %-1s\\n\" \"\$count\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")
                                                 ((count++))
+                                                if [ \$count -gt 7 ]; then
+                                                    break
+                                                fi
                                             done < \"\$REGISTROS\"
-                                            
-                                            TOTAL=\$((count-1))
-                                            LISTA=\"\${LISTA}
-✅ *Total registrados*: \\\`\${TOTAL}\\\` usuarios\"
-                                            
+
+                                            TOTAL=\$((count - 1))
+                                            LISTA+=\"
+
+Total registrados: \$TOTAL usuarios
+\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
@@ -365,12 +388,10 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
+        
                                         
                                     
                                         
-
-                                        
-                                    
                                         
                                         
 
