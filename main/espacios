@@ -14,7 +14,9 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-    ssh_bot() {
+    
+
+                                ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -309,7 +311,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
-                                                LISTA="${LISTA}${count}. $(printf "\`%-11s\` | \`%-5s\` | %-6s | %-3sd | %-1s" "${usuario}" "${clave}" "${fecha_corta}" "${dias_restantes}" "${moviles}")"
+                                                LISTA=\"\${LISTA}\${count}. \\\`\$(printf \"%-11s\" \"\$usuario\")\\\` | \\\`\$(printf \"%-5s\" \"\$clave\")\\\` | \$(printf \"%-6s\" \"\$fecha_corta\") | \$(printf \"%-3sd\" \"\$dias_restantes\") | \$(printf \"%-1s\" \"\$moviles\")
 
 \"
                                                 ((count++))
@@ -448,8 +450,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
-
-                                
 
 
 function barra_sistema() {  
