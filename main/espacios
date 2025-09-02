@@ -314,7 +314,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             done < \"\$REGISTROS\"
 
                                             TOTAL=\$((count - 1))
-                                            LISTA=\"\${LISTA}Total registrados: \$TOTAL usuarios\"
+                                            LISTA=\"\${LISTA}*Total registrados:* \$TOTAL usuarios\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
