@@ -14,7 +14,11 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-            ssh_bot() {
+            
+                                        
+                                    
+                                        
+ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
