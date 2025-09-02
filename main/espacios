@@ -335,9 +335,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 fecha_corta=\$(abreviar_mes \"\$fecha_expiracion\")
                                                 LISTA+=\$(printf \"%d. %-11s | %-5s | %-10s | %-3sd | %-1s\\n\" \"\$count\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")
                                                 ((count++))
-                                                if [ \$count -gt 7 ]; then
-                                                    break
-                                                fi
+
                                             done < \"\$REGISTROS\"
 
                                             TOTAL=\$((count - 1))
