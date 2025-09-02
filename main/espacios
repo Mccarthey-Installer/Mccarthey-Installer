@@ -301,51 +301,51 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             EXPECTING_DELETE_USER=1
                                         fi
                                         ;;
-                                    '3')
-                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
+                                       '3')
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        curl -s -X POST "$URL/sendMessage" -d chat_id=$CHAT_ID -d text="📋 *Lista de Usuarios* ❌
 
 🔍 No hay usuarios SSH registrados
-💡 Usa la opción 1 para crear uno\" -d parse_mode=Markdown >/dev/null
-                                        else
-                                            LISTA=\"🌸 REGISTROS DE USUARIOS 🌸
+💡 Usa la opción 1 para crear uno" -d parse_mode=Markdown >/dev/null
+    else
+        LISTA="🌸 REGISTROS DE USUARIOS 🌸
 
-\"
-                                            count=1
-                                            while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
-                                                usuario=\${user_data%%:*}
-                                                clave=\${user_data#*:}
-                                                dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
-                                                dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
-                                                mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
-                                                case \$mes in
-                                                    enero) mes=\"ene\" ;;
-                                                    febrero) mes=\"feb\" ;;
-                                                    marzo) mes=\"mar\" ;;
-                                                    abril) mes=\"abr\" ;;
-                                                    mayo) mes=\"may\" ;;
-                                                    junio) mes=\"jun\" ;;
-                                                    julio) mes=\"jul\" ;;
-                                                    agosto) mes=\"ago\" ;;
-                                                    septiembre) mes=\"sep\" ;;
-                                                    octubre) mes=\"oct\" ;;
-                                                    noviembre) mes=\"nov\" ;;
-                                                    diciembre) mes=\"dic\" ;;
-                                                esac
-                                                fecha_corta=\"\$dia/\$mes\"
+"
+        count=1
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
+            usuario=${user_data%%:*}
+            clave=${user_data#*:}
+            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion")
+            dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
+            mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
+            case $mes in
+                enero) mes="ene" ;;
+                febrero) mes="feb" ;;
+                marzo) mes="mar" ;;
+                abril) mes="abr" ;;
+                mayo) mes="may" ;;
+                junio) mes="jun" ;;
+                julio) mes="jul" ;;
+                agosto) mes="ago" ;;
+                septiembre) mes="sep" ;;
+                octubre) mes="oct" ;;
+                noviembre) mes="nov" ;;
+                diciembre) mes="dic" ;;
+            esac
+            fecha_corta="$dia/$mes"
 
-                                                LISTA="${LISTA}$(printf "%d. %-11s | %-5s | %-6s | %-3sd | %-1s\n" "$count" "$usuario" "$clave" "$fecha_corta" "$dias_restantes" "$moviles")"
-                                                ((count++))
-                                            done < \"\$REGISTROS\"
+            LISTA="${LISTA}$(printf "%d. %-11s | %-5s | %-6s | %-3sd | %-1s\n" "$count" "$usuario" "$clave" "$fecha_corta" "$dias_restantes" "$moviles")"
+            ((count++))
+        done < "$REGISTROS"
 
-                                            TOTAL=\$((count - 1))
-                                            LISTA=\"\${LISTA}
+        TOTAL=$((count - 1))
+        LISTA="${LISTA}
 
-Total registrados: \$TOTAL usuarios
-\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                        fi
-                                        ;;
+Total registrados: $TOTAL usuarios
+"
+        curl -s -X POST "$URL/sendMessage" -d chat_id=$CHAT_ID -d text="$LISTA" -d parse_mode=Markdown >/dev/null
+    fi
+    ;;
                                     '0')
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
 
