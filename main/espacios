@@ -14,11 +14,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 
-                                    
-   
-                                        
-                                    
-                                    ssh_bot() {
+                   ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -187,7 +183,8 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                             sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" \"\$REGISTROS\"
                                             # Registrar en historial
                                             echo \"Usuario eliminado: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado exitosamente!* 😈\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado exitosamente!* 😈
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             # Limpieza manual si persiste
                                             rm -rf \"/home/\$USUARIO_A_ELIMINAR\" 2>/dev/null
@@ -200,15 +197,18 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                             if ! id \"\$USUARIO_A_ELIMINAR\" &>/dev/null; then
                                                 sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" \"\$REGISTROS\"
                                                 echo \"Usuario eliminado forzosamente: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado forzosamente!* 😈\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado forzosamente!* 😈
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             else
                                                 echo \"Error al eliminar usuario persistente: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error persistente al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error persistente al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             fi
                                         fi
                                     else
                                         echo \"Error al eliminar usuario: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                     fi
                                 fi
                                 EXPECTING_DELETE_USER=0
@@ -232,7 +232,8 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                         ;;
                                     '2')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
 
@@ -288,9 +289,13 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}                 
+   
+                                        
                                     
-                                                  
+                                    
+                                        
+                                        
 
 
 function barra_sistema() {  
