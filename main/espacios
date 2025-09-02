@@ -14,15 +14,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-    
-
-                                                    
-                                        
-           
-                    
-                                                            
-                                                
-            ssh_bot() {
+    ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -56,14 +48,11 @@ mkdir -p "$(dirname "$PIDFILE")"
             echo "$USER_ID" > /root/sshbot_userid
             echo "$USER_NAME" > /root/sshbot_username
 
-            # Guardar PID del proceso
             nohup bash -c "
-                # Exportar variables para el proceso en segundo plano
                 export REGISTROS='$REGISTROS'
                 export HISTORIAL='$HISTORIAL'
                 export PIDFILE='$PIDFILE'
 
-                # Crear directorios nuevamente para asegurar acceso
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
                 mkdir -p \"\$(dirname \"\$PIDFILE\")\"
@@ -78,14 +67,12 @@ mkdir -p "$(dirname "$PIDFILE")"
                 DAYS=''
                 MOBILES=''
 
-                # Función para calcular días restantes
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
                     local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
                     local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
                     local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
 
-                    # Convertir mes español a número
                     case \$mes in
                         \"enero\") mes_num=\"01\" ;;
                         \"febrero\") mes_num=\"02\" ;;
@@ -152,39 +139,30 @@ mkdir -p "$(dirname "$PIDFILE")"
                                         ;;
                                     4)
                                         MOBILES=\"\$MSG_TEXT\"
-                                        # Validar entradas
                                         if [[ -z \"\$USERNAME\" || -z \"\$PASSWORD\" || -z \"\$DAYS\" || -z \"\$MOBILES\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Todos los campos son obligatorios. Intenta de nuevo con la opción 1.\" -d parse_mode=Markdown >/dev/null
                                         elif ! [[ \"\$DAYS\" =~ ^[0-9]+$ ]] || ! [[ \"\$MOBILES\" =~ ^[0-9]+$ ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Días y móviles deben ser números. Intenta de nuevo con la opción 1.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            # Verificar si el usuario ya existe
                                             if id \"\$USERNAME\" >/dev/null 2>&1; then
                                                 curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ El usuario *\\\`$USERNAME\\\`* ya existe en el sistema. Intenta con otro nombre.\" -d parse_mode=Markdown >/dev/null
                                             else
-                                                # Crear usuario en el sistema
                                                 if ! useradd -M -s /sbin/nologin \"\$USERNAME\" 2>/dev/null; then
                                                     curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al crear el usuario en el sistema.\" -d parse_mode=Markdown >/dev/null
                                                 else
-                                                    # Establecer contraseña
                                                     if ! echo \"\$USERNAME:\$PASSWORD\" | chpasswd 2>/dev/null; then
                                                         userdel \"\$USERNAME\" 2>/dev/null
                                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la contraseña.\" -d parse_mode=Markdown >/dev/null
                                                     else
-                                                        # Configurar fecha de expiración
                                                         fecha_expiracion_sistema=\$(date -d \"+\$((DAYS + 1)) days\" \"+%Y-%m-%d\")
                                                         if ! chage -E \"\$fecha_expiracion_sistema\" \"\$USERNAME\" 2>/dev/null; then
                                                             userdel \"\$USERNAME\" 2>/dev/null
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la fecha de expiración.\" -d parse_mode=Markdown >/dev/null
                                                         else
-                                                            # Obtener fechas
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
                                                             fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
-                                                            # Guardar en archivo de registros
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
-                                                            # Guardar en historial
                                                             echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
-                                                            # Mostrar resumen
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
@@ -221,25 +199,19 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                 esac
                             elif [[ \$EXPECTING_DELETE_USER -eq 1 ]]; then
                                 USUARIO_A_ELIMINAR=\"\$MSG_TEXT\"
-                                # Verificar si el usuario existe en los registros
                                 if ! grep -q \"^\$USUARIO_A_ELIMINAR:\" \"\$REGISTROS\"; then
                                     curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ El usuario *\\\`\${USUARIO_A_ELIMINAR}\\\`* no está registrado. Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                 else
-                                    # Terminar procesos del usuario
                                     pkill -KILL -u \"\$USUARIO_A_ELIMINAR\" 2>/dev/null
                                     sleep 1
-                                    # Intentar eliminar el usuario
                                     fecha_eliminacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
                                     if userdel -r -f \"\$USUARIO_A_ELIMINAR\" >/dev/null 2>&1; then
                                         if ! id \"\$USUARIO_A_ELIMINAR\" &>/dev/null; then
-                                            # Eliminar del registro
                                             sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" \"\$REGISTROS\"
-                                            # Registrar en historial
                                             echo \"Usuario eliminado: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado exitosamente!* 😈
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            # Limpieza manual si persiste
                                             rm -rf \"/home/\$USUARIO_A_ELIMINAR\" 2>/dev/null
                                             rm -f \"/var/mail/\$USUARIO_A_ELIMINAR\" 2>/dev/null
                                             rm -f \"/var/spool/mail/\$USUARIO_A_ELIMINAR\" 2>/dev/null
@@ -301,51 +273,51 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             EXPECTING_DELETE_USER=1
                                         fi
                                         ;;
-                                       '3')
-    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
-        curl -s -X POST "$URL/sendMessage" -d chat_id=$CHAT_ID -d text="📋 *Lista de Usuarios* ❌
+                                    '3')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
 
 🔍 No hay usuarios SSH registrados
-💡 Usa la opción 1 para crear uno" -d parse_mode=Markdown >/dev/null
-    else
-        LISTA="🌸 REGISTROS DE USUARIOS 🌸
+💡 Usa la opción 1 para crear uno\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"🌸 REGISTROS DE USUARIOS 🌸
 
-"
-        count=1
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
-            usuario=${user_data%%:*}
-            clave=${user_data#*:}
-            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion")
-            dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
-            mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
-            case $mes in
-                enero) mes="ene" ;;
-                febrero) mes="feb" ;;
-                marzo) mes="mar" ;;
-                abril) mes="abr" ;;
-                mayo) mes="may" ;;
-                junio) mes="jun" ;;
-                julio) mes="jul" ;;
-                agosto) mes="ago" ;;
-                septiembre) mes="sep" ;;
-                octubre) mes="oct" ;;
-                noviembre) mes="nov" ;;
-                diciembre) mes="dic" ;;
-            esac
-            fecha_corta="$dia/$mes"
+\"
+                                            count=1
+                                            while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
+                                                usuario=\${user_data%%:*}
+                                                clave=\${user_data#*:}
+                                                dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
+                                                dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
+                                                mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                                                case \$mes in
+                                                    enero) mes=\"ene\" ;;
+                                                    febrero) mes=\"feb\" ;;
+                                                    marzo) mes=\"mar\" ;;
+                                                    abril) mes=\"abr\" ;;
+                                                    mayo) mes=\"may\" ;;
+                                                    junio) mes=\"jun\" ;;
+                                                    julio) mes=\"jul\" ;;
+                                                    agosto) mes=\"ago\" ;;
+                                                    septiembre) mes=\"sep\" ;;
+                                                    octubre) mes=\"oct\" ;;
+                                                    noviembre) mes=\"nov\" ;;
+                                                    diciembre) mes=\"dic\" ;;
+                                                esac
+                                                fecha_corta=\"\$dia/\$mes\"
 
-            LISTA="${LISTA}$(printf "%d. %-11s | %-5s | %-6s | %-3sd | %-1s\n" "$count" "$usuario" "$clave" "$fecha_corta" "$dias_restantes" "$moviles")"
-            ((count++))
-        done < "$REGISTROS"
+                                                LISTA=\"\${LISTA}\$(printf \"%d. %-11s | %-5s | %-6s | %-3sd | %-1s\\n\" \"\$count\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")\"
+                                                ((count++))
+                                            done < \"\$REGISTROS\"
 
-        TOTAL=$((count - 1))
-        LISTA="${LISTA}
+                                            TOTAL=\$((count - 1))
+                                            LISTA=\"\${LISTA}
 
-Total registrados: $TOTAL usuarios
-"
-        curl -s -X POST "$URL/sendMessage" -d chat_id=$CHAT_ID -d text="$LISTA" -d parse_mode=Markdown >/dev/null
-    fi
-    ;;
+Total registrados: \$TOTAL usuarios
+\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                        fi
+                                        ;;
                                     '0')
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
 
@@ -387,6 +359,18 @@ Total registrados: $TOTAL usuarios
     esac
 }
 
+
+                                                    
+                                        
+           
+                    
+                                                            
+                                                
+            
+
+                  
+
+                                
 
 
 function barra_sistema() {  
