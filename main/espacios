@@ -167,7 +167,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
-\\\`\ 📅 Expira: ${fecha_expiracion}\\\`
+\\`\ 📅 Expira: ${fecha_expiracion}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
