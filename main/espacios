@@ -282,6 +282,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             LISTA=\"🌸 REGISTROS DE USUARIOS 🌸
 
+\`\`\`
 \"
                                             count=1
                                             while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
@@ -310,10 +311,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 ((count++))
                                             done < \"\$REGISTROS\"
 
-                                            TOTAL=\$((count - 1))
-                                            LISTA=\"\${LISTA}
+                                            LISTA=\"\${LISTA}\`\`\`
 
-Total registrados: \$TOTAL usuarios
+Total registrados: \$((count - 1)) usuarios
 \"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
@@ -359,14 +359,6 @@ Total registrados: \$TOTAL usuarios
     esac
 }
 
-
-                                                    
-                                        
-           
-                    
-                                                            
-                                                
-            
 
                   
 
