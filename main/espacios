@@ -179,11 +179,12 @@ mkdir -p "$(dirname "$PIDFILE")"
 Por favor cumple con estas reglas para mantener tu acceso activo:
 
  🚫 No compartas tu cuenta
- 📱 Máx. \${MOBILES} móviles conectados
+ 📱 Máx. \${MOBILES} móviles conectados 🚨 → Si excedes el límite tu usuario será bloqueado automáticamente.
  📅 Respeta tu fecha de expiración
  📥 Prohibido torrents o descargas abusivas
  🔒 No cambies tu clave ni uses accesos de otros
  ⚠️ Nada de usos ilegales (spam/ataques)
+ 🧑‍💻 SOPORTE: ENVÍA TU MENSAJE UNA SOLA VEZ Y ESPERA RESPUESTA. 🚫 NO HAGAS SPAM.
 
 ⚡👉 El incumplimiento resultará en suspensión inmediata.
 \\\`\\\`\\\`\"
@@ -242,11 +243,11 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                     'Hola'|'hola'|'/start')
                                         MENU=\"¡Hola! 😏 *$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
 
-🔧 Presiona 1 para crear usuario
-🗑️ Presiona 2 para eliminar usuario
-📋 Presiona 3 para ver los usuarios registrados
-✅ Presiona 4 para mostrar usuarios conectados
-🏠 Presiona 0 para volver al menú principal\"
+🔧 *Presiona 1* para crear usuario
+🗑️ *Presiona 2* para eliminar usuario
+📋 *Presiona 3* para ver los usuarios registrados
+✅ *Presiona 4* para mostrar usuarios conectados
+🏠 *Presiona 0* para volver al menú principal\"
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     '1')
@@ -278,12 +279,12 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
 
-🔍 No hay usuarios SSH registrados
+🔍 *No hay usuarios SSH registrados*
 💡 Usa la opción 1 para crear uno\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"🌸 REGISTROS DE USUARIOS 🌸
+                                            LISTA=\"🌸 *REGISTROS DE USUARIOS* 🌸
 
-Usuario     clave.      Expi.    Dias.  Moviles
+*Usuario     clave.      Expi.    Dias.  Moviles*
 \"
                                             count=1
                                             while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
@@ -315,7 +316,7 @@ Usuario     clave.      Expi.    Dias.  Moviles
                                             done < \"\$REGISTROS\"
 
                                             TOTAL=\$((count - 1))
-                                            LISTA=\"\${LISTA}Total registrados: \$TOTAL usuarios\"
+                                            LISTA=\"\${LISTA}*Total registrados:* \$TOTAL usuarios\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
@@ -324,9 +325,9 @@ Usuario     clave.      Expi.    Dias.  Moviles
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"===== 🥳 USUARIOS ONLINE 😎 =====
+                                            LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
 
-USUARIO  CONEXIONES  MÓVILES  CONECTADO
+*USUARIO  CONEXIONES  MÓVILES  CONECTADO*
 -----------------------------------------------------------------
 
 \"
@@ -402,7 +403,7 @@ USUARIO  CONEXIONES  MÓVILES  CONECTADO
                                             done < \"\$REGISTROS\"
 
                                             LISTA=\"\${LISTA}-----------------------------------------------------------------
-Total de Online: \$total_online  Total usuarios: \$total_usuarios  Inactivos: \$inactivos
+*Total de Online:* \$total_online  *Total usuarios:* \$total_usuarios  *Inactivos:* \$inactivos
 ================================================\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
@@ -410,7 +411,7 @@ Total de Online: \$total_online  Total usuarios: \$total_usuarios  Inactivos: \$
                                     '0')
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
 
-✅ Regresando al menú...
+✅ *Regresando al menú...*
 👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     *)
