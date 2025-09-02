@@ -334,7 +334,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
-                                                LISTA=\"\${LISTA}\$(printf \"%d. %-11s | %-5s | %-6s | %-3sd | %-1s\\n\" \"\$count\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")\"
+                                                LISTA="${LISTA}$(printf "%d. %-11s | %-5s | %-6s | %-3sd | %-1s\n" "$count" "$usuario" "$clave" "$fecha_corta" "$dias_restantes" "$moviles")"
                                                 ((count++))
                                             done < \"\$REGISTROS\"
 
@@ -1734,7 +1734,7 @@ while true; do
     clear  
     barra_sistema  
     echo  
-    echo -e "${VIOLETA}======🥲PANEL DE USUARIOS VPN/SSH ======${NC}"  
+    echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"  
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
