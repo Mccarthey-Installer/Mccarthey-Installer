@@ -14,8 +14,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 
-                   
-                   ssh_bot() {
+      ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -60,6 +59,51 @@ mkdir -p "$(dirname "$PIDFILE")"
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
                 mkdir -p \"\$(dirname \"\$PIDFILE\")\"
+
+                # Función para calcular los días restantes
+                calcular_dias_restantes() {
+                    local fecha_expiracion=\"\$1\"
+                    local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
+                    local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                    local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
+
+                    # Convertir mes español a número
+                    case \$mes in
+                        'enero') mes_num='01' ;;
+                        'febrero') mes_num='02' ;;
+                        'marzo') mes_num='03' ;;
+                        'abril') mes_num='04' ;;
+                        'mayo') mes_num='05' ;;
+                        'junio') mes_num='06' ;;
+                        'julio') mes_num='07' ;;
+                        'agosto') mes_num='08' ;;
+                        'septiembre') mes_num='09' ;;
+                        'octubre') mes_num='10' ;;
+                        'noviembre') mes_num='11' ;;
+                        'diciembre') mes_num='12' ;;
+                        *) echo '0'; return ;;
+                    esac
+
+                    local fecha_formateada=\"\$anio-\$mes_num-\$dia\"
+                    local fecha_actual=\$(date '+%Y-%m-%d')
+
+                    local fecha_exp_epoch=\$(date -d \"\$fecha_formateada\" '+%s' 2>/dev/null)
+                    local fecha_act_epoch=\$(date -d \"\$fecha_actual\" '+%s')
+
+                    if [[ -z \"\$fecha_exp_epoch\" ]]; then
+                        echo '0'
+                        return
+                    fi
+
+                    local diff_segundos=\$((fecha_exp_epoch - fecha_act_epoch))
+                    local dias_restantes=\$((diff_segundos / 86400))
+
+                    if [ \$dias_restantes -lt 0 ]; then
+                        dias_restantes=0
+                    fi
+
+                    echo \$dias_restantes
+                }
 
                 URL='https://api.telegram.org/bot$TOKEN_ID'
                 OFFSET=0
@@ -184,8 +228,7 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                             sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" \"\$REGISTROS\"
                                             # Registrar en historial
                                             echo \"Usuario eliminado: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado exitosamente!* 😈
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado exitosamente!* 😈\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             # Limpieza manual si persiste
                                             rm -rf \"/home/\$USUARIO_A_ELIMINAR\" 2>/dev/null
@@ -198,18 +241,15 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             if ! id \"\$USUARIO_A_ELIMINAR\" &>/dev/null; then
                                                 sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" \"\$REGISTROS\"
                                                 echo \"Usuario eliminado forzosamente: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado forzosamente!* 😈
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado forzosamente!* 😈\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             else
                                                 echo \"Error al eliminar usuario persistente: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error persistente al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error persistente al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             fi
                                         fi
                                     else
                                         echo \"Error al eliminar usuario: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                     fi
                                 fi
                                 EXPECTING_DELETE_USER=0
@@ -233,16 +273,12 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     '2')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
-
-\"
+                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈\n\n\"
                                             while IFS=' ' read -r user_data _; do
                                                 usuario=\${user_data%%:*}
-                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`
-\"
+                                                LISTA=\"\$LISTA\\\`\${usuario}\\\`\n\"
                                             done < \"\$REGISTROS\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
@@ -250,26 +286,27 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
                                     '3')
-                                        USUARIOS=\$(cut -d: -f1 /etc/passwd | grep -E '^[a-z]' | grep -v -E '^(root|daemon|bin|sys|sync|games|man|lp|mail|news|uucp|proxy|www-data|backup|list|irc|gnats|nobody|systemd-|syslog|messagebus|_apt|uuidd|avahi-autoipd|usbmux|dnsmasq|rtkit|cups-pk-helper|speech-dispatcher|whoopsie|kernoops|saned|pulse|avahi|colord|hplip|geoclue|gnome-initial-setup|gdm|ubuntu)' | head -10)
-                                        if [[ -n \"\$USUARIOS\" ]]; then
-                                            LISTA=\"📋 *Usuarios SSH Registrados* 👥\n\n🟢 *Usuarios activos:*\n\$(echo \"\$USUARIOS\" | sed 's/^/👤 /')\n\n✅ *Total encontrados*: \$(echo \"\$USUARIOS\" | wc -l)\"
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay registros disponibles.*\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"📋 *Lista de Usuarios* ❌\n\n🔍 No hay usuarios SSH registrados\n💡 Usa la opción 1 para crear uno\"
+                                            LISTA=\"===== 🌸 *REGISTROS* =====\nNº 👩 *Usuario* 🔒 *Clave*   📅 *Expira*    ⏳ *Días*   📲 *Móviles*\n\"
+                                            count=1
+                                            while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+                                                usuario=\${user_data%%:*}
+                                                clave=\${user_data#*:}
+                                                dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
+                                                printf -v linea '%-2s %-11s %-10s %-16s %-8s %-8s' \"\$count\" \"\$usuario\" \"\$clave\" \"\$fecha_expiracion\" \"\$dias_restantes\" \"\$moviles\"
+                                                LISTA=\"\$LISTA\$linea\n\"
+                                                ((count++))
+                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\\\`\\\`\\\`\n\$LISTA\\\`\\\`\\\`\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fi
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     '0')
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
-
-✅ Regresando al menú...
-👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙\n\n✅ Regresando al menú...\n👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     *)
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️
-
-🤔 No entiendo esa opción...
-💡 Escribe *hola* para ver el menú
-🔢 O usa: 1, 2, 3, 0\" -d parse_mode=Markdown >/dev/null
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️\n\n🤔 No entiendo esa opción...\n💡 Escribe *hola* para ver el menú\n🔢 O usa: 1, 2, 3, 0\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                 esac
                             fi
@@ -297,10 +334,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                     
-                            
-                                            
-                                        
+}             
+
+            
                                         
 
 
