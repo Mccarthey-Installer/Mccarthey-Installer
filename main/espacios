@@ -309,7 +309,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
-                                                LISTA="\${LISTA}\${count}. \$(printf \"\\\`%-11s\\\` | \\\`%-5s\\\` | %-6s | %-3sd | %-1s\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")
+                                                LISTA="\${LISTA}\${count}. \$(printf \"\`\`%-11s\`\` | \`\`%-5s\`\` | %-6s | %-3sd | %-1s\" \"\${usuario}\" \"\${clave}\" \"\${fecha_corta}\" \"\${dias_restantes}\" \"\${moviles}\")
 
 \"
                                                 ((count++))
