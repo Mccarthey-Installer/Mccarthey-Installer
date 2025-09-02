@@ -282,6 +282,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             LISTA=\"🌸 REGISTROS DE USUARIOS 🌸
 
+Usuario     clave.      Expi.    Dias.  Moviles
 \"
                                             count=1
                                             while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
