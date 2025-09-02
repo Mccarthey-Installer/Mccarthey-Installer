@@ -277,12 +277,12 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
 
-🔍 No hay usuarios SSH registrados
+*🔍 No hay usuarios SSH registrados*
 💡 Usa la opción 1 para crear uno\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"🌸 REGISTROS DE USUARIOS 🌸
+                                            LISTA=\"🌸 *REGISTROS DE USUARIOS* 🌸
 
-Usuario     clave.      Expi.    Dias.  Moviles
+*Usuario     clave.      Expi.    Dias.  Moviles*
 \"
                                             count=1
                                             while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
