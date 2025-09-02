@@ -321,9 +321,15 @@ Usuario     clave.      Expi.    Dias.  Moviles
                                         ;;
                                     '4')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*\nEscribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"===== 🥳 USUARIOS ONLINE 😎 =====\n\nUSUARIO  CONEXIONES  MÓVILES  CONECTADO\n-----------------------------------------------------------------\n\n\"
+                                            LISTA=\"===== 🥳 USUARIOS ONLINE 😎 =====
+
+USUARIO  CONEXIONES  MÓVILES  CONECTADO
+-----------------------------------------------------------------
+
+\"
                                             total_online=0
                                             total_usuarios=0
                                             inactivos=0
@@ -374,8 +380,12 @@ Usuario     clave.      Expi.    Dias.  Moviles
                                                         rm -f \"\$tmp_status\"
                                                         ult=\$(grep \"^\$usuario|\" \"\$HISTORIAL\" | tail -1 | awk -F'|' '{print \$3}')
                                                         if [[ -n \"\$ult\" ]]; then
-                                                            ult_fmt=\$(date -d \"\$ult\" +\"%d/%b/%Y %H:%M\")
-                                                            detalle=\"📅 Última: \$ult_fmt\"
+                                                            ult_fmt=\$(date -d \"\$ult\" +\"%d/%b/%Y %H:%M\" 2>/dev/null)
+                                                            if [[ -n \"\$ult_fmt\" ]]; then
+                                                                detalle=\"📅 Última: \$ult_fmt\"
+                                                            else
+                                                                detalle=\"😴 Nunca conectado\"
+                                                            fi
                                                         else
                                                             detalle=\"😴 Nunca conectado\"
                                                         fi
@@ -383,10 +393,17 @@ Usuario     clave.      Expi.    Dias.  Moviles
                                                     fi
                                                 fi
 
-                                                LISTA=\"\${LISTA}*Usuario*: \\\`\${usuario}\\\`\n*Conexiones*: \$conexiones\n*Móviles*: \$moviles\n*Tiempo conectado/última vez/nunca conectado*: \$detalle\n\n\"
+                                                LISTA=\"\${LISTA}*Usuario*: \\\`\${usuario}\\\`
+*Conexiones*: \$conexiones
+*Móviles*: \$moviles
+*Tiempo conectado/última vez/nunca conectado*: \$detalle
+
+\"
                                             done < \"\$REGISTROS\"
 
-                                            LISTA=\"\${LISTA}-----------------------------------------------------------------\nTotal de Online: \$total_online  Total usuarios: \$total_usuarios  Inactivos: \$inactivos\n================================================\"
+                                            LISTA=\"\${LISTA}-----------------------------------------------------------------
+Total de Online: \$total_online  Total usuarios: \$total_usuarios  Inactivos: \$inactivos
+================================================\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
