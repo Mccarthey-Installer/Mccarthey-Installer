@@ -14,6 +14,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 
+                   
                    ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
@@ -258,10 +259,17 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     '0')
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙\n\n✅ Regresando al menú...\n👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
+
+✅ Regresando al menú...
+👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     *)
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️\n\n🤔 No entiendo esa opción...\n💡 Escribe *hola* para ver el menú\n🔢 O usa: 1, 2, 3, 0\" -d parse_mode=Markdown >/dev/null
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️
+
+🤔 No entiendo esa opción...
+💡 Escribe *hola* para ver el menú
+🔢 O usa: 1, 2, 3, 0\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                 esac
                             fi
@@ -289,11 +297,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                 
-   
-                                        
-                                    
-                                    
+}                     
+                            
+                                            
                                         
                                         
 
