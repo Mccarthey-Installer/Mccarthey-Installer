@@ -307,15 +307,14 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
-                                                LISTA=\"\${LISTA}\$(printf \"%d. %-11s | %-5s | %-6s | %-3sd | %-1s\\n\" \"\$count\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")\"
+                                                LISTA=\"\${LISTA}\${count}. \$(printf \"%-11s | %-5s | %-6s | %-3sd | %-1s\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")
+
+\"
                                                 ((count++))
                                             done < \"\$REGISTROS\"
 
                                             TOTAL=\$((count - 1))
-                                            LISTA=\"\${LISTA}
-
-Total registrados: \$TOTAL usuarios
-\"
+                                            LISTA=\"\${LISTA}Total registrados: \$TOTAL usuarios\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
@@ -359,7 +358,6 @@ Total registrados: \$TOTAL usuarios
             ;;
     esac
 }
-
                                 
 
 
@@ -513,7 +511,7 @@ TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
     echo -e "${BLANCO} 📊 U/RAM:${AMARILLO} ${MEM_PORC}%${NC} ${BLANCO}∘ 🖥️ U/CPU:${AMARILLO} ${CPU_PORC}%${NC} ${BLANCO}∘ 🔧 CPU MHz:${AMARILLO} ${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC} ${BLANCO}∘ 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🇭🇳 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}    ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
+    echo -e "${MAGENTA}🤭 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}    ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
     echo -e "${BLANCO} ${ONLINE_STATUS}${NC} ${BLANCO}👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC} ${BLANCO}🖼️ SO:${AMARILLO} ${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
