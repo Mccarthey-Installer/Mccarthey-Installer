@@ -13,11 +13,443 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
+                                
+    ssh_bot() {
+    # Asegurar que jq esté instalado
+    if ! command -v jq &>/dev/null; then
+        echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
+        curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
+        chmod +x /usr/bin/jq
+    fi
 
+    # Definir rutas de archivos
+    export REGISTROS="/diana/reg.txt"
+    export HISTORIAL="/alexia/log.txt"
+    export PIDFILE="/Abigail/mon.pid"
 
-    
-    
-    
+    # Crear directorios si no existen
+    mkdir -p "$(dirname "$REGISTROS")"
+    mkdir -p "$(dirname "$HISTORIAL")"
+    mkdir -p "$(dirname "$PIDFILE")"
+
+    clear
+    echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
+    echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
+    echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
+    echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
+    read -p "➡️ Selecciona una opción: " BOT_OPCION
+
+    case $BOT_OPCION in
+        1)
+            read -p "👉 Ingresa tu Token ID: " TOKEN_ID
+            read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
+            read -p "👉 Ingresa tu nombre: " USER_NAME
+            echo "$TOKEN_ID" > /root/sshbot_token
+            echo "$USER_ID" > /root/sshbot_userid
+            echo "$USER_NAME" > /root/sshbot_username
+
+            nohup bash -c "
+                export REGISTROS='$REGISTROS'
+                export HISTORIAL='$HISTORIAL'
+                export PIDFILE='$PIDFILE'
+
+                mkdir -p \"\$(dirname \"\$REGISTROS\")\"
+                mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
+                mkdir -p \"\$(dirname \"\$PIDFILE\")\"
+
+                URL='https://api.telegram.org/bot$TOKEN_ID'
+                OFFSET=0
+                EXPECTING_USER_DATA=0
+                USER_DATA_STEP=0
+                EXPECTING_DELETE_USER=0
+                USERNAME=''
+                PASSWORD=''
+                DAYS=''
+                MOBILES=''
+
+                calcular_dias_restantes() {
+                    local fecha_expiracion=\"\$1\"
+                    local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
+                    local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                    local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
+
+                    case \$mes in
+                        \"enero\") mes_num=\"01\" ;;
+                        \"febrero\") mes_num=\"02\" ;;
+                        \"marzo\") mes_num=\"03\" ;;
+                        \"abril\") mes_num=\"04\" ;;
+                        \"mayo\") mes_num=\"05\" ;;
+                        \"junio\") mes_num=\"06\" ;;
+                        \"julio\") mes_num=\"07\" ;;
+                        \"agosto\") mes_num=\"08\" ;;
+                        \"septiembre\") mes_num=\"09\" ;;
+                        \"octubre\") mes_num=\"10\" ;;
+                        \"noviembre\") mes_num=\"11\" ;;
+                        \"diciembre\") mes_num=\"12\" ;;
+                        *) echo 0; return ;;
+                    esac
+
+                    local fecha_formateada=\"\$anio-\$mes_num-\$dia\"
+                    local fecha_actual=\$(date \"+%Y-%m-%d\")
+
+                    local fecha_exp_epoch=\$(date -d \"\$fecha_formateada\" \"+%s\" 2>/dev/null)
+                    local fecha_act_epoch=\$(date -d \"\$fecha_actual\" \"+%s\")
+
+                    if [[ -z \"\$fecha_exp_epoch\" ]]; then
+                        echo 0
+                        return
+                    fi
+
+                    local diff_segundos=\$((fecha_exp_epoch - fecha_act_epoch))
+                    local dias_restantes=\$((diff_segundos / 86400))
+
+                    if [ \$dias_restantes -lt 0 ]; then
+                        dias_restantes=0
+                    fi
+
+                    echo \$dias_restantes
+                }
+
+                while true; do
+                    UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
+                    for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
+                        OFFSET=\$(echo \$row | jq '.update_id')
+                        OFFSET=\$((OFFSET+1))
+                        MSG_TEXT=\$(echo \$row | jq -r '.message.text')
+                        CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
+                        USERNAME_TELEGRAM=\$(echo \$row | jq -r '.message.from.username')
+
+                        if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
+                            if [[ \$EXPECTING_USER_DATA -eq 1 ]]; then
+                                case \$USER_DATA_STEP in
+                                    1)
+                                        USERNAME=\"\$MSG_TEXT\"
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔑 Ingresa la contraseña:\" -d parse_mode=Markdown >/dev/null
+                                        USER_DATA_STEP=2
+                                        ;;
+                                    2)
+                                        PASSWORD=\"\$MSG_TEXT\"
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📅 Ingresa los días de validez:\" -d parse_mode=Markdown >/dev/null
+                                        USER_DATA_STEP=3
+                                        ;;
+                                    3)
+                                        DAYS=\"\$MSG_TEXT\"
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📱 Ingresa el límite de móviles:\" -d parse_mode=Markdown >/dev/null
+                                        USER_DATA_STEP=4
+                                        ;;
+                                    4)
+                                        MOBILES=\"\$MSG_TEXT\"
+                                        if [[ -z \"\$USERNAME\" || -z \"\$PASSWORD\" || -z \"\$DAYS\" || -z \"\$MOBILES\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Todos los campos son obligatorios. Intenta de nuevo con la opción 1.\" -d parse_mode=Markdown >/dev/null
+                                        elif ! [[ \"\$DAYS\" =~ ^[0-9]+$ ]] || ! [[ \"\$MOBILES\" =~ ^[0-9]+$ ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Días y móviles deben ser números. Intenta de nuevo con la opción 1.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            if id \"\$USERNAME\" >/dev/null 2>&1; then
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ El usuario *\\\`$USERNAME\\\`* ya existe en el sistema. Intenta con otro nombre.\" -d parse_mode=Markdown >/dev/null
+                                            else
+                                                if ! useradd -M -s /sbin/nologin \"\$USERNAME\" 2>/dev/null; then
+                                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al crear el usuario en el sistema.\" -d parse_mode=Markdown >/dev/null
+                                                else
+                                                    if ! echo \"\$USERNAME:\$PASSWORD\" | chpasswd 2>/dev/null; then
+                                                        userdel \"\$USERNAME\" 2>/dev/null
+                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la contraseña.\" -d parse_mode=Markdown >/dev/null
+                                                    else
+                                                        fecha_expiracion_sistema=\$(date -d \"+\$((DAYS + 1)) days\" \"+%Y-%m-%d\")
+                                                        if ! chage -E \"\$fecha_expiracion_sistema\" \"\$USERNAME\" 2>/dev/null; then
+                                                            userdel \"\$USERNAME\" 2>/dev/null
+                                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la fecha de expiración.\" -d parse_mode=Markdown >/dev/null
+                                                        else
+                                                            fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
+                                                            fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
+                                                            echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
+                                                            echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
+                                                            RESUMEN=\"✅ *Usuario creado correctamente:*
+
+👤 *Usuario*: \\\`\${USERNAME}\\\`
+🔑 *Clave*: \\\`\${PASSWORD}\\\`
+\\\`📅 Expira: \${fecha_expiracion}\\\`
+📱 *Límite móviles*: \\\`\${MOBILES}\\\`
+📅 *Creado*: \\\`\${fecha_creacion}\\\`
+📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
+
+\\\`\\\`\\\`
+🌐✨ Reglas SSH WebSocket ✨🌐
+
+👋 Hola, \${USERNAME}
+Por favor cumple con estas reglas para mantener tu acceso activo:
+
+ 🚫 No compartas tu cuenta
+ 📱 Máx. \${MOBILES} móviles conectados 🚨 → Si excedes el límite tu usuario será bloqueado automáticamente.
+ 📅 Respeta tu fecha de expiración
+ 📥 Prohibido torrents o descargas abusivas
+ 🔒 No cambies tu clave ni uses accesos de otros
+ ⚠️ Nada de usos ilegales (spam/ataques)
+ 🧑‍💻 SOPORTE: ENVÍA TU MENSAJE UNA SOLA VEZ Y ESPERA RESPUESTA. 🚫 NO HAGAS SPAM.
+
+⚡👉 El incumplimiento resultará en suspensión inmediata.
+\\\`\\\`\\\`\"
+                                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
+                                                        fi
+                                                    fi
+                                                fi
+                                            fi
+                                        fi
+                                        EXPECTING_USER_DATA=0
+                                        USER_DATA_STEP=0
+                                        ;;
+                                esac
+                            elif [[ \$EXPECTING_DELETE_USER -eq 1 ]]; then
+                                USUARIO_A_ELIMINAR=\"\$MSG_TEXT\"
+                                if ! grep -q \"^\$USUARIO_A_ELIMINAR:\" \"\$REGISTROS\"; then
+                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ El usuario *\\\`\${USUARIO_A_ELIMINAR}\\\`* no está registrado. Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                else
+                                    pkill -KILL -u \"\$USUARIO_A_ELIMINAR\" 2>/dev/null
+                                    sleep 1
+                                    fecha_eliminacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
+                                    if userdel -r -f \"\$USUARIO_A_ELIMINAR\" >/dev/null 2>&1; then
+                                        if ! id \"\$USUARIO_A_ELIMINAR\" &>/dev/null; then
+                                            sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" \"\$REGISTROS\"
+                                            echo \"Usuario eliminado: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado exitosamente!* 😈
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            rm -rf \"/home/\$USUARIO_A_ELIMINAR\" 2>/dev/null
+                                            rm -f \"/var/mail/\$USUARIO_A_ELIMINAR\" 2>/dev/null
+                                            rm -f \"/var/spool/mail/\$USUARIO_A_ELIMINAR\" 2>/dev/null
+                                            sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/passwd
+                                            sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/shadow
+                                            sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/group
+                                            sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/gshadow
+                                            if ! id \"\$USUARIO_A_ELIMINAR\" &>/dev/null; then
+                                                sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" \"\$REGISTROS\"
+                                                echo \"Usuario eliminado forzosamente: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Usuario* \\\`\${USUARIO_A_ELIMINAR}\\\` *eliminado forzosamente!* 😈
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            else
+                                                echo \"Error al eliminar usuario persistente: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error persistente al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            fi
+                                        fi
+                                    else
+                                        echo \"Error al eliminar usuario: \$USUARIO_A_ELIMINAR, Fecha: \$fecha_eliminacion\" >> \"\$HISTORIAL\"
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al eliminar el usuario* \\\`\${USUARIO_A_ELIMINAR}\\\`.
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                    fi
+                                fi
+                                EXPECTING_DELETE_USER=0
+                            else
+                                case \"\$MSG_TEXT\" in
+                                    'Hola'|'hola'|'/start')
+                                        MENU=\"¡Hola! 😏 *$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
+
+🔧 *Presiona 1* para crear usuario
+🗑️ *Presiona 2* para eliminar usuario
+📋 *Presiona 3* para ver los usuarios registrados
+✅ *Presiona 4* para mostrar usuarios conectados
+🏠 *Presiona 0* para volver al menú principal\"
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
+                                        ;;
+                                    '1')
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔧 *Crear Usuario SSH* 🆕
+
+👤 Ingresa el nombre del usuario:\" -d parse_mode=Markdown >/dev/null
+                                        EXPECTING_USER_DATA=1
+                                        USER_DATA_STEP=1
+                                        ;;
+                                    '2')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
+
+\"
+                                            while IFS=' ' read -r user_data _; do
+                                                usuario=\${user_data%%:*}
+                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`
+\"
+                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_DELETE_USER=1
+                                        fi
+                                        ;;
+                                    '3')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
+
+🔍 *No hay usuarios SSH registrados*
+💡 Usa la opción 1 para crear uno\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"🌸 *REGISTROS DE USUARIOS* 🌸
+
+*Usuario     clave.      Expi.    Dias.  Moviles*
+\"
+                                            count=1
+                                            while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
+                                                usuario=\${user_data%%:*}
+                                                clave=\${user_data#*:}
+                                                dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
+                                                dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
+                                                mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                                                case \$mes in
+                                                    enero) mes=\"ene\" ;;
+                                                    febrero) mes=\"feb\" ;;
+                                                    marzo) mes=\"mar\" ;;
+                                                    abril) mes=\"abr\" ;;
+                                                    mayo) mes=\"may\" ;;
+                                                    junio) mes=\"jun\" ;;
+                                                    julio) mes=\"jul\" ;;
+                                                    agosto) mes=\"ago\" ;;
+                                                    septiembre) mes=\"sep\" ;;
+                                                    octubre) mes=\"oct\" ;;
+                                                    noviembre) mes=\"nov\" ;;
+                                                    diciembre) mes=\"dic\" ;;
+                                                esac
+                                                fecha_corta=\"\$dia/\$mes\"
+
+                                                LISTA=\"\${LISTA}\${count}. \$(printf \"%-11s | %-5s\" \"\\\`\${usuario}\\\`\" \"\\\`\${clave}\\\`\") | \${fecha_corta} | \${dias_restantes} d | \${moviles}
+
+\"
+                                                ((count++))
+                                            done < \"\$REGISTROS\"
+
+                                            TOTAL=\$((count - 1))
+                                            LISTA=\"\${LISTA}*Total registrados:* \$TOTAL usuarios\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                        fi
+                                        ;;
+                                    '4')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
+
+*USUARIO  CONEXIONES  MÓVILES  CONECTADO*
+-----------------------------------------------------------------
+
+\"
+                                            total_online=0
+                                            total_usuarios=0
+                                            inactivos=0
+
+                                            while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+                                                usuario=\${userpass%%:*}
+                                                if ! id \"\$usuario\" &>/dev/null; then
+                                                    continue
+                                                fi
+                                                (( total_usuarios++ ))
+                                                conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
+                                                tmp_status=\"/tmp/status_\${usuario}.tmp\"
+                                                bloqueo_file=\"/tmp/bloqueo_\${usuario}.lock\"
+                                                detalle=\"😴 Nunca conectado\"
+
+                                                if [[ -f \"\$bloqueo_file\" ]]; then
+                                                    bloqueo_hasta=\$(cat \"\$bloqueo_file\")
+                                                    if [[ \$(date +%s) -lt \$bloqueo_hasta ]]; then
+                                                        detalle=\"🚫 Bloqueado (hasta \$(date -d @\$bloqueo_hasta '+%I:%M%p'))\"
+                                                    else
+                                                        rm -f \"\$bloqueo_file\"
+                                                    fi
+                                                fi
+
+                                                if [[ \$conexiones -gt 0 ]]; then
+                                                    (( total_online += conexiones ))
+                                                    if [[ -f \"\$tmp_status\" ]]; then
+                                                        contenido=\$(cat \"\$tmp_status\")
+                                                        if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
+                                                            start_s=\$((10#\$contenido))
+                                                        else
+                                                            start_s=\$(date +%s)
+                                                            echo \$start_s > \"\$tmp_status\"
+                                                        fi
+                                                        now_s=\$(date +%s)
+                                                        elapsed=\$(( now_s - start_s ))
+                                                        h=\$(( elapsed / 3600 ))
+                                                        m=\$(( (elapsed % 3600) / 60 ))
+                                                        s=\$(( elapsed % 60 ))
+                                                        detalle=\$(printf \"⏰ %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
+                                                    else
+                                                        start_s=\$(date +%s)
+                                                        echo \$start_s > \"\$tmp_status\"
+                                                        detalle=\"⏰ 00:00:00\"
+                                                    fi
+                                                else
+                                                    if [[ ! \$detalle =~ \"🚫 Bloqueado\" ]]; then
+                                                        rm -f \"\$tmp_status\"
+                                                        ult=\$(grep \"^\$usuario|\" \"\$HISTORIAL\" | tail -1 | awk -F'|' '{print \$3}')
+                                                        if [[ -n \"\$ult\" ]]; then
+                                                            ult_fmt=\$(date -d \"\$ult\" +\"%d/%b/%Y %H:%M\" 2>/dev/null)
+                                                            if [[ -n \"\$ult_fmt\" ]]; then
+                                                                detalle=\"📅 Última: \$ult_fmt\"
+                                                            else
+                                                                detalle=\"😴 Nunca conectado\"
+                                                            fi
+                                                        else
+                                                            detalle=\"😴 Nunca conectado\"
+                                                        fi
+                                                        (( inactivos++ ))
+                                                    fi
+                                                fi
+
+                                                LISTA=\"\${LISTA}*Usuario*: \\\`\${usuario}\\\`
+*Conexiones*: \$conexiones
+*Móviles*: \$moviles
+*Tiempo conectado/última vez/nunca conectado*: \$detalle
+
+\"
+                                            done < \"\$REGISTROS\"
+
+                                            LISTA=\"\${LISTA}-----------------------------------------------------------------
+*Total de Online:* \$total_online  *Total usuarios:* \$total_usuarios  *Inactivos:* \$inactivos
+================================================\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                        fi
+                                        ;;
+                                    '0')
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
+
+✅ *Regresando al menú...*
+👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
+                                        ;;
+                                    *)
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️
+
+🤔 No entiendo esa opción...
+💡 Escribe *hola* para ver el menú
+🔢 O usa: 1, 2, 3, 4, 0\" -d parse_mode=Markdown >/dev/null
+                                        ;;
+                                esac
+                            fi
+                        fi
+                    done
+                done
+            " >/dev/null 2>&1 &
+            echo $! > "$PIDFILE"
+            echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano (PID: $(cat $PIDFILE)).${NC}"
+            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
+            ;;
+        2)
+            if [[ -f "$PIDFILE" ]]; then
+                kill -9 $(cat "$PIDFILE") 2>/dev/null
+                rm -f "$PIDFILE"
+            fi
+            rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
+            pkill -f "api.telegram.org"
+            echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
+            ;;
+        0)
+            return
+            ;;
+        *)
+            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            ;;
+    esac
+}
+
+                                
 
 
 function barra_sistema() {  
@@ -131,7 +563,7 @@ function barra_sistema() {
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"  
     fi  
 
-# ================= Transferencia acumulada =================  
+    # ================= Transferencia acumulada =================  
 TRANSFER_FILE="/tmp/vps_transfer_total"  
 LAST_FILE="/tmp/vps_transfer_last"  
 
@@ -170,7 +602,7 @@ TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
     echo -e "${BLANCO} 📊 U/RAM:${AMARILLO} ${MEM_PORC}%${NC} ${BLANCO}∘ 🖥️ U/CPU:${AMARILLO} ${CPU_PORC}%${NC} ${BLANCO}∘ 🔧 CPU MHz:${AMARILLO} ${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC} ${BLANCO}∘ 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
-    echo -e "${MAGENTA}🔔 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}    ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
+    echo -e "${MAGENTA}🇭🇳 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲${NC}    ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
     echo -e "${BLANCO} ${ONLINE_STATUS}${NC} ${BLANCO}👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC} ${BLANCO}🖼️ SO:${AMARILLO} ${SO_NAME}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
@@ -1359,41 +1791,43 @@ ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
-# Menú principal
-if [[ -t 0 ]]; then
-while true; do
-    clear
-    barra_sistema
-    echo
-    echo -e "${VIOLETA}======💯PANEL DE USUARIOS VPN/SSH ======${NC}"
-    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
-    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
-    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
-    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
-    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
-    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
-    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
-    read -p "$PROMPT" OPCION
-    case $OPCION in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_multiples_usuarios ;;
-        4) informacion_usuarios ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) activar_desactivar_limitador ;;
-        10) configurar_banner_ssh ;;
-        11) contador_online ;;
-        0) exit 0 ;;
-        *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;
-    esac
-done
+# Menú principal  
+if [[ -t 0 ]]; then  
+while true; do  
+    clear  
+    barra_sistema  
+    echo  
+    echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"  
+    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
+    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
+    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
+    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"  
+    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"  
+    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"  
+    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"  
+    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"  
+    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"  
+    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"  
+    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"  
+    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"  
+    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"  
+    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
+    read -p "$PROMPT" OPCION  
+    case $OPCION in  
+        1) crear_usuario ;;  
+        2) ver_registros ;;  
+        3) eliminar_multiples_usuarios ;;  
+        4) informacion_usuarios ;;  
+        5) verificar_online ;;  
+        6) bloquear_desbloquear_usuario ;;  
+        7) crear_multiples_usuarios ;;  
+        8) mini_registro ;;  
+        9) activar_desactivar_limitador ;;  
+        10) configurar_banner_ssh ;;  
+        11) contador_online ;;  
+        12) ssh_bot ;;  
+        0) exit 0 ;;  
+        *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;  
+    esac  
+done  
 fi
