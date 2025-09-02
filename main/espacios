@@ -14,7 +14,11 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-    ssh_bot() {
+    
+
+                                                    
+                                        
+           ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -113,29 +117,6 @@ mkdir -p "$(dirname "$PIDFILE")"
                     fi
 
                     echo \$dias_restantes
-                }
-
-                # Función para abreviar meses en español para formato de fecha corto
-                abreviar_mes() {
-                    local fecha=\"\$1\"
-                    local dia=\$(echo \"\$fecha\" | cut -d'/' -f1)
-                    local mes=\$(echo \"\$fecha\" | cut -d'/' -f2)
-                    local anio=\$(echo \"\$fecha\" | cut -d'/' -f3)
-                    case \$mes in
-                        enero) mes=\"ene\" ;;
-                        febrero) mes=\"feb\" ;;
-                        marzo) mes=\"mar\" ;;
-                        abril) mes=\"abr\" ;;
-                        mayo) mes=\"may\" ;;
-                        junio) mes=\"jun\" ;;
-                        julio) mes=\"jul\" ;;
-                        agosto) mes=\"ago\" ;;
-                        septiembre) mes=\"sep\" ;;
-                        octubre) mes=\"oct\" ;;
-                        noviembre) mes=\"nov\" ;;
-                        diciembre) mes=\"dic\" ;;
-                    esac
-                    echo \"\$dia/\$mes/\$anio\"
                 }
 
                 while true; do
@@ -317,7 +298,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
                                     '3')
-                                        # Aquí se formatea la lista como quieres
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
 
@@ -329,32 +309,31 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 \"
                                             count=1
                                             while IFS=' ' read -r user_data fecha_expiracion dias moviles _; do
-    usuario=${user_data%%:*}
-    clave=${user_data#*:}
-    dias_restantes=$(calcular_dias_restantes "$fecha_expiracion")
-    # sacar solo día y mes abreviado (ej 03/sep)
-    dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
-    mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
-    case $mes in
-        enero) mes="ene" ;;
-        febrero) mes="feb" ;;
-        marzo) mes="mar" ;;
-        abril) mes="abr" ;;
-        mayo) mes="may" ;;
-        junio) mes="jun" ;;
-        julio) mes="jul" ;;
-        agosto) mes="ago" ;;
-        septiembre) mes="sep" ;;
-        octubre) mes="oct" ;;
-        noviembre) mes="nov" ;;
-        diciembre) mes="dic" ;;
-    esac
-    fecha_corta="$dia/$mes"
+                                                usuario=\${user_data%%:*}
+                                                clave=\${user_data#*:}
+                                                dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
+                                                # Extraer sólo día y mes abreviado para la fecha
+                                                dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
+                                                mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                                                case \$mes in
+                                                    enero) mes=\"ene\" ;;
+                                                    febrero) mes=\"feb\" ;;
+                                                    marzo) mes=\"mar\" ;;
+                                                    abril) mes=\"abr\" ;;
+                                                    mayo) mes=\"may\" ;;
+                                                    junio) mes=\"jun\" ;;
+                                                    julio) mes=\"jul\" ;;
+                                                    agosto) mes=\"ago\" ;;
+                                                    septiembre) mes=\"sep\" ;;
+                                                    octubre) mes=\"oct\" ;;
+                                                    noviembre) mes=\"nov\" ;;
+                                                    diciembre) mes=\"dic\" ;;
+                                                esac
+                                                fecha_corta=\"\$dia/\$mes\"
 
-    LISTA+=$(printf "%d. %-11s | %-5s | %-6s | %-3sd | %-1s\n" "$count" "$usuario" "$clave" "$fecha_corta" "$dias_restantes" "$moviles")
-    ((count++))
-done < "$REGISTROS"
-
+                                                LISTA+=\$(printf \"%d. %-11s | %-5s | %-6s | %-3sd | %-1s\n\" \"\$count\" \"\$usuario\" \"\$clave\" \"\$fecha_corta\" \"\$dias_restantes\" \"\$moviles\")
+                                                ((count++))
+                                            done < \"\$REGISTROS\"
 
                                             TOTAL=\$((count - 1))
                                             LISTA+=\"
@@ -404,12 +383,6 @@ Total registrados: \$TOTAL usuarios
             ;;
     esac
 }
-        
-                                        
-                                    
-                                        
-                                        
-                                        
 
 
 function barra_sistema() {  
