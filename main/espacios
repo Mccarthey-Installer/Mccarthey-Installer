@@ -1778,6 +1778,60 @@ function configurar_banner_ssh() {
     esac
 }
 
+function renovar_usuario() {
+    clear
+    echo -e "${VIOLETA}===== 🔄 RENOVANDO USUARIO 🚀 =====${NC}"
+
+    read -p "$(echo -e ${CIAN}👤 Ingresa el nombre del usuario a renovar: ${NC})" usuario
+
+    # Verificar que el usuario exista
+    if [[ ! -f $REGISTROS || ! $(grep "^$usuario:" "$REGISTROS") ]]; then
+        echo -e "${ROJO}❌ ¡Ups! El usuario $usuario no existe. 😕${NC}"
+        read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    # Extraer datos del usuario
+    user_line=$(grep "^$usuario:" "$REGISTROS")
+    clave=${user_line%%:*}
+    resto_line=${user_line#*:}
+    fecha_expiracion=$(echo "$resto_line" | awk '{print $1}')
+    dias_actuales=$(echo "$resto_line" | awk '{print $2}')
+    moviles=$(echo "$resto_line" | awk '{print $3}')
+    fecha_creacion=$(echo "$resto_line" | awk '{print $4, $5}')
+
+    dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias_actuales")
+
+    # Preguntar cuántos días renovar
+    read -p "$(echo -e ${CIAN}📅 ¿Cuántos días deseas agregar? ${NC})" dias_renovar
+
+    # Preguntar si desea aumentar el límite de móviles
+    read -p "$(echo -e ${CIAN}📱 Cantidad de móviles a agregar (actual: $moviles, 0 si no): ${NC})" moviles_agregar
+    if ! [[ "$moviles_agregar" =~ ^[0-9]+$ ]]; then
+        moviles_agregar=0
+    fi
+    nuevos_moviles=$((moviles + moviles_agregar))
+
+    # Calcular nueva fecha acumulando días restantes + días a renovar
+    nueva_fecha=$(date -d "$fecha_expiracion + $dias_restantes days + $dias_renovar days" "+%d/%m/%Y")
+
+    # Actualizar registro en el archivo
+    sed -i "s|^$usuario:.*|$usuario:$clave $nueva_fecha $nuevos_moviles $fecha_creacion|" "$REGISTROS"
+
+    # Mostrar resumen completo
+    echo -e "\n${VERDE}🎉 ¡Usuario renovado con éxito! 🚀${NC}"
+    echo -e "${AMARILLO}👤 Usuario:${NC} $usuario"
+    echo -e "${AMARILLO}🔑 Clave:${NC} $clave"
+    echo -e "${AMARILLO}➕ Días agregados:${NC} $dias_renovar"
+    echo -e "${AMARILLO}📱 Móviles agregados:${NC} $moviles_agregar"
+    echo -e "${AMARILLO}🗓️ Fecha anterior de expiración:${NC} $fecha_expiracion"
+    echo -e "${AMARILLO}✨ Nueva fecha de expiración:${NC} $nueva_fecha"
+    echo -e "${AMARILLO}📱 Límite de móviles actualizado:${NC} $nuevos_moviles"
+    echo -e "${AMARILLO}🕒 Fecha de creación original:${NC} $fecha_creacion\n"
+
+    read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
+}
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -1810,6 +1864,7 @@ while true; do
     echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"  
     echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"  
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"  
+    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"  
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
     read -p "$PROMPT" OPCION  
@@ -1826,6 +1881,7 @@ while true; do
         10) configurar_banner_ssh ;;  
         11) contador_online ;;  
         12) ssh_bot ;;  
+        13) renovar_usuario ;;
         0) exit 0 ;;  
         *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;  
     esac  
