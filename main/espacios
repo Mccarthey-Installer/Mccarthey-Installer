@@ -1813,27 +1813,29 @@ function renovar_usuario() {
     fecha_creacion=$(echo "$resto_line" | awk '{print $4, $5}')
 
     read -p "$(echo -e "${CIAN}📅 ¿Cuántos días deseas agregar? (puedes usar negativos para disminuir) ${NC}")" dias_renovar
-    # Validar números enteros, positivos o negativos
     if ! [[ "$dias_renovar" =~ ^-?[0-9]+$ ]]; then
         read -p "$(echo -e "${ROJO}❌ ¡Días inválidos! Debe ser un número entero (positivo o negativo). 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
         return
     fi
 
-    read -p "$(echo -e "${CIAN}📱 Cantidad de móviles a agregar (actual: $moviles, 0 si no): ${NC}")" moviles_agregar
-    if ! [[ "$moviles_agregar" =~ ^[0-9]+$ ]]; then
-        moviles_agregar=0
+    read -p "$(echo -e "${CIAN}📱 Cantidad de móviles a agregar (actual: $moviles, 0 si no): ${NC}")" moviles_cambios
+    if ! [[ "$moviles_cambios" =~ ^-?[0-9]+$ ]]; then
+        moviles_cambios=0
     fi
-    nuevos_moviles=$((moviles + moviles_agregar))
 
-    # Convertir fecha_expiracion a formato YYYY-MM-DD
+    nuevos_moviles=$((moviles + moviles_cambios))
+    if (( nuevos_moviles < 0 )); then
+        echo -e "${ROJO}❌ El límite de móviles no puede ser menor que 0.${NC}"
+        nuevos_moviles=$moviles
+        read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
+        return
+    fi
+
     fecha_expiracion_std=$(echo "$fecha_expiracion" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|')
     fecha_expiracion_std=$(echo "$fecha_expiracion_std" | awk -F'/' '{printf "%04d-%02d-%02d", $3, $2, $1}')
 
-    # Calcular nueva fecha sumando días renovados (positivo o negativo)
     nueva_fecha_std=$(date -d "$fecha_expiracion_std + $dias_renovar days" "+%Y-%m-%d" 2>/dev/null)
 
-    # Actualizar fecha de expiración en el sistema
-    # Sumar 1 día para que expire el día siguiente a la expiración real
     fecha_expiracion_sistema=$(date -d "$nueva_fecha_std + 1 day" "+%Y-%m-%d")
     if ! chage -E "$fecha_expiracion_sistema" "$usuario" 2>/dev/null; then
         echo -e "${ROJO}❌ Error al actualizar la fecha de expiración en el sistema.${NC}"
@@ -1841,7 +1843,6 @@ function renovar_usuario() {
         return
     fi
 
-    # Convertir a formato español para el registro
     nueva_fecha=$(echo "$nueva_fecha_std" | awk -F'-' '{
         meses["01"]="enero"; meses["02"]="febrero"; meses["03"]="marzo"; meses["04"]="abril";
         meses["05"]="mayo"; meses["06"]="junio"; meses["07"]="julio"; meses["08"]="agosto";
@@ -1849,17 +1850,15 @@ function renovar_usuario() {
         printf "%02d/%s/%04d\n", $3, meses[$2], $1
     }')
 
-    # Calcular días restantes (incluye +1 para contar el día actual)
     dias_restantes=$(( ( ( $(date -d "$nueva_fecha_std" +%s) - $(date +%s) ) / 86400 ) + 1 ))
 
-    # Actualizar registro en el archivo
     sed -i "s|^$usuario:.*|$usuario:$clave $nueva_fecha $dias_actuales $nuevos_moviles $fecha_creacion|" "$REGISTROS"
 
     echo -e "\n${VERDE}🎉 ¡Usuario $usuario renovado con éxito! 🚀${NC}"
     echo -e "${AMARILLO}👤 Usuario:${NC} $usuario"
     echo -e "${AMARILLO}🔒 Clave:${NC} $clave"
     echo -e "${AMARILLO}➕ Días agregados:${NC} $dias_renovar"
-    echo -e "${AMARILLO}📱 Móviles agregados:${NC} $moviles_agregar"
+    echo -e "${AMARILLO}📱 Móviles agregados:${NC} $moviles_cambios"
     echo -e "${AMARILLO}🗓️ Fecha anterior de expiración:${NC} $fecha_expiracion"
     echo -e "${AMARILLO}✨ Nueva fecha de expiración:${NC} $nueva_fecha"
     echo -e "${AMARILLO}📱 Límite de móviles actualizado:${NC} $nuevos_moviles"
@@ -1868,6 +1867,7 @@ function renovar_usuario() {
 
     read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
 }
+
 
 
 
