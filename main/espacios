@@ -1781,7 +1781,7 @@ function configurar_banner_ssh() {
 function renovar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🔄 RENOVAR USUARIO 🌸 =====${NC}"
-    
+
     # Mostrar usuarios registrados para ayudar al usuario
     echo -e "${AMARILLO}Usuarios registrados:${NC}"
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
@@ -1816,9 +1816,6 @@ function renovar_usuario() {
     moviles=$(echo "$resto_line" | awk '{print $3}')
     fecha_creacion=$(echo "$resto_line" | awk '{print $4, $5}')
 
-    # Calcular días restantes
-    dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias_actuales")
-
     # Preguntar cuántos días renovar
     read -p "$(echo -e "${CIAN}📅 ¿Cuántos días deseas agregar? ${NC}")" dias_renovar
     if ! [[ "$dias_renovar" =~ ^[0-9]+$ ]]; then
@@ -1840,21 +1837,24 @@ function renovar_usuario() {
     fecha_expiracion_std=$(echo "$fecha_expiracion" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|')
     fecha_expiracion_std=$(echo "$fecha_expiracion_std" | awk -F'/' '{printf "%04d-%02d-%02d", $3, $2, $1}')
 
-    # Calcular nueva fecha sumando días
-    nueva_fecha=$(date -d "$fecha_expiracion_std + $dias_restantes days + $dias_renovar days" "+%d/%m/%Y" 2>/dev/null)
+    # Calcular nueva fecha sumando días de renovación
+    nueva_fecha_std=$(date -d "$fecha_expiracion_std + $dias_renovar days" "+%Y-%m-%d" 2>/dev/null)
 
-    # Traducir mes a español
-    nueva_fecha=$(echo "$nueva_fecha" | awk -F'/' '{
+    # Traducir fecha renovada a formato español
+    nueva_fecha=$(echo "$nueva_fecha_std" | awk -F'-' '{
         meses["01"]="enero";meses["02"]="febrero";meses["03"]="marzo";meses["04"]="abril";
         meses["05"]="mayo";meses["06"]="junio";meses["07"]="julio";meses["08"]="agosto";
         meses["09"]="septiembre";meses["10"]="octubre";meses["11"]="noviembre";meses["12"]="diciembre";
-        printf "%02d/%s/%04d\n",$1,meses[$2],$3
+        printf "%02d/%s/%04d\n",$3,meses[$2],$1
     }')
+
+    # Calcular días restantes con la nueva fecha
+    dias_restantes=$(( ( $(date -d "$nueva_fecha_std" +%s) - $(date +%s) ) / 86400 ))
 
     # Actualizar registro en el archivo
     sed -i "s|^$usuario:.*|$usuario:$clave $nueva_fecha $dias_actuales $nuevos_moviles $fecha_creacion|" "$REGISTROS"
 
-    # Mostrar resumen completo
+    # Mostrar resumen completo, usando el cálculo nuevo
     echo -e "\n${VERDE}🎉 ¡Usuario $usuario renovado con éxito! 🚀${NC}"
     echo -e "${AMARILLO}👤 Usuario:${NC} $usuario"
     echo -e "${AMARILLO}🔒 Clave:${NC} $clave"
@@ -1868,6 +1868,7 @@ function renovar_usuario() {
 
     read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
 }
+
     
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
