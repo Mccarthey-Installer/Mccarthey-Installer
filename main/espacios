@@ -1782,7 +1782,6 @@ function renovar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🔄 RENOVAR USUARIO 🌸 =====${NC}"
 
-    # Mostrar usuarios registrados para ayudar al usuario
     echo -e "${AMARILLO}Usuarios registrados:${NC}"
     if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
         read -p "$(echo -e "${ROJO}❌ No hay registros disponibles. 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
@@ -1796,16 +1795,13 @@ function renovar_usuario() {
         ((count++))
     done < "$REGISTROS"
 
-    # Solicitar nombre del usuario
     read -p "$(echo -e "${CIAN}👤 Ingresa el nombre del usuario a renovar: ${NC}")" usuario
 
-    # Verificar que el usuario exista
     if ! grep -q "^$usuario:" "$REGISTROS"; then
         read -p "$(echo -e "${ROJO}❌ ¡El usuario $usuario no existe! 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
         return
     fi
 
-    # Extraer datos del usuario
     user_line=$(grep "^$usuario:" "$REGISTROS")
     usuario=${user_line%%:*}
     clave=${user_line#*:}
@@ -1816,31 +1812,25 @@ function renovar_usuario() {
     moviles=$(echo "$resto_line" | awk '{print $3}')
     fecha_creacion=$(echo "$resto_line" | awk '{print $4, $5}')
 
-    # Preguntar cuántos días renovar
     read -p "$(echo -e "${CIAN}📅 ¿Cuántos días deseas agregar? ${NC}")" dias_renovar
     if ! [[ "$dias_renovar" =~ ^[0-9]+$ ]]; then
         read -p "$(echo -e "${ROJO}❌ ¡Días inválidos! Debe ser un número. 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
         return
     fi
 
-    # Preguntar si desea aumentar el límite de móviles
     read -p "$(echo -e "${CIAN}📱 Cantidad de móviles a agregar (actual: $moviles, 0 si no): ${NC}")" moviles_agregar
     if ! [[ "$moviles_agregar" =~ ^[0-9]+$ ]]; then
         moviles_agregar=0
     fi
     nuevos_moviles=$((moviles + moviles_agregar))
 
-    # ================================
-    # CORRECCIÓN DE FECHA PARA REGISTROS
-    # ================================
-    # Convertir fecha_expiracion a formato YYYY-MM-DD
+    # Conversión de fecha de expiración actual a YYYY-MM-DD
     fecha_expiracion_std=$(echo "$fecha_expiracion" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|')
     fecha_expiracion_std=$(echo "$fecha_expiracion_std" | awk -F'/' '{printf "%04d-%02d-%02d", $3, $2, $1}')
 
-    # Calcular nueva fecha sumando días de renovación
+    # Nueva fecha de expiración sumando días renovados
     nueva_fecha_std=$(date -d "$fecha_expiracion_std + $dias_renovar days" "+%Y-%m-%d" 2>/dev/null)
 
-    # Traducir fecha renovada a formato español
     nueva_fecha=$(echo "$nueva_fecha_std" | awk -F'-' '{
         meses["01"]="enero";meses["02"]="febrero";meses["03"]="marzo";meses["04"]="abril";
         meses["05"]="mayo";meses["06"]="junio";meses["07"]="julio";meses["08"]="agosto";
@@ -1848,13 +1838,11 @@ function renovar_usuario() {
         printf "%02d/%s/%04d\n",$3,meses[$2],$1
     }')
 
-    # Calcular días restantes con la nueva fecha
-    dias_restantes=$(( ( $(date -d "$nueva_fecha_std" +%s) - $(date +%s) ) / 86400 ))
+    # Cálculo de días restantes usando +1 para incluir el día de hoy
+    dias_restantes=$(( ( ( $(date -d "$nueva_fecha_std" +%s) - $(date +%s) ) / 86400 ) + 1 ))
 
-    # Actualizar registro en el archivo
     sed -i "s|^$usuario:.*|$usuario:$clave $nueva_fecha $dias_actuales $nuevos_moviles $fecha_creacion|" "$REGISTROS"
 
-    # Mostrar resumen completo, usando el cálculo nuevo
     echo -e "\n${VERDE}🎉 ¡Usuario $usuario renovado con éxito! 🚀${NC}"
     echo -e "${AMARILLO}👤 Usuario:${NC} $usuario"
     echo -e "${AMARILLO}🔒 Clave:${NC} $clave"
@@ -1868,6 +1856,7 @@ function renovar_usuario() {
 
     read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
 }
+
 
     
 # Colores y emojis
@@ -1889,7 +1878,7 @@ while true; do
     clear  
     barra_sistema  
     echo  
-    echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"  
+    echo -e "${VIOLETA}======❤️PANEL DE USUARIOS VPN/SSH ======${NC}"  
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
