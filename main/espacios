@@ -1782,9 +1782,25 @@ function renovar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🔄 RENOVANDO USUARIO 🚀 =====${NC}"
 
+    # Mostrar lista de usuarios para que el admin no tenga que adivinar nombres
+    if [[ -f $REGISTROS && -s $REGISTROS ]]; then
+        echo -e "${AMARILLO}Usuarios registrados:${NC}"
+        count=1
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+            usuario_actual=${user_data%%:*}
+            echo -e "${VERDE}$count.${NC} $usuario_actual"
+            ((count++))
+        done < $REGISTROS
+    else
+        echo -e "${ROJO}No hay usuarios registrados.${NC}"
+        read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
+        return
+    fi
+
+    # Selección del usuario a renovar
     read -p "$(echo -e ${CIAN}👤 Ingresa el nombre del usuario a renovar: ${NC})" usuario
 
-    # Verificar que el usuario exista
+    # Verificar existencia
     if [[ ! -f $REGISTROS || ! $(grep "^$usuario:" "$REGISTROS") ]]; then
         echo -e "${ROJO}❌ ¡Ups! El usuario $usuario no existe. 😕${NC}"
         read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
@@ -1802,23 +1818,24 @@ function renovar_usuario() {
 
     dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias_actuales")
 
-    # Preguntar cuántos días renovar
+    # Preguntar días a agregar
     read -p "$(echo -e ${CIAN}📅 ¿Cuántos días deseas agregar? ${NC})" dias_renovar
 
-    # Preguntar si desea aumentar el límite de móviles
-    read -p "$(echo -e ${CIAN}📱 Cantidad de móviles a agregar (actual: $moviles, 0 si no): ${NC})" moviles_agregar
+    # Preguntar móviles a agregar
+    echo -ne "${CIAN}📱 Cantidad de móviles a agregar (actual: $moviles, 0 si no): ${NC}"
+    read moviles_agregar
     if ! [[ "$moviles_agregar" =~ ^[0-9]+$ ]]; then
         moviles_agregar=0
     fi
     nuevos_moviles=$((moviles + moviles_agregar))
 
-    # Calcular nueva fecha acumulando días restantes + días a renovar
+    # Calcular nueva fecha
     nueva_fecha=$(date -d "$fecha_expiracion + $dias_restantes days + $dias_renovar days" "+%d/%m/%Y")
 
-    # Actualizar registro en el archivo
+    # Actualizar registro
     sed -i "s|^$usuario:.*|$usuario:$clave $nueva_fecha $nuevos_moviles $fecha_creacion|" "$REGISTROS"
 
-    # Mostrar resumen completo
+    # Resumen completo
     echo -e "\n${VERDE}🎉 ¡Usuario renovado con éxito! 🚀${NC}"
     echo -e "${AMARILLO}👤 Usuario:${NC} $usuario"
     echo -e "${AMARILLO}🔑 Clave:${NC} $clave"
