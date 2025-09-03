@@ -1784,11 +1784,11 @@ function renovar_usuario() {
     
     # Mostrar usuarios registrados para ayudar al usuario
     echo -e "${AMARILLO}Usuarios registrados:${NC}"
-    if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
-        echo -e "${ROJO}❌ No hay registros disponibles. 😕${NC}"
-        read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        read -p "$(echo -e ${ROJO}❌ No hay registros disponibles. 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC})"
         return
     fi
+
     count=1
     while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
         usuario=${user_data%%:*}
@@ -1800,9 +1800,8 @@ function renovar_usuario() {
     read -p "$(echo -e ${CIAN}👤 Ingresa el nombre del usuario a renovar: ${NC})" usuario
 
     # Verificar que el usuario exista
-    if [[ ! $(grep "^$usuario:" "$REGISTROS") ]]; then
-        echo -e "${ROJO}❌ ¡El usuario $usuario no existe! 😕${NC}"
-        read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
+    if ! grep -q "^$usuario:" "$REGISTROS"; then
+        read -p "$(echo -e ${ROJO}❌ ¡El usuario $usuario no existe! 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC})"
         return
     fi
 
@@ -1823,8 +1822,7 @@ function renovar_usuario() {
     # Preguntar cuántos días renovar
     read -p "$(echo -e ${CIAN}📅 ¿Cuántos días deseas agregar? ${NC})" dias_renovar
     if ! [[ "$dias_renovar" =~ ^[0-9]+$ ]]; then
-        echo -e "${ROJO}❌ ¡Días inválidos! Debe ser un número. 😕${NC}"
-        read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
+        read -p "$(echo -e ${ROJO}❌ ¡Días inválidos! Debe ser un número. 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC})"
         return
     fi
 
@@ -1842,8 +1840,7 @@ function renovar_usuario() {
     # Calcular nueva fecha acumulando días restantes + días a renovar
     nueva_fecha=$(date -d "$fecha_expiracion_std + $dias_restantes days + $dias_renovar days" "+%d/%B/%Y" 2>/dev/null)
     if [[ $? -ne 0 ]]; then
-        echo -e "${ROJO}❌ Error al calcular la nueva fecha. 😕${NC}"
-        read -p "$(echo -e ${CIAN}⏎ Presiona Enter para continuar...${NC})"
+        read -p "$(echo -e ${ROJO}❌ Error al calcular la nueva fecha. 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC})"
         return
     fi
 
