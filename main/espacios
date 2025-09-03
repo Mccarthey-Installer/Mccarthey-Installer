@@ -2009,6 +2009,7 @@ while true; do
     echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"  
     echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"  
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"  
+    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"  
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"  
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
     read -p "$PROMPT" OPCION  
@@ -2025,6 +2026,7 @@ while true; do
         10) configurar_banner_ssh ;;  
         11) contador_online ;;  
         12) ssh_bot ;;  
+        13) renovar_usuario
         0) exit 0 ;;  
         *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})" ;;  
     esac  
