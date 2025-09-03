@@ -14,7 +14,8 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-    ssh_bot() {
+    
+ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -148,6 +149,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
                         if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                             if [[ \$EXPECTING_USER_DATA -eq 1 ]]; then
+                                # Código de creación de usuario (sin cambios)
                                 case \$USER_DATA_STEP in
                                     1)
                                         USERNAME=\"\$MSG_TEXT\"
@@ -226,6 +228,7 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
                                         ;;
                                 esac
                             elif [[ \$EXPECTING_DELETE_USER -eq 1 ]]; then
+                                # Código de eliminación de usuario (sin cambios)
                                 USUARIO_A_ELIMINAR=\"\$MSG_TEXT\"
                                 if ! grep -q \"^\$USUARIO_A_ELIMINAR:\" \"\$REGISTROS\"; then
                                     curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ El usuario *\\\`\${USUARIO_A_ELIMINAR}\\\`* no está registrado. Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
@@ -314,6 +317,12 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fecha_expiracion_std=\$(echo \"\$fecha_expiracion\" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|')
                                         fecha_expiracion_std=\$(echo \"\$fecha_expiracion_std\" | awk -F'/' '{printf \"%04d-%02d-%02d\", \$3, \$2, \$1}')
                                         nueva_fecha_std=\$(date -d \"\$fecha_expiracion_std + \$DIAS_RENOVAR days\" \"+%Y-%m-%d\" 2>/dev/null)
+                                        if [[ -z \"\$nueva_fecha_std\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al calcular la nueva fecha de expiración.* 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_RENEW_USER=0
+                                            RENEW_USER_STEP=0
+                                            return
+                                        fi
                                         fecha_expiracion_sistema=\$(date -d \"\$nueva_fecha_std + 1 day\" \"+%Y-%m-%d\")
                                         if ! chage -E \"\$fecha_expiracion_sistema\" \"\$USERNAME\" 2>/dev/null; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al actualizar la fecha de expiración en el sistema.* 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
@@ -328,7 +337,14 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             printf \"%02d/%s/%04d\", \$3, meses[\$2], \$1
                                         }')
                                         dias_restantes=\$(( ( ( \$(date -d \"\$nueva_fecha_std\" +%s) - \$(date +%s) ) / 86400 ) + 1 ))
-                                        sed -i \"s|^$USERNAME:.*|\$USERNAME:\$clave \$nueva_fecha \$dias_actuales \$nuevos_moviles \$fecha_creacion|\" \"\$REGISTROS\"
+                                        # Formatear la línea con espacios exactos para coincidir con el formato del archivo
+                                        nueva_linea=\"\$(printf \"%-12s %-10s %-18s %-8s %-8s %s %s\" \"\$USERNAME:\$clave\" \"\$nueva_fecha\" \"\$dias_actuales\" \"\$nuevos_moviles\" \"\$fecha_creacion\")"
+                                        sed -i \"s|^$USERNAME:.*|\$nueva_linea|\" \"\$REGISTROS\" || {
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al actualizar el archivo de registros.* 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_RENEW_USER=0
+                                            RENEW_USER_STEP=0
+                                            return
+                                        }
                                         echo \"Usuario renovado: \$USERNAME, Nueva fecha: \$nueva_fecha, Días agregados: \$DIAS_RENOVAR, Móviles: \$nuevos_moviles\" >> \"\$HISTORIAL\"
                                         RESUMEN=\"🎉 *¡Usuario renovado con éxito!* 🚀
 
@@ -409,14 +425,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     febrero) mes=\"feb\" ;;
                                                     marzo) mes=\"mar\" ;;
                                                     abril) mes=\"abr\" ;;
-                                                    mayo) mes=\"may\" ;;
-                                                    junio) mes=\"jun\" ;;
-                                                    julio) mes=\"jul\" ;;
-                                                    agosto) mes=\"ago\" ;;
-                                                    septiembre) mes=\"sep\" ;;
-                                                    octubre) mes=\"oct\" ;;
-                                                    noviembre) mes=\"nov\" ;;
-                                                    diciembre) mes=\"dic\" ;;
+                                                    mayo) mes=\"may MOviles
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
@@ -566,7 +575,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
-
                                 
 
 
