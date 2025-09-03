@@ -1833,19 +1833,23 @@ function renovar_usuario() {
     fi
     nuevos_moviles=$((moviles + moviles_agregar))
 
-    # Convertir fecha_expiracion a un formato que date pueda entender (dd/mm/YYYY)
+    # ================================
+    # CORRECCIÓN DE FECHA PARA REGISTROS
+    # ================================
+    # Convertir fecha_expiracion a formato YYYY-MM-DD
     fecha_expiracion_std=$(echo "$fecha_expiracion" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|')
-    fecha_expiracion_std=$(echo "$fecha_expiracion_std" | awk -F'/' '{printf "%02d/%02d/%04d", $1, $2, $3}')
+    fecha_expiracion_std=$(echo "$fecha_expiracion_std" | awk -F'/' '{printf "%04d-%02d-%02d", $3, $2, $1}')
 
-    # Calcular nueva fecha acumulando días restantes + días a renovar
-    nueva_fecha=$(date -d "$fecha_expiracion_std + $dias_restantes days + $dias_renovar days" "+%d/%B/%Y" 2>/dev/null)
-    if [[ $? -ne 0 ]]; then
-        read -p "$(echo -e "${ROJO}❌ Error al calcular la nueva fecha. 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
-        return
-    fi
+    # Calcular nueva fecha sumando días
+    nueva_fecha=$(date -d "$fecha_expiracion_std + $dias_restantes days + $dias_renovar days" "+%d/%m/%Y" 2>/dev/null)
 
-    # Convertir nueva_fecha al formato con nombre del mes
-    nueva_fecha=$(echo "$nueva_fecha" | sed 's|01|enero|;s|02|febrero|;s|03|marzo|;s|04|abril|;s|05|mayo|;s|06|junio|;s|07|julio|;s|08|agosto|;s|09|septiembre|;s|10|octubre|;s|11|noviembre|;s|12|diciembre|')
+    # Traducir mes a español
+    nueva_fecha=$(echo "$nueva_fecha" | awk -F'/' '{
+        meses["01"]="enero";meses["02"]="febrero";meses["03"]="marzo";meses["04"]="abril";
+        meses["05"]="mayo";meses["06"]="junio";meses["07"]="julio";meses["08"]="agosto";
+        meses["09"]="septiembre";meses["10"]="octubre";meses["11"]="noviembre";meses["12"]="diciembre";
+        printf "%02d/%s/%04d\n",$1,meses[$2],$3
+    }')
 
     # Actualizar registro en el archivo
     sed -i "s|^$usuario:.*|$usuario:$clave $nueva_fecha $dias_actuales $nuevos_moviles $fecha_creacion|" "$REGISTROS"
