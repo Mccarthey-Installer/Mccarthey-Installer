@@ -515,10 +515,10 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     fi
                                                 fi
 
-                                                LISTA=\"\${LISTA}*Usuario*: \\\`\${usuario}\\\`
-*Conexiones*: \$conexiones
-*Móviles*: \$moviles
-*Tiempo conectado/última vez/nunca conectado*: \$detalle
+                                                LISTA=\"\${LISTA}*🧑‍💻Usuario*: \\\`\${usuario}\\\`
+*🌐Conexiones*: \$conexiones
+*📲Móviles*: \$moviles
+*⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
 
 \"
                                             done < \"\$REGISTROS\"
