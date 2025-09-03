@@ -1782,11 +1782,11 @@ function renovar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🔄 RENOVANDO USUARIO 🚀 =====${NC}"
 
-    # Mostrar lista de usuarios para que el admin no tenga que adivinar nombres
+    # Mostrar lista de usuarios
     if [[ -f $REGISTROS && -s $REGISTROS ]]; then
         echo -e "${AMARILLO}Usuarios registrados:${NC}"
         count=1
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+        while IFS=' ' read -r user_data _; do
             usuario_actual=${user_data%%:*}
             echo -e "${VERDE}$count.${NC} $usuario_actual"
             ((count++))
@@ -1807,14 +1807,13 @@ function renovar_usuario() {
         return
     fi
 
-    # Extraer datos del usuario
+    # Extraer datos confiables usando IFS
     user_line=$(grep "^$usuario:" "$REGISTROS")
     clave=${user_line%%:*}
     resto_line=${user_line#*:}
-    fecha_expiracion=$(echo "$resto_line" | awk '{print $1}')
-    dias_actuales=$(echo "$resto_line" | awk '{print $2}')
-    moviles=$(echo "$resto_line" | awk '{print $3}')
-    fecha_creacion=$(echo "$resto_line" | awk '{print $4, $5}')
+
+    IFS=' ' read -r fecha_expiracion dias_actuales moviles fecha1 fecha2 <<< "$resto_line"
+    fecha_creacion="$fecha1 $fecha2"
 
     dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias_actuales")
 
