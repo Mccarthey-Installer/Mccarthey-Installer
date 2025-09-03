@@ -1781,18 +1781,30 @@ function configurar_banner_ssh() {
 function calcular_dias_restantes() {
     local fecha_expiracion="$1"
 
-    # Convertir fecha de expiración al formato YYYY-MM-DD (date lo entiende)
-    fecha_std=$(date -d "$fecha_expiracion" +%Y-%m-%d 2>/dev/null)
+    # Pasar la fecha a inglés para que date la entienda
+    fecha_en=$(echo "$fecha_expiracion" | sed -E \
+        -e 's/enero/January/' \
+        -e 's/febrero/February/' \
+        -e 's/marzo/March/' \
+        -e 's/abril/April/' \
+        -e 's/mayo/May/' \
+        -e 's/junio/June/' \
+        -e 's/julio/July/' \
+        -e 's/agosto/August/' \
+        -e 's/septiembre/September/' \
+        -e 's/octubre/October/' \
+        -e 's/noviembre/November/' \
+        -e 's/diciembre/December/')
+
+    fecha_std=$(date -d "$fecha_en" +%Y-%m-%d 2>/dev/null)
 
     if [[ -z "$fecha_std" ]]; then
         echo 0
         return
     fi
 
-    # Fecha actual
     hoy=$(date +%Y-%m-%d)
 
-    # Diferencia en días
     echo $(( ( $(date -d "$fecha_std" +%s) - $(date -d "$hoy" +%s) ) / 86400 ))
 }
 
@@ -1800,7 +1812,6 @@ function renovar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🔄 RENOVAR USUARIO 🌸 =====${NC}"
     
-    # Mostrar usuarios registrados
     echo -e "${AMARILLO}Usuarios registrados:${NC}"
     if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
         echo -e "${ROJO}❌ No hay registros disponibles. 😕${NC}"
@@ -1814,17 +1825,14 @@ function renovar_usuario() {
         ((count++))
     done < "$REGISTROS"
 
-    # Solicitar usuario
     read -p "$(echo -e "${CIAN}👤 Ingresa el nombre del usuario a renovar: ${NC}")" usuario
 
-    # Verificar existencia
     if [[ ! $(grep "^$usuario:" "$REGISTROS") ]]; then
         echo -e "${ROJO}❌ ¡El usuario $usuario no existe! 😕${NC}"
         read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
         return
     fi
 
-    # Extraer datos
     user_line=$(grep "^$usuario:" "$REGISTROS")
     usuario=${user_line%%:*}
     clave=${user_line#*:}
@@ -1834,7 +1842,6 @@ function renovar_usuario() {
     moviles=$(echo "$resto_line" | awk '{print $3}')
     fecha_creacion=$(echo "$resto_line" | awk '{print $4, $5}')
 
-    # Preguntar días a renovar
     read -p "$(echo -e "${CIAN}📅 ¿Cuántos días deseas agregar? ${NC}")" dias_renovar
     if ! [[ "$dias_renovar" =~ ^[0-9]+$ ]]; then
         echo -e "${ROJO}❌ ¡Días inválidos! Debe ser un número. 😕${NC}"
@@ -1842,22 +1849,36 @@ function renovar_usuario() {
         return
     fi
 
-    # Preguntar móviles
     read -p "$(echo -e "${CIAN}📱 Cantidad de móviles a agregar (actual: $moviles, 0 si no): ${NC}")" moviles_agregar
     if ! [[ "$moviles_agregar" =~ ^[0-9]+$ ]]; then
         moviles_agregar=0
     fi
     nuevos_moviles=$((moviles + moviles_agregar))
 
-    # Calcular nueva fecha
-    nueva_fecha=$(date -d "$fecha_expiracion + $dias_renovar days" "+%d/%B/%Y" 2>/dev/null)
+    # 🔹 traducir la fecha de expiración a inglés
+    fecha_expiracion_en=$(echo "$fecha_expiracion" | sed -E \
+        -e 's/enero/January/' \
+        -e 's/febrero/February/' \
+        -e 's/marzo/March/' \
+        -e 's/abril/April/' \
+        -e 's/mayo/May/' \
+        -e 's/junio/June/' \
+        -e 's/julio/July/' \
+        -e 's/agosto/August/' \
+        -e 's/septiembre/September/' \
+        -e 's/octubre/October/' \
+        -e 's/noviembre/November/' \
+        -e 's/diciembre/December/')
+
+    # calcular nueva fecha en inglés
+    nueva_fecha=$(date -d "$fecha_expiracion_en + $dias_renovar days" "+%d/%B/%Y" 2>/dev/null)
     if [[ $? -ne 0 ]]; then
         echo -e "${ROJO}❌ Error al calcular la nueva fecha. 😕${NC}"
         read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
         return
     fi
 
-    # Convertir nueva fecha a meses en español
+    # 🔹 traducir nueva fecha de vuelta a español
     nueva_fecha=$(echo "$nueva_fecha" | sed -E \
         -e 's/January/enero/' \
         -e 's/February/febrero/' \
@@ -1872,13 +1893,12 @@ function renovar_usuario() {
         -e 's/November/noviembre/' \
         -e 's/December/diciembre/')
 
-    # Calcular días restantes dinámicamente
+    # días restantes calculados en base a la nueva fecha
     dias_restantes=$(calcular_dias_restantes "$nueva_fecha")
 
-    # Actualizar registro
+    # actualizar archivo
     sed -i "s|^$usuario:.*|$usuario:$clave $nueva_fecha 0 $nuevos_moviles $fecha_creacion|" "$REGISTROS"
 
-    # Resumen
     echo -e "\n${VERDE}🎉 ¡Usuario $usuario renovado con éxito! 🚀${NC}"
     echo -e "${AMARILLO}👤 Usuario:${NC} $usuario"
     echo -e "${AMARILLO}🔒 Clave:${NC} $clave"
