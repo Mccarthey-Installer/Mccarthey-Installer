@@ -2011,6 +2011,7 @@ function renovar_usuario() {
     read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
 }
 
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -2024,13 +2025,23 @@ ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
+# Banner ASCII rainbow
+echo -e "${ROJO}╭━━━╮╱╱╱╱╱╱╱╭━━━┳━━━┳━━━╮${NC}"
+echo -e "${ROSA}┃╭━╮┃╱╱╱╱╱╱╱┃╭━━┫╭━╮┃╭━╮┃${NC}"
+echo -e "${AMARILLO}┃╰━╯┣━━┳━━┳╮┃╰━━┫┃┃┃┣╯╭╯┃${NC}"
+echo -e "${VERDE}┃╭━━┫╭╮┃╭╮┣┫╰━━╮┃┃┃┃┣╮╰╮┃${NC}"
+echo -e "${AZUL}┃┃╱╱┃╭╮┃╰╯┃┃╭━━╯┃╰━╯┃╰━╯┃${NC}"
+echo -e "${CIAN}╰╯╱╱╰╯╰┫╭━┻╯╰━━━┻━━━┻━━━╯${NC}"
+echo -e "${FUCHSIA}╱╱╱╱╱╱╱┃┃${NC}"
+echo -e "${AMARILLO_SUAVE}╱╱╱╱╱╱╱╰╯${NC}"
+
 # Menú principal  
 if [[ -t 0 ]]; then  
 while true; do  
-    clear  
-    barra_sistema  
+    clear
+    barra_sistema
     echo  
-    echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"  
+    echo -e "${VIOLETA}======🧠 PANEL DE USUARIOS VPN/SSH ======${NC}"  
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
@@ -2045,8 +2056,10 @@ while true; do
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"  
     echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"  
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"  
+
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
     read -p "$PROMPT" OPCION  
+
     case $OPCION in  
         1) crear_usuario ;;  
         2) ver_registros ;;  
