@@ -2012,6 +2012,8 @@ function renovar_usuario() {
 }
 
 
+
+
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
@@ -2025,37 +2027,49 @@ ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
-# Banner ASCII rainbow
-echo -e "${ROJO}╭━━━╮╱╱╱╱╱╱╱╭━━━┳━━━┳━━━╮${NC}"
-echo -e "${ROSA}┃╭━╮┃╱╱╱╱╱╱╱┃╭━━┫╭━╮┃╭━╮┃${NC}"
-echo -e "${AMARILLO}┃╰━╯┣━━┳━━┳╮┃╰━━┫┃┃┃┣╯╭╯┃${NC}"
-echo -e "${VERDE}┃╭━━┫╭╮┃╭╮┣┫╰━━╮┃┃┃┃┣╮╰╮┃${NC}"
-echo -e "${AZUL}┃┃╱╱┃╭╮┃╰╯┃┃╭━━╯┃╰━╯┃╰━╯┃${NC}"
-echo -e "${CIAN}╰╯╱╱╰╯╰┫╭━┻╯╰━━━┻━━━┻━━━╯${NC}"
-echo -e "${FUCHSIA}╱╱╱╱╱╱╱┃┃${NC}"
-echo -e "${AMARILLO_SUAVE}╱╱╱╱╱╱╱╰╯${NC}"
+# Función para pintar arcoíris por carácter
+rainbow() {
+  text="$1"
+  colors=($ROJO $ROSA $AMARILLO $VERDE $AZUL $CIAN $FUCHSIA)
+  i=0
+  for ((c=0;c<${#text};c++)); do
+    printf "${colors[i]}%s${NC}" "${text:c:1}"
+    i=$(( (i+1) % ${#colors[@]} ))
+  done
+  echo
+}
 
-# Menú principal  
+# Banner ASCII rainbow extremo (carácter por carácter)
+rainbow "╭━━━╮╱╱╱╱╱╱╱╭━━━┳━━━┳━━━╮"
+rainbow "┃╭━╮┃╱╱╱╱╱╱╱┃╭━━┫╭━╮┃╭━╮┃"
+rainbow "┃╰━╯┣━━┳━━┳╮┃╰━━┫┃┃┃┣╯╭╯┃"
+rainbow "┃╭━━┫╭╮┃╭╮┣┫╰━━╮┃┃┃┃┣╮╰╮┃"
+rainbow "┃┃╱╱┃╭╮┃╰╯┃┃╭━━╯┃╰━╯┃╰━╯┃"
+rainbow "╰╯╱╱╰╯╰┫╭━┻╯╰━━━┻━━━┻━━━╯"
+rainbow "╱╱╱╱╱╱╱┃┃"
+rainbow "╱╱╱╱╱╱╱╰╯"
+
+# Menú principal rainbow por línea
 if [[ -t 0 ]]; then  
 while true; do  
-    clear
     barra_sistema
-    echo  
-    echo -e "${VIOLETA}======🧠 PANEL DE USUARIOS VPN/SSH ======${NC}"  
-    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
-    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"  
-    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"  
-    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"  
+    clear  
+    echo
+    rainbow "======🧠 PANEL DE USUARIOS VPN/SSH ======"  
+    echo -e "${ROJO}1. 🆕 Crear usuario${NC}"  
+    echo -e "${VERDE}2. 📋 Ver registros${NC}"  
+    echo -e "${AMARILLO}3. 🗑️ Eliminar usuario${NC}"  
+    echo -e "${AZUL}4. 📊 Información${NC}"  
+    echo -e "${FUCHSIA}5. 🟢 Verificar usuarios online${NC}"  
+    echo -e "${CIAN}6. 🔒 Bloquear/Desbloquear usuario${NC}"  
+    echo -e "${ROSA}7. 🆕 Crear múltiples usuarios${NC}"  
     echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"  
-    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"  
-    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"  
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"  
-    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"  
-    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"  
+    echo -e "${VERDE}9. ⚙️ Activar/Desactivar limitador${NC}"  
+    echo -e "${ROSA_CLARO}10. 🎨 Configurar banner SSH${NC}"  
+    echo -e "${ROJO}11. 🔄 Activar/Desactivar contador online${NC}"  
+    echo -e "${AZUL}12. 🤖 SSH BOT${NC}"  
+    echo -e "${FUCHSIA}13. 🔄 Renovar usuario${NC}"  
+    echo -e "${AMARILLO}0. 🚪 Salir${NC}"  
 
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
     read -p "$PROMPT" OPCION  
