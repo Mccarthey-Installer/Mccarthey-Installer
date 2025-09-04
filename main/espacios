@@ -2011,26 +2011,21 @@ function renovar_usuario() {
     read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
 }
 
-
-
-
+#!/bin/bash
 
 # Colores
 ROJO='\033[1;31m'
-VERDE='\033[38;5;42m'
+ROSA='\033[38;2;255;105;180m'
 AMARILLO='\033[38;5;220m'
+VERDE='\033[38;5;42m'
 AZUL='\033[38;5;39m'
 CIAN='\033[38;5;51m'
 FUCHSIA='\033[38;2;255;0;255m'
-ROSA='\033[38;2;255;105;180m'
 AMARILLO_SUAVE='\033[38;2;255;204;0m'
-ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
-# Función para mostrar el dashboard
-mostrar_dashboard() {
-    clear
-    # Banner ASCII
+# Función para mostrar banner ASCII
+banner_ascii() {
     echo -e "${ROJO}╭━━━╮╱╱╱╱╱╱╱╭━━━┳━━━┳━━━╮${NC}"
     echo -e "${ROSA}┃╭━╮┃╱╱╱╱╱╱╱┃╭━━┫╭━╮┃╭━╮┃${NC}"
     echo -e "${AMARILLO}┃╰━╯┣━━┳━━┳╮┃╰━━┫┃┃┃┣╯╭╯┃${NC}"
@@ -2039,59 +2034,24 @@ mostrar_dashboard() {
     echo -e "${CIAN}╰╯╱╱╰╯╰┫╭━┻╯╰━━━┻━━━┻━━━╯${NC}"
     echo -e "${FUCHSIA}╱╱╱╱╱╱╱┃┃${NC}"
     echo -e "${AMARILLO_SUAVE}╱╱╱╱╱╱╱╰╯${NC}"
-    
-    # Panel de estadísticas
-    echo "═══════════════════════════════════════════════════"
-    echo " 💾 TOTAL: 1.9G ∘ ⚡  DISPONIBLE: 1.4G ∘ 💿 HDD: 20G 22%"
-    echo " 📊 U/RAM: 19.73% ∘ 🖥️ U/CPU: 7% ∘ 🔧 CPU MHz: 3792.872"
-    echo "═══════════════════════════════════════════════════"
-    echo " 🌍 IP: 102.129.137.79 ∘ 🕒 FECHA: $(date '+%Y-%m-%d %H:%M')"
-    echo "🇭🇳 𝐌𝐜𝐜𝐚𝐫𝐭𝐡𝐞𝐲    📡 TRANSFERENCIA TOTAL: 3.86 GB"
-    echo " 🟢 ONLINE: 1 👥 TOTAL: 6 🖼️ SO: Ubuntu 20.04.6 LTS"
-    echo "═══════════════════════════════════════════════════"
-    echo " LIMITADOR: DESACTIVADO 🔴"
-    echo "⚠️ USUARIOS QUE EXPIRAN HOY:"
-    echo "Klis 0 Días  pedro 0 Días  juan 0 Días"
-    echo "======🧠 PANEL DE USUARIOS VPN/SSH ======"
-    
-    # Menú
-    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
-    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
-    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
-    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
-    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
-    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
-    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
-    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
-    echo -ne "➡️ Selecciona una opción: "
 }
 
-# Menú principal
+
+
+# Ejemplo de menú
 while true; do
-barra_sistema
-    mostrar_dashboard
-    read OPCION
+    clear
+    banner_ascii
+    barra_sistema
+    echo "======🧠 PANEL DE USUARIOS VPN/SSH ======"
+    echo "1. 🆕 Crear usuario"
+    echo "2. 📋 Ver registros"
+    echo "0. 🚪 Salir"
+    read -p "➡️ Selecciona una opción: " OPCION
     case $OPCION in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_multiples_usuarios ;;
-        4) informacion_usuarios ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) activar_desactivar_limitador ;;
-        10) configurar_banner_ssh ;;
-        11) contador_online ;;
-        12) ssh_bot ;;
-        13) renovar_usuario ;;
+        1) echo "Función crear_usuario"; sleep 1 ;;
+        2) echo "Función ver_registros"; sleep 1 ;;
         0) exit 0 ;;
-        *) echo -e "${ROJO}❌ ¡Opción inválida!${NC}"; read -p "Presiona Enter para continuar..." ;;
+        *) echo "❌ Opción inválida"; sleep 1 ;;
     esac
 done
