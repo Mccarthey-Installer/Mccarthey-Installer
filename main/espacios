@@ -2121,23 +2121,24 @@ function renovar_usuario() {
 }
 
 
-
-# Colores
-ROJO='\033[1;31m'
-ROSA='\033[38;2;255;105;180m'
-AMARILLO='\033[38;5;220m'
+# Colores y emojis
+VIOLETA='\033[38;5;141m'
 VERDE='\033[38;5;42m'
+AMARILLO='\033[38;5;220m'
 AZUL='\033[38;5;39m'
+ROJO='\033[1;31m'
 CIAN='\033[38;5;51m'
 FUCHSIA='\033[38;2;255;0;255m'
 AMARILLO_SUAVE='\033[38;2;255;204;0m'
+ROSA='\033[38;2;255;105;180m'
+ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
-
-# Ejemplo de menú
-while true; do
-    clear
-    barra_sistema
+# Menú principal  
+if [[ -t 0 ]]; then  
+while true; do  
+    clear  
+    barra_sistema  
     echo  
     echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"  
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
