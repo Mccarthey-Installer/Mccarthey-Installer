@@ -21,6 +21,13 @@ mkdir -p "$(dirname "$PIDFILE")"
 
                                             
 
+
+                    
+                                        
+
+                                            
+                                                            
+                                                
 ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
@@ -81,6 +88,7 @@ ssh_bot() {
                     local fecha_expiracion=\"\$1\"
                     local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
                     local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                    mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                     local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
 
                     case \$mes in
@@ -138,6 +146,7 @@ ssh_bot() {
                                     if [[ -n \"\$FILE_PATH\" ]]; then
                                         DOWNLOAD_URL=\"https://api.telegram.org/file/bot$TOKEN_ID/\$FILE_PATH\"
                                         curl -s -o /tmp/backup_restore.txt \"\$DOWNLOAD_URL\"
+                                        succeeded=0
                                         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_crea hora_crea; do
                                             usuario=\${user_data%%:*}
                                             password=\${user_data#*:}
@@ -146,6 +155,7 @@ ssh_bot() {
                                             fi
                                             dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
                                             mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                                            mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                                             anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
                                             case \$mes in
                                                 enero) mes_num=01 ;;
@@ -168,18 +178,31 @@ ssh_bot() {
                                                 continue
                                             fi
                                             if id \"\$usuario\" >/dev/null 2>&1; then
-                                                echo \"\$usuario:\$password\" | chpasswd 2>/dev/null
-                                                chage -E \"\$fecha_expiracion_sistema\" \"\$usuario\" 2>/dev/null
+                                                if ! echo \"\$usuario:\$password\" | chpasswd 2>/dev/null; then
+                                                    continue
+                                                fi
+                                                if ! chage -E \"\$fecha_expiracion_sistema\" \"\$usuario\" 2>/dev/null; then
+                                                    continue
+                                                fi
                                                 sed -i \"/^\$usuario:/d\" \"\$REGISTROS\"
                                             else
-                                                useradd -M -s /sbin/nologin \"\$usuario\" 2>/dev/null
-                                                echo \"\$usuario:\$password\" | chpasswd 2>/dev/null
-                                                chage -E \"\$fecha_expiracion_sistema\" \"\$usuario\" 2>/dev/null
+                                                if ! useradd -M -s /sbin/nologin \"\$usuario\" 2>/dev/null; then
+                                                    continue
+                                                fi
+                                                if ! echo \"\$usuario:\$password\" | chpasswd 2>/dev/null; then
+                                                    userdel \"\$usuario\" 2>/dev/null
+                                                    continue
+                                                fi
+                                                if ! chage -E \"\$fecha_expiracion_sistema\" \"\$usuario\" 2>/dev/null; then
+                                                    userdel \"\$usuario\" 2>/dev/null
+                                                    continue
+                                                fi
                                             fi
                                             echo \"\$user_data \$fecha_expiracion \$dias \$moviles \$fecha_crea \$hora_crea\" >> \"\$REGISTROS\"
+                                            ((succeeded++))
                                         done < /tmp/backup_restore.txt
                                         rm -f /tmp/backup_restore.txt
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Restauración completada exitosamente!* 📥 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Restauración completada exitosamente! Restaurados \$succeeded usuarios.* 📥 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         EXPECTING_BACKUP=0
                                     else
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al obtener el archivo.* Intenta de nuevo o escribe 'cancel' para cancelar.\" -d parse_mode=Markdown >/dev/null
@@ -628,9 +651,10 @@ Selecciona un usuario para renovar:
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados para crear backup.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            cp \"\$REGISTROS\" /tmp/backup.txt
-                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@/tmp/backup.txt -F caption=\"💾 *Aquí está tu backup de usuarios.*\" -F parse_mode=Markdown >/dev/null
-                                            rm -f /tmp/backup.txt
+                                            temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
+                                            cp \"\$REGISTROS\" \"\$temp_backup\"
+                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" -F caption=\"💾 *Aquí está tu backup de usuarios.*\" -F parse_mode=Markdown >/dev/null
+                                            rm -f \"\$temp_backup\"
                                         fi
                                         ;;
                                     '7')
@@ -2109,24 +2133,10 @@ FUCHSIA='\033[38;2;255;0;255m'
 AMARILLO_SUAVE='\033[38;2;255;204;0m'
 NC='\033[0m'
 
-# Función para mostrar banner ASCII
-banner_ascii() {
-    echo -e "${ROJO}╭━━━╮╱╱╱╱╱╱╱╭━━━┳━━━┳━━━╮${NC}"
-    echo -e "${ROSA}┃╭━╮┃╱╱╱╱╱╱╱┃╭━━┫╭━╮┃╭━╮┃${NC}"
-    echo -e "${AMARILLO}┃╰━╯┣━━┳━━┳╮┃╰━━┫┃┃┃┣╯╭╯┃${NC}"
-    echo -e "${VERDE}┃╭━━┫╭╮┃╭╮┣┫╰━━╮┃┃┃┃┣╮╰╮┃${NC}"
-    echo -e "${AZUL}┃┃╱╱┃╭╮┃╰╯┃┃╭━━╯┃╰━╯┃╰━╯┃${NC}"
-    echo -e "${CIAN}╰╯╱╱╰╯╰┫╭━┻╯╰━━━┻━━━┻━━━╯${NC}"
-    echo -e "${FUCHSIA}╱╱╱╱╱╱╱┃┃${NC}"
-    echo -e "${AMARILLO_SUAVE}╱╱╱╱╱╱╱╰╯${NC}"
-}
-
-
 
 # Ejemplo de menú
 while true; do
     clear
-    banner_ascii
     barra_sistema
     echo  
     echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"  
