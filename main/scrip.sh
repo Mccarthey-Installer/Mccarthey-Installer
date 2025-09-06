@@ -37,6 +37,7 @@ mkdir -p "$(dirname "$PIDFILE")"
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
     echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
+    echo -e "${AMARILLO_SUAVE}3. 🔄 Reiniciar${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
     read -p "➡️ Selecciona una opción: " BOT_OPCION
 
@@ -48,7 +49,28 @@ mkdir -p "$(dirname "$PIDFILE")"
             echo "$TOKEN_ID" > /root/sshbot_token
             echo "$USER_ID" > /root/sshbot_userid
             echo "$USER_NAME" > /root/sshbot_username
+            ;&
+        3)  # Activar o Reiniciar usando datos existentes
+            # Cargar datos guardados si existen
+            if [[ -f /root/sshbot_token ]]; then
+                TOKEN_ID=$(cat /root/sshbot_token)
+                USER_ID=$(cat /root/sshbot_userid)
+                USER_NAME=$(cat /root/sshbot_username)
+            else
+                echo -e "${ROJO}❌ No hay datos guardados. Selecciona primero Activar Bot.${NC}"
+                sleep 2
+                ssh_bot
+                return
+            fi
 
+            # Detener el bot si ya está corriendo
+            if [[ -f "$PIDFILE" ]]; then
+                kill -9 $(cat "$PIDFILE") 2>/dev/null
+                rm -f "$PIDFILE"
+            fi
+            pkill -f "api.telegram.org" 2>/dev/null
+
+            # Iniciar el bot en segundo plano
             nohup bash -c "
                 export REGISTROS='$REGISTROS'
                 export HISTORIAL='$HISTORIAL'
@@ -70,6 +92,9 @@ mkdir -p "$(dirname "$PIDFILE")"
                 PASSWORD=''
                 DAYS=''
                 MOBILES=''
+
+                echo \$! > \"$PIDFILE\"
+            " &
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
@@ -299,7 +324,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             rm -f \"/var/mail/\$USUARIO_A_ELIMINAR\" 2>/dev/null
                                             rm -f \"/var/spool/mail/\$USUARIO_A_ELIMINAR\" 2>/dev/null
                                             sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/passwd
-                                            sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/shadow
+                                            sed -i \"/^\$USUARIO_Aw_ELIMINAR:/d\" /etc/shadow
                                             sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/group
                                             sed -i \"/^\$USUARIO_A_ELIMINAR:/d\" /etc/gshadow
                                             if ! id \"\$USUARIO_A_ELIMINAR\" &>/dev/null; then
