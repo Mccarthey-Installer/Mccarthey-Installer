@@ -65,6 +65,7 @@ mkdir -p "$(dirname "$PIDFILE")"
                 EXPECTING_DELETE_USER=0
                 EXPECTING_RENEW_USER=0
                 RENEW_STEP=0
+                EXPECTING_BACKUP=0
                 USERNAME=''
                 PASSWORD=''
                 DAYS=''
@@ -74,6 +75,7 @@ mkdir -p "$(dirname "$PIDFILE")"
                     local fecha_expiracion=\"\$1\"
                     local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
                     local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                    mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                     local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
 
                     case \$mes in
@@ -121,8 +123,85 @@ mkdir -p "$(dirname "$PIDFILE")"
                         MSG_TEXT=\$(echo \$row | jq -r '.message.text')
                         CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
                         USERNAME_TELEGRAM=\$(echo \$row | jq -r '.message.from.username')
+                        DOCUMENT_ID=\$(echo \$row | jq -r '.message.document.file_id // empty')
 
                         if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
+                            if [[ \$EXPECTING_BACKUP -eq 1 ]]; then
+                                if [[ -n \"\$DOCUMENT_ID\" ]]; then
+                                    FILE_INFO=\$(curl -s \"\$URL/getFile?file_id=\$DOCUMENT_ID\")
+                                    FILE_PATH=\$(echo \$FILE_INFO | jq -r '.result.file_path')
+                                    if [[ -n \"\$FILE_PATH\" ]]; then
+                                        DOWNLOAD_URL=\"https://api.telegram.org/file/bot$TOKEN_ID/\$FILE_PATH\"
+                                        curl -s -o /tmp/backup_restore.txt \"\$DOWNLOAD_URL\"
+                                        succeeded=0
+                                        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_crea hora_crea; do
+                                            usuario=\${user_data%%:*}
+                                            password=\${user_data#*:}
+                                            if [[ -z \"\$usuario\" || -z \"\$password\" ]]; then
+                                                continue
+                                            fi
+                                            dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
+                                            mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                                            mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
+                                            anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
+                                            case \$mes in
+                                                enero) mes_num=01 ;;
+                                                febrero) mes_num=02 ;;
+                                                marzo) mes_num=03 ;;
+                                                abril) mes_num=04 ;;
+                                                mayo) mes_num=05 ;;
+                                                junio) mes_num=06 ;;
+                                                julio) mes_num=07 ;;
+                                                agosto) mes_num=08 ;;
+                                                septiembre) mes_num=09 ;;
+                                                octubre) mes_num=10 ;;
+                                                noviembre) mes_num=11 ;;
+                                                diciembre) mes_num=12 ;;
+                                                *) continue ;;
+                                            esac
+                                            fecha_formateada=\"\$anio-\$mes_num-\$dia\"
+                                            fecha_expiracion_sistema=\$(date -d \"\$fecha_formateada +1 day\" \"+%Y-%m-%d\" 2>/dev/null)
+                                            if [[ -z \"\$fecha_expiracion_sistema\" ]]; then
+                                                continue
+                                            fi
+                                            if id \"\$usuario\" >/dev/null 2>&1; then
+                                                if ! echo \"\$usuario:\$password\" | chpasswd 2>/dev/null; then
+                                                    continue
+                                                fi
+                                                if ! chage -E \"\$fecha_expiracion_sistema\" \"\$usuario\" 2>/dev/null; then
+                                                    continue
+                                                fi
+                                                sed -i \"/^\$usuario:/d\" \"\$REGISTROS\"
+                                            else
+                                                if ! useradd -M -s /sbin/nologin \"\$usuario\" 2>/dev/null; then
+                                                    continue
+                                                fi
+                                                if ! echo \"\$usuario:\$password\" | chpasswd 2>/dev/null; then
+                                                    userdel \"\$usuario\" 2>/dev/null
+                                                    continue
+                                                fi
+                                                if ! chage -E \"\$fecha_expiracion_sistema\" \"\$usuario\" 2>/dev/null; then
+                                                    userdel \"\$usuario\" 2>/dev/null
+                                                    continue
+                                                fi
+                                            fi
+                                            echo \"\$user_data \$fecha_expiracion \$dias \$moviles \$fecha_crea \$hora_crea\" >> \"\$REGISTROS\"
+                                            ((succeeded++))
+                                        done < /tmp/backup_restore.txt
+                                        rm -f /tmp/backup_restore.txt
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"✅ *Restauración completada exitosamente! Restaurados \$succeeded usuarios.* 📥 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        EXPECTING_BACKUP=0
+                                    else
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al obtener el archivo.* Intenta de nuevo o escribe 'cancel' para cancelar.\" -d parse_mode=Markdown >/dev/null
+                                    fi
+                                elif [[ \"\$MSG_TEXT\" == \"cancel\" ]]; then
+                                    EXPECTING_BACKUP=0
+                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Restauración cancelada.* Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                else
+                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📥 *Esperando el archivo de backup.* Envía el archivo TXT o escribe 'cancel' para cancelar.\" -d parse_mode=Markdown >/dev/null
+                                fi
+                                continue
+                            fi
                             if [[ \$EXPECTING_USER_DATA -eq 1 ]]; then
                                 case \$USER_DATA_STEP in
                                     1)
@@ -368,6 +447,8 @@ Escribe *hola* para volver al menú.\"
 📋 *Presiona 3* para ver los usuarios registrados
 ✅ *Presiona 4* para mostrar usuarios conectados
 🔄 *Presiona 5* para renovar usuario
+💾 *Presiona 6* para crear backup
+📥 *Presiona 7* para restaurar backup
 🏠 *Presiona 0* para volver al menú principal\"
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
                                         ;;
@@ -552,6 +633,21 @@ Selecciona un usuario para renovar:
                                             RENEW_STEP=1
                                         fi
                                         ;;
+                                    '6')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados para crear backup.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
+                                            cp \"\$REGISTROS\" \"\$temp_backup\"
+                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" -F caption=\"💾 *Aquí está tu backup de usuarios.*\" -F parse_mode=Markdown >/dev/null
+                                            rm -f \"\$temp_backup\"
+                                        fi
+                                        ;;
+                                    '7')
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📥 *Envía el archivo de backup (TXT) para restaurar los usuarios.* Escribe 'cancel' para cancelar.\" -d parse_mode=Markdown >/dev/null
+                                        EXPECTING_BACKUP=1
+                                        ;;
                                     '0')
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
 
@@ -563,7 +659,7 @@ Selecciona un usuario para renovar:
 
 🤔 No entiendo esa opción...
 💡 Escribe *hola* para ver el menú
-🔢 O usa: 1, 2, 3, 4, 5, 0\" -d parse_mode=Markdown >/dev/null
+🔢 O usa: 1, 2, 3, 4, 5, 6, 7, 0\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                 esac
                             fi
@@ -592,8 +688,15 @@ Selecciona un usuario para renovar:
             ;;
     esac
 }
-
                                 
+
+                                                    
+                                                
+                                                
+                                            
+
+                                                
+                                            
 
 
 function barra_sistema() {  
