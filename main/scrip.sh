@@ -1537,7 +1537,7 @@ function verificar_online() {
         (( total_usuarios++ ))
         conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
-        estado="⭕ 0"
+        estado="📴 0"
         detalle="⭕ Nunca conectado"
         mov_txt="📲 $moviles"
         tmp_status="/tmp/status_${usuario}.tmp"
