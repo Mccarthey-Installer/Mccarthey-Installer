@@ -93,8 +93,7 @@ mkdir -p "$(dirname "$PIDFILE")"
                 DAYS=''
                 MOBILES=''
 
-                echo \$! > \"$PIDFILE\"
-            " &
+                
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
