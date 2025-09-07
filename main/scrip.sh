@@ -717,7 +717,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     
                                                 
                                                 
-                                            
+                                          
 
                                                 
                                             
@@ -2158,7 +2158,7 @@ while true; do
     clear  
     barra_sistema  
     echo  
-    echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"  
+    echo -e "${VIOLETA}======🐱PANEL DE USUARIOS VPN/SSH ======${NC}"  
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
