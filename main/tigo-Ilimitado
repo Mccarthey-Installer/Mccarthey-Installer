@@ -10,7 +10,7 @@ sudo apt upgrade -y
 
 # Instalar paquetes necesarios (corregido)
 sudo apt install -y util-linux git cmake build-essential curl unzip wget \
-python2 python2-dev python-is-python3 screen net-tools python3 python3-pip locales
+python2 python2-dev python-is-python3 screen net-tools python3 python3-pip locales cpulimit
 
 # Configurar locales
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
@@ -288,7 +288,159 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 4. MENSAJE FINAL
+# 4. INSTALAR SCRIPT DE GESTIÓN DE RECURSOS
+# ===========================
+echo "🛠️ Configurando gestión de RAM y CPU..."
+
+cat > /root/gestionar_recursos.sh << 'EOF'
+#!/bin/bash
+# Script: gestionar_recursos.sh
+# Combina liberación de RAM, ejecución de scrip.sh mon y limitación dinámica de CPU
+LOCK_FILE="/tmp/gestionar_recursos.lock"
+LOG_FILE="/var/log/gestionar_recursos.log"
+PID_FILE="/tmp/cpulimit_pids.txt"
+
+# Verificar si el script ya está en ejecución
+if [ -f "$LOCK_FILE" ]; then
+    echo "$(date): Proceso ya en ejecución, saliendo..." >> "$LOG_FILE"
+    exit 1
+fi
+
+touch "$LOCK_FILE"
+trap 'rm -f "$LOCK_FILE"; exit' INT TERM EXIT
+
+# Función para limpiar procesos cpulimit previos
+cleanup_cpulimit() {
+    if [ -f "$PID_FILE" ]; then
+        while read -r cpid; do
+            if ps -p "$cpid" > /dev/null; then
+                kill -9 "$cpid" 2>/dev/null
+            fi
+        done < "$PID_FILE"
+        > "$PID_FILE" # Vaciar el archivo de PIDs
+    fi
+    pkill -9 -f "cpulimit -p" 2>/dev/null
+    pkill -9 -f "pgrep -f /etc/ADMcgh/PDirect.py" 2>/dev/null
+}
+
+# Limpieza inicial
+cleanup_cpulimit
+
+# Arrancar scrip.sh mon si no está corriendo
+if ! pgrep -f "/root/scrip.sh mon" > /dev/null; then
+    /bin/bash /root/scrip.sh mon &
+    echo "$(date): Iniciado /root/scrip.sh mon" >> "$LOG_FILE"
+fi
+
+# Variables para umbrales
+MEM_THRESHOLD=200    # Memoria libre en MB
+CACHE_THRESHOLD=100  # Caché en MB
+LOAD_THRESHOLD=2.0   # Carga CPU (ajusta según núcleos)
+
+# Variables para rastrear PIDs anteriores
+PREV_PIDS_PDIRECT=""
+PREV_PIDS_BADVPN=""
+PREV_PIDS_SCRIP=""
+
+while true; do
+    # Verificar memoria
+    FREE_MEM=$(free -m | awk '/Mem:/ {print $4}')
+    CACHE_MEM=$(free -m | awk '/Mem:/ {print $6}')
+    
+    # Liberar caché si es necesario
+    if [ "$FREE_MEM" -lt "$MEM_THRESHOLD" ] || [ "$CACHE_MEM" -gt "$CACHE_THRESHOLD" ]; then
+        echo "$(date): Memoria libre: $FREE_MEM MB, Caché: $CACHE_MEM MB. Liberando caché completa..." >> "$LOG_FILE"
+        sync
+        sudo sysctl -w vm.drop_caches=3 > /dev/null
+        NEW_FREE=$(free -m | awk '/Mem:/ {print $4}')
+        echo "$(date): Caché liberado. Memoria libre ahora: $NEW_FREE MB" >> "$LOG_FILE"
+    else
+        echo "$(date): No es necesario liberar caché (Libre: $FREE_MEM MB, Caché: $CACHE_MEM MB)" >> "$LOG_FILE"
+    fi
+
+    # Verificar carga de CPU
+    LOAD_AVG=$(awk '{print $1}' /proc/loadavg)
+    
+    # Controlar picos de CPU si la carga es alta
+    if (( $(echo "$LOAD_AVG > $LOAD_THRESHOLD" | bc -l) )); then
+        echo "$(date): Carga CPU alta: $LOAD_AVG. Limitando procesos intensivos..." >> "$LOG_FILE"
+        
+        # Obtener PIDs actuales
+        CURRENT_PIDS_PDIRECT=$(pgrep -f /etc/ADMcgh/PDirect.py)
+        CURRENT_PIDS_BADVPN=$(pgrep -f badvpn-udpgw)
+        CURRENT_PIDS_SCRIP=$(pgrep -f "/root/scrip.sh mon")
+
+        # Verificar si hay cambios en los PIDs
+        if [ "$CURRENT_PIDS_PDIRECT" != "$PREV_PIDS_PDIRECT" ] || [ "$CURRENT_PIDS_BADVPN" != "$PREV_PIDS_BADVPN" ] || [ "$CURRENT_PIDS_SCRIP" != "$PREV_PIDS_SCRIP" ]; then
+            cleanup_cpulimit
+
+            # Limitar PDirect.py a 20%
+            for pid in $CURRENT_PIDS_PDIRECT; do
+                if ps -p "$pid" > /dev/null; then
+                    cpulimit -p "$pid" -l 20 &
+                    echo $! >> "$PID_FILE"
+                    echo "$(date): Limitando PID $pid (PDirect.py) a 20% CPU" >> "$LOG_FILE"
+                fi
+            done
+
+            # Limitar badvpn-udpgw a 30%
+            for pid in $CURRENT_PIDS_BADVPN; do
+                if ps -p "$pid" > /dev/null; then
+                    cpulimit -p "$pid" -l 30 &
+                    echo $! >> "$PID_FILE"
+                    echo "$(date): Limitando PID $pid (badvpn-udpgw) a 30% CPU" >> "$LOG_FILE"
+                fi
+            done
+
+            # Limitar scrip.sh a 10%
+            for pid in $CURRENT_PIDS_SCRIP; do
+                if ps -p "$pid" > /dev/null; then
+                    cpulimit -p "$pid" -l 10 &
+                    echo $! >> "$PID_FILE"
+                    echo "$(date): Limitando PID $pid (scrip.sh) a 10% CPU" >> "$LOG_FILE"
+                fi
+            done
+
+            # Actualizar PIDs anteriores
+            PREV_PIDS_PDIRECT="$CURRENT_PIDS_PDIRECT"
+            PREV_PIDS_BADVPN="$CURRENT_PIDS_BADVPN"
+            PREV_PIDS_SCRIP="$CURRENT_PIDS_SCRIP"
+        fi
+    else
+        echo "$(date): Carga CPU aceptable: $LOAD_AVG. No se requiere acción." >> "$LOG_FILE"
+    fi
+
+    sleep 10
+done
+EOF
+
+chmod +x /root/gestionar_recursos.sh
+
+# Crear archivo systemd para gestión de recursos
+cat > /etc/systemd/system/gestionar-recursos.service <<EOF
+[Unit]
+Description=Gestiona RAM y CPU (liberar caché y limitar procesos)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /root/gestionar_recursos.sh
+ExecStop=/bin/bash -c "pkill -9 -f 'cpulimit -p'; pkill -9 -f 'pgrep -f /etc/ADMcgh/PDirect.py'; pkill -9 -f 'pgrep -f badvpn-udpgw'; pkill -9 -f 'pgrep -f /root/scrip.sh mon'; rm -f /tmp/cpulimit_pids.txt"
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+chmod 644 /etc/systemd/system/gestionar-recursos.service
+systemctl daemon-reload
+systemctl enable gestionar-recursos.service
+systemctl start gestionar-recursos.service
+
+# ===========================
+# 5. MENSAJE FINAL
 # ===========================
 echo ""
 echo "======================================"
@@ -299,6 +451,7 @@ echo ""
 echo "🛡️  Proxy HTTP (80 -> 22) ACTIVO via Nohup"
 echo "🎯 Listo para usar con HTTP Injector"
 echo "💎 Firma personalizada: Kang Sae-byeok"
+echo "🛠️ Gestión de RAM y CPU activa (servicio: gestionar-recursos)"
 echo "======================================"
 echo ""
 
