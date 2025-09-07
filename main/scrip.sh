@@ -664,7 +664,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
                                             cp \"\$REGISTROS\" \"\$temp_backup\"
-                                            curl -s -X POST "$URL/sendDocument" -F chat_id=$CHAT_ID -F document=@"$temp_backup" -F caption=" " -F parse_mode=Markdown >/dev/null
+                                            curl -s -X POST "$URL/sendDocument" -F chat_id=$CHAT_ID -F document=@"$temp_backup" -F caption=$'\u200B' -F parse_mode=Markdown >/dev/null
                                             rm -f \"\$temp_backup\"
                                         fi
                                         ;;
@@ -2158,7 +2158,7 @@ while true; do
     clear  
     barra_sistema  
     echo  
-    echo -e "${VIOLETA}======💥PANEL DE USUARIOS VPN/SSH ======${NC}"  
+    echo -e "${VIOLETA}======💥PANEL DE USUARIOS VPN/SSH😇 ======${NC}"  
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
