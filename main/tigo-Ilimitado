@@ -8,7 +8,7 @@ echo "🛠️ Instalando dependencias..."
 sudo apt update -y
 sudo apt upgrade -y
 
-# Instalar paquetes necesarios (corregido)
+# Instalar paquetes necesarios
 sudo apt install -y util-linux git cmake build-essential curl unzip wget \
 python2 python2-dev python-is-python3 screen net-tools python3 python3-pip locales cpulimit
 
@@ -239,6 +239,9 @@ git clone https://github.com/ambrop72/badvpn.git /opt/badvpn
 mkdir -p /opt/badvpn/build && cd /opt/badvpn/build
 cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
 make -j$(nproc)
+
+# Detener instancias previas de badvpn-udpgw para evitar error "Text file busy"
+pkill -f badvpn-udpgw || true
 cp udpgw/badvpn-udpgw /usr/bin/
 chmod +x /usr/bin/badvpn-udpgw
 
@@ -291,6 +294,10 @@ systemctl start rc-local
 # 4. INSTALAR SCRIPT DE GESTIÓN DE RECURSOS
 # ===========================
 echo "🛠️ Configurando gestión de RAM y CPU..."
+
+# Crear archivo de log si no existe
+touch /var/log/gestionar_recursos.log
+chmod 644 /var/log/gestionar_recursos.log
 
 cat > /root/gestionar_recursos.sh << 'EOF'
 #!/bin/bash
@@ -420,7 +427,7 @@ chmod +x /root/gestionar_recursos.sh
 cat > /etc/systemd/system/gestionar-recursos.service <<EOF
 [Unit]
 Description=Gestiona RAM y CPU (liberar caché y limitar procesos)
-After=network.target
+After=network.target rc-local.service
 
 [Service]
 Type=simple
