@@ -665,7 +665,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
                                             cp \"\$REGISTROS\" \"\$temp_backup\"
                                             curl -s -X POST "$URL/sendDocument" -F chat_id=$CHAT_ID -F document=@"$temp_backup" -F caption="" -F parse_mode=Markdown >/dev/null
-
                                             rm -f \"\$temp_backup\"
                                         fi
                                         ;;
