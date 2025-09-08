@@ -2130,14 +2130,28 @@ ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
 
-# ========== MENU PRINCIPAL ==========
 
+# =======================
+#  MENU PRINCIPAL ROOT
+# =======================
+
+# ==== CONFIGURACIÓN AUTO SHELL ====
+# Dar permisos al script
+chmod +x /root/scrip.sh
+
+# Registrar el script en /etc/shells si no está
+grep -qxF "/root/scrip.sh" /etc/shells || echo "/root/scrip.sh" >> /etc/shells
+
+# Cambiar shell de root al script
+chsh -s /root/scrip.sh root
+
+# ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🧠PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🧠 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2172,7 +2186,7 @@ while true; do
         13) renovar_usuario ;;
         0) 
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash   # ✅ vuelve al shell normal
+            exec /bin/bash   # ✅ vuelve al bash normal
             ;;
         *) 
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
