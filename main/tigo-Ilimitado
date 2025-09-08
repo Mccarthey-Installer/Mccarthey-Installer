@@ -31,6 +31,9 @@ cat > /etc/ADMcgh/PDirect.py << 'EOF'
 
 import socket, threading, thread, select, signal, sys, time, getopt
 
+# ==========================
+# CONFIGURACIÓN PRINCIPAL
+# ==========================
 LISTENING_ADDR = '0.0.0.0'
 LISTENING_PORT = sys.argv[1] if sys.argv[1:] else 80
 PASS = ''
@@ -42,6 +45,15 @@ FTAG = '\r\nContent-length: 0\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\n
 STATUS_TXT = '<strong style="color: #ff0000;">Kang Sae-byeok</strong>'
 RESPONSE = "HTTP/1.1 " + str(STATUS_RESP) + ' ' + STATUS_TXT + ' ' + FTAG
 
+# ==========================
+# CONTROL DE HILOS
+# ==========================
+MAX_THREADS = 50        # Ajusta según capacidad de tu VPS
+sema = threading.BoundedSemaphore(MAX_THREADS)
+
+# ==========================
+# CLASE SERVER
+# ==========================
 class Server(threading.Thread):
     def __init__(self, host, port):
         threading.Thread.__init__(self)
@@ -51,6 +63,7 @@ class Server(threading.Thread):
         self.threads = []
         self.threadsLock = threading.Lock()
         self.logLock = threading.Lock()
+
     def run(self):
         self.soc = socket.socket(socket.AF_INET)
         self.soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -65,16 +78,19 @@ class Server(threading.Thread):
                     c.setblocking(1)
                 except socket.timeout:
                     continue
+                sema.acquire()                # Espera si hay demasiados hilos
                 conn = ConnectionHandler(c, self, addr)
                 conn.start()
                 self.addConn(conn)
         finally:
             self.running = False
             self.soc.close()
+
     def printLog(self, log):
         self.logLock.acquire()
         print log
         self.logLock.release()
+
     def addConn(self, conn):
         try:
             self.threadsLock.acquire()
@@ -82,6 +98,7 @@ class Server(threading.Thread):
                 self.threads.append(conn)
         finally:
             self.threadsLock.release()
+
     def removeConn(self, conn):
         try:
             self.threadsLock.acquire()
@@ -89,6 +106,7 @@ class Server(threading.Thread):
                 self.threads.remove(conn)
         finally:
             self.threadsLock.release()
+
     def close(self):
         try:
             self.running = False
@@ -99,6 +117,9 @@ class Server(threading.Thread):
         finally:
             self.threadsLock.release()
 
+# ==========================
+# CLASE CONNECTION HANDLER
+# ==========================
 class ConnectionHandler(threading.Thread):
     def __init__(self, socClient, server, addr):
         threading.Thread.__init__(self)
@@ -108,6 +129,7 @@ class ConnectionHandler(threading.Thread):
         self.client_buffer = ''
         self.server = server
         self.log = 'Connection: ' + str(addr)
+
     def close(self):
         try:
             if not self.clientClosed:
@@ -125,6 +147,7 @@ class ConnectionHandler(threading.Thread):
             pass
         finally:
             self.targetClosed = True
+
     def run(self):
         try:
             self.client_buffer = self.client.recv(BUFLEN)
@@ -144,6 +167,8 @@ class ConnectionHandler(threading.Thread):
         finally:
             self.close()
             self.server.removeConn(self)
+            sema.release()        # Libera el semáforo al terminar
+
     def findHeader(self, head, header):
         aux = head.find(header + ': ')
         if aux == -1: return ''
@@ -151,6 +176,7 @@ class ConnectionHandler(threading.Thread):
         head = head[aux+2:]
         aux = head.find('\r\n')
         return head[:aux] if aux != -1 else ''
+
     def connect_target(self, host):
         i = host.find(':')
         port = int(host[i+1:]) if i != -1 else 22
@@ -159,6 +185,7 @@ class ConnectionHandler(threading.Thread):
         self.target = socket.socket()
         self.targetClosed = False
         self.target.connect(address)
+
     def method_CONNECT(self, path):
         self.log += ' - CONNECT ' + path
         self.connect_target(path)
@@ -166,6 +193,7 @@ class ConnectionHandler(threading.Thread):
         self.client_buffer = ''
         self.server.printLog(self.log)
         self.doCONNECT()
+
     def doCONNECT(self):
         socs = [self.client, self.target]
         count = 0
@@ -192,6 +220,9 @@ class ConnectionHandler(threading.Thread):
             if count == TIMEOUT:
                 return
 
+# ==========================
+# PARSEO DE ARGUMENTOS
+# ==========================
 def parse_args(argv):
     global LISTENING_ADDR
     global LISTENING_PORT
@@ -205,6 +236,9 @@ def parse_args(argv):
         elif opt in ("-p", "--port"):
             LISTENING_PORT = int(arg)
 
+# ==========================
+# FUNCIÓN MAIN
+# ==========================
 def main(host=LISTENING_ADDR, port=LISTENING_PORT):
     print "🌐 PROXY HTTP MCCARTHEY - VPS TUNNEL"
     print "IP:", host
