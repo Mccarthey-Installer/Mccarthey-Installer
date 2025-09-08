@@ -10,7 +10,7 @@ sudo apt upgrade -y
 
 # Instalar paquetes necesarios
 sudo apt install -y util-linux git cmake build-essential curl unzip wget \
-python2 python2-dev python-is-python3 screen net-tools python3 python3-pip locales cpulimit
+python3 python3-dev python-is-python3 screen net-tools python3-pip locales cpulimit
 
 # Configurar locales
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
@@ -26,16 +26,19 @@ echo "🌀 Configurando proxy Python en puerto 80..."
 mkdir -p /etc/ADMcgh
 
 cat > /etc/ADMcgh/PDirect.py << 'EOF'
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # encoding: utf-8
 
-import socket, threading, thread, select, signal, sys, time, getopt
+import asyncio
+import sys
+import socket
+import time
 
 # ==========================
 # CONFIGURACIÓN PRINCIPAL
 # ==========================
 LISTENING_ADDR = '0.0.0.0'
-LISTENING_PORT = sys.argv[1] if sys.argv[1:] else 80
+LISTENING_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 80
 PASS = ''
 BUFLEN = 4096 * 4
 TIMEOUT = 60
@@ -43,226 +46,129 @@ DEFAULT_HOST = '127.0.0.1:22'
 STATUS_RESP = '101'
 FTAG = '\r\nContent-length: 0\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\n'
 STATUS_TXT = '<strong style="color: #ff0000;">Kang Sae-byeok</strong>'
-RESPONSE = "HTTP/1.1 " + str(STATUS_RESP) + ' ' + STATUS_TXT + ' ' + FTAG
+RESPONSE = f"HTTP/1.1 {STATUS_RESP} {STATUS_TXT} {FTAG}"
+
+MAX_CONNECTIONS = 50  # Controla cuántas conexiones simultáneas manejar
+semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
 
 # ==========================
-# CONTROL DE HILOS
+# FUNCIONES AUXILIARES
 # ==========================
-MAX_THREADS = 50        # Ajusta según capacidad de tu VPS
-sema = threading.BoundedSemaphore(MAX_THREADS)
+def find_header(header, data):
+    try:
+        data_str = data.decode(errors='ignore')
+        start = data_str.find(header + ": ")
+        if start == -1:
+            return ""
+        start += len(header) + 2
+        end = data_str.find("\r\n", start)
+        return data_str[start:end] if end != -1 else data_str[start:]
+    except Exception:
+        return ""
 
-# ==========================
-# CLASE SERVER
-# ==========================
-class Server(threading.Thread):
-    def __init__(self, host, port):
-        threading.Thread.__init__(self)
-        self.running = False
-        self.host = host
-        self.port = port
-        self.threads = []
-        self.threadsLock = threading.Lock()
-        self.logLock = threading.Lock()
-
-    def run(self):
-        self.soc = socket.socket(socket.AF_INET)
-        self.soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.soc.settimeout(2)
-        self.soc.bind((self.host, int(self.port)))
-        self.soc.listen(0)
-        self.running = True
-        try:
-            while self.running:
-                try:
-                    c, addr = self.soc.accept()
-                    c.setblocking(1)
-                except socket.timeout:
-                    continue
-                sema.acquire()                # Espera si hay demasiados hilos
-                conn = ConnectionHandler(c, self, addr)
-                conn.start()
-                self.addConn(conn)
-        finally:
-            self.running = False
-            self.soc.close()
-
-    def printLog(self, log):
-        self.logLock.acquire()
-        print log
-        self.logLock.release()
-
-    def addConn(self, conn):
-        try:
-            self.threadsLock.acquire()
-            if self.running:
-                self.threads.append(conn)
-        finally:
-            self.threadsLock.release()
-
-    def removeConn(self, conn):
-        try:
-            self.threadsLock.acquire()
-            if conn in self.threads:
-                self.threads.remove(conn)
-        finally:
-            self.threadsLock.release()
-
-    def close(self):
-        try:
-            self.running = False
-            self.threadsLock.acquire()
-            threads = list(self.threads)
-            for c in threads:
-                c.close()
-        finally:
-            self.threadsLock.release()
+async def connect_target(host_port):
+    try:
+        if ':' in host_port:
+            host, port = host_port.split(':')
+            port = int(port)
+        else:
+            host = host_port
+            port = 22
+        reader, writer = await asyncio.open_connection(host, port)
+        return reader, writer
+    except Exception as e:
+        return None, None
 
 # ==========================
-# CLASE CONNECTION HANDLER
+# HANDLER DE CONEXIONES
 # ==========================
-class ConnectionHandler(threading.Thread):
-    def __init__(self, socClient, server, addr):
-        threading.Thread.__init__(self)
-        self.clientClosed = False
-        self.targetClosed = True
-        self.client = socClient
-        self.client_buffer = ''
-        self.server = server
-        self.log = 'Connection: ' + str(addr)
-
-    def close(self):
+async def handle_client(client_reader, client_writer):
+    async with semaphore:
+        client_addr = client_writer.get_extra_info('peername')
+        log_prefix = f"Connection: {client_addr}"
         try:
-            if not self.clientClosed:
-                self.client.shutdown(socket.SHUT_RDWR)
-                self.client.close()
-        except:
-            pass
-        finally:
-            self.clientClosed = True
-        try:
-            if not self.targetClosed:
-                self.target.shutdown(socket.SHUT_RDWR)
-                self.target.close()
-        except:
-            pass
-        finally:
-            self.targetClosed = True
-
-    def run(self):
-        try:
-            self.client_buffer = self.client.recv(BUFLEN)
-            hostPort = self.findHeader(self.client_buffer, 'X-Real-Host') or DEFAULT_HOST
-            split = self.findHeader(self.client_buffer, 'X-Split')
-            if split: self.client.recv(BUFLEN)
-            passwd = self.findHeader(self.client_buffer, 'X-Pass')
-            if PASS and passwd != PASS:
-                self.client.send('HTTP/1.1 400 WrongPass!\r\n\r\n')
-            elif hostPort.startswith('127.0.0.1') or hostPort.startswith('localhost') or not PASS:
-                self.method_CONNECT(hostPort)
-            else:
-                self.client.send('HTTP/1.1 403 Forbidden!\r\n\r\n')
-        except Exception as e:
-            self.log += ' - error'
-            self.server.printLog(self.log)
-        finally:
-            self.close()
-            self.server.removeConn(self)
-            sema.release()        # Libera el semáforo al terminar
-
-    def findHeader(self, head, header):
-        aux = head.find(header + ': ')
-        if aux == -1: return ''
-        aux = head.find(':', aux)
-        head = head[aux+2:]
-        aux = head.find('\r\n')
-        return head[:aux] if aux != -1 else ''
-
-    def connect_target(self, host):
-        i = host.find(':')
-        port = int(host[i+1:]) if i != -1 else 22
-        host = host[:i] if i != -1 else host
-        (_, _, _, _, address) = socket.getaddrinfo(host, port)[0]
-        self.target = socket.socket()
-        self.targetClosed = False
-        self.target.connect(address)
-
-    def method_CONNECT(self, path):
-        self.log += ' - CONNECT ' + path
-        self.connect_target(path)
-        self.client.sendall(RESPONSE)
-        self.client_buffer = ''
-        self.server.printLog(self.log)
-        self.doCONNECT()
-
-    def doCONNECT(self):
-        socs = [self.client, self.target]
-        count = 0
-        while True:
-            count += 1
-            (recv, _, err) = select.select(socs, [], socs, 3)
-            if err: break
-            if recv:
-                for in_ in recv:
-                    try:
-                        data = in_.recv(BUFLEN)
-                        if data:
-                            if in_ is self.target:
-                                self.client.send(data)
-                            else:
-                                while data:
-                                    sent = self.target.send(data)
-                                    data = data[sent:]
-                            count = 0
-                        else:
-                            return
-                    except:
-                        return
-            if count == TIMEOUT:
+            data = await asyncio.wait_for(client_reader.read(BUFLEN), timeout=TIMEOUT)
+            if not data:
+                client_writer.close()
+                await client_writer.wait_closed()
                 return
 
-# ==========================
-# PARSEO DE ARGUMENTOS
-# ==========================
-def parse_args(argv):
-    global LISTENING_ADDR
-    global LISTENING_PORT
+            host_port = find_header('X-Real-Host', data) or DEFAULT_HOST
+            split = find_header('X-Split', data)
+            passwd = find_header('X-Pass', data)
+
+            if split:
+                await client_reader.read(BUFLEN)  # Leer siguiente parte si aplica
+
+            if PASS and passwd != PASS:
+                client_writer.write(b'HTTP/1.1 400 WrongPass!\r\n\r\n')
+                await client_writer.drain()
+                client_writer.close()
+                await client_writer.wait_closed()
+                return
+            elif host_port.startswith('127.0.0.1') or host_port.startswith('localhost') or not PASS:
+                target_reader, target_writer = await connect_target(host_port)
+                if not target_reader:
+                    client_writer.close()
+                    await client_writer.wait_closed()
+                    return
+                client_writer.write(RESPONSE.encode())
+                await client_writer.drain()
+
+                # Proxy bidireccional
+                await asyncio.gather(
+                    proxy_data(client_reader, target_writer),
+                    proxy_data(target_reader, client_writer)
+                )
+        except Exception as e:
+            print(f"{log_prefix} - error: {e}")
+        finally:
+            client_writer.close()
+            await client_writer.wait_closed()
+
+async def proxy_data(reader, writer):
     try:
-        opts, args = getopt.getopt(argv,"hb:p:",["bind=","port="])
-    except:
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt in ("-b", "--bind"):
-            LISTENING_ADDR = arg
-        elif opt in ("-p", "--port"):
-            LISTENING_PORT = int(arg)
+        while True:
+            data = await reader.read(BUFLEN)
+            if not data:
+                break
+            writer.write(data)
+            await writer.drain()
+    except Exception:
+        pass
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
 
 # ==========================
-# FUNCIÓN MAIN
+# SERVIDOR MAIN
 # ==========================
-def main(host=LISTENING_ADDR, port=LISTENING_PORT):
-    print "🌐 PROXY HTTP MCCARTHEY - VPS TUNNEL"
-    print "IP:", host
-    print "PORTA:", port
-    print "🔐 Powered by MCC-KEY System 💎"
-    server = Server(host, port)
-    server.start()
-    while True:
-        try:
-            time.sleep(2)
-        except KeyboardInterrupt:
-            print 'Parando...'
-            server.close()
-            break
+async def main(host=LISTENING_ADDR, port=LISTENING_PORT):
+    server = await asyncio.start_server(handle_client, host, port)
+    addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
+    print("🌐 PROXY HTTP MCCARTHEY - VPS TUNNEL")
+    print("IP:", host)
+    print("PORTA:", port)
+    print("🔐 Powered by MCC-KEY System 💎")
+    print(f"Listening on: {addrs}")
+
+    async with server:
+        await server.serve_forever()
 
 if __name__ == '__main__':
-    parse_args(sys.argv[1:])
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Parando servidor...")
 EOF
 
 chmod +x /etc/ADMcgh/PDirect.py
 
 # Iniciar con nohup
-nohup python2 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
 
 # ===========================
 # 2. BADVPN PUERTOS 7200 Y 7300
@@ -295,7 +201,7 @@ echo "🧩 Configurando autoarranque vía rc.local..."
 cat > /etc/rc.local <<EOF
 #!/bin/bash
 sleep 10
-nohup python2 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
 screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
 screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
 exit 0
