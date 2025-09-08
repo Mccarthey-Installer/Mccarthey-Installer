@@ -2130,20 +2130,14 @@ ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
 
-
 # =======================
-#  MENU PRINCIPAL ROOT
+#  MENU PRINCIPAL VPN/SSH
 # =======================
 
-# ==== CONFIGURACIÓN AUTO SHELL ====
-# Dar permisos al script
-chmod +x /root/scrip.sh
-
-# Registrar el script en /etc/shells si no está
-grep -qxF "/root/scrip.sh" /etc/shells || echo "/root/scrip.sh" >> /etc/shells
-
-# Cambiar shell de root al script
-chsh -s /root/scrip.sh root
+# ==== AUTO-INSTALAR EN .bash_profile ====
+if ! grep -q "/root/scrip.sh" /root/.bash_profile; then
+    echo "bash /root/scrip.sh" >> /root/.bash_profile
+fi
 
 # ==== MENU ====
 if [[ -t 0 ]]; then
