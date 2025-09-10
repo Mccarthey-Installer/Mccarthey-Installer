@@ -525,93 +525,111 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
                                     '4')
-                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
-                                        else
-                                            LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        curl -s -X POST "$URL/sendMessage" -d chat_id=$CHAT_ID -d text="❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú." -d parse_mode=Markdown >/dev/null
+    else
+        LISTA="===== 🥳 *USUARIOS ONLINE* 😎 =====
 
-*USUARIO  CONEXIONES  MÓVILES  CONECTADO*
+*USUARIO  CONEXIONES  MÓVILES  CONECTADO  HORA CONEXIÓN*
 -----------------------------------------------------------------
 
-\"
-                                            total_online=0
-                                            total_usuarios=0
-                                            inactivos=0
+"
+        total_online=0
+        total_usuarios=0
+        inactivos=0
+        declare -A month_map=(
+            ["Jan"]="ene" ["Feb"]="feb" ["Mar"]="mar" ["Apr"]="abr"
+            ["May"]="may" ["Jun"]="jun" ["Jul"]="jul" ["Aug"]="ago"
+            ["Sep"]="sep" ["Oct"]="oct" ["Nov"]="nov" ["Dec"]="dic"
+        )
 
-                                            while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
-                                                usuario=\${userpass%%:*}
-                                                if ! id \"\$usuario\" &>/dev/null; then
-                                                    continue
-                                                fi
-                                                (( total_usuarios++ ))
-                                                conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
-                                                tmp_status=\"/tmp/status_\${usuario}.tmp\"
-                                                bloqueo_file=\"/tmp/bloqueo_\${usuario}.lock\"
-                                                detalle=\"😴 Nunca conectado\"
+        while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+            usuario=${userpass%%:*}
+            if ! id "$usuario" &>/dev/null; then
+                continue
+            fi
+            (( total_usuarios++ ))
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
+            tmp_status="/tmp/status_${usuario}.tmp"
+            bloqueo_file="/tmp/bloqueo_${usuario}.lock"
+            detalle="😴 Nunca conectado"
+            hora_conexion="N/A"
 
-                                                if [[ -f \"\$bloqueo_file\" ]]; then
-                                                    bloqueo_hasta=\$(cat \"\$bloqueo_file\")
-                                                    if [[ \$(date +%s) -lt \$bloqueo_hasta ]]; then
-                                                        detalle=\"🚫 Bloqueado (hasta \$(date -d @\$bloqueo_hasta '+%I:%M%p'))\"
-                                                    else
-                                                        rm -f \"\$bloqueo_file\"
-                                                    fi
-                                                fi
+            if [[ -f "$bloqueo_file" ]]; then
+                bloqueo_hasta=$(cat "$bloqueo_file")
+                if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
+                    detalle="🚫 Bloqueado (hasta $(date -d @$bloqueo_hasta '+%I:%M%p'))"
+                else
+                    rm -f "$bloqueo_file"
+                fi
+            fi
 
-                                                if [[ \$conexiones -gt 0 ]]; then
-                                                    (( total_online += conexiones ))
-                                                    if [[ -f \"\$tmp_status\" ]]; then
-                                                        contenido=\$(cat \"\$tmp_status\")
-                                                        if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
-                                                            start_s=\$((10#\$contenido))
-                                                        else
-                                                            start_s=\$(date +%s)
-                                                            echo \$start_s > \"\$tmp_status\"
-                                                        fi
-                                                        now_s=\$(date +%s)
-                                                        elapsed=\$(( now_s - start_s ))
-                                                        h=\$(( elapsed / 3600 ))
-                                                        m=\$(( (elapsed % 3600) / 60 ))
-                                                        s=\$(( elapsed % 60 ))
-                                                        detalle=\$(printf \"⏰ %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
-                                                    else
-                                                        start_s=\$(date +%s)
-                                                        echo \$start_s > \"\$tmp_status\"
-                                                        detalle=\"⏰ 00:00:00\"
-                                                    fi
-                                                else
-                                                    if [[ ! \$detalle =~ \"🚫 Bloqueado\" ]]; then
-                                                        rm -f \"\$tmp_status\"
-                                                        ult=\$(grep \"^\$usuario|\" \"\$HISTORIAL\" | tail -1 | awk -F'|' '{print \$3}')
-                                                        if [[ -n \"\$ult\" ]]; then
-                                                            ult_fmt=\$(date -d \"\$ult\" +\"%d/%b/%Y %H:%M\" 2>/dev/null)
-                                                            if [[ -n \"\$ult_fmt\" ]]; then
-                                                                detalle=\"📅 Última: \$ult_fmt\"
-                                                            else
-                                                                detalle=\"😴 Nunca conectado\"
-                                                            fi
-                                                        else
-                                                            detalle=\"😴 Nunca conectado\"
-                                                        fi
-                                                        (( inactivos++ ))
-                                                    fi
-                                                fi
+            if [[ $conexiones -gt 0 ]]; then
+                (( total_online += conexiones ))
+                if [[ -f "$tmp_status" ]]; then
+                    contenido=$(cat "$tmp_status")
+                    if [[ "$contenido" =~ ^[0-9]+$ ]]; then
+                        start_s=$((10#$contenido))
+                    else
+                        start_s=$(date +%s)
+                        echo $start_s > "$tmp_status"
+                    fi
+                    now_s=$(date +%s)
+                    elapsed=$(( now_s - start_s ))
+                    h=$(( elapsed / 3600 ))
+                    m=$(( (elapsed % 3600) / 60 ))
+                    s=$(( elapsed % 60 ))
+                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                    # Calcular la hora de conexión
+                    hora_conexion=$(date -d "@$((now_s - elapsed))" +"%d/%b %I:%M %p" 2>/dev/null)
+                    for eng in "${!month_map[@]}"; do
+                        esp=${month_map[$eng]}
+                        hora_conexion=${hora_conexion/$eng/$esp}
+                    done
+                else
+                    start_s=$(date +%s)
+                    echo $start_s > "$tmp_status"
+                    detalle="⏰ 00:00:00"
+                    hora_conexion=$(date +"%d/%b %I:%M %p")
+                    for eng in "${!month_map[@]}"; do
+                        esp=${month_map[$eng]}
+                        hora_conexion=${hora_conexion/$eng/$esp}
+                    done
+                fi
+            else
+                if [[ ! $detalle =~ "🚫 Bloqueado" ]]; then
+                    rm -f "$tmp_status"
+                    ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
+                    if [[ -n "$ult" ]]; then
+                        ult_fmt=$(date -d "$ult" +"%d/%b/%Y %H:%M" 2>/dev/null)
+                        if [[ -n "$ult_fmt" ]]; then
+                            detalle="📅 Última: $ult_fmt"
+                        else
+                            detalle="😴 Nunca conectado"
+                        fi
+                    else
+                        detalle="😴 Nunca conectado"
+                    fi
+                    (( inactivos++ ))
+                fi
+            fi
 
-                                                LISTA=\"\${LISTA}*🧑‍💻Usuario*: \\\`\${usuario}\\\`
-*🌐Conexiones*: \$conexiones
-*📲Móviles*: \$moviles
-*⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
+            LISTA="${LISTA}*🧑‍💻Usuario*: \`${usuario}\`
+*🌐Conexiones*: $conexiones
+*📲Móviles*: $moviles
+*⏳Tiempo conectado/última vez/nunca conectado*: $detalle
+*🕒Hora conexión*: \`${hora_conexion}\`
 
-\"
-                                            done < \"\$REGISTROS\"
+"
+        done < "$REGISTROS"
 
-                                            LISTA=\"\${LISTA}-----------------------------------------------------------------
-*Total de Online:* \$total_online  *Total usuarios:* \$total_usuarios  *Inactivos:* \$inactivos
-================================================\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                        fi
-                                        ;;
+        LISTA="${LISTA}-----------------------------------------------------------------
+*Total de Online:* $total_online  *Total usuarios:* $total_usuarios  *Inactivos:* $inactivos
+================================================"
+        curl -s -X POST "$URL/sendMessage" -d chat_id=$CHAT_ID -d text="$LISTA" -d parse_mode=Markdown >/dev/null
+    fi
+    ;;
                                     '5')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
