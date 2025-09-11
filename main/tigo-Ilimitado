@@ -330,12 +330,12 @@ while true; do
                 fi
             done
 
-            # Limitar badvpn-udpgw a 30%
+            # Limitar badvpn-udpgw a 50%
             for pid in $CURRENT_PIDS_BADVPN; do
                 if ps -p "$pid" > /dev/null; then
-                    cpulimit -p "$pid" -l 30 &
+                    cpulimit -p "$pid" -l 50 &
                     echo $! >> "$PID_FILE"
-                    echo "$(date): Limitando PID $pid (badvpn-udpgw) a 30% CPU" >> "$LOG_FILE"
+                    echo "$(date): Limitando PID $pid (badvpn-udpgw) a 50% CPU" >> "$LOG_FILE"
                 fi
             done
 
