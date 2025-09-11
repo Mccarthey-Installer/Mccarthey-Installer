@@ -8,6 +8,7 @@ echo "🛠️ Instalando dependencias..."
 sudo apt update -y
 sudo apt upgrade -y
 
+
 # Instalar paquetes necesarios
 sudo apt install -y util-linux git cmake build-essential curl unzip wget \
 python3 python3-dev python-is-python3 screen net-tools python3-pip locales cpulimit
