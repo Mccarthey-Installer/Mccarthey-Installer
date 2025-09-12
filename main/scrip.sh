@@ -2130,7 +2130,7 @@ ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
 
-# =======================
+   # =======================
 #  MENU PRINCIPAL VPN/SSH
 # =======================
 
@@ -2142,7 +2142,6 @@ fi
 # ==== FUNCIONES SWAP ====
 activar_desactivar_swap() {
     clear
-    barra_sistema
     echo
     echo -e "${VIOLETA}======💾 PANEL SWAP ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. Activar Swap${NC}"
@@ -2166,8 +2165,8 @@ activar_desactivar_swap() {
 
 instalar_swap() {
     clear
-    barra_sistema
     echo
+    echo -e "${VIOLETA}======💾 ACTIVAR SWAP ======${NC}"
     echo -e "${AMARILLO_SUAVE}Instalando dependencias para Stress...${NC}"
     apt update -y &>/dev/null
     apt install stress -y &>/dev/null
@@ -2221,8 +2220,8 @@ EOF
 
 eliminar_swap() {
     clear
-    barra_sistema
     echo
+    echo -e "${VIOLETA}======💾 ELIMINAR SWAP ======${NC}"
     echo -e "${AMARILLO_SUAVE}Confirmar eliminación de Swap? (y/n): ${NC}"
     read -p "$(echo -e ${ROSA}➡️ ) " CONFIRM
 
@@ -2297,4 +2296,4 @@ while true; do
             ;;
     esac
 done
-fi
+fi     
