@@ -2187,14 +2187,10 @@ instalar_swap() {
     echo -e "${AMARILLO_SUAVE}Intervalo en horas para ejecutar Stress (ej: 6): ${NC}"
     read -p "$(echo -e ${ROSA}➡️ ) " INTERVAL_HOURS
 
-    # Detectar RAM total en MB y calcular vm-bytes dinámicamente (80% de RAM / num_procs)
-    TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
-    VM_BYTES=$(( (TOTAL_RAM_MB * 80 / 100) / NUM_PROCS ))
-    [ $VM_BYTES -lt 100 ] && VM_BYTES=100  # Mínimo 100M por proceso
+    # Forzar vm-bytes siempre a 1400M
+    VM_BYTES=1400
 
-    echo
-    echo -e "${AMARILLO_SUAVE}RAM detectada: ${TOTAL_RAM_MB}MB, vm-bytes por proceso: ${VM_BYTES}M${NC}"
-    echo -e "${AMARILLO_SUAVE}Presiona Enter para confirmar (CTRL+C para cancelar)...${NC}"
+    echo -e "${AMARILLO_SUAVE}Presiona Enter para confirmar instalación y configuración...${NC}"
     read
 
     cat > /root/run_stress.sh << EOF
@@ -2204,7 +2200,7 @@ EOF
     chmod +x /root/run_stress.sh
 
     (crontab -l 2>/dev/null; echo "0 */$INTERVAL_HOURS * * * /root/run_stress.sh") | crontab -
-    echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas.${NC}"
+    echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas (vm-bytes fijo en 1400M).${NC}"
 
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
@@ -2214,7 +2210,7 @@ eliminar_swap() {
     clear
     echo
     echo -e "${VIOLETA}======💾 ELIMINAR SWAP ======${NC}"
-    echo -e "${AMARILLO_SUAVE}Presiona Enter para confirmar eliminación (CTRL+C para cancelar)...${NC}"
+    echo -e "${AMARILLO_SUAVE}Confirmar eliminación de Swap (Enter para continuar, Ctrl+C para cancelar)${NC}"
     read
 
     swapoff /swapfile &>/dev/null
