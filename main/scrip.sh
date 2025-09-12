@@ -2139,6 +2139,113 @@ if ! grep -q "/root/scrip.sh" /root/.bash_profile; then
     echo "bash /root/scrip.sh" >> /root/.bash_profile
 fi
 
+# ==== FUNCIONES SWAP ====
+activar_desactivar_swap() {
+    clear
+    barra_sistema
+    echo
+    echo -e "${VIOLETA}======💾 PANEL SWAP ======${NC}"
+    echo -e "${AMARILLO_SUAVE}1. Activar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}2. Eliminar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}0. Volver al menú principal${NC}"
+    echo
+    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+    read -p "$PROMPT" SUBOPCION
+
+    case $SUBOPCION in
+        1) instalar_swap ;;
+        2) eliminar_swap ;;
+        0) return ;;
+        *) 
+            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+            activar_desactivar_swap
+            ;;
+    esac
+}
+
+instalar_swap() {
+    clear
+    barra_sistema
+    echo
+    echo -e "${AMARILLO_SUAVE}Instalando dependencias para Stress...${NC}"
+    apt update -y &>/dev/null
+    apt install stress -y &>/dev/null
+
+    echo -e "${AMARILLO_SUAVE}Tamaño de Swap en GB (ej: 1, 2, 3): ${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " SIZE_GB
+    SIZE_MB=$((SIZE_GB * 1024))
+
+    echo -e "${AMARILLO_SUAVE}Creando archivo de swap de ${SIZE_GB}GB...${NC}"
+    dd if=/dev/zero of=/swapfile bs=1M count=$SIZE_MB status=progress &>/dev/null
+    chmod 600 /swapfile
+    mkswap /swapfile &>/dev/null
+    swapon /swapfile &>/dev/null
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+    echo -e "${AMARILLO_SUAVE}Número de procesos para Stress (ej: 1, 2, 3, 4): ${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " NUM_PROCS
+
+    echo -e "${AMARILLO_SUAVE}Intervalo en horas para ejecutar Stress (ej: 6): ${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " INTERVAL_HOURS
+
+    # Detectar RAM total en MB y calcular vm-bytes dinámicamente (80% de RAM / num_procs)
+    TOTAL_RAM_MB=$(free -m | awk '/^Mem:/{print $2}')
+    VM_BYTES=$(( (TOTAL_RAM_MB * 80 / 100) / NUM_PROCS ))
+    [ $VM_BYTES -lt 100 ] && VM_BYTES=100  # Mínimo 100M por proceso
+
+    echo -e "${AMARILLO_SUAVE}Confirmar instalación y configuración? (y/n): ${NC}"
+    echo -e "${AMARILLO_SUAVE}RAM detectada: ${TOTAL_RAM_MB}MB, vm-bytes por proceso: ${VM_BYTES}M${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " CONFIRM
+
+    if [[ $CONFIRM == "y" || $CONFIRM == "Y" ]]; then
+        cat > /root/run_stress.sh << EOF
+#!/bin/bash
+stress --vm $NUM_PROCS --vm-bytes ${VM_BYTES}M --timeout 30s
+EOF
+        chmod +x /root/run_stress.sh
+
+        (crontab -l 2>/dev/null; echo "0 */$INTERVAL_HOURS * * * /root/run_stress.sh") | crontab -
+        echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas.${NC}"
+    else
+        echo -e "${ROJO}❌ Operación cancelada.${NC}"
+        # Cleanup temporal si se canceló
+        swapoff /swapfile &>/dev/null
+        rm -f /swapfile
+        sed -i '/\/swapfile/d' /etc/fstab
+    fi
+
+    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+    activar_desactivar_swap
+}
+
+eliminar_swap() {
+    clear
+    barra_sistema
+    echo
+    echo -e "${AMARILLO_SUAVE}Confirmar eliminación de Swap? (y/n): ${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " CONFIRM
+
+    if [[ $CONFIRM == "y" || $CONFIRM == "Y" ]]; then
+        swapoff /swapfile &>/dev/null
+        rm -f /swapfile
+        sed -i '/\/swapfile/d' /etc/fstab &>/dev/null
+
+        # Remover cron job de stress
+        crontab -l | grep -v "run_stress.sh" | crontab - &>/dev/null
+        rm -f /root/run_stress.sh
+
+        apt remove stress -y &>/dev/null
+
+        echo -e "${VERDE}✅ Swap eliminado y configuraciones removidas.${NC}"
+    else
+        echo -e "${ROJO}❌ Operación cancelada.${NC}"
+    fi
+
+    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+    activar_desactivar_swap
+}
+
 # ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
@@ -2159,6 +2266,7 @@ while true; do
     echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
     echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
@@ -2178,6 +2286,7 @@ while true; do
         11) contador_online ;;
         12) ssh_bot ;;
         13) renovar_usuario ;;
+        14) activar_desactivar_swap ;;
         0) 
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
             exec /bin/bash   # ✅ vuelve al bash normal
