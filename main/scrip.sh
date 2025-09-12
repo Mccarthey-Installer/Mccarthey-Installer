@@ -2129,8 +2129,7 @@ ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
-
-   # =======================
+# =======================
 #  MENU PRINCIPAL VPN/SSH
 # =======================
 
@@ -2193,26 +2192,19 @@ instalar_swap() {
     VM_BYTES=$(( (TOTAL_RAM_MB * 80 / 100) / NUM_PROCS ))
     [ $VM_BYTES -lt 100 ] && VM_BYTES=100  # Mínimo 100M por proceso
 
-    echo -e "${AMARILLO_SUAVE}Confirmar instalación y configuración? (y/n): ${NC}"
+    echo
     echo -e "${AMARILLO_SUAVE}RAM detectada: ${TOTAL_RAM_MB}MB, vm-bytes por proceso: ${VM_BYTES}M${NC}"
-    read -p "$(echo -e ${ROSA}➡️ ) " CONFIRM
+    echo -e "${AMARILLO_SUAVE}Presiona Enter para confirmar (CTRL+C para cancelar)...${NC}"
+    read
 
-    if [[ $CONFIRM == "y" || $CONFIRM == "Y" ]]; then
-        cat > /root/run_stress.sh << EOF
+    cat > /root/run_stress.sh << EOF
 #!/bin/bash
 stress --vm $NUM_PROCS --vm-bytes ${VM_BYTES}M --timeout 30s
 EOF
-        chmod +x /root/run_stress.sh
+    chmod +x /root/run_stress.sh
 
-        (crontab -l 2>/dev/null; echo "0 */$INTERVAL_HOURS * * * /root/run_stress.sh") | crontab -
-        echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas.${NC}"
-    else
-        echo -e "${ROJO}❌ Operación cancelada.${NC}"
-        # Cleanup temporal si se canceló
-        swapoff /swapfile &>/dev/null
-        rm -f /swapfile
-        sed -i '/\/swapfile/d' /etc/fstab
-    fi
+    (crontab -l 2>/dev/null; echo "0 */$INTERVAL_HOURS * * * /root/run_stress.sh") | crontab -
+    echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas.${NC}"
 
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
@@ -2222,24 +2214,20 @@ eliminar_swap() {
     clear
     echo
     echo -e "${VIOLETA}======💾 ELIMINAR SWAP ======${NC}"
-    echo -e "${AMARILLO_SUAVE}Confirmar eliminación de Swap? (y/n): ${NC}"
-    read -p "$(echo -e ${ROSA}➡️ ) " CONFIRM
+    echo -e "${AMARILLO_SUAVE}Presiona Enter para confirmar eliminación (CTRL+C para cancelar)...${NC}"
+    read
 
-    if [[ $CONFIRM == "y" || $CONFIRM == "Y" ]]; then
-        swapoff /swapfile &>/dev/null
-        rm -f /swapfile
-        sed -i '/\/swapfile/d' /etc/fstab &>/dev/null
+    swapoff /swapfile &>/dev/null
+    rm -f /swapfile
+    sed -i '/\/swapfile/d' /etc/fstab &>/dev/null
 
-        # Remover cron job de stress
-        crontab -l | grep -v "run_stress.sh" | crontab - &>/dev/null
-        rm -f /root/run_stress.sh
+    # Remover cron job de stress
+    crontab -l | grep -v "run_stress.sh" | crontab - &>/dev/null
+    rm -f /root/run_stress.sh
 
-        apt remove stress -y &>/dev/null
+    apt remove stress -y &>/dev/null
 
-        echo -e "${VERDE}✅ Swap eliminado y configuraciones removidas.${NC}"
-    else
-        echo -e "${ROJO}❌ Operación cancelada.${NC}"
-    fi
+    echo -e "${VERDE}✅ Swap eliminado y configuraciones removidas.${NC}"
 
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
@@ -2296,4 +2284,4 @@ while true; do
             ;;
     esac
 done
-fi     
+fi
