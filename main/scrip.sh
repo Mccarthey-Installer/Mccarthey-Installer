@@ -2129,7 +2129,8 @@ ROSA='\033[38;2;255;105;180m'
 ROSA_CLARO='\033[1;95m'
 NC='\033[0m'
 
-# =======================
+
+    # =======================
 #  MENU PRINCIPAL VPN/SSH
 # =======================
 
@@ -2202,6 +2203,10 @@ EOF
     (crontab -l 2>/dev/null; echo "0 */$INTERVAL_HOURS * * * /root/run_stress.sh") | crontab -
     echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas (vm-bytes fijo en 1400M).${NC}"
 
+    # 🚀 Ejecutar stress inmediatamente para liberar RAM ya mismo
+    echo -e "${AMARILLO_SUAVE}Ejecutando Stress inicial...${NC}"
+    stress --vm $NUM_PROCS --vm-bytes ${VM_BYTES}M --timeout 30s
+
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
 }
@@ -2235,7 +2240,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🧠 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
