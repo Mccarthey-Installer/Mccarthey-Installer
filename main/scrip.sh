@@ -602,6 +602,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 *🌐Conexiones*: \$conexiones
 *📲Móviles*: \$moviles
 *⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
+
 \"
                                             done < \"\$REGISTROS\"
 
