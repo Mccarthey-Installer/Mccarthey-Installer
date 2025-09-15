@@ -601,6 +601,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 LISTA=\"\${LISTA}*🧑‍💻Usuario*: \\\`\${usuario}\\\`
 *🌐Conexiones*: \$conexiones
 *📲Móviles*: \$moviles
+*📅FECHA*:${AMARILLO} ${FECHA_ACTUAL}
 *⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
 
 \"
