@@ -597,9 +597,14 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                         (( inactivos++ ))
                                                     fi
                                                 fi
+                                                if [[ \$conexiones -gt 0 ]]; then
+                                                    conexiones_status=\"\$conexiones 🟢\"
+                                                else
+                                                    conexiones_status=\"\$conexiones 🔴\"
+                                                fi
 
                                                 LISTA=\"\${LISTA}*🧑‍💻Usuario*: \\\`\${usuario}\\\`
-*🌐Conexiones*: \$conexiones 🟢
+*🌐Conexiones*: \$conexiones_status
 *📲Móviles*: \$moviles
 *⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
 
