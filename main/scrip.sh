@@ -513,7 +513,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
-                                                LISTA="${LISTA}${count}. $(printf "%-11s | %-5s" "\\\`${usuario}\\\`" "\\\`${clave}\\\`") | \\\`${fecha_corta}\\\` | ${dias_restantes} d | ${moviles}
+                                                LISTA="${LISTA}${count}. $(printf "%-11s | %-5s" "\\\`${usuario}\\\`" "\\\`${clave}\\\`") | \\\`Exp. ${fecha_corta}\\\` | ${dias_restantes} d | ${moviles}
 \"
                                                 ((count++))
                                             done < \"\$REGISTROS\"
