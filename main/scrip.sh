@@ -881,82 +881,120 @@ TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
     read -p "$(echo -e ${BLANCO}Presiona Enter para continuar...${NC})"
 }
 
+export REGISTROS="/diana/reg.txt"
+export HISTORIAL="/alexia/log.txt"
+export PIDFILE="/Abigail/mon.pid"
+export LOGFILE="/alexia/conexiones_log.txt"
+
+# Crear directorios si no existen
+mkdir -p "$(dirname "$REGISTROS")"
+mkdir -p "$(dirname "$HISTORIAL")"
+mkdir -p "$(dirname "$PIDFILE")"
+mkdir -p "$(dirname "$LOGFILE")"
+
 function informacion_usuarios() {
     clear
 
-    # Definir colores
-    ROSADO='\033[38;5;211m'
-    LILA='\033[38;5;183m'
-    TURQUESA='\033[38;5;45m'
-    NC='\033[0m'
+    # Definir colores  
+    ROSADO='\033[38;5;211m'  
+    LILA='\033[38;5;183m'  
+    TURQUESA='\033[38;5;45m'  
+    NC='\033[0m'  
 
-    echo -e "${ROSADO}🌸✨  INFORMACIÓN DE CONEXIONES 💖✨ 🌸${NC}"
+    echo -e "${ROSADO}🌸✨  INFORMACIÓN DE CONEXIONES 💖✨ 🌸${NC}"  
 
-    # Mapa de meses para traducción
-    declare -A month_map=(
-        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"
-        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"
-        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"
-    )
+    # Mapa de meses para traducción  
+    declare -A month_map=(  
+        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"  
+        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"  
+        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"  
+    )  
 
-    # Verificar si el archivo HISTORIAL existe
-    if [[ ! -f "$HISTORIAL" ]]; then
-        echo -e "${LILA}😿 ¡Oh no! No hay historial de conexiones aún, pequeña! 💔${NC}"
-        read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"
-        return 1
-    fi
+    # Verificar si el archivo REGISTROS existe (asumiendo que contiene la lista de usuarios registrados, uno por línea)  
+    if [[ ! -f "$REGISTROS" ]]; then  
+        echo -e "${LILA}😿 ¡Oh no! No hay registros de usuarias aún, pequeña! 💔${NC}"  
+        read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"  
+        return 1  
+    fi  
 
-    # Encabezado de la tabla
-    printf "${LILA}%-15s %-22s %-22s %-12s${NC}\n" "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰  Duración"
-    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+    # Inicializar el archivo de log (sobrescribir cada vez para info actual)  
+    echo "🌸✨  INFORMACIÓN DE CONEXIONES 💖✨ 🌸" > "$LOGFILE"  
+    printf "%-15s %-22s %-22s %-12s\n" "Usuaria" "Conectada" "Desconectada" "Duración" >> "$LOGFILE"  
+    echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" >> "$LOGFILE"  
 
-    # Obtener lista única de usuarios desde HISTORIAL
-    mapfile -t USUARIOS < <(awk -F'|' '{print $1}' "$HISTORIAL" | sort -u)
+    # Encabezado de la tabla en pantalla  
+    printf "${LILA}%-15s %-22s %-22s %-12s${NC}\n" "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰  Duración"  
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"  
 
-    for USUARIO in "${USUARIOS[@]}"; do
-        if id "$USUARIO" &>/dev/null; then
-            # Obtener el último registro del usuario
-            ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)
-            if [[ -n "$ULTIMO_REGISTRO" ]]; then
-                IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION DURACION <<< "$ULTIMO_REGISTRO"
+    # Obtener lista única de usuarios desde REGISTROS (asumiendo uno por línea)  
+    mapfile -t USUARIOS < <(sort -u "$REGISTROS")  
 
-                # Validar formato de fechas
-                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ && \
-                      "$HORA_DESCONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
+    for USUARIO in "${USUARIOS[@]}"; do  
+        if id "$USUARIO" &>/dev/null; then  
+            # Obtener el último registro del usuario  
+            ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)  
+            if [[ -n "$ULTIMO_REGISTRO" ]]; then  
+                IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION DURACION <<< "$ULTIMO_REGISTRO"  
 
-                    # Formatear fechas
-                    CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%b %I:%M %p" 2>/dev/null)
-                    DESCONEXION_FMT=$(date -d "$HORA_DESCONEXION" +"%d/%b %I:%M %p" 2>/dev/null)
+                # Por defecto, asumir N/A  
+                CONEXION_FMT="N/A"  
+                DESCONEXION_FMT="N/A"  
+                DURACION="N/A"  
 
-                    # Traducir meses a español
-                    for eng in "${!month_map[@]}"; do
-                        esp=${month_map[$eng]}
-                        CONEXION_FMT=${CONEXION_FMT/$eng/$esp}
-                        DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}
-                    done
+                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
+                    # Formatear conexión  
+                    CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%b %I:%M %p" 2>/dev/null)  
+                    # Traducir meses a español  
+                    for eng in "${!month_map[@]}"; do  
+                        esp=${month_map[$eng]}  
+                        CONEXION_FMT=${CONEXION_FMT/$eng/$esp}  
+                    done  
 
-                    # Calcular duración
-                    SEC_CON=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)
-                    SEC_DES=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)
+                    SEC_CON=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)  
 
-                    if [[ -n "$SEC_CON" && -n "$SEC_DES" && $SEC_DES -ge $SEC_CON ]]; then
-                        DURACION_SEG=$((SEC_DES - SEC_CON))
-                        HORAS=$((DURACION_SEG / 3600))
-                        MINUTOS=$(((DURACION_SEG % 3600) / 60))
-                        SEGUNDOS=$((DURACION_SEG % 60))
-                        DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)
-                    else
-                        DURACION="N/A"
-                    fi
+                    if [[ "$HORA_DESCONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
+                        # Formatear desconexión  
+                        DESCONEXION_FMT=$(date -d "$HORA_DESCONEXION" +"%d/%b %I:%M %p" 2>/dev/null)  
+                        # Traducir meses a español  
+                        for eng in "${!month_map[@]}"; do  
+                            esp=${month_map[$eng]}  
+                            DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}  
+                        done  
 
-                    # Mostrar fila
-                    printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"
-                fi
-            fi
-        fi
-    done
+                        SEC_DES=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)  
+                    else  
+                        # Asumir aún conectada si no hay desconexión válida  
+                        DESCONEXION_FMT="Aún conectada"  
+                        SEC_DES=$(date +%s)  
+                    fi  
 
-    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"
+                    if [[ -n "$SEC_CON" && -n "$SEC_DES" && $SEC_DES -ge $SEC_CON ]]; then  
+                        DURACION_SEG=$((SEC_DES - SEC_CON))  
+                        HORAS=$((DURACION_SEG / 3600))  
+                        MINUTOS=$(((DURACION_SEG % 3600) / 60))  
+                        SEGUNDOS=$((DURACION_SEG % 60))  
+                        DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)  
+                    fi  
+                fi  
+            else  
+                # Si no hay registro, mostrar N/A  
+                CONEXION_FMT="N/A"  
+                DESCONEXION_FMT="N/A"  
+                DURACION="N/A"  
+            fi  
+
+            # Mostrar fila en pantalla  
+            printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"  
+
+            # Registrar en el log (sin colores)  
+            printf "%-15s %-22s %-22s %-12s\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION" >> "$LOGFILE"  
+        fi  
+    done  
+
+    echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"  
+    echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" >> "$LOGFILE"  
+
+    echo -e "${LILA}Puedes consultar el log con: cat $LOGFILE 🌟${NC}"  
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
                     
