@@ -700,11 +700,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 
                                                                                             
                                           
-
-                                                
-                                            
-
-
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
@@ -714,6 +709,7 @@ function barra_sistema() {
     AMARILLO='\033[93m'  
     VERDE='\033[92m'  
     NC='\033[0m'  
+    CIAN='\033[38;5;51m'  # Added CIAN to match verificar_online for consistency
 
     # ================= Config persistente =================
     STATE_FILE="/etc/mi_script/contador_online.conf"
@@ -722,7 +718,7 @@ function barra_sistema() {
     TOTAL_CONEXIONES=0  
     TOTAL_USUARIOS=0  
     USUARIOS_EXPIRAN=()  
-    inactivos=0 
+    inactivos=0  # Initialize inactivos counter
 
     if [[ -f "$REGISTROS" ]]; then  
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
@@ -732,6 +728,18 @@ function barra_sistema() {
                 DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")  
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then  
                     USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
+                fi  
+                # Calculate inactivos based on verificar_online logic
+                conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))  
+                bloqueo_file="/tmp/bloqueo_${usuario}.lock"  
+                if [[ $conexiones -eq 0 && ! -f "$bloqueo_file" ]]; then  
+                    ((inactivos++))  
+                elif [[ -f "$bloqueo_file" ]]; then  
+                    bloqueo_hasta=$(cat "$bloqueo_file")  
+                    if [[ $(date +%s) -ge $bloqueo_hasta ]]; then  
+                        rm -f "$bloqueo_file"  
+                        ((inactivos++))  # Consider unblocked but disconnected users as inactive
+                    fi  
                 fi  
             fi  
         done < "$REGISTROS"  
@@ -818,37 +826,36 @@ function barra_sistema() {
     fi  
 
     # ================= Transferencia acumulada =================  
-TRANSFER_FILE="/tmp/vps_transfer_total"  
-LAST_FILE="/tmp/vps_transfer_last"  
+    TRANSFER_FILE="/tmp/vps_transfer_total"  
+    LAST_FILE="/tmp/vps_transfer_last"  
 
-RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
-TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
-TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
+    RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
+    TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
+    TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
 
-# Si no existe LAST_FILE, se inicializa sin contar los bytes previos
-if [[ ! -f "$LAST_FILE" ]]; then
-    TRANSFER_ACUM=0
-    DIFF=0
-    echo "$TOTAL_BYTES" > "$LAST_FILE"
-else
-    LAST_TOTAL=$(cat "$LAST_FILE")
-    DIFF=$((TOTAL_BYTES - LAST_TOTAL))
-    [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
-    TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
-    echo "$TOTAL_BYTES" > "$LAST_FILE"
-    echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
-fi
+    if [[ ! -f "$LAST_FILE" ]]; then
+        TRANSFER_ACUM=0
+        DIFF=0
+        echo "$TOTAL_BYTES" > "$LAST_FILE"
+    else
+        LAST_TOTAL=$(cat "$LAST_FILE")
+        DIFF=$((TOTAL_BYTES - LAST_TOTAL))
+        [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
+        TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
+        echo "$TOTAL_BYTES" > "$LAST_FILE"
+        echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
+    fi
 
-human_transfer() {  
-    local bytes=$1  
-    if [ "$bytes" -ge 1073741824 ]; then  
-        awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"  
-    else  
-        awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
-    fi  
-}  
+    human_transfer() {  
+        local bytes=$1  
+        if [ "$bytes" -ge 1073741824 ]; then  
+            awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"  
+        else  
+            awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
+        fi  
+    }  
 
-TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
+    TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
     # ================= Imprimir todo =================  
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
@@ -857,7 +864,7 @@ TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC} ${BLANCO}∘ 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO}🖼️ SO:${AMARILLO} ${SO_NAME}${NC}  ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
-    echo -e "${BLANCO} ${ONLINE_STATUS} 👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC} ${CIAN}Inactivos:${AMARILLO} ${inactivos}${NC}"
+    echo -e "${BLANCO} ${ONLINE_STATUS} 👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC} ${CIAN}Inactivos:${AMARILLO} ${inactivos}${NC}"  # Updated line to match requested format
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
@@ -865,7 +872,12 @@ TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
         echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
 }
+                                                
+                                            
 
+
+
+        
 
     function contador_online() {
     STATE_FILE="/etc/mi_script/contador_online.conf"
