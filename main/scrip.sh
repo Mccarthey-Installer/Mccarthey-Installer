@@ -910,9 +910,9 @@ function informacion_usuarios() {
         ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"  
     )  
 
-    # Verificar si el archivo REGISTROS existe (asumiendo que contiene la lista de usuarios registrados, uno por línea)  
-    if [[ ! -f "$REGISTROS" ]]; then  
-        echo -e "${LILA}😿 ¡Oh no! No hay registros de usuarias aún, pequeña! 💔${NC}"  
+    # Verificar si al menos uno de los archivos existe  
+    if [[ ! -f "$REGISTROS" && ! -f "$HISTORIAL" ]]; then  
+        echo -e "${LILA}😿 ¡Oh no! No hay registros ni historial de conexiones aún, pequeña! 💔${NC}"  
         read -p "$(echo -e ${TURQUESA}Presiona Enter para seguir, corazón... 💌${NC})"  
         return 1  
     fi  
@@ -926,70 +926,77 @@ function informacion_usuarios() {
     printf "${LILA}%-15s %-22s %-22s %-12s${NC}\n" "👩‍💼 Usuaria" "🌷 Conectada" "🌙 Desconectada" "⏰  Duración"  
     echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"  
 
-    # Obtener lista única de usuarios desde REGISTROS (asumiendo uno por línea)  
-    mapfile -t USUARIOS < <(sort -u "$REGISTROS")  
+    # Obtener lista única de usuarios desde REGISTROS y HISTORIAL  
+    mapfile -t USUARIOS_REG < <(sort -u "$REGISTROS" 2>/dev/null)  
+    mapfile -t USUARIOS_HIS < <(awk -F'|' '{print $1}' "$HISTORIAL" | sort -u 2>/dev/null)  
+    mapfile -t USUARIOS < <(printf "%s\n" "${USUARIOS_REG[@]}" "${USUARIOS_HIS[@]}" | sort -u)  
 
-    for USUARIO in "${USUARIOS[@]}"; do  
-        if id "$USUARIO" &>/dev/null; then  
-            # Obtener el último registro del usuario  
-            ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)  
-            if [[ -n "$ULTIMO_REGISTRO" ]]; then  
-                IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION DURACION <<< "$ULTIMO_REGISTRO"  
+    if [[ ${#USUARIOS[@]} -eq 0 ]]; then  
+        echo -e "${LILA}😿 No hay usuarias registradas o con historial, dulce! 💔${NC}"  
+        echo "No hay usuarias registradas o con historial." >> "$LOGFILE"  
+    else  
+        for USUARIO in "${USUARIOS[@]}"; do  
+            if id "$USUARIO" &>/dev/null; then  
+                # Obtener el último registro del usuario  
+                ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)  
+                if [[ -n "$ULTIMO_REGISTRO" ]]; then  
+                    IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION DURACION <<< "$ULTIMO_REGISTRO"  
 
-                # Por defecto, asumir N/A  
-                CONEXION_FMT="N/A"  
-                DESCONEXION_FMT="N/A"  
-                DURACION="N/A"  
+                    # Por defecto, asumir N/A  
+                    CONEXION_FMT="N/A"  
+                    DESCONEXION_FMT="N/A"  
+                    DURACION="N/A"  
 
-                if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
-                    # Formatear conexión  
-                    CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%b %I:%M %p" 2>/dev/null)  
-                    # Traducir meses a español  
-                    for eng in "${!month_map[@]}"; do  
-                        esp=${month_map[$eng]}  
-                        CONEXION_FMT=${CONEXION_FMT/$eng/$esp}  
-                    done  
-
-                    SEC_CON=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)  
-
-                    if [[ "$HORA_DESCONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
-                        # Formatear desconexión  
-                        DESCONEXION_FMT=$(date -d "$HORA_DESCONEXION" +"%d/%b %I:%M %p" 2>/dev/null)  
+                    if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
+                        # Formatear conexión  
+                        CONEXION_FMT=$(date -d "$HORA_CONEXION" +"%d/%b %I:%M %p" 2>/dev/null)  
                         # Traducir meses a español  
                         for eng in "${!month_map[@]}"; do  
                             esp=${month_map[$eng]}  
-                            DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}  
+                            CONEXION_FMT=${CONEXION_FMT/$eng/$esp}  
                         done  
 
-                        SEC_DES=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)  
-                    else  
-                        # Asumir aún conectada si no hay desconexión válida  
-                        DESCONEXION_FMT="Aún conectada"  
-                        SEC_DES=$(date +%s)  
-                    fi  
+                        SEC_CON=$(date -d "$HORA_CONEXION" +%s 2>/dev/null)  
 
-                    if [[ -n "$SEC_CON" && -n "$SEC_DES" && $SEC_DES -ge $SEC_CON ]]; then  
-                        DURACION_SEG=$((SEC_DES - SEC_CON))  
-                        HORAS=$((DURACION_SEG / 3600))  
-                        MINUTOS=$(((DURACION_SEG % 3600) / 60))  
-                        SEGUNDOS=$((DURACION_SEG % 60))  
-                        DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)  
+                        if [[ "$HORA_DESCONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
+                            # Formatear desconexión  
+                            DESCONEXION_FMT=$(date -d "$HORA_DESCONEXION" +"%d/%b %I:%M %p" 2>/dev/null)  
+                            # Traducir meses a español  
+                            for eng in "${!month_map[@]}"; do  
+                                esp=${month_map[$eng]}  
+                                DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}  
+                            done  
+
+                            SEC_DES=$(date -d "$HORA_DESCONEXION" +%s 2>/dev/null)  
+                        else  
+                            # Asumir aún conectada si no hay desconexión válida  
+                            DESCONEXION_FMT="Aún conectada"  
+                            SEC_DES=$(date +%s)  
+                        fi  
+
+                        if [[ -n "$SEC_CON" && -n "$SEC_DES" && $SEC_DES -ge $SEC_CON ]]; then  
+                            DURACION_SEG=$((SEC_DES - SEC_CON))  
+                            HORAS=$((DURACION_SEG / 3600))  
+                            MINUTOS=$(((DURACION_SEG % 3600) / 60))  
+                            SEGUNDOS=$((DURACION_SEG % 60))  
+                            DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)  
+                        fi  
                     fi  
+                else  
+                    # Si no hay registro, mostrar N/A  
+                    CONEXION_FMT="N/A"  
+                    DESCONEXION_FMT="N/A"  
+                    DURACION="N/A"  
                 fi  
-            else  
-                # Si no hay registro, mostrar N/A  
-                CONEXION_FMT="N/A"  
-                DESCONEXION_FMT="N/A"  
-                DURACION="N/A"  
+
+                # Mostrar fila en pantalla  
+                printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"  
+
+                # Registrar en el log (sin colores)  
+                printf "%-15s %-22s %-22s %-12s\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION" >> "$LOGFILE"  
             fi  
-
-            # Mostrar fila en pantalla  
-            printf "${TURQUESA}%-15s %-22s %-22s %-12s${NC}\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION"  
-
-            # Registrar en el log (sin colores)  
-            printf "%-15s %-22s %-22s %-12s\n" "$USUARIO" "$CONEXION_FMT" "$DESCONEXION_FMT" "$DURACION" >> "$LOGFILE"  
-        fi  
-    done  
+        done  
+    fi  
 
     echo -e "${ROSADO}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~${NC}"  
     echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~" >> "$LOGFILE"  
@@ -997,8 +1004,6 @@ function informacion_usuarios() {
     echo -e "${LILA}Puedes consultar el log con: cat $LOGFILE 🌟${NC}"  
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
-                    
-        
     
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
