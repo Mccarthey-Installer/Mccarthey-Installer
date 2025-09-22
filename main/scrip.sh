@@ -722,6 +722,7 @@ function barra_sistema() {
     TOTAL_CONEXIONES=0  
     TOTAL_USUARIOS=0  
     USUARIOS_EXPIRAN=()  
+    inactivos=0 
 
     if [[ -f "$REGISTROS" ]]; then  
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
