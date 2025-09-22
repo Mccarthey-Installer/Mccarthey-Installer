@@ -937,15 +937,15 @@ function informacion_usuarios() {
     else  
         for USUARIO in "${USUARIOS[@]}"; do  
             if id "$USUARIO" &>/dev/null; then  
-                # Obtener el último registro del usuario  
+                # Inicializar valores por defecto  
+                CONEXION_FMT="N/A"  
+                DESCONEXION_FMT="N/A"  
+                DURACION="N/A"  
+
+                # Obtener el último registro del usuario desde HISTORIAL  
                 ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)  
                 if [[ -n "$ULTIMO_REGISTRO" ]]; then  
-                    IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION DURACION <<< "$ULTIMO_REGISTRO"  
-
-                    # Por defecto, asumir N/A  
-                    CONEXION_FMT="N/A"  
-                    DESCONEXION_FMT="N/A"  
-                    DURACION="N/A"  
+                    IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION _ <<< "$ULTIMO_REGISTRO"  
 
                     if [[ "$HORA_CONEXION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then  
                         # Formatear conexión  
@@ -982,11 +982,89 @@ function informacion_usuarios() {
                             DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)  
                         fi  
                     fi  
-                else  
-                    # Si no hay registro, mostrar N/A  
-                    CONEXION_FMT="N/A"  
-                    DESCONEXION_FMT="N/A"  
-                    DURACION="N/A"  
+                fi  
+
+                # Si no se pudo obtener info válida de HISTORIAL, fallback a 'last'  
+                if [[ "$CONEXION_FMT" == "N/A" ]]; then  
+                    LAST_INFO=$(last -R -1 "$USUARIO" 2>/dev/null | head -1)  
+                    if [[ -n "$LAST_INFO" && "$LAST_INFO" != *'wtmp begins'* ]]; then  
+                        # Parsear salida de 'last'  
+                        WEEKDAY=$(awk '{print $3}' <<< "$LAST_INFO")  
+                        MONTH=$(awk '{print $4}' <<< "$LAST_INFO")  
+                        DAY=$(awk '{print $5}' <<< "$LAST_INFO")  
+                        LOGINTIME=$(awk '{print $6}' <<< "$LAST_INFO")  
+                        NEXT=$(awk '{print $7}' <<< "$LAST_INFO")  
+
+                        CURRENT_YEAR=$(date +%Y)  
+                        LOGIN_STR="$MONTH $DAY $LOGINTIME $CURRENT_YEAR"  
+                        SEC_CON=$(date -d "$LOGIN_STR" +%s 2>/dev/null)  
+
+                        if [[ -n "$SEC_CON" ]]; then  
+                            CONEXION_FMT=$(date -d "$LOGIN_STR" +"%d/%b %I:%M %p" 2>/dev/null)  
+                            # Traducir meses a español  
+                            for eng in "${!month_map[@]}"; do  
+                                esp=${month_map[$eng]}  
+                                CONEXION_FMT=${CONEXION_FMT/$eng/$esp}  
+                            done  
+
+                            if [[ "$NEXT" == "still" ]]; then  
+                                DESCONEXION_FMT="Aún conectada"  
+                                SEC_DES=$(date +%s)  
+                            elif [[ "$NEXT" == "-" ]]; then  
+                                LOGOUTTIME=$(awk '{print $8}' <<< "$LAST_INFO")  
+                                if [[ "$LOGOUTTIME" =~ ^[0-2][0-9]:[0-5][0-9]$ ]]; then  
+                                    # Usar duración para calcular SEC_DES (más preciso para multi-día)  
+                                    DUR_STR=$(awk '{gsub(/[()]/,"",$9); print $9}' <<< "$LAST_INFO")  
+                                    if [[ "$DUR_STR" =~ \+ ]]; then  
+                                        DAYS=${DUR_STR%%+*}  
+                                        HM=${DUR_STR##*+}  
+                                        H=${HM%%:*}  
+                                        M=${HM##*:}  
+                                        DURACION_SEG=$((DAYS * 86400 + H * 3600 + M * 60))  
+                                    else  
+                                        H=${DUR_STR%%:*}  
+                                        M=${DUR_STR##*:}  
+                                        DURACION_SEG=$((H * 3600 + M * 60))  
+                                    fi  
+                                    SEC_DES=$((SEC_CON + DURACION_SEG))  
+                                    DESCONEXION_FMT=$(date -d "@$SEC_DES" +"%d/%b %I:%M %p" 2>/dev/null)  
+                                    # Traducir meses a español  
+                                    for eng in "${!month_map[@]}"; do  
+                                        esp=${month_map[$eng]}  
+                                        DESCONEXION_FMT=${DESCONEXION_FMT/$eng/$esp}  
+                                    done  
+                                else  
+                                    # Casos como 'down' o 'crash'  
+                                    DESCONEXION_FMT="Desconectada (${LOGOUTTIME})"  
+                                    DUR_STR=$(awk '{gsub(/[()]/,"",$9); print $9}' <<< "$LAST_INFO")  
+                                    if [[ -n "$DUR_STR" ]]; then  
+                                        if [[ "$DUR_STR" =~ \+ ]]; then  
+                                            DAYS=${DUR_STR%%+*}  
+                                            HM=${DUR_STR##*+}  
+                                            H=${HM%%:*}  
+                                            M=${HM##*:}  
+                                            DURACION_SEG=$((DAYS * 86400 + H * 3600 + M * 60))  
+                                        else  
+                                            H=${DUR_STR%%:*}  
+                                            M=${DUR_STR##*:}  
+                                            DURACION_SEG=$((H * 3600 + M * 60))  
+                                        fi  
+                                        SEC_DES=$((SEC_CON + DURACION_SEG))  
+                                    fi  
+                                fi  
+                            else  
+                                DESCONEXION_FMT="N/A"  
+                            fi  
+
+                            if [[ -n "$SEC_DES" && $SEC_DES -ge $SEC_CON ]]; then  
+                                DURACION_SEG=$((SEC_DES - SEC_CON))  
+                                HORAS=$((DURACION_SEG / 3600))  
+                                MINUTOS=$(((DURACION_SEG % 3600) / 60))  
+                                SEGUNDOS=$((DURACION_SEG % 60))  
+                                DURACION=$(printf "%02d:%02d:%02d" $HORAS $MINUTOS $SEGUNDOS)  
+                            fi  
+                        fi  
+                    fi  
                 fi  
 
                 # Mostrar fila en pantalla  
@@ -1004,6 +1082,7 @@ function informacion_usuarios() {
     echo -e "${LILA}Puedes consultar el log con: cat $LOGFILE 🌟${NC}"  
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
+                        
     
 # Función para calcular la fecha de expiración
 calcular_expiracion() {
