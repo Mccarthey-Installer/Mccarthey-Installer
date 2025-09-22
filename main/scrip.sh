@@ -903,11 +903,11 @@ function informacion_usuarios() {
 
     echo -e "${ROSADO}🌸✨  INFORMACIÓN DE CONEXIONES 💖✨ 🌸${NC}"  
 
-    # Mapa de meses para traducción  
+    # Mapa de meses para traducción (abreviaturas en español minúsculas a completo)
     declare -A month_map=(  
-        ["Jan"]="enero" ["Feb"]="febrero" ["Mar"]="marzo" ["Apr"]="abril"  
-        ["May"]="mayo" ["Jun"]="junio" ["Jul"]="julio" ["Aug"]="agosto"  
-        ["Sep"]="septiembre" ["Oct"]="octubre" ["Nov"]="noviembre" ["Dec"]="diciembre"  
+        ["ene"]="enero" ["feb"]="febrero" ["mar"]="marzo" ["abr"]="abril"  
+        ["may"]="mayo" ["jun"]="junio" ["jul"]="julio" ["ago"]="agosto"  
+        ["sep"]="septiembre" ["oct"]="octubre" ["nov"]="noviembre" ["dic"]="diciembre"  
     )  
 
     # Verificar si al menos uno de los archivos existe  
@@ -942,8 +942,8 @@ function informacion_usuarios() {
                 DESCONEXION_FMT="N/A"  
                 DURACION="N/A"  
 
-                # Obtener el último registro del usuario desde HISTORIAL  
-                ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | tail -1)  
+                # Obtener el último registro válido del usuario desde HISTORIAL (con ambos tiempos presentes)  
+                ULTIMO_REGISTRO=$(grep "^$USUARIO|" "$HISTORIAL" | grep -E '\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -1)  
                 if [[ -n "$ULTIMO_REGISTRO" ]]; then  
                     IFS='|' read -r _ HORA_CONEXION HORA_DESCONEXION _ <<< "$ULTIMO_REGISTRO"  
 
@@ -1082,6 +1082,7 @@ function informacion_usuarios() {
     echo -e "${LILA}Puedes consultar el log con: cat $LOGFILE 🌟${NC}"  
     read -p "$(echo -e ${LILA}Presiona Enter para continuar, dulce... 🌟${NC})"
 }
+                        
                         
     
 # Función para calcular la fecha de expiración
