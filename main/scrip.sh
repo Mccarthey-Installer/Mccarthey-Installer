@@ -864,7 +864,7 @@ function barra_sistema() {
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC} ${BLANCO}∘ 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO}🖼️ SO:${AMARILLO} ${SO_NAME}${NC}  ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
-    echo -e "${BLANCO} ${ONLINE_STATUS} 👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC} ${CIAN}Inactivos:${AMARILLO} ${inactivos}${NC}"  # Updated line to match requested format
+    echo -e "${BLANCO} ${ONLINE_STATUS}    👥 TOTAL:${AMARILLO} ${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"  # Updated line to match requested format
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
