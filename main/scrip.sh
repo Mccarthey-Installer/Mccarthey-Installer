@@ -826,60 +826,36 @@ function barra_sistema() {
     fi  
 
     # ================= Transferencia acumulada =================  
-    TRANSFER_FILE="/etc/mi_script/vps_transfer_total"  
-LAST_FILE="/etc/mi_script/vps_transfer_last"  
-LOCK_FILE="/tmp/vps_transfer.lock"
+    TRANSFER_FILE="/tmp/vps_transfer_total"  
+    LAST_FILE="/tmp/vps_transfer_last"  
 
-# Verificar permisos de escritura
-[[ -w "$(dirname "$TRANSFER_FILE")" ]] || { echo "Error: No se puede escribir en $(dirname "$TRANSFER_FILE")"; exit 1; }
+    RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
+    TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
+    TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
 
-# Bloqueo para evitar condiciones de carrera
-exec 9>"$LOCK_FILE"
-flock -n 9 || { echo "Error: Otro proceso está ejecutando el script"; exit 1; }
-
-RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
-TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
-TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
-
-if [[ ! -f "$LAST_FILE" ]]; then
-    TRANSFER_ACUM=0
-    DIFF=0
-    echo "$TOTAL_BYTES" > "$LAST_FILE"
-else
-    LAST_TOTAL=$(cat "$LAST_FILE")
-    [[ "$LAST_TOTAL" =~ ^[0-9]+$ ]] || LAST_TOTAL=0
-    DIFF=$((TOTAL_BYTES - LAST_TOTAL))
-    if [[ $DIFF -lt 0 ]]; then
-        DIFF=0
-        echo "Advertencia: Reinicio de estadísticas de red detectado, ajustando DIFF a 0" >&2
-    fi
-    if [[ -f "$TRANSFER_FILE" ]]; then
-        TRANSFER_ACUM=$(cat "$TRANSFER_FILE")
-        [[ "$TRANSFER_ACUM" =~ ^[0-9]+$ ]] || TRANSFER_ACUM=0
-    else
+    if [[ ! -f "$LAST_FILE" ]]; then
         TRANSFER_ACUM=0
+        DIFF=0
+        echo "$TOTAL_BYTES" > "$LAST_FILE"
+    else
+        LAST_TOTAL=$(cat "$LAST_FILE")
+        DIFF=$((TOTAL_BYTES - LAST_TOTAL))
+        [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
+        TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
+        echo "$TOTAL_BYTES" > "$LAST_FILE"
+        echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
     fi
-    TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
-    echo "$TOTAL_BYTES" > "$LAST_FILE"
-    echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
-fi
 
-# Liberar el bloqueo
-exec 9>&-
+    human_transfer() {  
+        local bytes=$1  
+        if [ "$bytes" -ge 1073741824 ]; then  
+            awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"  
+        else  
+            awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
+        fi  
+    }  
 
-# Registrar para depuración
-echo "$(date): RX_TOTAL=$RX_TOTAL, TX_TOTAL=$TX_TOTAL, DIFF=$DIFF, TRANSFER_ACUM=$TRANSFER_ACUM" >> /var/log/transfer_log
-
-human_transfer() {  
-    local bytes=$1  
-    if [ "$bytes" -ge 1073741824 ]; then  
-        awk "BEGIN {printf \"%.2f GB\", $bytes/1073741824}"  
-    else  
-        awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
-    fi  
-}  
-
-TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
+    TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
     # ================= Imprimir todo =================  
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
