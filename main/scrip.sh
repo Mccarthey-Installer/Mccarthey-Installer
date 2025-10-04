@@ -529,7 +529,11 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
+                                             FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M")  # Obtener fecha y hora local
+                                             LISTA="🕒 *FECHA*: \`${FECHA_ACTUAL}\`
+
+                                       
+                                            ===== 🥳 *USUARIOS ONLINE* 😎 =====
 
 *USUARIO  CONEXIONES  MÓVILES  CONECTADO*
 -----------------------------------------------------------------
