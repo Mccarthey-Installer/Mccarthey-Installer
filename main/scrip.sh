@@ -634,11 +634,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     chunk+=\" 🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
 
 🧑‍💻*Usuario*: \\\`\${usuarios[\$idx]}\\\`
-
 🌐*Conexiones*: \${conexiones_status_arr[\$idx]}
-
 📲*Móviles*: \${moviles_arr[\$idx]}
-
 ⏳*Tiempo conectado/última vez/nunca conectado*: \${detalle_arr[\$idx]}
 
 
