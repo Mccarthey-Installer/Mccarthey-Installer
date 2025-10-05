@@ -540,18 +540,13 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
-
-*USUARIO  CONEXIONES  MÓVILES  CONECTADO*
------------------------------------------------------------------
-
-\"
+                                            declare -a usuarios
+                                            declare -a conexiones_status_arr
+                                            declare -a moviles_arr
+                                            declare -a detalle_arr
                                             total_online=0
                                             total_usuarios=0
                                             inactivos=0
-                                            usuarios_por_mensaje=10  # Número de usuarios por mensaje para no exceder el límite de Telegram
-                                            contador_usuarios=0
-                                            mensajes=()
 
                                             while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
                                                 usuario=\${userpass%%:*}
@@ -617,45 +612,46 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     conexiones_status=\"\$conexiones 🔴\"
                                                 fi
 
-                                                FECHA_ACTUAL=\$(date +\"%Y-%m-%d %I:%M\")
-                                                entrada_usuario=\" 🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
-*🧑‍💻Usuario*: \\\`\${usuario}\\\`
-*🌐Conexiones*: \$conexiones_status
-*📲Móviles*: \$moviles
-*⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
+                                                usuarios+=(\"\$usuario\")
+                                                conexiones_status_arr+=(\"\$conexiones_status\")
+                                                moviles_arr+=(\"\$moviles\")
+                                                detalle_arr+=(\"\$detalle\")
+                                            done < \"\$REGISTROS\"
 
-\"
-                                                LISTA=\"\${LISTA}\${entrada_usuario}\"
-                                                (( contador_usuarios++ ))
-
-                                                # Si alcanzamos el límite de usuarios por mensaje o es el último usuario
-                                                if [[ \$contador_usuarios -ge \$usuarios_por_mensaje || \$total_usuarios -eq \$((contador_usuarios + inactivos)) ]]; then
-                                                    mensajes+=(\"\$LISTA\")
-                                                    LISTA=\"===== 🥳 *USUARIOS ONLINE (Continuación)* 😎 =====
+                                            HEADER=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
 
 *USUARIO  CONEXIONES  MÓVILES  CONECTADO*
 -----------------------------------------------------------------
 
 \"
-                                                    contador_usuarios=0
-                                                fi
-                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$HEADER\" -d parse_mode=Markdown >/dev/null
 
-                                            # Agregar el resumen al último mensaje
-                                            ultimo_mensaje=\${mensajes[-1]:-\$LISTA}
-                                            ultimo_mensaje=\"\${ultimo_mensaje}-----------------------------------------------------------------
+                                            for ((k=0; k<\${#usuarios[@]}; k+=15)); do
+                                                chunk=\"\"
+                                                FECHA_ACTUAL=\$(date +\"%Y-%m-%d %I:%M\")
+                                                for ((m=0; m<15 && k+m < \${#usuarios[@]}; m++)); do
+                                                    idx=\$((k + m))
+                                                    chunk+=\" 🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
+
+🧑‍💻*Usuario*: \\\`\${usuarios[\$idx]}\\\`
+
+🌐*Conexiones*: \${conexiones_status_arr[\$idx]}
+
+📲*Móviles*: \${moviles_arr[\$idx]}
+
+⏳*Tiempo conectado/última vez/nunca conectado*: \${detalle_arr[\$idx]}
+
+
+\"
+                                                done
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$chunk\" -d parse_mode=Markdown >/dev/null
+                                            done
+
+                                            FOOTER=\"-----------------------------------------------------------------
 🟢 *ONLINE*: \$total_online    👥 *TOTAL*: \$total_usuarios    🔴 *Inactivos*: \$inactivos
-================================================"
-                                            if [[ \${#mensajes[@]} -gt 0 ]]; then
-                                                mensajes[-1]=\"\$ultimo_mensaje\"
-                                            else
-                                                mensajes+=(\"\$ultimo_mensaje\")
-                                            fi
-
-                                            # Enviar cada mensaje
-                                            for mensaje in \"\${mensajes[@]}\"; do
-                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$mensaje\" -d parse_mode=Markdown >/dev/null
-                                            done                           
+================================================\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$FOOTER\" -d parse_mode=Markdown >/dev/null
+                                        fi
                                         ;;
                                     '5')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
@@ -735,6 +731,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
+                                
+                                                
 
 function eliminar_multiples_usuarios() {
     clear
