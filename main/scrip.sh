@@ -14,7 +14,8 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-ssh_bot() {
+
+    ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -26,7 +27,7 @@ ssh_bot() {
     export REGISTROS="/diana/reg.txt"
     export HISTORIAL="/alexia/log.txt"
     export PIDFILE="/Abigail/mon.pid"
-    export DELETED_USERS_FILE="/etc/mi_script/deleted_users_count.conf"  # Usar el mismo archivo que eliminar_multiples_usuarios
+    export DELETED_USERS_FILE="/etc/mi_script/deleted_users_count.conf"
 
     # Crear directorios y archivo de usuarios muertos si no existen
     mkdir -p "$(dirname "$REGISTROS")"
@@ -539,8 +540,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            UPTIME=\$(uptime -p | sed 's/up //')
-                                            DELETED_USERS=\$(cat \"\$DELETED_USERS_FILE\" 2>/dev/null || echo 0)
                                             LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
 
 *USUARIO  CONEXIONES  MÓVILES  CONECTADO*
@@ -626,7 +625,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             done < \"\$REGISTROS\"
 
                                             LISTA=\"\${LISTA}-----------------------------------------------------------------
-🕓 *UPTIME*: \$UPTIME        *Usuarios Muertos*: \$DELETED_USERS
 🟢 *ONLINE*: \$total_online    👥 *TOTAL*: \$total_usuarios    🔴 *Inactivos*: \$inactivos
 ================================================\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
@@ -662,7 +660,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
                                             cp \"\$REGISTROS\" \"\$temp_backup\"
-                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" -F caption=\"💾 *Aquí está tu backup de usuarios.*\" -F parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" >/dev/null
                                             rm -f \"\$temp_backup\"
                                         fi
                                         ;;
@@ -709,7 +707,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}                    
+                                            
+
 
 function eliminar_multiples_usuarios() {
     clear
