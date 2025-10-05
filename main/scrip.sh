@@ -14,8 +14,7 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-                                
-    ssh_bot() {
+  ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -527,7 +526,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            # Agregar fecha y hora actual, y crear archivo de texto
                                             FECHA_ACTUAL=\$(date +\"%Y-%m-%d %H:%M\")
                                             LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
 
@@ -535,11 +533,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 -----------------------------------------------------------------
 
 \"
-                                            # Crear archivo de texto para usuarios conectados
-                                            echo \"===== 🥳 USUARIOS ONLINE 😎 =====\" > /tmp/usuarios_conectados.txt
-                                            echo \"\" >> /tmp/usuarios_conectados.txt
-                                            echo \"USUARIO  CONEXIONES  MÓVILES  CONECTADO\" >> /tmp/usuarios_conectados.txt
-                                            echo \"-----------------------------------------------------------------\" >> /tmp/usuarios_conectados.txt
+                                            LISTA_TXT=\"===== 🥳 USUARIOS ONLINE 😎 =====\n\nUSUARIO  CONEXIONES  MÓVILES  CONECTADO\n-----------------------------------------------------------------\n\"
                                             total_online=0
                                             total_usuarios=0
                                             inactivos=0
@@ -590,9 +584,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                         rm -f \"\$tmp_status\"
                                                         ult=\$(grep \"^\$usuario|\" \"\$HISTORIAL\" | tail -1 | awk -F'|' '{print \$3}')
                                                         if [[ -n \"\$ult\" ]]; then
-                                                            ult_fmt=\$(date -d \"\$ult\" +\" %d/%b/%Y %H:%M\" 2>/dev/null)
+                                                            ult_fmt=\$(date -d \"\$ult\" +\"%d/%b/%Y %H:%M\" 2>/dev/null)
                                                             if [[ -n \"\$ult_fmt\" ]]; then
-                                                                detalle=\"📅 Última:\$ult_fmt\"
+                                                                detalle=\"📅 Última: \$ult_fmt\"
                                                             else
                                                                 detalle=\"😴 Nunca conectado\"
                                                             fi
@@ -608,41 +602,26 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     conexiones_status=\"\$conexiones 🔴\"
                                                 fi
 
-                                                LISTA=\"\${LISTA}*🕒 FECHA*: \\\`\${FECHA_ACTUAL}\\\`
+                                                LISTA=\"\${LISTA}🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
 *🧑‍💻Usuario*: \\\`\${usuario}\\\`
 *🌐Conexiones*: \$conexiones_status
 *📲Móviles*: \$moviles
 *⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
 
 \"
-                                                # Escribir en el archivo de texto
-                                                echo \"🕒 FECHA: \${FECHA_ACTUAL}\" >> /tmp/usuarios_conectados.txt
-                                                echo \"🧑‍💻Usuario: \${usuario}\" >> /tmp/usuarios_conectados.txt
-                                                echo \"🌐Conexiones: \$conexiones_status\" >> /tmp/usuarios_conectados.txt
-                                                echo \"📲Móviles: \$moviles\" >> /tmp/usuarios_conectados.txt
-                                                echo \"⏳Tiempo conectado/última vez/nunca conectado: \$detalle\" >> /tmp/usuarios_conectados.txt
-                                                echo \"\" >> /tmp/usuarios_conectados.txt
+                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL\n🧑‍💻Usuario: \$usuario\n🌐Conexiones: \$conexiones_status\n📲Móviles: \$moviles\n⏳Tiempo conectado/última vez/nunca conectado: \$detalle\n\n\"
                                             done < \"\$REGISTROS\"
 
                                             LISTA=\"\${LISTA}-----------------------------------------------------------------
 *Total de Online:* \$total_online  *Total usuarios:* \$total_usuarios  *Inactivos:* \$inactivos
-================================================
-\"
-                                            # Completar archivo de texto
-                                            echo \"-----------------------------------------------------------------\" >> /tmp/usuarios_conectados.txt
-                                            echo \"Total de Online: \$total_online  Total usuarios: \$total_usuarios  Inactivos: \$inactivos\" >> /tmp/usuarios_conectados.txt
-                                            echo \"================================================\" >> /tmp/usuarios_conectados.txt
+=================================================\"
+                                            LISTA_TXT=\"\${LISTA_TXT}-----------------------------------------------------------------\nTotal de Online: \$total_online  Total usuarios: \$total_usuarios  Inactivos: \$inactivos\n=================================================\"
 
-                                            # Enviar mensaje de Telegram con la lista
+                                            temp_users=\"/tmp/usuarios_online_\$(date +%Y%m%d_%H%M%S).txt\"
+                                            echo -e \"\$LISTA_TXT\" > \"\$temp_users\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-
-                                            # Verificar que el archivo existe y enviarlo
-                                            if [[ -f \"/tmp/usuarios_conectados.txt\" ]]; then
-                                                curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@/tmp/usuarios_conectados.txt -F caption=\"✅ *Lista de usuarios conectados.*\" -d parse_mode=Markdown >/dev/null
-                                                rm -f /tmp/usuarios_conectados.txt
-                                            else
-                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al generar el archivo de usuarios conectados.*\" -d parse_mode=Markdown >/dev/null
-                                            fi
+                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_users\" -F parse_mode=Markdown >/dev/null
+                                            rm -f \"\$temp_users\"
                                         fi
                                         ;;
                                     '5')
@@ -675,7 +654,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
                                             cp \"\$REGISTROS\" \"\$temp_backup\"
-                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" >/dev/null
+                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" -F parse_mode=Markdown >/dev/null
                                             rm -f \"\$temp_backup\"
                                         fi
                                         ;;
@@ -722,7 +701,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}                              
+    
                                         
        
 
