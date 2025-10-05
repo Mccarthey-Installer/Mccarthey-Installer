@@ -655,8 +655,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             # Enviar cada mensaje
                                             for mensaje in \"\${mensajes[@]}\"; do
                                                 curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$mensaje\" -d parse_mode=Markdown >/dev/null
-                                            done
-                                        fi
+                                            done                           
                                         ;;
                                     '5')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
