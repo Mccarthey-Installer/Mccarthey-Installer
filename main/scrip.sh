@@ -1040,6 +1040,7 @@ function barra_sistema() {
     TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
     # ================= Contador de Usuarios Muertos =================
+    mkdir -p /etc/mi_script
     [[ ! -f "$DELETED_USERS_FILE" ]] && echo "0" > "$DELETED_USERS_FILE"
     DELETED_USERS=$(cat "$DELETED_USERS_FILE")
 
