@@ -15,9 +15,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
                                 
-    
-                                        
-       ssh_bot() {
+    ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -529,8 +527,10 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
+                                            FECHA_ACTUAL=\$(date +\"%Y-%m-%d %H:%M\")
                                             LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
 
+🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
 *USUARIO  CONEXIONES  MÓVILES  CONECTADO*
 -----------------------------------------------------------------
 
@@ -538,6 +538,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             total_online=0
                                             total_usuarios=0
                                             inactivos=0
+                                            usuarios_por_mensaje=10
+                                            contador=0
+                                            mensaje_actual=\"\"
 
                                             while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
                                                 usuario=\${userpass%%:*}
@@ -603,18 +606,33 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     conexiones_status=\"\$conexiones 🔴\"
                                                 fi
 
-                                                LISTA=\"\${LISTA}*🧑‍💻Usuario*: \\\`\${usuario}\\\`
+                                                mensaje_actual=\"\${mensaje_actual}*🧑‍💻Usuario*: \\\`\${usuario}\\\`
 *🌐Conexiones*: \$conexiones_status
 *📲Móviles*: \$moviles
 *⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
 
 \"
+                                                ((contador++))
+
+                                                if [[ \$contador -ge \$usuarios_por_mensaje || \$total_usuarios -eq \$contador ]]; then
+                                                    mensaje_final=\"\${LISTA}\${mensaje_actual}-----------------------------------------------------------------
+*Total de Online:* \$total_online  *Total usuarios:* \$total_usuarios  *Inactivos:* \$inactivos
+================================================
+*Página \$(( (contador-1)/usuarios_por_mensaje + 1 ))*\"
+                                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$mensaje_final\" -d parse_mode=Markdown >/dev/null
+                                                    sleep 1
+                                                    mensaje_actual=\"\"
+                                                    contador=0
+                                                fi
                                             done < \"\$REGISTROS\"
 
-                                            LISTA=\"\${LISTA}-----------------------------------------------------------------
+                                            if [[ \$contador -gt 0 ]]; then
+                                                mensaje_final=\"\${LISTA}\${mensaje_actual}-----------------------------------------------------------------
 *Total de Online:* \$total_online  *Total usuarios:* \$total_usuarios  *Inactivos:* \$inactivos
-================================================\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+================================================
+*Página \$(( (total_usuarios-1)/usuarios_por_mensaje + 1 ))*\"
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$mensaje_final\" -d parse_mode=Markdown >/dev/null
+                                            fi
                                         fi
                                         ;;
                                     '5')
@@ -647,7 +665,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
                                             cp \"\$REGISTROS\" \"\$temp_backup\"
-                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" -F caption=\"💾 *Aquí está tu backup de usuarios.*\" -F parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_backup\" >/dev/null
                                             rm -f \"\$temp_backup\"
                                         fi
                                         ;;
@@ -694,10 +712,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                                         
-                                    
-
-
+}
+                                        
+       
                                                                                             
                                           
 function barra_sistema() {  
