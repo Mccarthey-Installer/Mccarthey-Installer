@@ -632,7 +632,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 for ((m=0; m<15 && k+m < \${#usuarios[@]}; m++)); do
                                                     idx=\$((k + m))
                                                     chunk+=\" 🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
-
 🧑‍💻*Usuario*: \\\`\${usuarios[\$idx]}\\\`
 🌐*Conexiones*: \${conexiones_status_arr[\$idx]}
 📲*Móviles*: \${moviles_arr[\$idx]}
