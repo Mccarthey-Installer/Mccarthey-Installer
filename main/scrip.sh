@@ -15,7 +15,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 
 
-    ssh_bot() {
+ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -550,13 +550,21 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             total_usuarios=0
                                             inactivos=0
 
+                                            # Obtener todas las conexiones de una vez para optimizar
+                                            declare -A conexiones_map
+                                            while read -r pid user comm; do
+                                                if [[ \"\$comm\" =~ ^(sshd|dropbear)\$ ]]; then
+                                                    (( conexiones_map[\$user]++ ))
+                                                fi
+                                            done < <(ps -eo pid,user,comm --no-headers)
+
                                             while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
                                                 usuario=\${userpass%%:*}
                                                 if ! id \"\$usuario\" &>/dev/null; then
                                                     continue
                                                 fi
                                                 (( total_usuarios++ ))
-                                                conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
+                                                conexiones=\${conexiones_map[\$usuario]:-0}
                                                 tmp_status=\"/tmp/status_\${usuario}.tmp\"
                                                 bloqueo_file=\"/tmp/bloqueo_\${usuario}.lock\"
                                                 detalle=\"😴 Nunca conectado\"
@@ -626,8 +634,34 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 
                                             LISTA=\"\${LISTA}-----------------------------------------------------------------
 🟢 *ONLINE*: \$total_online    👥 *TOTAL*: \$total_usuarios    🔴 *Inactivos*: \$inactivos
-================================================\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+================================================\\\"
+
+                                            # Dividir el mensaje si es demasiado largo
+                                            MAX_MESSAGE_LENGTH=4000
+                                            if [[ \${#LISTA} -gt \$MAX_MESSAGE_LENGTH ]]; then
+                                                PARTES=()
+                                                current_part=\"\"
+                                                current_length=0
+                                                while IFS= read -r linea; do
+                                                    linea_length=\${#linea}
+                                                    if [[ \$((current_length + linea_length + 1)) -gt \$MAX_MESSAGE_LENGTH ]]; then
+                                                        PARTES+=(\"\$current_part\")
+                                                        current_part=\"\$linea\\n\"
+                                                        current_length=\$((linea_length + 1))
+                                                    else
+                                                        current_part=\"\${current_part}\${linea}\\n\"
+                                                        current_length=\$((current_length + linea_length + 1))
+                                                    fi
+                                                done <<< \"\$LISTA\"
+                                                PARTES+=(\"\$current_part\")
+
+                                                for parte in \"\${PARTES[@]}\"; do
+                                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$parte\" -d parse_mode=Markdown >/dev/null
+                                                    sleep 0.5
+                                                done
+                                            else
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            fi
                                         fi
                                         ;;
                                     '5')
@@ -707,8 +741,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                    
-                                            
+}
 
 
 function eliminar_multiples_usuarios() {
