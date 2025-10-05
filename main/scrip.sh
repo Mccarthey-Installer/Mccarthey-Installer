@@ -530,7 +530,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             FECHA_ACTUAL=\$(date +\"%Y-%m-%d %H:%M\")
                                             LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
 
-🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
 *USUARIO  CONEXIONES  MÓVILES  CONECTADO*
 -----------------------------------------------------------------
 
@@ -606,7 +605,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     conexiones_status=\"\$conexiones 🔴\"
                                                 fi
 
-                                                mensaje_actual=\"\${mensaje_actual}*🧑‍💻Usuario*: \\\`\${usuario}\\\`
+                                                mensaje_actual=\"\${mensaje_actual}🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
+*🧑‍💻Usuario*: \\\`\${usuario}\\\`
 *🌐Conexiones*: \$conexiones_status
 *📲Móviles*: \$moviles
 *⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
@@ -714,7 +714,10 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
     esac
 }
                                         
-       
+
+                                    
+
+
                                                                                             
                                           
 function barra_sistema() {  
