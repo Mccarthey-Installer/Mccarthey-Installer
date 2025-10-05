@@ -14,7 +14,6 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-
 ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
@@ -540,16 +539,25 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            declare -a usuarios
-                                            declare -a conexiones_status_arr
-                                            declare -a moviles_arr
-                                            declare -a detalle_arr
+                                            # Inicializar arrays vacíos explícitamente
+                                            declare -a usuarios=()
+                                            declare -a conexiones_status_arr=()
+                                            declare -a moviles_arr=()
+                                            declare -a detalle_arr=()
                                             total_online=0
                                             total_usuarios=0
                                             inactivos=0
 
+                                            # Usar un array asociativo para rastrear usuarios únicos
+                                            declare -A seen_users
+
                                             while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
                                                 usuario=\${userpass%%:*}
+                                                # Saltar si el usuario ya fue procesado
+                                                if [[ -n \"\${seen_users[\$usuario]}\" ]]; then
+                                                    continue
+                                                fi
+                                                seen_users[\$usuario]=1
                                                 if ! id \"\$usuario\" &>/dev/null; then
                                                     continue
                                                 fi
@@ -631,12 +639,11 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 FECHA_ACTUAL=\$(date +\"%Y-%m-%d %I:%M\")
                                                 for ((m=0; m<15 && k+m < \${#usuarios[@]}; m++)); do
                                                     idx=\$((k + m))
-                                                    chunk+=\" 🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
+                                                    chunk+=\"🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
 🧑‍💻*Usuario*: \\\`\${usuarios[\$idx]}\\\`
 🌐*Conexiones*: \${conexiones_status_arr[\$idx]}
 📲*Móviles*: \${moviles_arr[\$idx]}
 ⏳*Tiempo conectado/última vez/nunca conectado*: \${detalle_arr[\$idx]}
-
 
 \"
                                                 done
@@ -645,7 +652,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 
                                             FOOTER=\"-----------------------------------------------------------------
 🟢 *ONLINE*: \$total_online    👥 *TOTAL*: \$total_usuarios    🔴 *Inactivos*: \$inactivos
-================================================\"
+=================================================\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$FOOTER\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
@@ -727,7 +734,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
-                                
                                                 
 
 function eliminar_multiples_usuarios() {
