@@ -13,6 +13,43 @@ mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
+# ================================
+# CONFIGURACIÓN AUTO SSH (limpieza rápida de fantasmas)
+# ================================
+SSH_CONF="/etc/ssh/sshd_config"
+CLIENT_ALIVE_INTERVAL=30
+CLIENT_ALIVE_COUNT_MAX=1
+MARKER="# AUTO-CONFIG-SSH"
+
+# Verificar permisos de root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "❌ Este script requiere permisos de root para ajustar SSH."
+else
+    # Solo aplicar si no se ha hecho antes
+    if ! grep -q "$MARKER" "$SSH_CONF"; then
+        echo "🧩 Ajustando configuración SSH para limpiar sesiones inactivas..."
+
+        # Copia de seguridad
+        BACKUP_FILE="${SSH_CONF}.bak-$(date +%F_%H%M%S)"
+        cp "$SSH_CONF" "$BACKUP_FILE" && echo "📝 Copia de seguridad: $BACKUP_FILE"
+
+        # Editar/agregar líneas necesarias
+        sed -i "/^#*ClientAliveInterval/d" "$SSH_CONF"
+        sed -i "/^#*ClientAliveCountMax/d" "$SSH_CONF"
+        {
+            echo "$MARKER"
+            echo "ClientAliveInterval $CLIENT_ALIVE_INTERVAL"
+            echo "ClientAliveCountMax $CLIENT_ALIVE_COUNT_MAX"
+        } >> "$SSH_CONF"
+
+        # Validar y reiniciar SSH
+        if sshd -t >/dev/null 2>&1; then
+            systemctl restart sshd >/dev/null 2>&1 && echo "✅ SSH actualizado y reiniciado correctamente."
+        else
+            echo "❌ Error al validar configuración SSH. Revisa $SSH_CONF."
+        fi
+    fi
+fi
 
   ssh_bot() {
     # Asegurar que jq esté instalado
