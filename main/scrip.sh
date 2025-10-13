@@ -17,8 +17,8 @@ mkdir -p "$(dirname "$PIDFILE")"
 # Evitar múltiples instancias del limitador
 PIDFILE="/tmp/limitador.pid"
 
-# Solo aplicar el control si el modo no es "menu"
-if [[ "$1" != "menu" ]]; then
+# Solo aplicar el control si el modo no es "menu" y hay argumentos
+if [[ -n "$1" && "$1" != "menu" ]]; then
     if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
         echo "⚠️ Ya hay una instancia del limitador en ejecución. Saliendo..."
         exit 0
@@ -26,6 +26,7 @@ if [[ "$1" != "menu" ]]; then
     echo $$ > "$PIDFILE"
     trap 'rm -f "$PIDFILE"' EXIT
 fi
+
 
 # ================================
 # CONFIGURACIÓN AUTO SSH (limpieza rápida de fantasmas)
