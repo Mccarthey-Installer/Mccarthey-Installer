@@ -1748,34 +1748,7 @@ activar_desactivar_limitador() {
     read
 }
 
-# ================================
-# MODO LIMITADOR
-# ================================
-if [[ "$1" == "limitador" ]]; then
-    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
 
-    while true; do
-        if [[ -f "$REGISTROS" ]]; then
-            while IFS=' ' read -r user_data _ _ moviles _; do
-                usuario=${user_data%%:*}
-                if id "$usuario" &>/dev/null; then
-                    # Obtener PIDs ordenados: más antiguos primero
-                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
-                    conexiones=${#pids[@]}
-
-                    if [[ $conexiones -gt $moviles ]]; then
-                        for ((i=moviles; i<conexiones; i++)); do
-                            pid=${pids[$i]}
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
-                        done
-                    fi
-                fi
-            done < "$REGISTROS"
-        fi
-        sleep "$INTERVALO"
-    done
-fi
 
 # ================================
 # ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
@@ -1785,6 +1758,74 @@ if [[ -f "$ENABLED" ]]; then
         nohup bash "$0" limitador >/dev/null 2>&1 &
         echo $! > "$PIDFILE"
     fi
+fi
+# ================================
+# MODO LIMITADOR
+# ================================
+if [[ "$1" == "limitador" ]]; then
+    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
+
+    # Inicializar iptables si no está configurado
+    iptables -F OUTPUT 2>/dev/null
+    iptables -X LIMITADOR_DROP 2>/dev/null
+    iptables -N LIMITADOR_DROP 2>/dev/null
+    iptables -A LIMITADOR_DROP -j DROP
+
+    while true; do
+        if [[ -f "$REGISTROS" ]]; then
+            # Crear una lista temporal de usuarios bloqueados en esta iteración
+            declare -A usuarios_bloqueados
+
+            while IFS=' ' read -r user_data _ _ moviles _; do
+                usuario=${user_data%%:*}
+                if id "$usuario" &>/dev/null; then
+                    # Obtener PIDs ordenados: más antiguos primero
+                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
+                    conexiones=${#pids[@]}
+
+                    # Obtener el UID del usuario
+                    uid=$(id -u "$usuario" 2>/dev/null)
+
+                    if [[ $conexiones -gt $moviles ]]; then
+                        # Marcar usuario como bloqueado
+                        usuarios_bloqueados[$usuario]=1
+
+                        # Terminar conexiones extra
+                        for ((i=moviles; i<conexiones; i++)); do
+                            pid=${pids[$i]}
+                            kill -9 "$pid" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
+                        done
+
+                        # Bloquear tráfico de internet para el usuario (usando UID)
+                        if ! iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
+                            iptables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet bloqueado para $usuario (UID: $uid) por exceder límite de $moviles conexiones." >> "$HISTORIAL"
+                        fi
+                    else
+                        # Si el usuario no excede el límite, asegurarse de que no esté bloqueado
+                        if [[ -n "${usuarios_bloqueados[$usuario]}" ]]; then
+                            unset usuarios_bloqueados[$usuario]
+                            if iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
+                                iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"
+                            fi
+                        fi
+                    fi
+                fi
+            done < "$REGISTROS"
+
+            # Limpiar reglas de usuarios que ya no están en la lista de bloqueados
+            for usuario in "${!usuarios_bloqueados[@]}"; do
+                uid=$(id -u "$usuario" 2>/dev/null)
+                if [[ -n "$uid" ]] && iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
+                    iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"
+                fi
+            done
+        fi
+        sleep "$INTERVALO"
+    done
 fi
 
 
