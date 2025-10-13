@@ -1659,21 +1659,17 @@ activar_desactivar_limitador() {
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
     
-    # Verificar estado actual: chequea si proceso y archivo ENABLED existen
-    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    # Verificar estado actual
+    if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         ESTADO="${VERDE}🟢 Activado${NC}"
         INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
     else
-        # Limpieza procesos huérfanos si existen
-        if [[ -f "$PIDFILE" ]]; then
-            pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE"
-        fi
         ESTADO="${ROJO}🔴 Desactivado${NC}"
         INTERVALO_ACTUAL="N/A"
+        # Limpiar PID huérfano si existe
+        [[ -f "$PIDFILE" ]] && rm -f "$PIDFILE"
     fi
 
-    # Presentar estado con colores combinados
     echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
     echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
@@ -1683,8 +1679,10 @@ activar_desactivar_limitador() {
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
         if [[ "$ESTADO" == *"Activado"* ]]; then
-            # Desactivar limitador - BORRANDO TODOS LOS ARCHIVOS DE CONTROL
-            pkill -f "$0 limitador" 2>/dev/null
+            # Desactivar limitador - matar instancia existente
+            if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE")" >/dev/null 2>&1; then
+                kill -9 "$(cat "$PIDFILE")" 2>/dev/null
+            fi
             rm -f "$PIDFILE" "$STATUS" "$ENABLED"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$HISTORIAL"
@@ -1693,8 +1691,13 @@ activar_desactivar_limitador() {
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
+                # Antes de iniciar, matar cualquier instancia huérfana
+                if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE")" >/dev/null 2>&1; then
+                    kill -9 "$(cat "$PIDFILE")" 2>/dev/null
+                fi
+
                 echo "$intervalo" > "$STATUS"
-                touch "$ENABLED"  # CREA EL ARCHIVO DE CONTROL PARA INDICAR QUE ESTÁ ACTIVO
+                touch "$ENABLED"
                 nohup bash "$0" limitador >/dev/null 2>&1 &
                 echo $! > "$PIDFILE"
                 echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
@@ -1710,6 +1713,8 @@ activar_desactivar_limitador() {
     echo -ne "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
     read
 }
+
+
 
 # ================================
 # MODO LIMITADOR
@@ -1744,12 +1749,24 @@ fi
 # ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
 # ================================
 if [[ -f "$ENABLED" ]]; then
-    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    if [[ -f "$PIDFILE" ]]; then
+        # Verificar si el PID guardado sigue activo
+        PID_ACTIVO=$(cat "$PIDFILE" 2>/dev/null)
+        if ps -p "$PID_ACTIVO" >/dev/null 2>&1; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador ya en ejecución (PID: $PID_ACTIVO). No se crea nueva instancia." >> "$HISTORIAL"
+        else
+            # PID huérfano: iniciar una nueva instancia
+            nohup bash "$0" limitador >/dev/null 2>&1 &
+            echo $! > "$PIDFILE"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador iniciado (PID: $(cat "$PIDFILE"))." >> "$HISTORIAL"
+        fi
+    else
+        # No hay PIDFILE, iniciar nueva instancia
         nohup bash "$0" limitador >/dev/null 2>&1 &
         echo $! > "$PIDFILE"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador iniciado (PID: $(cat "$PIDFILE"))." >> "$HISTORIAL"
     fi
 fi
-
 
 
 
