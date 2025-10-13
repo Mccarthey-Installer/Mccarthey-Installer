@@ -14,14 +14,18 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-# Evita que se ejecute más de una vez
+# Evitar múltiples instancias del limitador
 PIDFILE="/tmp/limitador.pid"
-if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-    echo "⚠️ Ya hay una instancia del limitador en ejecución. Saliendo..."
-    exit 0
+
+# Solo aplicar el control si el modo no es "menu"
+if [[ "$1" != "menu" ]]; then
+    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "⚠️ Ya hay una instancia del limitador en ejecución. Saliendo..."
+        exit 0
+    fi
+    echo $$ > "$PIDFILE"
+    trap 'rm -f "$PIDFILE"' EXIT
 fi
-echo $$ > "$PIDFILE"
-trap 'rm -f "$PIDFILE"' EXIT
 
 # ================================
 # CONFIGURACIÓN AUTO SSH (limpieza rápida de fantasmas)
