@@ -14,24 +14,7 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-# Evitar múltiples instancias del limitador
-PIDFILE="/tmp/limitador.pid"
 
-# Solo aplicar el control si el modo no es "menu" y hay argumentos
-if [[ -n "$1" && "$1" != "menu" ]]; then
-    if [ -f "$PIDFILE" ]; then
-        old_pid=$(cat "$PIDFILE")
-        if kill -0 "$old_pid" 2>/dev/null; then
-            echo "⚠️ Ya hay una instancia del limitador en ejecución (PID $old_pid). Saliendo..."
-            exit 0
-        else
-            echo "🧹 PID antiguo encontrado ($old_pid) pero no activo. Limpiando..."
-            rm -f "$PIDFILE"
-        fi
-    fi
-    echo $$ > "$PIDFILE"
-    trap 'rm -f "$PIDFILE"' EXIT
-fi
 
 
 # ================================
