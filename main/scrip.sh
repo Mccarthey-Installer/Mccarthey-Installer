@@ -24,24 +24,66 @@ GRIS="\033[1;90m"
 NC="\033[0m"
 
 
-            activar_desactivar_limitador() {
+            
+
+
+# ================================
+# ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
+# ================================
+# Función para verificar si el limitador ya está corriendo
+check_limitador_running() {
+    if [[ -f "$PIDFILE" ]]; then
+        local pid=$(cat "$PIDFILE" 2>/dev/null)
+        if [[ -n "$pid" ]] && ps -p "$pid" >/dev/null 2>&1; then
+            return 0 # Limitador está corriendo
+        else
+            # Limpiar PIDFILE si el proceso no existe
+            rm -f "$PIDFILE"
+            return 1 # Limitador no está corriendo
+        fi
+    fi
+    return 1 # No hay PIDFILE, limitador no está corriendo
+}
+
+# Limpiar procesos huérfanos y reglas de iptables residuales
+clean_limitador() {
+    pkill -f "bash $0 limitador" 2>/dev/null
+    rm -f "$PIDFILE" 2>/dev/null
+    iptables -F OUTPUT 2>/dev/null
+    iptables -X LIMITADOR_DROP 2>/dev/null
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Limpieza de procesos huérfanos y reglas de iptables." >> "$HISTORIAL"
+}
+
+# Arranque automático
+if [[ -f "$ENABLED" ]]; then
+    if ! check_limitador_running; then
+        clean_limitador # Limpiar cualquier estado inconsistente
+        nohup bash "$0" limitador >/dev/null 2>&1 &
+        echo $! > "$PIDFILE"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Arranque automático del limitador." >> "$HISTORIAL"
+    fi
+else
+    clean_limitador # Asegurar limpieza si el limitador está desactivado
+fi
+
+# ================================
+# FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
+# ================================
+activar_desactivar_limitador() {
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
 
-    # Verificar si hay un proceso activo real
-    if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    # Verificar estado actual
+    if [[ -f "$ENABLED" ]] && check_limitador_running; then
         ESTADO="${VERDE}🟢 Activado${NC}"
         INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
     else
-        # Limpieza segura de archivos huérfanos
-        pkill -f "$0 limitador" 2>/dev/null
-        rm -f "$PIDFILE" "$STATUS" "$ENABLED"
-        iptables -F OUTPUT 2>/dev/null
-        iptables -X LIMITADOR_DROP 2>/dev/null
+        clean_limitador # Limpiar cualquier estado inconsistente
         ESTADO="${ROJO}🔴 Desactivado${NC}"
         INTERVALO_ACTUAL="N/A"
     fi
 
+    # Presentar estado
     echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
     echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
@@ -51,37 +93,23 @@ NC="\033[0m"
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
         if [[ "$ESTADO" == *"Activado"* ]]; then
-            # === DESACTIVAR ===
-            pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE" "$STATUS" "$ENABLED"
-            iptables -F OUTPUT 2>/dev/null
-            iptables -X LIMITADOR_DROP 2>/dev/null
+            # Desactivar limitador
+            clean_limitador
+            rm -f "$ENABLED" "$STATUS"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas." >> "$HISTORIAL"
         else
-            # === ACTIVAR ===
+            # Activar limitador
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
-
-                # Evitar instancias duplicadas antes de iniciar
-                pkill -f "$0 limitador" 2>/dev/null
-                sleep 0.5
-
-                iptables -F OUTPUT 2>/dev/null
-                iptables -X LIMITADOR_DROP 2>/dev/null
+                clean_limitador # Limpiar antes de activar
                 echo "$intervalo" > "$STATUS"
                 touch "$ENABLED"
-
-                # Lanzar limitador solo si no hay otro proceso
-                if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-                    nohup bash "$0" limitador >/dev/null 2>&1 &
-                    echo $! > "$PIDFILE"
-                    echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
-                else
-                    echo -e "${AMARILLO}⚠️ Ya hay una instancia activa, no se lanzó otra.${NC}"
-                fi
+                nohup bash "$0" limitador >/dev/null 2>&1 &
+                echo $! > "$PIDFILE"
+                echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
             else
                 echo -e "${ROJO}❌ Intervalo inválido. Debe ser un número entre 1 y 60.${NC}"
             fi
@@ -94,122 +122,80 @@ NC="\033[0m"
     read
 }
 
-
-# ==============================================
-# ARRANQUE AUTOMÁTICO DEL LIMITADOR (ajustado)
-# ==============================================
-if [[ -f "$ENABLED" ]]; then
-    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        # Limpiar reglas y lanzar solo si no hay instancia activa
-        pkill -f "$0 limitador" 2>/dev/null
-        sleep 0.5
-        iptables -F OUTPUT 2>/dev/null
-        iptables -X LIMITADOR_DROP 2>/dev/null
-        nohup bash "$0" limitador >/dev/null 2>&1 &
-        echo $! > "$PIDFILE"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Arranque automático del limitador." >> "$HISTORIAL"
+# ================================
+# MODO LIMITADOR
+# ================================
+if [[ "$1" == "limitador" ]]; then
+    # Verificar si ya hay una instancia corriendo
+    if check_limitador_running; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Otra instancia del limitador ya está corriendo. Saliendo." >> "$HISTORIAL"
+        exit 0
     fi
-else
-    # Si no está habilitado, limpiar todo
-    pkill -f "$0 limitador" 2>/dev/null
-    rm -f "$PIDFILE" 2>/dev/null
+
+    # Guardar PID actual
+    echo $$ > "$PIDFILE"
+
+    # Verificar si el limitador está habilitado
+    if [[ ! -f "$ENABLED" ]]; then
+        clean_limitador
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador no habilitado, reglas de iptables eliminadas y proceso terminado." >> "$HISTORIAL"
+        exit 0
+    fi
+
+    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
+
+    # Inicializar iptables
     iptables -F OUTPUT 2>/dev/null
     iptables -X LIMITADOR_DROP 2>/dev/null
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador no habilitado, reglas de iptables eliminadas y procesos terminados." >> "$HISTORIAL"
+    iptables -N LIMITADOR_DROP 2>/dev/null
+    iptables -A LIMITADOR_DROP -j DROP
+
+    # Mantener lista global de usuarios bloqueados
+    declare -A usuarios_bloqueados
+
+    while true; do
+        # Verificar si el limitador sigue habilitado
+        if [[ ! -f "$ENABLED" ]]; then
+            clean_limitador
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas y proceso terminado." >> "$HISTORIAL"
+            exit 0
+        fi
+
+        if [[ -f "$REGISTROS" ]]; then
+            while IFS=' ' read -r user_data _ _ moviles _; do
+                usuario=${user_data%%:*}
+                if ! id "$usuario" &>/dev/null; then
+                    continue
+                fi
+                pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
+                conexiones=${#pids[@]}
+                uid=$(id -u "$usuario" 2>/dev/null)
+                if [[ $conexiones -gt $moviles ]]; then
+                    for ((i=moviles; i<conexiones; i++)); do
+                        pid=${pids[$i]}
+                        kill -9 "$pid" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
+                    done
+                    if [[ -z "${usuarios_bloqueados[$usuario]}" ]]; then
+                        iptables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
+                        usuarios_bloqueados[$usuario]=1
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico bloqueado para $usuario (UID: $uid) por exceder $moviles conexiones." >> "$HISTORIAL"
+                    fi
+                else
+                    if [[ -n "${usuarios_bloqueados[$usuario]}" ]]; then
+                        iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null
+                        unset usuarios_bloqueados[$usuario]
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"
+                    fi
+                fi
+            done < "$REGISTROS"
+        fi
+
+        sleep "$INTERVALO"
+    done
 fi
 
 
-================================
-
-MODO LIMITADOR
-
-================================
-
-if [[ "$1" == "limitador" ]]; then
-# Verificar si el limitador está habilitado
-if [[ ! -f "$ENABLED" ]]; then
-# Limpiar cualquier regla de iptables residual
-iptables -F OUTPUT 2>/dev/null
-iptables -X LIMITADOR_DROP 2>/dev/null
-# Asegurar que no queden procesos residuales
-pkill -f "$0 limitador" 2>/dev/null
-rm -f "$PIDFILE" 2>/dev/null
-echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador no habilitado, reglas de iptables eliminadas y proceso terminado." >> "$HISTORIAL"
-exit 0
-fi
-
-INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")  
-
-# Inicializar iptables (solo una vez)  
-iptables -F OUTPUT 2>/dev/null  
-iptables -X LIMITADOR_DROP 2>/dev/null  
-iptables -N LIMITADOR_DROP 2>/dev/null  
-iptables -A LIMITADOR_DROP -j DROP  
-
-# Mantener lista global de usuarios bloqueados  
-declare -A usuarios_bloqueados  
-
-while true; do  
-    # Verificar si el limitador sigue habilitado  
-    if [[ ! -f "$ENABLED" ]]; then  
-        # Limpiar todas las reglas de iptables y salir  
-        iptables -F OUTPUT 2>/dev/null  
-        iptables -X LIMITADOR_DROP 2>/dev/null  
-        usuarios_bloqueados=()  
-        # Asegurar que no queden procesos residuales  
-        pkill -f "$0 limitador" 2>/dev/null  
-        rm -f "$PIDFILE" 2>/dev/null  
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas y proceso terminado." >> "$HISTORIAL"  
-        exit 0  
-    fi  
-
-    if [[ -f "$REGISTROS" ]]; then  
-        # Leer cada usuario del registro  
-        while IFS=' ' read -r user_data _ _ moviles _; do  
-            usuario=${user_data%%:*}  
-
-            # Ignorar si el usuario no existe en el sistema  
-            if ! id "$usuario" &>/dev/null; then  
-                continue  
-            fi  
-
-            # Obtener PIDs de conexiones SSH/Dropbear activas  
-            pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))  
-            conexiones=${#pids[@]}  
-
-            # UID del usuario  
-            uid=$(id -u "$usuario" 2>/dev/null)  
-
-            # Si excede el límite  
-            if [[ $conexiones -gt $moviles ]]; then  
-                # Terminar conexiones extra  
-                for ((i=moviles; i<conexiones; i++)); do  
-                    pid=${pids[$i]}  
-                    kill -9 "$pid" 2>/dev/null  
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"  
-                done  
-
-                # Bloquear internet si no estaba bloqueado  
-                if [[ -z "${usuarios_bloqueados[$usuario]}" ]]; then  
-                    iptables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP  
-                    usuarios_bloqueados[$usuario]=1  
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico bloqueado para $usuario (UID: $uid) por exceder $moviles conexiones." >> "$HISTORIAL"  
-                fi  
-            else  
-                # Restaurar internet si estaba bloqueado  
-                if [[ -n "${usuarios_bloqueados[$usuario]}" ]]; then  
-                    iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null  
-                    unset usuarios_bloqueados[$usuario]  
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"  
-                fi  
-            fi  
-        done < "$REGISTROS"  
-    fi  
-
-    sleep "$INTERVALO"  
-done
-
-fi
 
 
 # ================================
