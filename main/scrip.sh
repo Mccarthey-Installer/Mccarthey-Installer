@@ -1690,7 +1690,9 @@ GRIS='\033[38;5;245m'
 NC='\033[0m'
 
 
-
+# ================================
+# MODO LIMITADOR
+# ================================
 
 if [[ "$1" == "limitador" ]]; then
     # Verificar si el limitador está habilitado
@@ -1777,7 +1779,9 @@ if [[ "$1" == "limitador" ]]; then
     done
 fi
 
-
+# ================================
+# FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
+# ================================
 activar_desactivar_limitador() {
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
@@ -1845,7 +1849,9 @@ activar_desactivar_limitador() {
 
 
 
-# Arranque automático
+# ================================
+# ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
+# ================================
 if [[ -f "$ENABLED" ]]; then
     if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         # Limpiar reglas de iptables antes de iniciar
@@ -2509,7 +2515,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======👍❤️ PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🦫🛍 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
