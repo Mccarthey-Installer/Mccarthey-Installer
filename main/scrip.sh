@@ -1689,13 +1689,10 @@ BLANCO='\033[38;5;15m'
 GRIS='\033[38;5;245m'
 NC='\033[0m'
 
-# ================================
-# FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
-# ================================
 activar_desactivar_limitador() {
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
-    
+
     # Verificar estado actual: chequea si proceso y archivo ENABLED existen
     if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         ESTADO="${VERDE}🟢 Activado${NC}"
@@ -1723,8 +1720,11 @@ activar_desactivar_limitador() {
             # Desactivar limitador - BORRANDO TODOS LOS ARCHIVOS DE CONTROL
             pkill -f "$0 limitador" 2>/dev/null
             rm -f "$PIDFILE" "$STATUS" "$ENABLED"
+            # Limpiar reglas de iptables al desactivar
+            iptables -F OUTPUT 2>/dev/null
+            iptables -X LIMITADOR_DROP 2>/dev/null
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$HISTORIAL"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas." >> "$HISTORIAL"
         else
             # Activar limitador
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
@@ -2480,7 +2480,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======✈️ PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🥲 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
