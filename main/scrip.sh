@@ -1759,37 +1759,72 @@ if [[ -f "$ENABLED" ]]; then
         echo $! > "$PIDFILE"
     fi
 fi
+
 # ================================
-# MODO LIMITADOR
+# MODO LIMITADOR REVISADO
 # ================================
 if [[ "$1" == "limitador" ]]; then
     INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
 
+    # Inicializar iptables (solo una vez)
+    iptables -F OUTPUT 2>/dev/null
+    iptables -X LIMITADOR_DROP 2>/dev/null
+    iptables -N LIMITADOR_DROP 2>/dev/null
+    iptables -A LIMITADOR_DROP -j DROP
+
+    # Mantener lista global de usuarios bloqueados
+    declare -A usuarios_bloqueados
+
     while true; do
         if [[ -f "$REGISTROS" ]]; then
+
+            # Leer cada usuario del registro
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
-                if id "$usuario" &>/dev/null; then
-                    # Obtener PIDs ordenados: más antiguos primero
-                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
-                    conexiones=${#pids[@]}
 
-                    if [[ $conexiones -gt $moviles ]]; then
-                        for ((i=moviles; i<conexiones; i++)); do
-                            pid=${pids[$i]}
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
-                        done
+                # Ignorar si el usuario no existe en el sistema
+                if ! id "$usuario" &>/dev/null; then
+                    continue
+                fi
+
+                # Obtener PIDs de conexiones SSH/Dropbear activas
+                pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
+                conexiones=${#pids[@]}
+
+                # UID del usuario
+                uid=$(id -u "$usuario" 2>/dev/null)
+
+                # Si excede el límite
+                if [[ $conexiones -gt $moviles ]]; then
+                    # Terminar conexiones extra
+                    for ((i=moviles; i<conexiones; i++)); do
+                        pid=${pids[$i]}
+                        kill -9 "$pid" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
+                    done
+
+                    # Bloquear internet si no estaba bloqueado
+                    if [[ -z "${usuarios_bloqueados[$usuario]}" ]]; then
+                        iptables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
+                        usuarios_bloqueados[$usuario]=1
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico bloqueado para $usuario (UID: $uid) por exceder $moviles conexiones." >> "$HISTORIAL"
+                    fi
+
+                else
+                    # Restaurar internet si estaba bloqueado
+                    if [[ -n "${usuarios_bloqueados[$usuario]}" ]]; then
+                        iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null
+                        unset usuarios_bloqueados[$usuario]
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"
                     fi
                 fi
+
             done < "$REGISTROS"
         fi
+
         sleep "$INTERVALO"
     done
 fi
-
-
-
 
 function verificar_online() {
     clear
@@ -2433,7 +2468,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======⛪ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
