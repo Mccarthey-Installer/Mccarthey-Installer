@@ -1652,6 +1652,10 @@ BLANCO='\033[38;5;15m'
 GRIS='\033[38;5;245m'
 NC='\033[0m'
 
+
+
+
+
 # ================================
 # FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
 # ================================
@@ -1659,17 +1663,26 @@ activar_desactivar_limitador() {
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
     
-    # Verificar estado actual
-    if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    # Verificar estado actual: chequea si proceso y archivo ENABLED existen
+    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         ESTADO="${VERDE}🟢 Activado${NC}"
         INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
     else
+        # Limpieza de procesos huérfanos si existen
+        if [[ -f "$PIDFILE" ]]; then
+            old_pid=$(cat "$PIDFILE" 2>/dev/null)
+            if [[ -n "$old_pid" ]] && ps -p "$old_pid" >/dev/null 2>&1; then
+                kill -9 "$old_pid" 2>/dev/null
+            fi
+            rm -f "$PIDFILE"
+        fi
+        # Asegurarse de que no queden instancias del limitador
+        pkill -f "bash $0 limitador" 2>/dev/null
         ESTADO="${ROJO}🔴 Desactivado${NC}"
         INTERVALO_ACTUAL="N/A"
-        # Limpiar PID huérfano si existe
-        [[ -f "$PIDFILE" ]] && rm -f "$PIDFILE"
     fi
 
+    # Presentar estado con colores combinados
     echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
     echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
@@ -1679,10 +1692,15 @@ activar_desactivar_limitador() {
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
         if [[ "$ESTADO" == *"Activado"* ]]; then
-            # Desactivar limitador - matar instancia existente
-            if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE")" >/dev/null 2>&1; then
-                kill -9 "$(cat "$PIDFILE")" 2>/dev/null
+            # Desactivar limitador - Terminar proceso y eliminar archivos
+            if [[ -f "$PIDFILE" ]]; then
+                old_pid=$(cat "$PIDFILE" 2>/dev/null)
+                if [[ -n "$old_pid" ]] && ps -p "$old_pid" >/dev/null 2>&1; then
+                    kill -9 "$old_pid" 2>/dev/null
+                fi
             fi
+            # Asegurarse de que no queden instancias del limitador
+            pkill -f "bash $0 limitador" 2>/dev/null
             rm -f "$PIDFILE" "$STATUS" "$ENABLED"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$HISTORIAL"
@@ -1691,15 +1709,14 @@ activar_desactivar_limitador() {
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
-                # Antes de iniciar, matar cualquier instancia huérfana
-                if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE")" >/dev/null 2>&1; then
-                    kill -9 "$(cat "$PIDFILE")" 2>/dev/null
-                fi
-
+                # Asegurarse de que no existan instancias previas
+                pkill -f "bash $0 limitador" 2>/dev/null
+                rm -f "$PIDFILE"  # Eliminar PIDFILE si existe
                 echo "$intervalo" > "$STATUS"
-                touch "$ENABLED"
+                touch "$ENABLED"  # Crear el archivo de control para indicar que está activo
                 nohup bash "$0" limitador >/dev/null 2>&1 &
-                echo $! > "$PIDFILE"
+                new_pid=$!
+                echo $new_pid > "$PIDFILE"
                 echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
             else
@@ -1713,8 +1730,6 @@ activar_desactivar_limitador() {
     echo -ne "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
     read
 }
-
-
 
 # ================================
 # MODO LIMITADOR
@@ -1749,22 +1764,12 @@ fi
 # ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
 # ================================
 if [[ -f "$ENABLED" ]]; then
-    if [[ -f "$PIDFILE" ]]; then
-        # Verificar si el PID guardado sigue activo
-        PID_ACTIVO=$(cat "$PIDFILE" 2>/dev/null)
-        if ps -p "$PID_ACTIVO" >/dev/null 2>&1; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador ya en ejecución (PID: $PID_ACTIVO). No se crea nueva instancia." >> "$HISTORIAL"
-        else
-            # PID huérfano: iniciar una nueva instancia
-            nohup bash "$0" limitador >/dev/null 2>&1 &
-            echo $! > "$PIDFILE"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador iniciado (PID: $(cat "$PIDFILE"))." >> "$HISTORIAL"
-        fi
-    else
-        # No hay PIDFILE, iniciar nueva instancia
+    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        # Asegurarse de que no existan instancias previas
+        pkill -f "bash $0 limitador" 2>/dev/null
+        rm -f "$PIDFILE"  # Eliminar PIDFILE si existe
         nohup bash "$0" limitador >/dev/null 2>&1 &
         echo $! > "$PIDFILE"
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador iniciado (PID: $(cat "$PIDFILE"))." >> "$HISTORIAL"
     fi
 fi
 
@@ -2412,7 +2417,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======👋♥️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
