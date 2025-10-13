@@ -1764,6 +1764,11 @@ fi
 # MODO LIMITADOR REVISADO
 # ================================
 if [[ "$1" == "limitador" ]]; then
+    # Verificar si el limitador está habilitado
+    if [[ ! -f "$ENABLED" ]]; then
+        exit 0  # Salir si el limitador está desactivado
+    fi
+
     INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
 
     # Inicializar iptables (solo una vez)
@@ -1776,21 +1781,34 @@ if [[ "$1" == "limitador" ]]; then
     declare -A usuarios_bloqueados
 
     while true; do
+        # Volver a verificar si el limitador está habilitado en cada iteración
+        if [[ ! -f "$ENABLED" ]]; then
+            # Limpiar todas las reglas de iptables si se desactiva
+            iptables -F OUTPUT 2>/dev/null
+            iptables -X LIMITADOR_DROP 2>/dev/null
+            usuarios_bloqueados=()
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas." >> "$HISTORIAL"
+            exit 0
+        fi
+
         if [[ -f "$REGISTROS" ]]; then
             # Leer cada usuario del registro
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
 
-                # Ignorar si el usuario no existe
+                # Ignorar si el usuario no existe en el sistema
                 if ! id "$usuario" &>/dev/null; then
                     continue
                 fi
 
-                # Obtener PIDs activos SSH/Dropbear
+                # Obtener PIDs de conexiones SSH/Dropbear activas
                 pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
                 conexiones=${#pids[@]}
+
+                # UID del usuario
                 uid=$(id -u "$usuario" 2>/dev/null)
 
+                # Si excede el límite
                 if [[ $conexiones -gt $moviles ]]; then
                     # Terminar conexiones extra
                     for ((i=moviles; i<conexiones; i++)); do
@@ -1813,7 +1831,6 @@ if [[ "$1" == "limitador" ]]; then
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"
                     fi
                 fi
-
             done < "$REGISTROS"
         fi
 
@@ -2463,7 +2480,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======⛪ PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======✈️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
