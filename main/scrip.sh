@@ -13,6 +13,16 @@ mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
+
+# Evita que se ejecute más de una vez
+PIDFILE="/tmp/limitador.pid"
+if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+    echo "⚠️ Ya hay una instancia del limitador en ejecución. Saliendo..."
+    exit 0
+fi
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
+
 # ================================
 # CONFIGURACIÓN AUTO SSH (limpieza rápida de fantasmas)
 # ================================
@@ -2515,7 +2525,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🦫🛍 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======👍❤️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
