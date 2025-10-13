@@ -25,11 +25,11 @@ NC="\033[0m"
 
 
             
-================================
+# ================================
 
-MODO LIMITADOR
+# MODO LIMITADOR
 
-================================
+# ================================
 
 if [[ "$1" == "limitador" ]]; then
 # Verificar si el limitador está habilitado
@@ -117,11 +117,11 @@ done
 
 fi
 
-================================
+#================================
 
-FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
+# FUNCIÓN: ACTIVAR/DESACTIVAR LIMITADOR
 
-================================
+# ================================
 
 activar_desactivar_limitador() {
 clear
@@ -189,11 +189,11 @@ read
 
 }
 
-================================
+# ===============================
 
-ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
+# ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
 
-================================
+# ================================
 
 if [[ -f "$ENABLED" ]]; then
 if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
