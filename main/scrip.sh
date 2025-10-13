@@ -1689,13 +1689,20 @@ BLANCO='\033[38;5;15m'
 GRIS='\033[38;5;245m'
 NC='\033[0m'
 
+
+
+
 if [[ "$1" == "limitador" ]]; then
     # Verificar si el limitador está habilitado
     if [[ ! -f "$ENABLED" ]]; then
         # Limpiar cualquier regla de iptables residual
         iptables -F OUTPUT 2>/dev/null
         iptables -X LIMITADOR_DROP 2>/dev/null
-        exit 0  # Salir si el limitador está desactivado
+        # Asegurar que no queden procesos residuales
+        pkill -f "$0 limitador" 2>/dev/null
+        rm -f "$PIDFILE" 2>/dev/null
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador no habilitado, reglas de iptables eliminadas y proceso terminado." >> "$HISTORIAL"
+        exit 0
     fi
 
     INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
@@ -1716,7 +1723,10 @@ if [[ "$1" == "limitador" ]]; then
             iptables -F OUTPUT 2>/dev/null
             iptables -X LIMITADOR_DROP 2>/dev/null
             usuarios_bloqueados=()
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas." >> "$HISTORIAL"
+            # Asegurar que no queden procesos residuales
+            pkill -f "$0 limitador" 2>/dev/null
+            rm -f "$PIDFILE" 2>/dev/null
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas y proceso terminado." >> "$HISTORIAL"
             exit 0
         fi
 
@@ -1812,6 +1822,9 @@ activar_desactivar_limitador() {
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
+                # Limpiar cualquier regla de iptables antes de activar
+                iptables -F OUTPUT 2>/dev/null
+                iptables -X LIMITADOR_DROP 2>/dev/null
                 echo "$intervalo" > "$STATUS"
                 touch "$ENABLED"  # CREA EL ARCHIVO DE CONTROL PARA INDICAR QUE ESTÁ ACTIVO
                 nohup bash "$0" limitador >/dev/null 2>&1 &
@@ -1830,9 +1843,9 @@ activar_desactivar_limitador() {
     read
 }
 
-#Aranque automatically 
 
 
+# Arranque automático
 if [[ -f "$ENABLED" ]]; then
     if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         # Limpiar reglas de iptables antes de iniciar
@@ -1840,13 +1853,17 @@ if [[ -f "$ENABLED" ]]; then
         iptables -X LIMITADOR_DROP 2>/dev/null
         nohup bash "$0" limitador >/dev/null 2>&1 &
         echo $! > "$PIDFILE"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Arranque automático del limitador." >> "$HISTORIAL"
     fi
 else
     # Asegurar que las reglas de iptables estén limpias si el limitador está desactivado
     iptables -F OUTPUT 2>/dev/null
     iptables -X LIMITADOR_DROP 2>/dev/null
+    # Terminar cualquier proceso residual
+    pkill -f "$0 limitador" 2>/dev/null
+    rm -f "$PIDFILE" 2>/dev/null
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador no habilitado, reglas de iptables eliminadas y procesos terminados." >> "$HISTORIAL"
 fi
-
 
 
 
@@ -2492,7 +2509,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======✨🚀 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======👍❤️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
