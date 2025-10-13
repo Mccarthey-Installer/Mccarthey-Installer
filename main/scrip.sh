@@ -1689,83 +1689,12 @@ BLANCO='\033[38;5;15m'
 GRIS='\033[38;5;245m'
 NC='\033[0m'
 
-activar_desactivar_limitador() {
-    clear
-    echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
-
-    # Verificar estado actual: chequea si proceso y archivo ENABLED existen
-    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        ESTADO="${VERDE}🟢 Activado${NC}"
-        INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
-    else
-        # Limpieza procesos huérfanos si existen
-        if [[ -f "$PIDFILE" ]]; then
-            pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE"
-        fi
-        ESTADO="${ROJO}🔴 Desactivado${NC}"
-        INTERVALO_ACTUAL="N/A"
-    fi
-
-    # Presentar estado con colores combinados
-    echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
-    echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
-    echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
-
-    echo -ne "${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC}"
-    read respuesta
-
-    if [[ "$respuesta" =~ ^[sS]$ ]]; then
-        if [[ "$ESTADO" == *"Activado"* ]]; then
-            # Desactivar limitador - BORRANDO TODOS LOS ARCHIVOS DE CONTROL
-            pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE" "$STATUS" "$ENABLED"
-            # Limpiar reglas de iptables al desactivar
-            iptables -F OUTPUT 2>/dev/null
-            iptables -X LIMITADOR_DROP 2>/dev/null
-            echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas." >> "$HISTORIAL"
-        else
-            # Activar limitador
-            echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
-            read intervalo
-            if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
-                echo "$intervalo" > "$STATUS"
-                touch "$ENABLED"  # CREA EL ARCHIVO DE CONTROL PARA INDICAR QUE ESTÁ ACTIVO
-                nohup bash "$0" limitador >/dev/null 2>&1 &
-                echo $! > "$PIDFILE"
-                echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
-            else
-                echo -e "${ROJO}❌ Intervalo inválido. Debe ser un número entre 1 y 60.${NC}"
-            fi
-        fi
-    else
-        echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
-    fi
-
-    echo -ne "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
-    read
-}
-
-
-
-# ================================
-# ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
-# ================================
-if [[ -f "$ENABLED" ]]; then
-    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        nohup bash "$0" limitador >/dev/null 2>&1 &
-        echo $! > "$PIDFILE"
-    fi
-fi
-
-# ================================
-# MODO LIMITADOR REVISADO
-# ================================
 if [[ "$1" == "limitador" ]]; then
     # Verificar si el limitador está habilitado
     if [[ ! -f "$ENABLED" ]]; then
+        # Limpiar cualquier regla de iptables residual
+        iptables -F OUTPUT 2>/dev/null
+        iptables -X LIMITADOR_DROP 2>/dev/null
         exit 0  # Salir si el limitador está desactivado
     fi
 
@@ -1781,9 +1710,9 @@ if [[ "$1" == "limitador" ]]; then
     declare -A usuarios_bloqueados
 
     while true; do
-        # Volver a verificar si el limitador está habilitado en cada iteración
+        # Verificar si el limitador sigue habilitado
         if [[ ! -f "$ENABLED" ]]; then
-            # Limpiar todas las reglas de iptables si se desactiva
+            # Limpiar todas las reglas de iptables y salir
             iptables -F OUTPUT 2>/dev/null
             iptables -X LIMITADOR_DROP 2>/dev/null
             usuarios_bloqueados=()
@@ -1837,6 +1766,89 @@ if [[ "$1" == "limitador" ]]; then
         sleep "$INTERVALO"
     done
 fi
+
+
+activar_desactivar_limitador() {
+    clear
+    echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
+
+    # Verificar estado actual: chequea si proceso y archivo ENABLED existen
+    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        ESTADO="${VERDE}🟢 Activado${NC}"
+        INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
+    else
+        # Limpieza procesos huérfanos si existen
+        if [[ -f "$PIDFILE" ]]; then
+            pkill -f "$0 limitador" 2>/dev/null
+            rm -f "$PIDFILE"
+        fi
+        # Limpiar reglas de iptables residuales
+        iptables -F OUTPUT 2>/dev/null
+        iptables -X LIMITADOR_DROP 2>/dev/null
+        ESTADO="${ROJO}🔴 Desactivado${NC}"
+        INTERVALO_ACTUAL="N/A"
+    fi
+
+    # Presentar estado con colores combinados
+    echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
+    echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
+    echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
+
+    echo -ne "${VERDE}¿Desea activar/desactivar el limitador? (s/n): ${NC}"
+    read respuesta
+
+    if [[ "$respuesta" =~ ^[sS]$ ]]; then
+        if [[ "$ESTADO" == *"Activado"* ]]; then
+            # Desactivar limitador - BORRANDO TODOS LOS ARCHIVOS DE CONTROL
+            pkill -f "$0 limitador" 2>/dev/null
+            rm -f "$PIDFILE" "$STATUS" "$ENABLED"
+            # Limpiar reglas de iptables al desactivar
+            iptables -F OUTPUT 2>/dev/null
+            iptables -X LIMITADOR_DROP 2>/dev/null
+            echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas." >> "$HISTORIAL"
+        else
+            # Activar limitador
+            echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
+            read intervalo
+            if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
+                echo "$intervalo" > "$STATUS"
+                touch "$ENABLED"  # CREA EL ARCHIVO DE CONTROL PARA INDICAR QUE ESTÁ ACTIVO
+                nohup bash "$0" limitador >/dev/null 2>&1 &
+                echo $! > "$PIDFILE"
+                echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
+            else
+                echo -e "${ROJO}❌ Intervalo inválido. Debe ser un número entre 1 y 60.${NC}"
+            fi
+        fi
+    else
+        echo -e "${AMARILLO}⚠️ Operación cancelada.${NC}"
+    fi
+
+    echo -ne "${AZUL_SUAVE}Presiona Enter para continuar...${NC}"
+    read
+}
+
+#Aranque automatically 
+
+
+if [[ -f "$ENABLED" ]]; then
+    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        # Limpiar reglas de iptables antes de iniciar
+        iptables -F OUTPUT 2>/dev/null
+        iptables -X LIMITADOR_DROP 2>/dev/null
+        nohup bash "$0" limitador >/dev/null 2>&1 &
+        echo $! > "$PIDFILE"
+    fi
+else
+    # Asegurar que las reglas de iptables estén limpias si el limitador está desactivado
+    iptables -F OUTPUT 2>/dev/null
+    iptables -X LIMITADOR_DROP 2>/dev/null
+fi
+
+
+
 
 function verificar_online() {
     clear
@@ -2480,7 +2492,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🥲 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======✨🚀 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
