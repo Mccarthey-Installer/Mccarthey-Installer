@@ -28,16 +28,14 @@ NC="\033[0m"
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
 
-    # Verificar estado actual
-    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    # Verificar si hay un proceso activo real
+    if [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
         ESTADO="${VERDE}🟢 Activado${NC}"
         INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
     else
-        # Limpieza de procesos huérfanos
-        if [[ -f "$PIDFILE" ]]; then
-            pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE"
-        fi
+        # Limpieza segura de archivos huérfanos
+        pkill -f "$0 limitador" 2>/dev/null
+        rm -f "$PIDFILE" "$STATUS" "$ENABLED"
         iptables -F OUTPUT 2>/dev/null
         iptables -X LIMITADOR_DROP 2>/dev/null
         ESTADO="${ROJO}🔴 Desactivado${NC}"
@@ -53,23 +51,37 @@ NC="\033[0m"
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
         if [[ "$ESTADO" == *"Activado"* ]]; then
-            # 🔴 DESACTIVAR
+            # === DESACTIVAR ===
             pkill -f "$0 limitador" 2>/dev/null
             rm -f "$PIDFILE" "$STATUS" "$ENABLED"
             iptables -F OUTPUT 2>/dev/null
             iptables -X LIMITADOR_DROP 2>/dev/null
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas limpiadas." >> "$HISTORIAL"
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado, reglas de iptables eliminadas." >> "$HISTORIAL"
         else
-            # 🟢 ACTIVAR
+            # === ACTIVAR ===
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
+
+                # Evitar instancias duplicadas antes de iniciar
+                pkill -f "$0 limitador" 2>/dev/null
+                sleep 0.5
+
+                iptables -F OUTPUT 2>/dev/null
+                iptables -X LIMITADOR_DROP 2>/dev/null
                 echo "$intervalo" > "$STATUS"
                 touch "$ENABLED"
-                rm -f "$PIDFILE" 2>/dev/null
-                echo -e "${VERDE}✅ Limitador activado. Se iniciará automáticamente en segundo plano.${NC}"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador habilitado (intervalo $intervalo s)." >> "$HISTORIAL"
+
+                # Lanzar limitador solo si no hay otro proceso
+                if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+                    nohup bash "$0" limitador >/dev/null 2>&1 &
+                    echo $! > "$PIDFILE"
+                    echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
+                else
+                    echo -e "${AMARILLO}⚠️ Ya hay una instancia activa, no se lanzó otra.${NC}"
+                fi
             else
                 echo -e "${ROJO}❌ Intervalo inválido. Debe ser un número entre 1 y 60.${NC}"
             fi
@@ -83,29 +95,27 @@ NC="\033[0m"
 }
 
 
-# ================================
-# ARRANQUE AUTOMÁTICO DEL LIMITADOR
-# ================================
+# ==============================================
+# ARRANQUE AUTOMÁTICO DEL LIMITADOR (ajustado)
+# ==============================================
 if [[ -f "$ENABLED" ]]; then
-    # Evitar duplicados: si ya hay una instancia, no arrancar otra
-    if ! pgrep -f "$0 limitador" >/dev/null; then
-        if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-            iptables -F OUTPUT 2>/dev/null
-            iptables -X LIMITADOR_DROP 2>/dev/null
-            nohup bash "$0" limitador >/dev/null 2>&1 &
-            echo $! > "$PIDFILE"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): 🟢 Arranque automático del limitador (PID $(cat "$PIDFILE"))." >> "$HISTORIAL"
-        fi
-    else
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador ya estaba en ejecución, no se duplicó." >> "$HISTORIAL"
+    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        # Limpiar reglas y lanzar solo si no hay instancia activa
+        pkill -f "$0 limitador" 2>/dev/null
+        sleep 0.5
+        iptables -F OUTPUT 2>/dev/null
+        iptables -X LIMITADOR_DROP 2>/dev/null
+        nohup bash "$0" limitador >/dev/null 2>&1 &
+        echo $! > "$PIDFILE"
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Arranque automático del limitador." >> "$HISTORIAL"
     fi
 else
-    # Desactivado: limpiar todo
-    iptables -F OUTPUT 2>/dev/null
-    iptables -X LIMITADOR_DROP 2>/dev/null
+    # Si no está habilitado, limpiar todo
     pkill -f "$0 limitador" 2>/dev/null
     rm -f "$PIDFILE" 2>/dev/null
-    echo "$(date '+%Y-%m-%d %H:%M:%S'): 🔴 Limitador no habilitado, limpieza completa." >> "$HISTORIAL"
+    iptables -F OUTPUT 2>/dev/null
+    iptables -X LIMITADOR_DROP 2>/dev/null
+    echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador no habilitado, reglas de iptables eliminadas y procesos terminados." >> "$HISTORIAL"
 fi
 
 
