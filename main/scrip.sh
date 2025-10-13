@@ -1763,148 +1763,31 @@ fi
 # MODO LIMITADOR
 # ================================
 if [[ "$1" == "limitador" ]]; then
-    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "5")  # Intervalo predeterminado: 5 segundos
-
-    # Verificar y cargar el módulo ipt_owner
-    modprobe ipt_owner 2>/dev/null || {
-        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No se pudo cargar el módulo ipt_owner" >> "$HISTORIAL"
-        exit 1
-    }
-
-    # Inicializar cadenas iptables
-    iptables -X LIMITADOR_DROP 2>/dev/null
-    iptables -N LIMITADOR_DROP 2>/dev/null
-    iptables -A LIMITADOR_DROP -j DROP
-    ip6tables -X LIMITADOR_DROP 2>/dev/null
-    ip6tables -N LIMITADOR_DROP 2>/dev/null
-    ip6tables -A LIMITADOR_DROP -j DROP
+    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
 
     while true; do
-        # Verificar si $REGISTROS existe y es legible
-        if [[ ! -f "$REGISTROS" || ! -r "$REGISTROS" ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: $REGISTROS no encontrado o no legible" >> "$HISTORIAL"
-            sleep "$INTERVALO"
-            continue
+        if [[ -f "$REGISTROS" ]]; then
+            while IFS=' ' read -r user_data _ _ moviles _; do
+                usuario=${user_data%%:*}
+                if id "$usuario" &>/dev/null; then
+                    # Obtener PIDs ordenados: más antiguos primero
+                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
+                    conexiones=${#pids[@]}
+
+                    if [[ $conexiones -gt $moviles ]]; then
+                        for ((i=moviles; i<conexiones; i++)); do
+                            pid=${pids[$i]}
+                            kill -9 "$pid" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
+                        done
+                    fi
+                fi
+            done < "$REGISTROS"
         fi
-
-        # Lista de usuarios bloqueados en esta iteración
-        declare -A usuarios_bloqueados
-
-        # Obtener UIDs de reglas iptables existentes (IPv4 e IPv6)
-        current_rules=$(iptables -L OUTPUT -n --line-numbers | grep LIMITADOR_DROP | awk '{print $2}' | grep -oP 'uid-owner \K\d+' || true)
-        current_rules6=$(ip6tables -L OUTPUT -n --line-numbers | grep LIMITADOR_DROP | awk '{print $2}' | grep -oP 'uid-owner \K\d+' || true)
-
-        # Leer $REGISTROS
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
-            usuario=${user_data%%:*}
-            # Combinar fecha_creacion
-            fecha_creacion="$fecha_creacion1 $fecha_creacion2"
-
-            # Verificar si el usuario existe
-            if ! id "$usuario" &>/dev/null; then
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Advertencia: Usuario $usuario no existe" >> "$HISTORIAL"
-                continue
-            fi
-
-            # Validar moviles
-            if [[ ! "$moviles" =~ ^[0-9]+$ ]]; then
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: Valor inválido de moviles para $usuario: $moviles" >> "$HISTORIAL"
-                continue
-            fi
-
-            # Contar conexiones activas (SSH y proxy en puerto 80)
-            conexiones=$(ss -t -a | grep -E ':ssh|:80' | grep -w "$usuario" | wc -l)
-
-            # Obtener UID del usuario
-            uid=$(id -u "$usuario" 2>/dev/null)
-            [[ -z "$uid" ]] && {
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No se pudo obtener UID para $usuario" >> "$HISTORIAL"
-                continue
-            }
-
-            if [[ $conexiones -gt $moviles ]]; then
-                # Marcar usuario como bloqueado
-                usuarios_bloqueados[$usuario]=1
-
-                # Terminar conexiones excedentes
-                pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd)$' | awk '{print $1}'))
-                for ((i=$moviles; i<${#pids[@]}; i++)); do
-                    pid=${pids[$i]}
-                    kill -15 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión excedente de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
-                done
-
-                # Bloquear tráfico de internet (IPv4 e IPv6)
-                # Cadena OUTPUT para tráfico TCP
-                if ! iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
-                    iptables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No se pudo aplicar regla iptables (IPv4) para $usuario (UID: $uid)" >> "$HISTORIAL"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet (IPv4) bloqueado para $usuario (UID: $uid) por exceder límite de $moviles conexiones" >> "$HISTORIAL"
-                fi
-                if ! ip6tables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
-                    ip6tables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null || {
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No se pudo aplicar regla ip6tables (IPv6) para $usuario (UID: $uid)" >> "$HISTORIAL"
-                    }
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet (IPv6) bloqueado para $usuario (UID: $uid) por exceder límite de $moviles conexiones" >> "$HISTORIAL"
-                fi
-
-                # Bloquear tráfico UDP de BadVPN (puertos 7200/7300)
-                if ! iptables -C FORWARD -p udp --dport 7200 -m owner --uid-owner "$uid" -j DROP 2>/dev/null; then
-                    iptables -A FORWARD -p udp --dport 7200 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                    iptables -A FORWARD -p udp --sport 7200 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                fi
-                if ! iptables -C FORWARD -p udp --dport 7300 -m owner --uid-owner "$uid" -j DROP 2>/dev/null; then
-                    iptables -A FORWARD -p udp --dport 7300 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                    iptables -A FORWARD -p udp --sport 7300 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                fi
-            else
-                # Restaurar tráfico si el usuario está bajo el límite
-                if iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
-                    iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet (IPv4) restaurado para $usuario (UID: $uid)" >> "$HISTORIAL"
-                fi
-                if ip6tables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
-                    ip6tables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet (IPv6) restaurado para $usuario (UID: $uid)" >> "$HISTORIAL"
-                fi
-                # Restaurar tráfico UDP
-                if iptables -C FORWARD -p udp --dport 7200 -m owner --uid-owner "$uid" -j DROP 2>/dev/null; then
-                    iptables -D FORWARD -p udp --dport 7200 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                    iptables -D FORWARD -p udp --sport 7200 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                fi
-                if iptables -C FORWARD -p udp --dport 7300 -m owner --uid-owner "$uid" -j DROP 2>/dev/null; then
-                    iptables -D FORWARD -p udp --dport 7300 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                    iptables -D FORWARD -p udp --sport 7300 -m owner --uid-owner "$uid" -j DROP 2>/dev/null
-                fi
-                unset usuarios_bloqueados[$usuario]
-            fi
-        done < "$REGISTROS"
-
-        # Limpiar reglas iptables obsoletas (IPv4 e IPv6)
-        for rule_uid in $current_rules; do
-            rule_user=$(getent passwd "$rule_uid" | cut -d: -f1)
-            if [[ -n "$rule_user" && -z "${usuarios_bloqueados[$rule_user]}" ]]; then
-                iptables -D OUTPUT -m owner --uid-owner "$rule_uid" -j LIMITADOR_DROP 2>/dev/null
-                iptables -D FORWARD -p udp --dport 7200 -m owner --uid-owner "$rule_uid" -j DROP 2>/dev/null
-                iptables -D FORWARD -p udp --sport 7200 -m owner --uid-owner "$rule_uid" -j DROP 2>/dev/null
-                iptables -D FORWARD -p udp --dport 7300 -m owner --uid-owner "$rule_uid" -j DROP 2>/dev/null
-                iptables -D FORWARD -p udp --sport 7300 -m owner --uid-owner "$rule_uid" -j DROP 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Regla iptables obsoleta eliminada para $rule_user (UID: $rule_uid)" >> "$HISTORIAL"
-            fi
-        done
-        for rule_uid in $current_rules6; do
-            rule_user=$(getent passwd "$rule_uid" | cut -d: -f1)
-            if [[ -n "$rule_user" && -z "${usuarios_bloqueados[$rule_user]}" ]]; then
-                ip6tables -D OUTPUT -m owner --uid-owner "$rule_uid" -j LIMITADOR_DROP 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Regla ip6tables obsoleta eliminada para $rule_user (UID: $rule_uid)" >> "$HISTORIAL"
-            fi
-        done
-
         sleep "$INTERVALO"
     done
 fi
-                
+
 
 
 
