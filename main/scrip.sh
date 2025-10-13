@@ -1763,71 +1763,103 @@ fi
 # MODO LIMITADOR
 # ================================
 if [[ "$1" == "limitador" ]]; then
-    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
+    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "5")  # Intervalo predeterminado: 5 segundos
 
-    # Inicializar iptables si no está configurado
-    iptables -F OUTPUT 2>/dev/null
+    # Verificar y cargar el módulo ipt_owner
+    modprobe ipt_owner 2>/dev/null || {
+        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No se pudo cargar el módulo ipt_owner" >> "$HISTORIAL"
+        exit 1
+    }
+
+    # Inicializar cadena LIMITADOR_DROP
     iptables -X LIMITADOR_DROP 2>/dev/null
     iptables -N LIMITADOR_DROP 2>/dev/null
     iptables -A LIMITADOR_DROP -j DROP
 
     while true; do
-        if [[ -f "$REGISTROS" ]]; then
-            # Crear una lista temporal de usuarios bloqueados en esta iteración
-            declare -A usuarios_bloqueados
-
-            while IFS=' ' read -r user_data _ _ moviles _; do
-                usuario=${user_data%%:*}
-                if id "$usuario" &>/dev/null; then
-                    # Obtener PIDs ordenados: más antiguos primero
-                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
-                    conexiones=${#pids[@]}
-
-                    # Obtener el UID del usuario
-                    uid=$(id -u "$usuario" 2>/dev/null)
-
-                    if [[ $conexiones -gt $moviles ]]; then
-                        # Marcar usuario como bloqueado
-                        usuarios_bloqueados[$usuario]=1
-
-                        # Terminar conexiones extra
-                        for ((i=moviles; i<conexiones; i++)); do
-                            pid=${pids[$i]}
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión extra de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
-                        done
-
-                        # Bloquear tráfico de internet para el usuario (usando UID)
-                        if ! iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
-                            iptables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet bloqueado para $usuario (UID: $uid) por exceder límite de $moviles conexiones." >> "$HISTORIAL"
-                        fi
-                    else
-                        # Si el usuario no excede el límite, asegurarse de que no esté bloqueado
-                        if [[ -n "${usuarios_bloqueados[$usuario]}" ]]; then
-                            unset usuarios_bloqueados[$usuario]
-                            if iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
-                                iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"
-                            fi
-                        fi
-                    fi
-                fi
-            done < "$REGISTROS"
-
-            # Limpiar reglas de usuarios que ya no están en la lista de bloqueados
-            for usuario in "${!usuarios_bloqueados[@]}"; do
-                uid=$(id -u "$usuario" 2>/dev/null)
-                if [[ -n "$uid" ]] && iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
-                    iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet restaurado para $usuario (UID: $uid)." >> "$HISTORIAL"
-                fi
-            done
+        # Verificar si $REGISTROS existe y es legible
+        if [[ ! -f "$REGISTROS" || ! -r "$REGISTROS" ]]; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: $REGISTROS no encontrado o no legible" >> "$HISTORIAL"
+            sleep "$INTERVALO"
+            continue
         fi
+
+        # Lista de usuarios bloqueados en esta iteración
+        declare -A usuarios_bloqueados
+
+        # Obtener UIDs de reglas iptables existentes
+        current_rules=$(iptables -L OUTPUT -n --line-numbers | grep LIMITADOR_DROP | awk '{print $2}' | grep -oP 'uid-owner \K\d+')
+
+        # Leer $REGISTROS
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+            usuario=${user_data%%:*}
+            # Combinar fecha_creacion
+            fecha_creacion="$fecha_creacion1 $fecha_creacion2"
+
+            # Verificar si el usuario existe
+            if ! id "$usuario" &>/dev/null; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Advertencia: Usuario $usuario no existe" >> "$HISTORIAL"
+                continue
+            fi
+
+            # Validar moviles
+            if [[ ! "$moviles" =~ ^[0-9]+$ ]]; then
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: Valor inválido de moviles para $usuario: $moviles" >> "$HISTORIAL"
+                continue
+            fi
+
+            # Contar conexiones activas (SSH o Dropbear)
+            conexiones=$(ss -t -a | grep -E ':ssh|:dropbear' | grep -w "$usuario" | wc -l)
+
+            # Obtener UID del usuario
+            uid=$(id -u "$usuario" 2>/dev/null)
+            [[ -z "$uid" ]] && {
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No se pudo obtener UID para $usuario" >> "$HISTORIAL"
+                continue
+            }
+
+            if [[ $conexiones -gt $moviles ]]; then
+                # Marcar usuario como bloqueado
+                usuarios_bloqueados[$usuario]=1
+
+                # Terminar conexiones excedentes
+                pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
+                for ((i=$moviles; i<${#pids[@]}; i++)); do
+                    pid=${pids[$i]}
+                    kill -15 "$pid" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión excedente de $usuario (PID: $pid) terminada. Límite: $moviles, Conexiones: $conexiones" >> "$HISTORIAL"
+                done
+
+                # Bloquear tráfico de internet
+                if ! iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
+                    iptables -A OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null || {
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Error: No se pudo aplicar regla iptables para $usuario (UID: $uid)" >> "$HISTORIAL"
+                        continue
+                    }
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet bloqueado para $usuario (UID: $uid) por exceder límite de $moviles conexiones" >> "$HISTORIAL"
+                fi
+            else
+                # Restaurar tráfico si el usuario está bajo el límite
+                if iptables -C OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null; then
+                    iptables -D OUTPUT -m owner --uid-owner "$uid" -j LIMITADOR_DROP 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico de internet restaurado para $usuario (UID: $uid)" >> "$HISTORIAL"
+                fi
+                unset usuarios_bloqueados[$usuario]
+            fi
+        done < "$REGISTROS"
+
+        # Limpiar reglas iptables obsoletas
+        for rule_uid in $current_rules; do
+            rule_user=$(getent passwd "$rule_uid" | cut -d: -f1)
+            if [[ -n "$rule_user" && -z "${usuarios_bloqueados[$rule_user]}" ]]; then
+                iptables -D OUTPUT -m owner --uid-owner "$rule_uid" -j LIMITADOR_DROP 2>/dev/null
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Regla iptables obsoleta eliminada para $rule_user (UID: $rule_uid)" >> "$HISTORIAL"
+            fi
+        done
+
         sleep "$INTERVALO"
     done
 fi
-
 
 
 
