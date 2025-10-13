@@ -1777,24 +1777,20 @@ if [[ "$1" == "limitador" ]]; then
 
     while true; do
         if [[ -f "$REGISTROS" ]]; then
-
             # Leer cada usuario del registro
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
 
-                # Ignorar si el usuario no existe en el sistema
+                # Ignorar si el usuario no existe
                 if ! id "$usuario" &>/dev/null; then
                     continue
                 fi
 
-                # Obtener PIDs de conexiones SSH/Dropbear activas
+                # Obtener PIDs activos SSH/Dropbear
                 pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
                 conexiones=${#pids[@]}
-
-                # UID del usuario
                 uid=$(id -u "$usuario" 2>/dev/null)
 
-                # Si excede el límite
                 if [[ $conexiones -gt $moviles ]]; then
                     # Terminar conexiones extra
                     for ((i=moviles; i<conexiones; i++)); do
@@ -1809,7 +1805,6 @@ if [[ "$1" == "limitador" ]]; then
                         usuarios_bloqueados[$usuario]=1
                         echo "$(date '+%Y-%m-%d %H:%M:%S'): Tráfico bloqueado para $usuario (UID: $uid) por exceder $moviles conexiones." >> "$HISTORIAL"
                     fi
-
                 else
                     # Restaurar internet si estaba bloqueado
                     if [[ -n "${usuarios_bloqueados[$usuario]}" ]]; then
