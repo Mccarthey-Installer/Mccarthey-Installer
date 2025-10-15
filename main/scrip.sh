@@ -1648,7 +1648,9 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 fi
 
 
-# ================================
+
+
+    # ================================
 # VARIABLES Y RUTAS
 # ================================
 export REGISTROS="/diana/reg.txt"
@@ -1737,12 +1739,32 @@ if [[ "$1" == "limitador" ]]; then
     INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
 
     while true; do
+        # Rotación de logs si el archivo supera 1 MB o 1 día
+        if [[ -f "$HISTORIAL" ]]; then
+            log_size=$(stat -c %s "$HISTORIAL" 2>/dev/null || echo 0)
+            log_mtime=$(stat -c %Y "$HISTORIAL" 2>/dev/null || echo 0)
+            current_time=$(date +%s)
+            time_diff=$((current_time - log_mtime))
+            if [[ $log_size -ge 1048576 || $time_diff -ge 86400 ]]; then
+                mv "$HISTORIAL" "${HISTORIAL}.$(date +%Y%m%d_%H%M%S)"
+                touch "$HISTORIAL"
+            fi
+        fi
+
         if [[ -f "$REGISTROS" ]]; then
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
                 if id "$usuario" &>/dev/null; then
-                    # Obtener PIDs ordenados: más antiguos primero
-                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
+                    # Verificar procesos zombies y limpiarlos
+                    zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
+                    if [[ -n "$zombies" ]]; then
+                        for pid in $zombies; do
+                            kill -9 "$pid" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$HISTORIAL"
+                        done
+                    fi
+                    # Obtener PIDs ordenados: más antiguos primero, excluyendo zombies
+                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm,stat | grep -E '^[ ]*[0-9]+ (sshd|dropbear) ' | grep -v 'Z' | awk '{print $1}'))
                     conexiones=${#pids[@]}
 
                     if [[ $conexiones -gt $moviles ]]; then
@@ -1754,6 +1776,12 @@ if [[ "$1" == "limitador" ]]; then
                     fi
                 fi
             done < "$REGISTROS"
+        fi
+
+        # Detener el bucle si el limitador se desactiva manualmente
+        if [[ ! -f "$ENABLED" ]]; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador detenido por desactivación manual." >> "$HISTORIAL"
+            exit 0
         fi
         sleep "$INTERVALO"
     done
@@ -2414,7 +2442,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳🚀 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵❤️✈️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
