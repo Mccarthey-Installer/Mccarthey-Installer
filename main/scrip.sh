@@ -1570,22 +1570,35 @@ crear_multiples_usuarios() {
 
 
 
-        # ================================
-#  FUNCIÓN: MONITOREAR CONEXIONES
-# ================================
-monitorear_conexiones() {
+        monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=1
 
+    # Verificar si el script ya está activo
+    if [[ -f "$PIDFILE" ]]; then
+        old_pid=$(cat "$PIDFILE")
+        if ps -p "$old_pid" > /dev/null 2>&1; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Script ya activo (PID: $old_pid). Saliendo." >> "$LOG"
+            exit 1
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): PID huérfano encontrado ($old_pid). Limpiando." >> "$LOG"
+            rm -f "$PIDFILE" "$ENABLED"
+        fi
+    fi
+
+    # Guardar PID actual
+    echo $$ > "$PIDFILE"
+    touch "$ENABLED"
+
     while true; do
-        # Usuarios conectados ahora mismo por SSH o Dropbear
+        # Usuarios conectados por SSH o Dropbear
         usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
 
-            # Verificar si hay procesos zombies para este usuario
+            # Eliminar procesos zombies
             zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
             if [[ -n "$zombies" ]]; then
                 for pid in $zombies; do
@@ -1594,27 +1607,27 @@ monitorear_conexiones() {
                 done
             fi
 
-            # ¿Cuántas conexiones tiene activas?
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            # Contar conexiones activas (excluye zombies automáticamente)
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
             if [[ $conexiones -gt 0 ]]; then
-                # Si nunca se ha creado el reloj, créalo ahora
+                # Crear archivo de estado si no existe
                 if [[ ! -f "$tmp_status" ]]; then
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 else
-                    # Reparar si está corrupto
+                    # Reparar archivo corrupto
                     contenido=$(cat "$tmp_status")
                     [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
                 fi
             fi
         done
 
-        # Verificar desconexiones
+        # Verificar desconexiones y limpiar archivos temporales
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
             if [[ $conexiones -eq 0 ]]; then
                 hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
                 hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -2418,7 +2431,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======😘✈️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
