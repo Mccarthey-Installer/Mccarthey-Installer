@@ -1649,6 +1649,10 @@ fi
 
 
 
+
+
+
+
 # ================================
 # VARIABLES Y RUTAS
 # ================================
@@ -1738,48 +1742,12 @@ if [[ "$1" == "limitador" ]]; then
     INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
 
     while true; do
-        # Rotación de logs si el archivo supera 1 MB o 1 día
-        if [[ -f "$HISTORIAL" ]]; then
-            log_size=$(stat -c %s "$HISTORIAL" 2>/dev/null || echo 0)
-            log_mtime=$(stat -c %Y "$HISTORIAL" 2>/dev/null || echo 0)
-            current_time=$(date +%s)
-            time_diff=$((current_time - log_mtime))
-            if [[ $log_size -ge 1048576 || $time_diff -ge 86400 ]]; then
-                mv "$HISTORIAL" "${HISTORIAL}.$(date +%Y%m%d_%H%M%S)"
-                touch "$HISTORIAL"
-            fi
-        fi
-
         if [[ -f "$REGISTROS" ]]; then
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
                 if id "$usuario" &>/dev/null; then
-                    # Verificar procesos zombies y limpiarlos
-                    zombies=$(ps -u "$usuario" -o pid=,stat= | grep '^[0-9]\+.*Z' | awk '{print $1}')
-                    if [[ -n "$zombies" ]]; then
-                        for pid in $zombies; do
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$HISTORIAL"
-                        done
-                    fi
-                    # Verificar conexiones obsoletas (sin conexión TCP activa)
-                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm,stat | grep -E '^[ ]*[0-9]+ (sshd|dropbear) ' | grep -v 'Z' | awk '{print $1}'))
-                    for pid in "${pids[@]}"; do
-                        # Usar ss si está disponible, sino netstat
-                        if command -v ss >/dev/null 2>&1; then
-                            if ! ss -tnp 2>/dev/null | grep "$pid" | grep -q ESTABLISHED; then
-                                kill -9 "$pid" 2>/dev/null
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso obsoleto (PID: $pid) de $usuario terminado (sin conexión TCP)." >> "$HISTORIAL"
-                            fi
-                        else
-                            if ! netstat -tnp 2>/dev/null | grep "$pid" | grep -q ESTABLISHED; then
-                                kill -9 "$pid" 2>/dev/null
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso obsoleto (PID: $pid) de $usuario terminado (sin conexión TCP)." >> "$HISTORIAL"
-                            fi
-                        fi
-                    done
-                    # Obtener PIDs ordenados: más antiguos primero, excluyendo zombies
-                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm,stat | grep -E '^[ ]*[0-9]+ (sshd|dropbear) ' | grep -v 'Z' | awk '{print $1}'))
+                    # Obtener PIDs ordenados: más antiguos primero
+                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
                     conexiones=${#pids[@]}
 
                     if [[ $conexiones -gt $moviles ]]; then
@@ -1791,12 +1759,6 @@ if [[ "$1" == "limitador" ]]; then
                     fi
                 fi
             done < "$REGISTROS"
-        fi
-
-        # Detener el bucle si el limitador se desactiva manualmente
-        if [[ ! -f "$ENABLED" ]]; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador detenido por desactivación manual." >> "$HISTORIAL"
-            exit 0
         fi
         sleep "$INTERVALO"
     done
@@ -1811,9 +1773,6 @@ if [[ -f "$ENABLED" ]]; then
         echo $! > "$PIDFILE"
     fi
 fi
-
-
-    
 
 
  function verificar_online() {
