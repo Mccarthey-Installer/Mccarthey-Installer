@@ -1566,39 +1566,35 @@ crear_multiples_usuarios() {
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=1
+    TIMEOUT_TMP=420  # 7 minutos en segundos
 
     while true; do
-        # Usuarios conectados ahora mismo por SSH o Dropbear
+        # Usuarios conectados actualmente por SSH o Dropbear
         usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
+        # Crear tmp_status si no existe para usuarios conectados
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
-
-            # ¿Cuántas conexiones tiene activas?
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
 
             if [[ $conexiones -gt 0 ]]; then
-                # Si nunca se ha creado el reloj, créalo ahora
-                if [[ ! -f "$tmp_status" ]]; then
-                    date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
-                else
-                    # Reparar si está corrupto
-                    contenido=$(cat "$tmp_status")
-                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
-                fi
+                [[ ! -f "$tmp_status" ]] && date +%s > "$tmp_status"
             fi
         done
 
-        # Ahora, ver quién estaba conectado y ya NO está, para cerrarles el tiempo
+        # Revisar tmp_status de todos los usuarios
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-            if [[ $conexiones -eq 0 ]]; then
-                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
-                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+            tmp_val=$(cat "$f")
+            now_s=$(date +%s)
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
+
+            # Usuario desconectado o tmp colgado > TIMEOUT_TMP
+            if [[ $conexiones -eq 0 ]] || (( now_s - tmp_val > TIMEOUT_TMP )); then
+                hora_ini=$(date -d @"$tmp_val" '+%Y-%m-%d %H:%M:%S')
+                hora_fin=$(date '+%Y-%m-%d %H:%M:%S')
                 rm -f "$f"
                 echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
@@ -1751,12 +1747,10 @@ if [[ -f "$ENABLED" ]]; then
 fi
 
 
-
-
-function verificar_online() {
+verificar_online() {
     clear
 
-    # Definir colores exactos
+    # Colores
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -1767,18 +1761,20 @@ function verificar_online() {
     MINT_GREEN='\033[38;5;159m'
     VERDE='\033[38;5;42m'
     VIOLETA='\033[38;5;183m'
-    
+    AMARILLO='\033[38;5;226m'
     CIAN='\033[38;5;51m'
+    ROJO='\033[38;5;196m'
     NC='\033[0m'
 
     echo -e "${AZUL_SUAVE}===== 🟢   USUARIOS ONLINE =====${NC}"
-    printf "${AMARILLO}%-14s ${AMARILLO}%-14s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
+    printf "${AMARILLO}%-14s %-14s %-10s %-25s${NC}\n" \
         "👤 USUARIO" "📲 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     total_online=0
     total_usuarios=0
     inactivos=0
+    TIMEOUT_TMP=420  # 7 minutos
 
     if [[ ! -f "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros.${NC}"
@@ -1805,7 +1801,7 @@ function verificar_online() {
         COLOR_ESTADO="${ROJO}"
         COLOR_DETALLE="${VIOLETA}"
 
-        # 🔒 Verificar si está bloqueado primero
+        # 🔒 Verificar bloqueo
         if [[ -f "$bloqueo_file" ]]; then
             bloqueo_hasta=$(cat "$bloqueo_file")
             if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
@@ -1816,33 +1812,33 @@ function verificar_online() {
             fi
         fi
 
-        # 🟢 Si el usuario está conectado normalmente
+        # 🟢 Usuario conectado
         if [[ $conexiones -gt 0 ]]; then
             estado="🟢 $conexiones"
             COLOR_ESTADO="${MINT_GREEN}"
             (( total_online += conexiones ))
 
+            # Manejo tmp_status para duración
             if [[ -f "$tmp_status" ]]; then
                 contenido=$(cat "$tmp_status")
-                if [[ "$contenido" =~ ^[0-9]+$ ]]; then
-                    start_s=$((10#$contenido))
+                if [[ ! "$contenido" =~ ^[0-9]+$ ]]; then
+                    date +%s > "$tmp_status"
+                    start_s=$(cat "$tmp_status")
                 else
-                    start_s=$(date +%s)
-                    echo $start_s > "$tmp_status"
+                    start_s=$contenido
                 fi
-
-                now_s=$(date +%s)
-                elapsed=$(( now_s - start_s ))
-                h=$(( elapsed / 3600 ))
-                m=$(( (elapsed % 3600) / 60 ))
-                s=$(( elapsed % 60 ))
-                detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
-                COLOR_DETALLE="${VERDE}"
+            else
+                date +%s > "$tmp_status"
+                start_s=$(cat "$tmp_status")
             fi
-        else
-            # ❌ Solo mostramos última conexión si NO está bloqueado
-            if [[ ! $detalle =~ "🚫 bloqueado" ]]; then
+
+            now_s=$(date +%s)
+            elapsed=$(( now_s - start_s ))
+
+            # Si tmp supera 7 minutos sin procesos, considerar desconectado
+            if (( elapsed > TIMEOUT_TMP )); then
                 rm -f "$tmp_status"
+                estado="📴 0"
                 ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
                 if [[ -n "$ult" ]]; then
                     ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
@@ -1852,11 +1848,30 @@ function verificar_online() {
                     detalle="😴 Nunca conectado"
                     COLOR_DETALLE="${VIOLETA}"
                 fi
+            else
+                h=$(( elapsed / 3600 ))
+                m=$(( (elapsed % 3600) / 60 ))
+                s=$(( elapsed % 60 ))
+                detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                COLOR_DETALLE="${VERDE}"
+            fi
+        else
+            # Usuario desconectado
+            estado="📴 0"
+            [[ -f "$tmp_status" ]] && rm -f "$tmp_status"
+            ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
+            if [[ -n "$ult" ]]; then
+                ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
+                detalle="📅 Última: $ult_fmt"
+                COLOR_DETALLE="${ROJO}"
+            else
+                detalle="😴 Nunca conectado"
+                COLOR_DETALLE="${VIOLETA}"
             fi
             (( inactivos++ ))
         fi
 
-        # Imprimir cada fila bien coloreada
+        # Mostrar en pantalla
         printf "${VERDE}%-14s ${COLOR_ESTADO}%-14s ${VERDE}%-10s ${COLOR_DETALLE}%-25s${NC}\n" \
             "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
@@ -1866,6 +1881,10 @@ function verificar_online() {
     echo -e "${HOT_PINK}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar... ✨${NC})"
 }
+
+
+
+                
 
 
 
