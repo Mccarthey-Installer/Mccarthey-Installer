@@ -1607,11 +1607,11 @@ crear_multiples_usuarios() {
                 done
             fi
 
-            # Contar conexiones activas (excluye zombies automáticamente)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
+            # Contar conexiones activas (excluye procesos no válidos)
+            conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) " | grep -vE "Z|DEFUNCT" | wc -l) ))
 
             if [[ $conexiones -gt 0 ]]; then
-                # Crear archivo de estado si no existe
+                # Crear o actualizar archivo de estado
                 if [[ ! -f "$tmp_status" ]]; then
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
@@ -1620,28 +1620,35 @@ crear_multiples_usuarios() {
                     contenido=$(cat "$tmp_status")
                     [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
                 fi
+            else
+                # Si no hay conexiones activas, limpiar archivo temporal
+                if [[ -f "$tmp_status" ]]; then
+                    hora_ini=$(date -d @"$(cat "$tmp_status")" "+%Y-%m-%d %H:%M:%S")
+                    hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                    rm -f "$tmp_status"
+                    echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                fi
             fi
         done
 
-        # Verificar desconexiones y limpiar archivos temporales
+        # Limpiar archivos temporales de usuarios no conectados
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
-            if [[ $conexiones -eq 0 ]]; then
+            # Verificar si el usuario existe y tiene conexiones
+            if ! id "$usuario" &>/dev/null || [[ $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) " | grep -vE "Z|DEFUNCT" | wc -l) -eq 0 ]]; then
                 hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
                 hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
                 rm -f "$f"
                 echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado (limpieza). Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
             fi
         done
 
         sleep "$INTERVALO"
     done
 }
-
-
 
 # ================================
 #  MODO MONITOREO DIRECTO
@@ -2431,7 +2438,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😘✈️ PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🤣 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
