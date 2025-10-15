@@ -1795,7 +1795,9 @@ if [[ -f "$ENABLED" ]]; then
 fi
 
 
- function verificar_online() {
+ 
+
+                verificar_online() {
     clear
 
     # Definir colores exactos
@@ -1813,7 +1815,7 @@ fi
     NC='\033[0m'
 
     echo -e "${AZUL_SUAVE}===== 🟢   USUARIOS ONLINE =====${NC}"
-    printf "${AMARILLO}%-14s ${AMARILLO}%-14s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
+    printf "${VERDE}%-14s ${VERDE}%-14s ${VERDE}%-10s ${VERDE}%-25s${NC}\n" \
         "👤 USUARIO" "📲 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
@@ -1835,8 +1837,8 @@ fi
         fi
 
         (( total_usuarios++ ))
-        # Contar conexiones, excluyendo procesos zombies
-        conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) " | grep -v "Z" | wc -l) ))
+        # Contar conexiones, excluyendo procesos zombies y defunct
+        conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) " | grep -vE "Z|DEFUNCT" | wc -l) ))
 
         estado="📴 0"
         detalle="⭕ Nunca conectado"
@@ -1844,7 +1846,7 @@ fi
         tmp_status="/tmp/status_${usuario}.tmp"
         bloqueo_file="/tmp/bloqueo_${usuario}.lock"
 
-        COLOR_ESTADO="${ROJO}"
+        COLOR_ESTADO="${SOFT_PINK}"
         COLOR_DETALLE="${VIOLETA}"
 
         # 🔒 Verificar si está bloqueado primero
@@ -1852,7 +1854,7 @@ fi
             bloqueo_hasta=$(cat "$bloqueo_file")
             if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
                 detalle="🚫 bloqueado (hasta $(date -d @$bloqueo_hasta '+%I:%M%p'))"
-                COLOR_DETALLE="${ROJO}"
+                COLOR_DETALLE="${SOFT_PINK}"
             else
                 rm -f "$bloqueo_file"
             fi
@@ -1889,7 +1891,7 @@ fi
                 if [[ -n "$ult" ]]; then
                     ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
                     detalle="📅 Última: $ult_fmt"
-                    COLOR_DETALLE="${ROJO}"
+                    COLOR_DETALLE="${SOFT_PINK}"
                 else
                     detalle="😴 Nunca conectado"
                     COLOR_DETALLE="${VIOLETA}"
@@ -1904,11 +1906,10 @@ fi
     done < "$REGISTROS"
 
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
-    echo -e "${CIAN}Total de Online: ${AMARILLO}${total_online}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${total_usuarios}${NC}  ${CIAN}Inactivos: ${AMARILLO}${inactivos}${NC}"
+    echo -e "${CIAN}Total de Online: ${VERDE}${total_online}${NC}  ${CIAN}Total usuarios: ${VERDE}${total_usuarios}${NC}  ${CIAN}Inactivos: ${VERDE}${inactivos}${NC}"
     echo -e "${HOT_PINK}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar... ✨${NC})"
-}                   
-                
+}
 
 
 
@@ -2438,7 +2439,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🤣 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🥲🥲 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
