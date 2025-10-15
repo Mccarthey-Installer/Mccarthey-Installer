@@ -1650,6 +1650,7 @@ fi
 
 
 
+
     # ================================
 # VARIABLES Y RUTAS
 # ================================
@@ -1756,13 +1757,21 @@ if [[ "$1" == "limitador" ]]; then
                 usuario=${user_data%%:*}
                 if id "$usuario" &>/dev/null; then
                     # Verificar procesos zombies y limpiarlos
-                    zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
+                    zombies=$(ps -u "$usuario" -o pid=,stat= | grep '^[0-9]\+.*Z' | awk '{print $1}')
                     if [[ -n "$zombies" ]]; then
                         for pid in $zombies; do
                             kill -9 "$pid" 2>/dev/null
                             echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$HISTORIAL"
                         done
                     fi
+                    # Verificar conexiones obsoletas (sin conexión TCP activa)
+                    pids=($(ps -u "$usuario" --sort=start_time -o pid,comm,stat | grep -E '^[ ]*[0-9]+ (sshd|dropbear) ' | grep -v 'Z' | awk '{print $1}'))
+                    for pid in "${pids[@]}"; do
+                        if ! netstat -tnp 2>/dev/null | grep "$pid" | grep -q ESTABLISHED; then
+                            kill -9 "$pid" 2>/dev/null
+                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso obsoleto (PID: $pid) de $usuario terminado (sin conexión TCP)." >> "$HISTORIAL"
+                        fi
+                    done
                     # Obtener PIDs ordenados: más antiguos primero, excluyendo zombies
                     pids=($(ps -u "$usuario" --sort=start_time -o pid,comm,stat | grep -E '^[ ]*[0-9]+ (sshd|dropbear) ' | grep -v 'Z' | awk '{print $1}'))
                     conexiones=${#pids[@]}
@@ -2442,7 +2451,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵❤️✈️ PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵🐳 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
