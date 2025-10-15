@@ -1649,9 +1649,7 @@ fi
 
 
 
-
-
-    # ================================
+# ================================
 # VARIABLES Y RUTAS
 # ================================
 export REGISTROS="/diana/reg.txt"
@@ -1767,9 +1765,17 @@ if [[ "$1" == "limitador" ]]; then
                     # Verificar conexiones obsoletas (sin conexión TCP activa)
                     pids=($(ps -u "$usuario" --sort=start_time -o pid,comm,stat | grep -E '^[ ]*[0-9]+ (sshd|dropbear) ' | grep -v 'Z' | awk '{print $1}'))
                     for pid in "${pids[@]}"; do
-                        if ! netstat -tnp 2>/dev/null | grep "$pid" | grep -q ESTABLISHED; then
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso obsoleto (PID: $pid) de $usuario terminado (sin conexión TCP)." >> "$HISTORIAL"
+                        # Usar ss si está disponible, sino netstat
+                        if command -v ss >/dev/null 2>&1; then
+                            if ! ss -tnp 2>/dev/null | grep "$pid" | grep -q ESTABLISHED; then
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso obsoleto (PID: $pid) de $usuario terminado (sin conexión TCP)." >> "$HISTORIAL"
+                            fi
+                        else
+                            if ! netstat -tnp 2>/dev/null | grep "$pid" | grep -q ESTABLISHED; then
+                                kill -9 "$pid" 2>/dev/null
+                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso obsoleto (PID: $pid) de $usuario terminado (sin conexión TCP)." >> "$HISTORIAL"
+                            fi
                         fi
                     done
                     # Obtener PIDs ordenados: más antiguos primero, excluyendo zombies
@@ -1806,6 +1812,8 @@ if [[ -f "$ENABLED" ]]; then
     fi
 fi
 
+
+    
 
 
  function verificar_online() {
@@ -2451,7 +2459,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵🐳 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
