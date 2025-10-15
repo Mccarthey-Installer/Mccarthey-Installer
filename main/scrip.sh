@@ -1566,45 +1566,45 @@ crear_multiples_usuarios() {
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
     INTERVALO=1
-    TIMEOUT=900  # 15 minutos en segundos
 
     while true; do
+        # Usuarios conectados ahora mismo por SSH o Dropbear
         usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
 
-            # Contar conexiones activas (excluir zombies)
-            conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) [RS]" | wc -l) ))
+            # Verificar si hay procesos zombies para este usuario
+            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
+            if [[ -n "$zombies" ]]; then
+                for pid in $zombies; do
+                    kill -9 "$pid" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"
+                done
+            fi
+
+            # ¿Cuántas conexiones tiene activas?
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
             if [[ $conexiones -gt 0 ]]; then
+                # Si nunca se ha creado el reloj, créalo ahora
                 if [[ ! -f "$tmp_status" ]]; then
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 else
+                    # Reparar si está corrupto
                     contenido=$(cat "$tmp_status")
                     [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
                 fi
             fi
-
-            # Chequear timeout para conexiones inactivas
-            if [[ -f "$tmp_status" ]]; then
-                start_s=$(cat "$tmp_status")
-                now_s=$(date +%s)
-                elapsed=$(( now_s - start_s ))
-                if [[ $elapsed -gt $TIMEOUT && $conexiones -eq 0 ]]; then
-                    rm -f "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario timeout (inactivo >15min)." >> "$LOG"
-                fi
-            fi
         done
 
-        # Cerrar sesiones desconectadas
+        # Verificar desconexiones
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) [RS]" | wc -l) ))
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
             if [[ $conexiones -eq 0 ]]; then
                 hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
                 hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -1612,15 +1612,6 @@ monitorear_conexiones() {
                 echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
             fi
-        done
-
-        # Matar procesos zombies
-        for usuario in $usuarios_ps; do
-            zombies=$(ps -u "$usuario" -o pid=,stat= | grep -E "^[0-9]+ Z" | awk '{print $1}')
-            for pid in $zombies; do
-                kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Zombie de $usuario (PID: $pid) terminado." >> "$LOG"
-            done
         done
 
         sleep "$INTERVALO"
@@ -1769,8 +1760,11 @@ if [[ -f "$ENABLED" ]]; then
 fi
 
 
-verificar_online() {
+
+ function verificar_online() {
     clear
+
+    # Definir colores exactos
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -1792,7 +1786,6 @@ verificar_online() {
     total_online=0
     total_usuarios=0
     inactivos=0
-    TIMEOUT=900  # 15 minutos
 
     if [[ ! -f "$REGISTROS" ]]; then
         echo -e "${HOT_PINK}❌ No hay registros.${NC}"
@@ -1802,12 +1795,14 @@ verificar_online() {
 
     while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
         usuario=${userpass%%:*}
+
         if ! id "$usuario" &>/dev/null; then
             continue
         fi
 
         (( total_usuarios++ ))
-        conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) [RS]" | wc -l) ))
+        # Contar conexiones, excluyendo procesos zombies
+        conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) " | grep -v "Z" | wc -l) ))
 
         estado="📴 0"
         detalle="⭕ Nunca conectado"
@@ -1818,6 +1813,7 @@ verificar_online() {
         COLOR_ESTADO="${ROJO}"
         COLOR_DETALLE="${VIOLETA}"
 
+        # 🔒 Verificar si está bloqueado primero
         if [[ -f "$bloqueo_file" ]]; then
             bloqueo_hasta=$(cat "$bloqueo_file")
             if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
@@ -1828,7 +1824,12 @@ verificar_online() {
             fi
         fi
 
+        # 🟢 Si el usuario está conectado normalmente
         if [[ $conexiones -gt 0 ]]; then
+            estado="🟢 $conexiones"
+            COLOR_ESTADO="${MINT_GREEN}"
+            (( total_online += conexiones ))
+
             if [[ -f "$tmp_status" ]]; then
                 contenido=$(cat "$tmp_status")
                 if [[ "$contenido" =~ ^[0-9]+$ ]]; then
@@ -1840,29 +1841,14 @@ verificar_online() {
 
                 now_s=$(date +%s)
                 elapsed=$(( now_s - start_s ))
-                if [[ $elapsed -lt $TIMEOUT ]]; then
-                    estado="🟢 $conexiones"
-                    COLOR_ESTADO="${MINT_GREEN}"
-                    (( total_online += conexiones ))
-                    h=$(( elapsed / 3600 ))
-                    m=$(( (elapsed % 3600) / 60 ))
-                    s=$(( elapsed % 60 ))
-                    detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
-                    COLOR_DETALLE="${VERDE}"
-                else
-                    # Timeout: cerrar conexión inactiva
-                    for pid in $(ps -u "$usuario" -o pid=,comm= | grep -E "^[0-9]+ (sshd|dropbear)$" | awk '{print $1}'); do
-                        kill -9 "$pid" 2>/dev/null
-                    done
-                    rm -f "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario timeout (inactivo >15min)." >> "/var/log/monitoreo_conexiones.log"
-                    detalle="📅 Última: $(date '+%d de %B %H:%M')"
-                    COLOR_DETALLE="${ROJO}"
-                    estado="📴 0"
-                    (( inactivos++ ))
-                fi
+                h=$(( elapsed / 3600 ))
+                m=$(( (elapsed % 3600) / 60 ))
+                s=$(( elapsed % 60 ))
+                detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                COLOR_DETALLE="${VERDE}"
             fi
         else
+            # ❌ Solo mostramos última conexión si NO está bloqueado
             if [[ ! $detalle =~ "🚫 bloqueado" ]]; then
                 rm -f "$tmp_status"
                 ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
@@ -1874,10 +1860,11 @@ verificar_online() {
                     detalle="😴 Nunca conectado"
                     COLOR_DETALLE="${VIOLETA}"
                 fi
-                (( inactivos++ ))
             fi
+            (( inactivos++ ))
         fi
 
+        # Imprimir cada fila bien coloreada
         printf "${VERDE}%-14s ${COLOR_ESTADO}%-14s ${VERDE}%-10s ${COLOR_DETALLE}%-25s${NC}\n" \
             "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
@@ -1886,9 +1873,7 @@ verificar_online() {
     echo -e "${CIAN}Total de Online: ${AMARILLO}${total_online}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${total_usuarios}${NC}  ${CIAN}Inactivos: ${AMARILLO}${inactivos}${NC}"
     echo -e "${HOT_PINK}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar... ✨${NC})"
-}
-                    
-
+}                   
                 
 
 
