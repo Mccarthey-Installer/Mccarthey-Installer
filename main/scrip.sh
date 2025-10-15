@@ -16,8 +16,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
                                 
     
-                                        
-ssh_bot() {
+ ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -547,10 +546,21 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     continue
                                                 fi
                                                 (( total_usuarios++ ))
-                                                conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
+                                                # Contar conexiones, excluyendo procesos zombies
+                                                conexiones=\$(( \$(ps -u \"\$usuario\" -o comm=,stat= | grep -E \"^(sshd|dropbear) \" | grep -v \"Z\" | wc -l) ))
                                                 tmp_status=\"/tmp/status_\${usuario}.tmp\"
                                                 bloqueo_file=\"/tmp/bloqueo_\${usuario}.lock\"
                                                 detalle=\"😴 Nunca conectado\"
+
+                                                # Verificar procesos zombies y notificar
+                                                zombies=\$(ps -u \"\$usuario\" -o state,pid | grep '^Z' | awk '{print \$2}')
+                                                if [[ -n \"\$zombies\" ]]; then
+                                                    for pid in \$zombies; do
+                                                        kill -9 \"\$pid\" 2>/dev/null
+                                                        echo \"\$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: \$pid) de \$usuario terminado.\" >> \"\$HISTORIAL\"
+                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"⚠️ *Proceso zombie detectado para \$usuario (PID: \$pid) y terminado.*\" -d parse_mode=Markdown >/dev/null
+                                                    done
+                                                fi
 
                                                 if [[ -f \"\$bloqueo_file\" ]]; then
                                                     bloqueo_hasta=\$(cat \"\$bloqueo_file\")
@@ -704,7 +714,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                              
+}                                                          
            
                                                                                             
                                           
@@ -2404,7 +2414,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳🚀 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
