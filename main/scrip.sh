@@ -15,6 +15,7 @@ mkdir -p "$(dirname "$PIDFILE")"
 
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
+    HISTORIAL="/var/log/historial_conexiones.log"
     INTERVALO=1
 
     while true; do
@@ -23,6 +24,8 @@ monitorear_conexiones() {
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
+
+            # Detectar y eliminar procesos zombies
             zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
             if [[ -n "$zombies" ]]; then
                 for pid in $zombies; do
@@ -31,8 +34,10 @@ monitorear_conexiones() {
                 done
             fi
 
+            # Contar conexiones activas del usuario
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
+            # Registrar conexión si no existía previamente
             if [[ $conexiones -gt 0 ]]; then
                 if [[ ! -f "$tmp_status" ]]; then
                     date +%s > "$tmp_status"
@@ -44,19 +49,25 @@ monitorear_conexiones() {
             fi
         done
 
-        # Bloque ANTI CONEXIONES FANTASMA SSH EN PUERTO 22 (aunque entran por 80, terminan en 22)
+        # 🔥 BLOQUE ANTI CONEXIONES FANTASMA SSH EN PUERTO 22 🔥
+        # Detecta conexiones establecidas por más de 5 minutos (300 seg) y las mata
         ss -eto state established '( sport = :22 )' 2>/dev/null | \
-        awk '/ESTAB/ && /timer:/ && match($0, /users:(("sshd",pid=([0-9]+)/, arr) { \
-            if (match($0, /timer:(.*,([0-9]+))/, tarr) && tarr[1] > 900) print arr[1]; \
+        awk '/ESTAB/ && /timer:/ {
+            if (match($0, /users:\(\("sshd",pid=([0-9]+)/, arr)) {
+                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 300)
+                    print arr[1];
+            }
         }' | while read -r pid; do
-            [[ -n "$pid" ]] && kill -9 "$pid"
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 15min." >> "$LOG"
+            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 5min." >> "$LOG"
         done
 
+        # Revisar desconexiones
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+
             if [[ $conexiones -eq 0 ]]; then
                 hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
                 hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
@@ -2421,7 +2432,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======❤️😘 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🚀✈️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
