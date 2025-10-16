@@ -1917,7 +1917,7 @@ ssh_bot() {
                                     if [[ ! -f \"\$status_file\" || \$(cat \"\$status_file\") != \"exceeded\" ]]; then
                                         echo \"exceeded\" > \"\$status_file\"
                                         fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
-                                        ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando!* 🚨
+                                        ALERTA=\"⚠️ *¡ Oye *$USER_NAME* Alerta de Seguridad! Sirenas sonando!* 🚨
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Problema*: Ha superado el límite de conexiones permitidas.
@@ -1931,7 +1931,7 @@ ssh_bot() {
                                 elif [[ \$conexiones -le \$moviles && -f \"\$status_file\" && \$(cat \"\$status_file\") == \"exceeded\" ]]; then
                                     echo \"normal\" > \"\$status_file\"
                                     fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
-                                    NOTIFICACION=\"✅ *¡Todo en orden, capitán!* 🫡
+                                    NOTIFICACION=\"✅ * *$USER_NAME* ¡Todo en orden!* 🫡
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Estado*: Ha vuelto a su límite normal de conexiones.
@@ -2545,7 +2545,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======♥️PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======☕😍PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
