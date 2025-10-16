@@ -14,11 +14,26 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-monitorear_conexiones() {
-    LOG="/var/log/monitoreo_conexiones.log"
-    INTERVALO=1
-    MAX_INACTIVIDAD=60  # Tiempo máximo de inactividad en segundos
 
+
+# ================================
+# VARIABLES Y RUTAS
+# ================================
+export REGISTROS="/diana/reg.txt"
+export HISTORIAL="/alexia/log.txt"
+export PIDFILE="/Abigail/mon.pid"
+export STATUS="/tmp/limitador_status"
+export ENABLED="/tmp/limitador_enabled"
+LOG="/var/log/monitoreo_conexiones.log"
+INTERVALO=1
+
+# Crear directorios si no existen
+mkdir -p "$(dirname "$REGISTROS")" "$(dirname "$HISTORIAL")" "$(dirname "$PIDFILE")"
+
+# ================================
+# 🧠 MONITOREO PRINCIPAL
+# ================================
+monitorear_conexiones() {
     while true; do
         # Usuarios conectados ahora mismo por SSH o Dropbear
         usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
@@ -27,45 +42,47 @@ monitorear_conexiones() {
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
 
-            # Verificar procesos zombies
+            # --- LIMPIEZA DE ZOMBIES ---
             zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
             if [[ -n "$zombies" ]]; then
                 for pid in $zombies; do
                     kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): ☠️  Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"
                 done
             fi
 
-            # Contar conexiones activas
+            # --- CONTAR CONEXIONES ACTIVAS ---
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
+            # --- REGISTRAR CONEXIÓN ---
             if [[ $conexiones -gt 0 ]]; then
-                # Verificar conexiones TCP inactivas
-                for pid in $(ps -u "$usuario" -o pid=,comm= | grep -E "sshd|dropbear" | awk '{print $1}'); do
-                    # Buscar sockets asociados al PID
-                    socket_info=$(ss -tp | grep "pid=$pid" | grep -E "ESTAB|TIME_WAIT|CLOSE_WAIT")
-                    if [[ -z "$socket_info" ]]; then
-                        # Si no hay socket activo, el proceso es potencialmente fantasma
-                        elapsed=$(ps -p "$pid" -o etimes= | tr -d ' ')
-                        if [[ $elapsed -gt $MAX_INACTIVIDAD ]]; then
-                            kill -9 "$pid" 2>/dev/null
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión fantasma (PID: $pid) de $usuario terminada (inactiva por $elapsed segundos)." >> "$LOG"
-                        fi
-                    fi
-                done
-
-                # Si hay conexiones activas, crear o reparar el reloj
                 if [[ ! -f "$tmp_status" ]]; then
                     date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): 🟢 $usuario conectado." >> "$LOG"
                 else
                     contenido=$(cat "$tmp_status")
                     [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
                 fi
             fi
+
+            # --- DETECTAR CONEXIONES FANTASMA ---
+            if [[ $conexiones -gt 1 ]]; then
+                sesiones=$(ps -u "$usuario" -o pid,etime,tty,comm | grep -E "(sshd|dropbear)")
+                while read -r pid etime tty proc; do
+                    # Extraer minutos desde etime (formato [[dd-]hh:]mm:ss)
+                    minutos=$(echo "$etime" | awk -F'[:\-]' '{if(NF==3){print $2}else if(NF==4){print $3}else{print $1}}')
+                    minutos=$((10#$minutos))
+
+                    # Si no tiene TTY o lleva más de 16 minutos => fantasma
+                    if [[ "$tty" == "?" || $minutos -ge 16 ]]; then
+                        kill -9 "$pid" 2>/dev/null
+                        echo "$(date '+%Y-%m-%d %H:%M:%S'): 🔴 Sesión fantasma de $usuario (PID: $pid, TTY: $tty, Tiempo: $etime) eliminada." >> "$LOG"
+                    fi
+                done <<< "$sesiones"
+            fi
         done
 
-        # Verificar desconexiones
+        # --- VERIFICAR DESCONECCIONES ---
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
@@ -75,7 +92,7 @@ monitorear_conexiones() {
                 hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
                 rm -f "$f"
                 echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): 🔻 $usuario desconectado (Inicio: $hora_ini - Fin: $hora_fin)." >> "$LOG"
             fi
         done
 
@@ -83,11 +100,13 @@ monitorear_conexiones() {
     done
 }
 
-
-function verificar_online() {
+# ================================
+# 🎨 VISUALIZADOR DE USUARIOS ONLINE
+# ================================
+verificar_online() {
     clear
 
-    # Definir colores exactos
+    # Colores bonitos 🌈
     AZUL_SUAVE='\033[38;5;45m'
     SOFT_PINK='\033[38;5;211m'
     PASTEL_BLUE='\033[38;5;153m'
@@ -102,8 +121,7 @@ function verificar_online() {
     NC='\033[0m'
 
     echo -e "${AZUL_SUAVE}===== 🟢   USUARIOS ONLINE =====${NC}"
-    printf "${AMARILLO}%-14s ${AMARILLO}%-14s ${AMARILLO}%-10s ${AMARILLO}%-25s${NC}\n" \
-        "👤 USUARIO" "📲 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
+    printf "${SOFT_CORAL}%-14s %-14s %-10s %-25s${NC}\n" "👤 USUARIO" "📲 CONEXIONES" "📱 MÓVILES" "⏰ TIEMPO CONECTADO"
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
 
     total_online=0
@@ -118,50 +136,28 @@ function verificar_online() {
 
     while read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
         usuario=${userpass%%:*}
-
-        if ! id "$usuario" &>/dev/null; then
-            continue
-        fi
+        id "$usuario" &>/dev/null || continue
 
         (( total_usuarios++ ))
-        # Contar conexiones, excluyendo procesos zombies
         conexiones=$(( $(ps -u "$usuario" -o comm=,stat= | grep -E "^(sshd|dropbear) " | grep -v "Z" | wc -l) ))
+
+        tmp_status="/tmp/status_${usuario}.tmp"
+        bloqueo_file="/tmp/bloqueo_${usuario}.lock"
 
         estado="📴 0"
         detalle="⭕ Nunca conectado"
         mov_txt="📲 $moviles"
-        tmp_status="/tmp/status_${usuario}.tmp"
-        bloqueo_file="/tmp/bloqueo_${usuario}.lock"
 
-        COLOR_ESTADO="${ROJO}"
+        COLOR_ESTADO="${VIOLETA}"
         COLOR_DETALLE="${VIOLETA}"
 
-        # 🔒 Verificar si está bloqueado primero
-        if [[ -f "$bloqueo_file" ]]; then
-            bloqueo_hasta=$(cat "$bloqueo_file")
-            if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
-                detalle="🚫 bloqueado (hasta $(date -d @$bloqueo_hasta '+%I:%M%p'))"
-                COLOR_DETALLE="${ROJO}"
-            else
-                rm -f "$bloqueo_file"
-            fi
-        fi
-
-        # 🟢 Si el usuario está conectado normalmente
         if [[ $conexiones -gt 0 ]]; then
             estado="🟢 $conexiones"
             COLOR_ESTADO="${MINT_GREEN}"
             (( total_online += conexiones ))
 
             if [[ -f "$tmp_status" ]]; then
-                contenido=$(cat "$tmp_status")
-                if [[ "$contenido" =~ ^[0-9]+$ ]]; then
-                    start_s=$((10#$contenido))
-                else
-                    start_s=$(date +%s)
-                    echo $start_s > "$tmp_status"
-                fi
-
+                start_s=$(cat "$tmp_status")
                 now_s=$(date +%s)
                 elapsed=$(( now_s - start_s ))
                 h=$(( elapsed / 3600 ))
@@ -171,32 +167,38 @@ function verificar_online() {
                 COLOR_DETALLE="${VERDE}"
             fi
         else
-            # ❌ Solo mostramos última conexión si NO está bloqueado
-            if [[ ! $detalle =~ "🚫 bloqueado" ]]; then
-                rm -f "$tmp_status"
-                ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
-                if [[ -n "$ult" ]]; then
-                    ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
-                    detalle="📅 Última: $ult_fmt"
-                    COLOR_DETALLE="${ROJO}"
-                else
-                    detalle="😴 Nunca conectado"
-                    COLOR_DETALLE="${VIOLETA}"
-                fi
+            rm -f "$tmp_status"
+            ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
+            if [[ -n "$ult" ]]; then
+                ult_fmt=$(date -d "$ult" +"%d de %B %H:%M")
+                detalle="📅 Última: $ult_fmt"
+                COLOR_DETALLE="${SOFT_PINK}"
+            else
+                detalle="😴 Nunca conectado"
             fi
             (( inactivos++ ))
         fi
 
-        # Imprimir cada fila bien coloreada
         printf "${VERDE}%-14s ${COLOR_ESTADO}%-14s ${VERDE}%-10s ${COLOR_DETALLE}%-25s${NC}\n" \
             "$usuario" "$estado" "$mov_txt" "$detalle"
     done < "$REGISTROS"
 
     echo -e "${LILAC}-----------------------------------------------------------------${NC}"
-    echo -e "${CIAN}Total de Online: ${AMARILLO}${total_online}${NC}  ${CIAN}Total usuarios: ${AMARILLO}${total_usuarios}${NC}  ${CIAN}Inactivos: ${AMARILLO}${inactivos}${NC}"
+    echo -e "${CIAN}Total de Online: ${MINT_GREEN}${total_online}${NC}  ${CIAN}Usuarios: ${MINT_GREEN}${total_usuarios}${NC}  ${CIAN}Inactivos: ${SOFT_PINK}${inactivos}${NC}"
     echo -e "${HOT_PINK}================================================${NC}"
     read -p "$(echo -e ${VIOLETA}Presiona Enter para continuar... ✨${NC})"
 }
+
+# ================================
+# 🚀 INICIO AUTOMÁTICO
+# ================================
+if [[ "$1" == "--start" ]]; then
+    monitorear_conexiones
+else
+    verificar_online
+fi
+
+                
 
 
 
@@ -2435,7 +2437,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======❤️😘 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
