@@ -1568,96 +1568,97 @@ monitorear_conexiones() {
     HISTORIAL="/alexia/log.txt"  # Usar tu ruta definida
     INTERVALO=1
 
-    # Asegurarse de que el directorio de HISTORIAL exista
-    mkdir -p "$(dirname "$HISTORIAL")"
+    # Asegurarse de que el directorio de HISTORIAL exista    
+    mkdir -p "$(dirname "$HISTORIAL")"    
+    # Crear el archivo HISTORIAL si no existe    
+    [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"    
+    # Asegurarse de que el directorio de LOG exista    
+    mkdir -p "$(dirname "$LOG")"    
+    # Crear el archivo LOG si no existe    
+    [[ ! -f "$LOG" ]] && touch "$LOG"    
 
-    # Crear el archivo HISTORIAL si no existe
-    [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"
+    # Configurar puertos de Dropbear (ajusta según tu configuración)
+    DROPBEAR_PORTS="80 443"  # Agrega más puertos si Dropbear usa otros
 
-    # Asegurarse de que el directorio de LOG exista
-    mkdir -p "$(dirname "$LOG")"
+    while true; do    
+        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)    
 
-    # Crear el archivo LOG si no existe
-    [[ ! -f "$LOG" ]] && touch "$LOG"
+        for usuario in $usuarios_ps; do    
+            [[ -z "$usuario" ]] && continue    
+            tmp_status="/tmp/status_${usuario}.tmp"    
 
-    while true; do
-        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
+            # 🔍 Detectar y eliminar procesos zombies    
+            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')    
+            if [[ -n "$zombies" ]]; then    
+                for pid in $zombies; do    
+                    kill -9 "$pid" 2>/dev/null    
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"    
+                done    
+            fi    
 
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
-            tmp_status="/tmp/status_${usuario}.tmp"
+            # 📡 Contar conexiones activas del usuario    
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))    
 
-            # 🔍 Detectar y eliminar procesos zombies
-            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
-            if [[ -n "$zombies" ]]; then
-                for pid in $zombies; do
-                    kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"
-                done
-            fi
+            # 🟢 Registrar conexión si no existía previamente    
+            if [[ $conexiones -gt 0 ]]; then    
+                if [[ ! -f "$tmp_status" ]]; then    
+                    date +%s > "$tmp_status"    
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"    
+                else    
+                    contenido=$(cat "$tmp_status")    
+                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"    
+                fi    
+            fi    
+        done    
 
-            # 📡 Contar conexiones activas del usuario
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+        # 🔥 BLOQUE ANTI CONEXIONES FANTASMA SSH Y DROPBEAR 🔥    
+        # Mata conexiones inactivas por más de 3 minutos (180 seg)    
+        # Incluye estados ESTAB, TIME_WAIT, CLOSE_WAIT    
 
-            # 🟢 Registrar conexión si no existía previamente
-            if [[ $conexiones -gt 0 ]]; then
-                if [[ ! -f "$tmp_status" ]]; then
-                    date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
-                else
-                    contenido=$(cat "$tmp_status")
-                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
-                fi
-            fi
-        done
+        # --- SSH (puerto 22)    
+        ss -eto '( sport = :22 )' 2>/dev/null | \
+        awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {    
+            if (match($0, /users:\(\("sshd",pid=([0-9]+)/, arr)) {    
+                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)    
+                    print arr[1];    
+            }    
+        }' | while read -r pid; do    
+            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null    
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 3min." >> "$LOG"    
+        done    
 
-        # 🔥 BLOQUE ANTI CONEXIONES FANTASMA SSH Y DROPBEAR 🔥
-        # Mata conexiones establecidas por más de 3 minutos (180 seg)
+        # --- Dropbear (puertos configurados)    
+        for port in $DROPBEAR_PORTS; do
+            ss -eto '( sport = :'"$port"' )' 2>/dev/null | \
+            awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {    
+                if (match($0, /users:\(\("dropbear",pid=([0-9]+)/, arr)) {    
+                    if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)    
+                        print arr[1];    
+                }    
+            }' | while read -r pid; do    
+                [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null    
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión Dropbear idle (PID: $pid, puerto: $port) eliminada tras 3min." >> "$LOG"    
+            done    
+        done    
 
-        # --- SSH (puerto 22)
-        ss -eto state established '( sport = :22 )' 2>/dev/null | \
-        awk '/ESTAB/ && /timer:/ {
-            if (match($0, /users:\(\("sshd",pid=([0-9]+)/, arr)) {
-                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
-                    print arr[1];
-            }
-        }' | while read -r pid; do
-            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 3min." >> "$LOG"
-        done
+        # ⚙️ Revisar desconexiones y registrar historial    
+        for f in /tmp/status_*.tmp; do    
+            [[ ! -f "$f" ]] && continue    
+            usuario=$(basename "$f" .tmp | cut -d_ -f2)    
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))    
 
-        # --- Dropbear (puerto 80 o 443 según config)
-        ss -eto state established '( sport = :80 or sport = :443 )' 2>/dev/null | \
-        awk '/ESTAB/ && /timer:/ {
-            if (match($0, /users:\(\("dropbear",pid=([0-9]+)/, arr)) {
-                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
-                    print arr[1];
-            }
-        }' | while read -r pid; do
-            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión Dropbear idle (PID: $pid) eliminada tras 3min." >> "$LOG"
-        done
+            if [[ $conexiones -eq 0 ]]; then    
+                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")    
+                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")    
+                rm -f "$f"    
+                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"    
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"    
+            fi    
+        done    
 
-        # ⚙️ Revisar desconexiones y registrar historial
-        for f in /tmp/status_*.tmp; do
-            [[ ! -f "$f" ]] && continue
-            usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
-
-            if [[ $conexiones -eq 0 ]]; then
-                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
-                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                rm -f "$f"
-                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-            fi
-        done
-
-        sleep "$INTERVALO"
+        sleep "$INTERVALO"    
     done
 }
-
-
 
 # ================================
 #  MODO MONITOREO DIRECTO
@@ -2443,7 +2444,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😇 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======✨♨️PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
