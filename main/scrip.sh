@@ -14,7 +14,27 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-                                
+# ================================
+# CONFIGURAR SSH PARA TIMEOUT
+# ================================
+# ClientAliveInterval 30
+# ClientAliveCountMax 3
+
+# Si no existen, agregar o modificar en sshd_config
+if grep -q "^ClientAliveInterval" "$SSHD_CONFIG"; then
+    sed -i 's/^ClientAliveInterval.*/ClientAliveInterval 30/' "$SSHD_CONFIG"
+else
+    echo "ClientAliveInterval 30" >> "$SSHD_CONFIG"
+fi
+
+if grep -q "^ClientAliveCountMax" "$SSHD_CONFIG"; then
+    sed -i 's/^ClientAliveCountMax.*/ClientAliveCountMax 3/' "$SSHD_CONFIG"
+else
+    echo "ClientAliveCountMax 3" >> "$SSHD_CONFIG"
+fi
+
+# Reiniciar el servicio SSH para aplicar cambios
+systemctl restart sshd                                
     
                                         
 ssh_bot() {
