@@ -1800,11 +1800,6 @@ mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
-# ✅ Crear archivo de historial si no existe
-if [[ ! -f "$HISTORIAL" ]]; then
-    touch "$HISTORIAL"
-fi
-
 # Colores bonitos
 AZUL_SUAVE='\033[38;5;45m'
 VERDE='\033[38;5;42m'
@@ -2445,7 +2440,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🚀🐳 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======😘 PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
