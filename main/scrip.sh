@@ -1565,37 +1565,85 @@ crear_multiples_usuarios() {
 # ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
+    HISTORIAL="/alexia/log.txt"  # Usar tu ruta definida
     INTERVALO=1
 
+    # Asegurarse de que el directorio de HISTORIAL exista
+    mkdir -p "$(dirname "$HISTORIAL")"
+
+    # Crear el archivo HISTORIAL si no existe
+    [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"
+
+    # Asegurarse de que el directorio de LOG exista
+    mkdir -p "$(dirname "$LOG")"
+
+    # Crear el archivo LOG si no existe
+    [[ ! -f "$LOG" ]] && touch "$LOG"
+
     while true; do
-        # Usuarios conectados ahora mismo por SSH o Dropbear
         usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
         for usuario in $usuarios_ps; do
             [[ -z "$usuario" ]] && continue
             tmp_status="/tmp/status_${usuario}.tmp"
 
-            # ¿Cuántas conexiones tiene activas?
+            # 🔍 Detectar y eliminar procesos zombies
+            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
+            if [[ -n "$zombies" ]]; then
+                for pid in $zombies; do
+                    kill -9 "$pid" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"
+                done
+            fi
+
+            # 📡 Contar conexiones activas del usuario
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
+            # 🟢 Registrar conexión si no existía previamente
             if [[ $conexiones -gt 0 ]]; then
-                # Si nunca se ha creado el reloj, créalo ahora
                 if [[ ! -f "$tmp_status" ]]; then
                     date +%s > "$tmp_status"
                     echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
                 else
-                    # Reparar si está corrupto
                     contenido=$(cat "$tmp_status")
                     [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
                 fi
             fi
         done
 
-        # Ahora, ver quién estaba conectado y ya NO está, para cerrarles el tiempo
+        # 🔥 BLOQUE ANTI CONEXIONES FANTASMA SSH Y DROPBEAR 🔥
+        # Mata conexiones establecidas por más de 3 minutos (180 seg)
+
+        # --- SSH (puerto 22)
+        ss -eto state established '( sport = :22 )' 2>/dev/null | \
+        awk '/ESTAB/ && /timer:/ {
+            if (match($0, /users:\(\("sshd",pid=([0-9]+)/, arr)) {
+                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
+                    print arr[1];
+            }
+        }' | while read -r pid; do
+            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 3min." >> "$LOG"
+        done
+
+        # --- Dropbear (puerto 80 o 443 según config)
+        ss -eto state established '( sport = :80 or sport = :443 )' 2>/dev/null | \
+        awk '/ESTAB/ && /timer:/ {
+            if (match($0, /users:\(\("dropbear",pid=([0-9]+)/, arr)) {
+                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
+                    print arr[1];
+            }
+        }' | while read -r pid; do
+            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión Dropbear idle (PID: $pid) eliminada tras 3min." >> "$LOG"
+        done
+
+        # ⚙️ Revisar desconexiones y registrar historial
         for f in /tmp/status_*.tmp; do
             [[ ! -f "$f" ]] && continue
             usuario=$(basename "$f" .tmp | cut -d_ -f2)
             conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+
             if [[ $conexiones -eq 0 ]]; then
                 hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
                 hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
