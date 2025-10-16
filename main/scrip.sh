@@ -597,6 +597,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
                                                 tmp_status=\"/tmp/status_\${usuario}.tmp\"
                                                 bloqueo_file=\"/tmp/bloqueo_\${usuario}.lock\"
+                                                alerta_file=\"/tmp/alerta_\${usuario}.status\"
                                                 detalle=\"😴 Nunca conectado\"
 
                                                 if [[ -f \"\$bloqueo_file\" ]]; then
@@ -646,6 +647,47 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                         (( inactivos++ ))
                                                     fi
                                                 fi
+
+                                                # Verificar límite de conexiones
+                                                if [[ \$conexiones -gt \$moviles ]]; then
+                                                    if [[ ! -f \"\$alerta_file\" || \$(cat \"\$alerta_file\") != \"excedido\" ]]; then
+                                                        # Enviar notificación de exceso
+                                                        ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando! 🚨*
+
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Problema*: Ha superado el límite de conexiones permitidas.
+✅ *Límite*: \$moviles móvil(es)
+🚫 *Conexiones actuales*: \$conexiones
+⏰ *Fecha y hora*: \$FECHA_ACTUAL
+
+🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
+                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                                        echo \"excedido\" > \"\$alerta_file\"
+                                                        echo \"Alerta enviada: \$usuario excedió límite de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
+                                                    fi
+                                                elif [[ \$conexiones -le \$moviles && \$conexiones -gt 0 ]]; then
+                                                    if [[ -f \"\$alerta_file\" && \$(cat \"\$alerta_file\") == \"excedido\" ]]; then
+                                                        # Enviar notificación de vuelta a normal
+                                                        ALERTA=\"✅ *¡Todo en orden, capitán! 🫡*
+
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Estado*: Ha vuelto a su límite normal de conexiones.
+✅ *Límite*: \$moviles móvil(es)
+🌟 *Conexiones actuales*: \$conexiones
+⏰ *Fecha y hora*: \$FECHA_ACTUAL
+
+🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
+                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                                        echo \"normal\" > \"\$alerta_file\"
+                                                        echo \"Alerta enviada: \$usuario volvió a límite normal de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
+                                                    fi
+                                                else
+                                                    # Si no hay conexiones, limpiar el archivo de alerta si existe
+                                                    if [[ -f \"\$alerta_file\" ]]; then
+                                                        rm -f \"\$alerta_file\"
+                                                    fi
+                                                fi
+
                                                 if [[ \$conexiones -gt 0 ]]; then
                                                     conexiones_status=\"\$conexiones 🟢\"
                                                 else
@@ -751,7 +793,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                              
+}
            
                                                                                             
                                           
@@ -1612,153 +1654,98 @@ crear_multiples_usuarios() {
 # ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    HISTORIAL="/alexia/log.txt"
-    REGISTROS="/diana/reg.txt"  # Ruta al archivo de registros
+    HISTORIAL="/alexia/log.txt"  # Usar tu ruta definida
     INTERVALO=1
-    DROPBEAR_PORTS="80 443"  # Puertos de Dropbear, ajusta si es necesario
 
-    # Asegurarse de que los directorios existan
-    mkdir -p "$(dirname "$HISTORIAL")"
-    mkdir -p "$(dirname "$LOG")"
-    mkdir -p "$(dirname "$REGISTROS")"
+    # Asegurarse de que el directorio de HISTORIAL exista    
+    mkdir -p "$(dirname "$HISTORIAL")"    
+    # Crear el archivo HISTORIAL si no existe    
+    [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"    
+    # Asegurarse de que el directorio de LOG exista    
+    mkdir -p "$(dirname "$LOG")"    
+    # Crear el archivo LOG si no existe    
+    [[ ! -f "$LOG" ]] && touch "$LOG"    
 
-    # Crear los archivos si no existen
-    [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"
-    [[ ! -f "$LOG" ]] && touch "$LOG"
-    [[ ! -f "$REGISTROS" ]] && touch "$REGISTROS"
+    # Configurar puertos de Dropbear (ajusta según tu configuración)
+    DROPBEAR_PORTS="80 443"  # Agrega más puertos si Dropbear usa otros
 
-    # Leer el token y el ID de usuario de Telegram
-    [[ -f "/root/sshbot_token" ]] && TOKEN_ID=$(cat /root/sshbot_token)
-    [[ -f "/root/sshbot_userid" ]] && USER_ID=$(cat /root/sshbot_userid)
+    while true; do    
+        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)    
 
-    while true; do
-        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
+        for usuario in $usuarios_ps; do    
+            [[ -z "$usuario" ]] && continue    
+            tmp_status="/tmp/status_${usuario}.tmp"    
 
-        for usuario in $usuarios_ps; do
-            [[ -z "$usuario" ]] && continue
-            tmp_status="/tmp/status_${usuario}.tmp"
+            # 🔍 Detectar y eliminar procesos zombies    
+            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')    
+            if [[ -n "$zombies" ]]; then    
+                for pid in $zombies; do    
+                    kill -9 "$pid" 2>/dev/null    
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"    
+                done    
+            fi    
 
-            # 🔍 Detectar y eliminar procesos zombies
-            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
-            if [[ -n "$zombies" ]]; then
-                for pid in $zombies; do
-                    kill -9 "$pid" 2>/dev/null
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"
-                done
-            fi
+            # 📡 Contar conexiones activas del usuario    
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))    
 
-            # 📡 Contar conexiones activas del usuario
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+            # 🟢 Registrar conexión si no existía previamente    
+            if [[ $conexiones -gt 0 ]]; then    
+                if [[ ! -f "$tmp_status" ]]; then    
+                    date +%s > "$tmp_status"    
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"    
+                else    
+                    contenido=$(cat "$tmp_status")    
+                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"    
+                fi    
+            fi    
+        done    
 
-            # Obtener el límite de móviles del usuario desde REGISTROS
-            limite_moviles=$(grep "^$usuario:" "$REGISTROS" | awk '{print $4}')
-            [[ -z "$limite_moviles" || ! "$limite_moviles" =~ ^[0-9]+$ ]] && limite_moviles=0
+        # 🔥 BLOQUE ANTI CONEXIONES FANTASMA SSH Y DROPBEAR 🔥    
+        # Mata conexiones inactivas por más de 3 minutos (180 seg)    
+        # Incluye estados ESTAB, TIME_WAIT, CLOSE_WAIT    
 
-            # 🔔 Verificar si excede el límite de móviles
-            estado_anterior="/tmp/estado_${usuario}.tmp"
-            if [[ $conexiones -gt $limite_moviles && $limite_moviles -gt 0 ]]; then
-                if [[ ! -f "$estado_anterior" || $(cat "$estado_anterior") != "excedido" ]]; then
-                    # Registrar en el log
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario excedió el límite de móviles ($conexiones > $limite_moviles)." >> "$LOG"
-                    # Marcar estado como excedido
-                    echo "excedido" > "$estado_anterior"
-                    # Enviar notificación a Telegram
-                    if [[ -n "$TOKEN_ID" && -n "$USER_ID" ]]; then
-                        mensaje="🚨 *¡ALERTA DE EXCESO!* ⚠️
-
-👤 *Usuario*: \`$usuario\`  
-📱 *Límite permitido*: $limite_moviles móvil(es)  
-📲 *Conexiones actuales*: $conexiones  
-😡 ¡$usuario ha superado su límite de conexiones móviles!  
-⚡ *Acción recomendada*: Revisa las conexiones o suspende al usuario para evitar abusos.  
-
-🕒 *Fecha*: $(date '+%Y-%m-%d %H:%M:%S')"
-                        curl -s -X POST "https://api.telegram.org/bot$TOKEN_ID/sendMessage" \
-                            -d chat_id="$USER_ID" \
-                            -d text="$mensaje" \
-                            -d parse_mode=Markdown >/dev/null
-                    fi
-                fi
-            elif [[ $conexiones -le $limite_moviles && -f "$estado_anterior" && $(cat "$estado_anterior") == "excedido" ]]; then
-                # Registrar en el log
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario volvió a su límite normal ($conexiones <= $limite_moviles)." >> "$LOG"
-                # Marcar estado como normal
-                echo "normal" > "$estado_anterior"
-                # Enviar notificación a Telegram
-                if [[ -n "$TOKEN_ID" && -n "$USER_ID" ]]; then
-                    mensaje="🎉 *¡TODO EN ORDEN!* ✅
-
-👤 *Usuario*: \`$usuario\`  
-📱 *Límite permitido*: $limite_moviles禁止
-
-📲 *Conexiones actuales*: $conexiones  
-😊 ¡$usuario ha regresado a su límite normal de $limite_moviles móvil(es)!  
-🕒 *Fecha*: $(date '+%Y-%m-%d %H:%M:%S')"
-                    curl -s -X POST "https://api.telegram.org/bot$TOKEN_ID/sendMessage" \
-                        -d chat_id="$USER_ID" \
-                        -d text="$mensaje" \
-                        -d parse_mode=Markdown >/dev/null
-                fi
-            fi
-
-            # 🟢 Registrar conexión si no existía previamente
-            if [[ $conexiones -gt 0 ]]; then
-                if [[ ! -f "$tmp_status" ]]; then
-                    date +%s > "$tmp_status"
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
-                else
-                    contenido=$(cat "$tmp_status")
-                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
-                fi
-            fi
-        done
-
-        # 🔥 BLOQUE ANTI CONEXIONES FANTASMA SSH Y DROPBEAR 🔥
-        # Mata conexiones inactivas por más de 3 minutos (180 seg)
-        # Incluye estados ESTAB, TIME_WAIT, CLOSE_WAIT
-
-        # --- SSH (puerto 22)
+        # --- SSH (puerto 22)    
         ss -eto '( sport = :22 )' 2>/dev/null | \
-        awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {
-            if (match($0, /users:\(\("sshd",pid=([0-9]+)/, arr)) {
-                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
-                    print arr[1];
-            }
-        }' | while read -r pid; do
-            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 3min." >> "$LOG"
-        done
+        awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {    
+            if (match($0, /users:\(\("sshd",pid=([0-9]+)/, arr)) {    
+                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)    
+                    print arr[1];    
+            }    
+        }' | while read -r pid; do    
+            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null    
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 3min." >> "$LOG"    
+        done    
 
-        # --- Dropbear (puertos configurados)
+        # --- Dropbear (puertos configurados)    
         for port in $DROPBEAR_PORTS; do
             ss -eto '( sport = :'"$port"' )' 2>/dev/null | \
-            awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {
-                if (match($0, /users:\(\("dropbear",pid=([0-9]+)/, arr)) {
-                    if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
-                        print arr[1];
-                }
-            }' | while read -r pid; do
-                [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión Dropbear idle (PID: $pid, puerto: $port) eliminada tras 3min." >> "$LOG"
-            done
-        done
+            awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {    
+                if (match($0, /users:\(\("dropbear",pid=([0-9]+)/, arr)) {    
+                    if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)    
+                        print arr[1];    
+                }    
+            }' | while read -r pid; do    
+                [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null    
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión Dropbear idle (PID: $pid, puerto: $port) eliminada tras 3min." >> "$LOG"    
+            done    
+        done    
 
-        # ⚙️ Revisar desconexiones y registrar historial
-        for f in /tmp/status_*.tmp; do
-            [[ ! -f "$f" ]] && continue
-            usuario=$(basename "$f" .tmp | cut -d_ -f2)
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
+        # ⚙️ Revisar desconexiones y registrar historial    
+        for f in /tmp/status_*.tmp; do    
+            [[ ! -f "$f" ]] && continue    
+            usuario=$(basename "$f" .tmp | cut -d_ -f2)    
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))    
 
-            if [[ $conexiones -eq 0 ]]; then
-                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
-                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
-                rm -f "$f"
-                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
-            fi
-        done
+            if [[ $conexiones -eq 0 ]]; then    
+                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")    
+                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")    
+                rm -f "$f"    
+                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"    
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"    
+            fi    
+        done    
 
-        sleep "$INTERVALO"
+        sleep "$INTERVALO"    
     done
 }
 
@@ -2548,7 +2535,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😋🥲PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳💵PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
