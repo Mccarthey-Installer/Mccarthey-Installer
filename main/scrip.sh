@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # ================================
@@ -64,7 +63,7 @@ fi
 systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
-ssh_bot() {
+   ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -350,12 +349,13 @@ ssh_bot() {
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
-📅 *Expira*: \\\`\${fecha_expiracion}\\\`
+\\\`📅 Expira: \${fecha_expiracion}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
 
-🌐✨ *Reglas SSH WebSocket* ✨🌐
+\\\`\\\`\\\`
+🌐✨ Reglas SSH WebSocket ✨🌐
 
 👋 Hola, \${USERNAME}
 Por favor cumple con estas reglas para mantener tu acceso activo:
@@ -368,7 +368,8 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
  ⚠️ Nada de usos ilegales (spam/ataques)
  🧑‍💻 SOPORTE: ENVÍA TU MENSAJE UNA SOLA VEZ Y ESPERA RESPUESTA. 🚫 NO HAGAS SPAM.
 
-⚡👉 *El incumplimiento resultará en suspensión inmediata.*\"
+⚡👉 El incumplimiento resultará en suspensión inmediata.
+\\\`\\\`\\\`\"
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
                                                         fi
                                                     fi
@@ -802,8 +803,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
-                                                                                            
+}                          
                                           
 function barra_sistema() {  
     # ================= Colores =================  
@@ -2541,7 +2541,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😋🥲PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
