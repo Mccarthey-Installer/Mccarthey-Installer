@@ -75,6 +75,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
     export REGISTROS="/diana/reg.txt"
     export HISTORIAL="/alexia/log.txt"
     export PIDFILE="/Abigail/mon.pid"
+    export PIDFILE_MONITOR="/Abigail/monitor.pid"
 
     # Crear directorios si no existen
     mkdir -p "$(dirname "$REGISTROS")"
@@ -101,6 +102,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 export REGISTROS='$REGISTROS'
                 export HISTORIAL='$HISTORIAL'
                 export PIDFILE='$PIDFILE'
+                export PIDFILE_MONITOR='$PIDFILE_MONITOR'
 
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
@@ -214,11 +216,16 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                     done < \"\$REGISTROS\"
                 }
 
-                while true; do
-                    # Monitoreo automático de conexiones cada 60 segundos
-                    monitor_conexiones
-                    sleep 60
+                # Iniciar monitoreo automático en un proceso separado
+                nohup bash -c '
+                    while true; do
+                        monitor_conexiones
+                        sleep 60
+                    done
+                ' >/dev/null 2>&1 &
+                echo \$! > \"\$PIDFILE_MONITOR\"
 
+                while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
                     for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
                         OFFSET=\$(echo \$row | jq '.update_id')
@@ -788,12 +795,16 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             " >/dev/null 2>&1 &
             echo $! > "$PIDFILE"
             echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano (PID: $(cat $PIDFILE)).${NC}"
-            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo y monitoreará conexiones automáticamente.${NC}"
+            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo y monitoreará conexiones automáticamente cada 60 segundos.${NC}"
             ;;
         2)
             if [[ -f "$PIDFILE" ]]; then
                 kill -9 $(cat "$PIDFILE") 2>/dev/null
                 rm -f "$PIDFILE"
+            fi
+            if [[ -f "$PIDFILE_MONITOR" ]]; then
+                kill -9 $(cat "$PIDFILE_MONITOR") 2>/dev/null
+                rm -f "$PIDFILE_MONITOR"
             fi
             rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
             pkill -f "api.telegram.org"
@@ -806,7 +817,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                                                         
+}
                                         
                                                                                             
                                           
