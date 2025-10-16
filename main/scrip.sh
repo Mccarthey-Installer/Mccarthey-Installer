@@ -63,7 +63,8 @@ fi
 # ================================
 systemctl restart sshd && echo "SSH configurado correctamente."
     
-   ssh_bot() {
+   
+ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -103,12 +104,15 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 export HISTORIAL='$HISTORIAL'
                 export PIDFILE='$PIDFILE'
                 export PIDFILE_MONITOR='$PIDFILE_MONITOR'
+                export TOKEN_ID='$TOKEN_ID'
+                export USER_ID='$USER_ID'
+                export USER_NAME='$USER_NAME'
 
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
                 mkdir -p \"\$(dirname \"\$PIDFILE\")\"
 
-                URL='https://api.telegram.org/bot$TOKEN_ID'
+                URL='https://api.telegram.org/bot\$TOKEN_ID'
                 OFFSET=0
                 EXPECTING_USER_DATA=0
                 USER_DATA_STEP=0
@@ -166,13 +170,17 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 }
 
                 monitor_conexiones() {
+                    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Iniciando monitoreo\" >> /tmp/monitor.log
                     if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                        echo \"[$(date '+%Y-%m-%d %H:%M:%S')] No hay registros\" >> /tmp/monitor.log
                         return
                     fi
                     FECHA_ACTUAL=\$(date +\"%Y-%m-%d %H:%M\")
                     while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
                         usuario=\${userpass%%:*}
+                        echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Revisando usuario: \$usuario\" >> /tmp/monitor.log
                         if ! id \"\$usuario\" &>/dev/null; then
+                            echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Usuario \$usuario no existe en el sistema\" >> /tmp/monitor.log
                             continue
                         fi
                         conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
@@ -189,9 +197,10 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 ⏰ *Fecha y hora*: \$FECHA_ACTUAL
 
 🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
                                 echo \"excedido\" > \"\$alerta_file\"
                                 echo \"Alerta enviada: \$usuario excedió límite de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
+                                echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Alerta enviada para \$usuario: \$conexiones > \$moviles\" >> /tmp/monitor.log
                             fi
                         elif [[ \$conexiones -le \$moviles && \$conexiones -gt 0 ]]; then
                             if [[ -f \"\$alerta_file\" && \$(cat \"\$alerta_file\") == \"excedido\" ]]; then
@@ -204,13 +213,15 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 ⏰ *Fecha y hora*: \$FECHA_ACTUAL
 
 🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
                                 echo \"normal\" > \"\$alerta_file\"
                                 echo \"Alerta enviada: \$usuario volvió a límite normal de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
+                                echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Alerta de normalización enviada para \$usuario: \$conexiones <= \$moviles\" >> /tmp/monitor.log
                             fi
                         else
                             if [[ -f \"\$alerta_file\" ]]; then
                                 rm -f \"\$alerta_file\"
+                                echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Archivo de alerta eliminado para \$usuario\" >> /tmp/monitor.log
                             fi
                         fi
                     done < \"\$REGISTROS\"
@@ -218,6 +229,14 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 
                 # Iniciar monitoreo automático en un proceso separado
                 nohup bash -c '
+                    export REGISTROS=\"'$REGISTROS'\"
+                    export HISTORIAL=\"'$HISTORIAL'\"
+                    export TOKEN_ID=\"'$TOKEN_ID'\"
+                    export USER_ID=\"'$USER_ID'\"
+                    export URL=\"https://api.telegram.org/bot$TOKEN_ID\"
+                    $(declare -f calcular_dias_restantes)
+                    $(declare -f monitor_conexiones)
+                    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Proceso de monitoreo iniciado, PID: $$\" >> /tmp/monitor.log
                     while true; do
                         monitor_conexiones
                         sleep 60
@@ -550,13 +569,13 @@ Escribe *hola* para volver al menú.\"
                             else
                                 case \"\$MSG_TEXT\" in
                                     'Hola'|'hola'|'/start')
-                                        MENU=\"¡Hola! 😏 *$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
+                                        MENU=\"¡Hola! 😏 *\$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
 
 🔧 *Presiona 1* para crear usuario
-🗑️ *Presiona 2* para eliminar usuario
-📋 *Presiona 3* para ver los usuarios registrados
-✅ *Presiona 4* para mostrar usuarios conectados
-🔄 *Presiona 5* para renovar usuario
+📋 *Presiona 2* para ver los usuarios registrados
+🗑️ *Presiona 3* para eliminar usuario
+🔄 *Presiona 4* para renovar usuario
+✅ *Presiona 5* para mostrar usuarios conectados
 💾 *Presiona 6* para crear backup
 📥 *Presiona 7* para restaurar backup
 🏠 *Presiona 0* para volver al menú principal\"
@@ -570,24 +589,6 @@ Escribe *hola* para volver al menú.\"
                                         USER_DATA_STEP=1
                                         ;;
                                     '2')
-                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
-                                        else
-                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
-
-\"
-                                            while IFS=' ' read -r user_data _; do
-                                                usuario=\${user_data%%:*}
-                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`
-\"
-                                            done < \"\$REGISTROS\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
-                                            EXPECTING_DELETE_USER=1
-                                        fi
-                                        ;;
-                                    '3')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
 
@@ -632,7 +633,48 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
+                                    '3')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"¡Hola! 😏 *\$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
+
+\"
+                                            while IFS=' ' read -r user_data _; do
+                                                usuario=\${user_data%%:*}
+                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`
+\"
+                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_DELETE_USER=1
+                                        fi
+                                        ;;
                                     '4')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"🌸 *USUARIOS REGISTRADOS* 🌸
+
+Selecciona un usuario para renovar:
+
+\"
+                                            count=1
+                                            while IFS=' ' read -r user_data _; do
+                                                usuario=\${user_data%%:*}
+                                                LISTA=\"\${LISTA}\${count}. \\\`\${usuario}\\\`
+\"
+                                                ((count++))
+                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"👤 *Ingresa el nombre del usuario a renovar:*\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_RENEW_USER=1
+                                            RENEW_STEP=1
+                                        fi
+                                        ;;
+                                    '5')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
@@ -736,29 +778,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             rm -f \"\$temp_users\"
                                         fi
                                         ;;
-                                    '5')
-                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
-                                        else
-                                            LISTA=\"🌸 *USUARIOS REGISTRADOS* 🌸
-
-Selecciona un usuario para renovar:
-
-\"
-                                            count=1
-                                            while IFS=' ' read -r user_data _; do
-                                                usuario=\${user_data%%:*}
-                                                LISTA=\"\${LISTA}\${count}. \\\`\${usuario}\\\`
-\"
-                                                ((count++))
-                                            done < \"\$REGISTROS\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"👤 *Ingresa el nombre del usuario a renovar:*\" -d parse_mode=Markdown >/dev/null
-                                            EXPECTING_RENEW_USER=1
-                                            RENEW_STEP=1
-                                        fi
-                                        ;;
                                     '6')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados para crear backup.*
@@ -818,7 +837,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
-                                        
                                                                                             
                                           
 function barra_sistema() {  
