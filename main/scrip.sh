@@ -63,8 +63,7 @@ fi
 # ================================
 systemctl restart sshd && echo "SSH configurado correctamente."
     
-                                        
-ssh_bot() {
+   ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -164,7 +163,62 @@ ssh_bot() {
                     echo \$dias_restantes
                 }
 
+                monitor_conexiones() {
+                    if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                        return
+                    fi
+                    FECHA_ACTUAL=\$(date +\"%Y-%m-%d %H:%M\")
+                    while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
+                        usuario=\${userpass%%:*}
+                        if ! id \"\$usuario\" &>/dev/null; then
+                            continue
+                        fi
+                        conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
+                        alerta_file=\"/tmp/alerta_\${usuario}.status\"
+
+                        if [[ \$conexiones -gt \$moviles ]]; then
+                            if [[ ! -f \"\$alerta_file\" || \$(cat \"\$alerta_file\") != \"excedido\" ]]; then
+                                ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando! 🚨*
+
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Problema*: Ha superado el límite de conexiones permitidas.
+✅ *Límite*: \$moviles móvil(es)
+🚫 *Conexiones actuales*: \$conexiones
+⏰ *Fecha y hora*: \$FECHA_ACTUAL
+
+🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                echo \"excedido\" > \"\$alerta_file\"
+                                echo \"Alerta enviada: \$usuario excedió límite de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
+                            fi
+                        elif [[ \$conexiones -le \$moviles && \$conexiones -gt 0 ]]; then
+                            if [[ -f \"\$alerta_file\" && \$(cat \"\$alerta_file\") == \"excedido\" ]]; then
+                                ALERTA=\"✅ *¡Todo en orden, capitán! 🫡*
+
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Estado*: Ha vuelto a su límite normal de conexiones.
+✅ *Límite*: \$moviles móvil(es)
+🌟 *Conexiones actuales*: \$conexiones
+⏰ *Fecha y hora*: \$FECHA_ACTUAL
+
+🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
+                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                echo \"normal\" > \"\$alerta_file\"
+                                echo \"Alerta enviada: \$usuario volvió a límite normal de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
+                            fi
+                        else
+                            if [[ -f \"\$alerta_file\" ]]; then
+                                rm -f \"\$alerta_file\"
+                            fi
+                        fi
+                    done < \"\$REGISTROS\"
+                }
+
                 while true; do
+                    # Monitoreo automático de conexiones cada 60 segundos
+                    monitor_conexiones
+                    sleep 60
+
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
                     for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
                         OFFSET=\$(echo \$row | jq '.update_id')
@@ -597,7 +651,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
                                                 tmp_status=\"/tmp/status_\${usuario}.tmp\"
                                                 bloqueo_file=\"/tmp/bloqueo_\${usuario}.lock\"
-                                                alerta_file=\"/tmp/alerta_\${usuario}.status\"
                                                 detalle=\"😴 Nunca conectado\"
 
                                                 if [[ -f \"\$bloqueo_file\" ]]; then
@@ -645,46 +698,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                             detalle=\"😴 Nunca conectado\"
                                                         fi
                                                         (( inactivos++ ))
-                                                    fi
-                                                fi
-
-                                                # Verificar límite de conexiones
-                                                if [[ \$conexiones -gt \$moviles ]]; then
-                                                    if [[ ! -f \"\$alerta_file\" || \$(cat \"\$alerta_file\") != \"excedido\" ]]; then
-                                                        # Enviar notificación de exceso
-                                                        ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando! 🚨*
-
-👤 *Usuario*: \\\`\${usuario}\\\`
-📱 *Problema*: Ha superado el límite de conexiones permitidas.
-✅ *Límite*: \$moviles móvil(es)
-🚫 *Conexiones actuales*: \$conexiones
-⏰ *Fecha y hora*: \$FECHA_ACTUAL
-
-🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
-                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
-                                                        echo \"excedido\" > \"\$alerta_file\"
-                                                        echo \"Alerta enviada: \$usuario excedió límite de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
-                                                    fi
-                                                elif [[ \$conexiones -le \$moviles && \$conexiones -gt 0 ]]; then
-                                                    if [[ -f \"\$alerta_file\" && \$(cat \"\$alerta_file\") == \"excedido\" ]]; then
-                                                        # Enviar notificación de vuelta a normal
-                                                        ALERTA=\"✅ *¡Todo en orden, capitán! 🫡*
-
-👤 *Usuario*: \\\`\${usuario}\\\`
-📱 *Estado*: Ha vuelto a su límite normal de conexiones.
-✅ *Límite*: \$moviles móvil(es)
-🌟 *Conexiones actuales*: \$conexiones
-⏰ *Fecha y hora*: \$FECHA_ACTUAL
-
-🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
-                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
-                                                        echo \"normal\" > \"\$alerta_file\"
-                                                        echo \"Alerta enviada: \$usuario volvió a límite normal de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
-                                                    fi
-                                                else
-                                                    # Si no hay conexiones, limpiar el archivo de alerta si existe
-                                                    if [[ -f \"\$alerta_file\" ]]; then
-                                                        rm -f \"\$alerta_file\"
                                                     fi
                                                 fi
 
@@ -775,7 +788,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             " >/dev/null 2>&1 &
             echo $! > "$PIDFILE"
             echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano (PID: $(cat $PIDFILE)).${NC}"
-            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
+            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo y monitoreará conexiones automáticamente.${NC}"
             ;;
         2)
             if [[ -f "$PIDFILE" ]]; then
@@ -793,8 +806,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
-           
+}                                                         
+                                        
                                                                                             
                                           
 function barra_sistema() {  
@@ -2535,7 +2548,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳💵PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
