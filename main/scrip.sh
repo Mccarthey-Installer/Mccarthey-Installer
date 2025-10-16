@@ -14,27 +14,54 @@ mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
 
 
-# ================================
-# CONFIGURAR SSH PARA TIMEOUT
-# ================================
-# ClientAliveInterval 30
-# ClientAliveCountMax 3
 
-# Si no existen, agregar o modificar en sshd_config
-if grep -q "^ClientAliveInterval" "$SSHD_CONFIG"; then
-    sed -i 's/^ClientAliveInterval.*/ClientAliveInterval 30/' "$SSHD_CONFIG"
-else
-    echo "ClientAliveInterval 30" >> "$SSHD_CONFIG"
+
+SSHD_CONFIG="/etc/ssh/sshd_config"
+SSHD_INCLUDE_DIR="/etc/ssh/sshd_config.d"
+TEMP_FILE="/tmp/sshd_config.tmp"
+
+# ================================
+# FUNCIONES
+# ================================
+
+# Modifica o agrega un parámetro en un archivo
+# $1 = archivo
+# $2 = parámetro (ClientAliveInterval, ClientAliveCountMax)
+# $3 = valor
+set_sshd_param() {
+    local file="$1"
+    local param="$2"
+    local value="$3"
+
+    # Si existe (comentada o descomentada), reemplaza
+    if grep -q -E "^\s*#?\s*$param" "$file"; then
+        sed -i -E "s|^\s*#?\s*${param}.*|${param} ${value}|" "$file"
+    else
+        # Si no existe, agregar al final
+        echo "${param} ${value}" >> "$file"
+    fi
+}
+
+# ================================
+# CONFIGURACIÓN PRINCIPAL
+# ================================
+# Modificar parámetros en sshd_config principal
+set_sshd_param "$SSHD_CONFIG" "ClientAliveInterval" 30
+set_sshd_param "$SSHD_CONFIG" "ClientAliveCountMax" 3
+
+# Modificar parámetros en archivos incluidos si existen
+if [ -d "$SSHD_INCLUDE_DIR" ]; then
+    for f in "$SSHD_INCLUDE_DIR"/*.conf; do
+        [ -f "$f" ] || continue
+        set_sshd_param "$f" "ClientAliveInterval" 30
+        set_sshd_param "$f" "ClientAliveCountMax" 3
+    done
 fi
 
-if grep -q "^ClientAliveCountMax" "$SSHD_CONFIG"; then
-    sed -i 's/^ClientAliveCountMax.*/ClientAliveCountMax 3/' "$SSHD_CONFIG"
-else
-    echo "ClientAliveCountMax 3" >> "$SSHD_CONFIG"
-fi
-
-# Reiniciar el servicio SSH para aplicar cambios
-systemctl restart sshd                                
+# ================================
+# REINICIAR SSH
+# ================================
+systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
 ssh_bot() {
@@ -2464,7 +2491,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======✨♨️PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======😋🥲PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
