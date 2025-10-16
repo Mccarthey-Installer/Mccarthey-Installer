@@ -1786,11 +1786,6 @@ if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2
 fi
 
 
-
-
-
-
-
 # ================================
 # VARIABLES Y RUTAS
 # ================================
@@ -1804,6 +1799,11 @@ export ENABLED="/tmp/limitador_enabled"   # Control estricto de activación
 mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
+
+# ✅ Crear archivo de historial si no existe
+if [[ ! -f "$HISTORIAL" ]]; then
+    touch "$HISTORIAL"
+fi
 
 # Colores bonitos
 AZUL_SUAVE='\033[38;5;45m'
