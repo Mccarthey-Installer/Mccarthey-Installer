@@ -1811,12 +1811,13 @@ ssh_bot() {
     export REGISTROS="/diana/reg.txt"
     export HISTORIAL="/alexia/log.txt"
     export PIDFILE="/Abigail/mon.pid"
-    export PIDFILE_MONITOR="/Abigail/monitor.pid"
+    export CONEXION_STATUS_DIR="/tmp/sshbot_status"
 
     # Crear directorios si no existen
     mkdir -p "$(dirname "$REGISTROS")"
     mkdir -p "$(dirname "$HISTORIAL")"
     mkdir -p "$(dirname "$PIDFILE")"
+    mkdir -p "$CONEXION_STATUS_DIR"
 
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
@@ -1834,30 +1835,28 @@ ssh_bot() {
             echo "$USER_ID" > /root/sshbot_userid
             echo "$USER_NAME" > /root/sshbot_username
 
-            # Verificar token antes de iniciar
-            URL="https://api.telegram.org/bot$TOKEN_ID/getMe"
-            RESPONSE=$(curl -s "$URL")
-            if ! echo "$RESPONSE" | jq -e '.ok' >/dev/null; then
-                echo -e "${ROJO}❌ Error: Token inválido o problema con la API de Telegram. Verifica tu token.${NC}"
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Error: Token inválido, respuesta: $RESPONSE" >> /tmp/bot.log
-                return
-            fi
-
             nohup bash -c "
                 export REGISTROS='$REGISTROS'
                 export HISTORIAL='$HISTORIAL'
                 export PIDFILE='$PIDFILE'
-                export PIDFILE_MONITOR='$PIDFILE_MONITOR'
-                export TOKEN_ID='$TOKEN_ID'
-                export USER_ID='$USER_ID'
-                export USER_NAME='$USER_NAME'
-                export URL='https://api.telegram.org/bot$TOKEN_ID'
+                export CONEXION_STATUS_DIR='$CONEXION_STATUS_DIR'
 
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
                 mkdir -p \"\$(dirname \"\$PIDFILE\")\"
 
-                echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Bot iniciado, PID: $$\" >> /tmp/bot.log
+                URL='https://api.telegram.org/bot$TOKEN_ID'
+                OFFSET=0
+                EXPECTING_USER_DATA=0
+                USER_DATA_STEP=0
+                EXPECTING_DELETE_USER=0
+                EXPECTING_RENEW_USER=0
+                RENEW_STEP=0
+                EXPECTING_BACKUP=0
+                USERNAME=''
+                PASSWORD=''
+                DAYS=''
+                MOBILES=''
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
@@ -1903,122 +1902,72 @@ ssh_bot() {
                     echo \$dias_restantes
                 }
 
+                # Función para monitorear conexiones
                 monitor_conexiones() {
-                    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Iniciando monitoreo\" >> /tmp/monitor.log
-                    if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                        echo \"[$(date '+%Y-%m-%d %H:%M:%S')] No hay registros\" >> /tmp/monitor.log
-                        return
-                    fi
-                    FECHA_ACTUAL=\$(date +\"%Y-%m-%d %H:%M\")
-                    while IFS=' ' read -r userpass fecha_exp dias moviles fecha_crea hora_crea; do
-                        usuario=\${userpass%%:*}
-                        echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Revisando usuario: \$usuario\" >> /tmp/monitor.log
-                        if ! id \"\$usuario\" &>/dev/null; then
-                            echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Usuario \$usuario no existe en el sistema\" >> /tmp/monitor.log
-                            continue
-                        fi
-                        conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
-                        alerta_file=\"/tmp/alerta_\${usuario}.status\"
-
-                        if [[ \$conexiones -gt \$moviles ]]; then
-                            if [[ ! -f \"\$alerta_file\" || \$(cat \"\$alerta_file\") != \"excedido\" ]]; then
-                                ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando! 🚨*
+                    while true; do
+                        if [[ -f \"\$REGISTROS\" && -s \"\$REGISTROS\" ]]; then
+                            while IFS=' ' read -r userpass _ _ moviles _; do
+                                usuario=\${userpass%%:*}
+                                if ! id \"\$usuario\" &>/dev/null; then
+                                    continue
+                                fi
+                                conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
+                                status_file=\"\$CONEXION_STATUS_DIR/\${usuario}_status\"
+                                if [[ \$conexiones -gt \$moviles ]]; then
+                                    if [[ ! -f \"\$status_file\" || \$(cat \"\$status_file\") != \"exceeded\" ]]; then
+                                        echo \"exceeded\" > \"\$status_file\"
+                                        fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
+                                        ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando!* 🚨
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Problema*: Ha superado el límite de conexiones permitidas.
-✅ *Límite*: \$moviles móvil(es)
-🚫 *Conexiones actuales*: \$conexiones
-⏰ *Fecha y hora*: \$FECHA_ACTUAL
+✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
+🚫 *Conexiones actuales*: \\\`\${conexiones}\\\`
+⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
 
 🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
-                                echo \"excedido\" > \"\$alerta_file\"
-                                echo \"Alerta enviada: \$usuario excedió límite de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
-                                echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Alerta enviada para \$usuario: \$conexiones > \$moviles\" >> /tmp/monitor.log
-                            fi
-                        elif [[ \$conexiones -le \$moviles && \$conexiones -gt 0 ]]; then
-                            if [[ -f \"\$alerta_file\" && \$(cat \"\$alerta_file\") == \"excedido\" ]]; then
-                                ALERTA=\"✅ *¡Todo en orden, capitán! 🫡*
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                    fi
+                                elif [[ \$conexiones -le \$moviles && -f \"\$status_file\" && \$(cat \"\$status_file\") == \"exceeded\" ]]; then
+                                    echo \"normal\" > \"\$status_file\"
+                                    fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
+                                    NOTIFICACION=\"✅ *¡Todo en orden, capitán!* 🫡
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Estado*: Ha vuelto a su límite normal de conexiones.
-✅ *Límite*: \$moviles móvil(es)
-🌟 *Conexiones actuales*: \$conexiones
-⏰ *Fecha y hora*: \$FECHA_ACTUAL
+✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
+🌟 *Conexiones actuales*: \\\`\${conexiones}\\\`
+⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
 
 🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
-                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
-                                echo \"normal\" > \"\$alerta_file\"
-                                echo \"Alerta enviada: \$usuario volvió a límite normal de \$moviles móviles con \$conexiones conexiones, Fecha: \$FECHA_ACTUAL\" >> \"\$HISTORIAL\"
-                                echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Alerta de normalización enviada para \$usuario: \$conexiones <= \$moviles\" >> /tmp/monitor.log
-                            fi
-                        else
-                            if [[ -f \"\$alerta_file\" ]]; then
-                                rm -f \"\$alerta_file\"
-                                echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Archivo de alerta eliminado para \$usuario\" >> /tmp/monitor.log
-                            fi
+                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$NOTIFICACION\" -d parse_mode=Markdown >/dev/null
+                                fi
+                            done < \"\$REGISTROS\"
                         fi
-                    done < \"\$REGISTROS\"
+                        sleep 60  # Verificar cada 60 segundos
+                    done
                 }
 
-                # Iniciar monitoreo automático en un proceso separado
-                nohup bash -c '
-                    export REGISTROS=\"'$REGISTROS'\"
-                    export HISTORIAL=\"'$HISTORIAL'\"
-                    export TOKEN_ID=\"'$TOKEN_ID'\"
-                    export USER_ID=\"'$USER_ID'\"
-                    export URL=\"https://api.telegram.org/bot$TOKEN_ID\"
-                    $(declare -f calcular_dias_restantes)
-                    $(declare -f monitor_conexiones)
-                    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Proceso de monitoreo iniciado, PID: $$\" >> /tmp/monitor.log
-                    while true; do
-                        monitor_conexiones
-                        sleep 60
-                    done
-                ' >/tmp/monitor.log 2>&1 &
-                echo \$! > \"\$PIDFILE_MONITOR\"
-
-                OFFSET=0
-                EXPECTING_USER_DATA=0
-                USER_DATA_STEP=0
-                EXPECTING_DELETE_USER=0
-                EXPECTING_RENEW_USER=0
-                RENEW_STEP=0
-                EXPECTING_BACKUP=0
-                USERNAME=''
-                PASSWORD=''
-                DAYS=''
-                MOBILES=''
+                # Iniciar monitoreo en segundo plano
+                monitor_conexiones &
 
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
-                    if [[ -z \"\$UPDATES\" ]]; then
-                        echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Error: No se recibieron actualizaciones, posible problema de red o token\" >> /tmp/bot.log
-                        sleep 5
-                        continue
-                    fi
-                    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Respuesta de getUpdates: \$UPDATES\" >> /tmp/bot.log
-                    for row in \$(echo \"\$UPDATES\" | jq -c '.result[]' 2>/tmp/jq_error.log); do
-                        if [[ -s /tmp/jq_error.log ]]; then
-                            echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Error en jq: \$(cat /tmp/jq_error.log)\" >> /tmp/bot.log
-                            rm -f /tmp/jq_error.log
-                            continue
-                        fi
+                    for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
                         OFFSET=\$(echo \$row | jq '.update_id')
                         OFFSET=\$((OFFSET+1))
                         MSG_TEXT=\$(echo \$row | jq -r '.message.text')
                         CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
                         USERNAME_TELEGRAM=\$(echo \$row | jq -r '.message.from.username')
                         DOCUMENT_ID=\$(echo \$row | jq -r '.message.document.file_id // empty')
-                        echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Mensaje recibido: \$MSG_TEXT, CHAT_ID: \$CHAT_ID\" >> /tmp/bot.log
 
-                        if [[ \"\$CHAT_ID\" == \"\$USER_ID\" ]]; then
+                        if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                             if [[ \$EXPECTING_BACKUP -eq 1 ]]; then
                                 if [[ -n \"\$DOCUMENT_ID\" ]]; then
                                     FILE_INFO=\$(curl -s \"\$URL/getFile?file_id=\$DOCUMENT_ID\")
                                     FILE_PATH=\$(echo \$FILE_INFO | jq -r '.result.file_path')
                                     if [[ -n \"\$FILE_PATH\" ]]; then
-                                        DOWNLOAD_URL=\"https://api.telegram.org/file/bot\$TOKEN_ID/\$FILE_PATH\"
+                                        DOWNLOAD_URL=\"https://api.telegram.org/file/bot$TOKEN_ID/\$FILE_PATH\"
                                         curl -s -o /tmp/backup_restore.txt \"\$DOWNLOAD_URL\"
                                         succeeded=0
                                         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_crea hora_crea; do
@@ -2136,13 +2085,12 @@ ssh_bot() {
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
-\\\`📅 Expira: \${fecha_expiracion}\\\`
+📅 *Expira*: \\\`\${fecha_expiracion}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
 
-\\\`\\\`\\\`
-🌐✨ Reglas SSH WebSocket ✨🌐
+🌐✨ *Reglas SSH WebSocket* ✨🌐
 
 👋 Hola, \${USERNAME}
 Por favor cumple con estas reglas para mantener tu acceso activo:
@@ -2155,8 +2103,7 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
  ⚠️ Nada de usos ilegales (spam/ataques)
  🧑‍💻 SOPORTE: ENVÍA TU MENSAJE UNA SOLA VEZ Y ESPERA RESPUESTA. 🚫 NO HAGAS SPAM.
 
-⚡👉 El incumplimiento resultará en suspensión inmediata.
-\\\`\\\`\\\`\"
+⚡👉 *El incumplimiento resultará en suspensión inmediata.*\"
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
                                                         fi
                                                     fi
@@ -2327,7 +2274,7 @@ Escribe *hola* para volver al menú.\"
                             else
                                 case \"\$MSG_TEXT\" in
                                     'Hola'|'hola'|'/start')
-                                        MENU=\"¡Hola! 😏 *\$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
+                                        MENU=\"¡Hola! 😏 *${USER_NAME}* 👋 Te invito a seleccionar una de estas opciones:
 
 🔧 *Presiona 1* para crear usuario
 📋 *Presiona 2* para ver los usuarios registrados
@@ -2338,7 +2285,6 @@ Escribe *hola* para volver al menú.\"
 📥 *Presiona 7* para restaurar backup
 🏠 *Presiona 0* para volver al menú principal\"
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
-                                        echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Menú enviado para \$USER_NAME\" >> /tmp/bot.log
                                         ;;
                                     '1')
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🔧 *Crear Usuario SSH* 🆕
@@ -2397,7 +2343,7 @@ Escribe *hola* para volver al menú.\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"¡Hola! 😏 *\$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
+                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
 
 \"
                                             while IFS=' ' read -r user_data _; do
@@ -2508,7 +2454,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                         (( inactivos++ ))
                                                     fi
                                                 fi
-
                                                 if [[ \$conexiones -gt 0 ]]; then
                                                     conexiones_status=\"\$conexiones 🟢\"
                                                 else
@@ -2569,24 +2514,19 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                             fi
                         fi
                     done
-                    echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Ciclo completado, OFFSET: \$OFFSET\" >> /tmp/bot.log
                 done
-            " >/tmp/bot.log 2>&1 &
+            " >/dev/null 2>&1 &
             echo $! > "$PIDFILE"
             echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano (PID: $(cat $PIDFILE)).${NC}"
-            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' o '/start' con el menú interactivo y monitoreará conexiones automáticamente cada 60 segundos.${NC}"
-            echo -e "${AMARILLO_SUAVE}💡 Revisa /tmp/bot.log y /tmp/monitor.log para depuración si no responde.${NC}"
+            echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
             ;;
         2)
             if [[ -f "$PIDFILE" ]]; then
                 kill -9 $(cat "$PIDFILE") 2>/dev/null
                 rm -f "$PIDFILE"
             fi
-            if [[ -f "$PIDFILE_MONITOR" ]]; then
-                kill -9 $(cat "$PIDFILE_MONITOR") 2>/dev/null
-                rm -f "$PIDFILE_MONITOR"
-            fi
             rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
+            rm -rf "$CONEXION_STATUS_DIR"
             pkill -f "api.telegram.org"
             echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
             ;;
@@ -2605,7 +2545,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======♥️PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
