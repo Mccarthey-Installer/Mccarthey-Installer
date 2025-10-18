@@ -205,7 +205,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                     if [[ ! -f \"\$status_file\" || \$(cat \"\$status_file\") != \"exceeded\" ]]; then
                                         echo \"exceeded\" > \"\$status_file\"
                                         fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
-                                        ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando!* 🚨
+                                        ALERTA=\"⚠️ *OYE 😱 ${USER_NAME} HAY MAÑOSOS ACTIVOS* 🚨
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Problema*: Ha superado el límite de conexiones permitidas.
@@ -219,7 +219,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                 elif [[ \$conexiones -le \$moviles && -f \"\$status_file\" && \$(cat \"\$status_file\") == \"exceeded\" ]]; then
                                     echo \"normal\" > \"\$status_file\"
                                     fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
-                                    NOTIFICACION=\"✅ *¡Todo en orden, capitán!* 🫡
+                                    NOTIFICACION=\"✅ *¡Hola ${USER_NAME} ya le di Jake 😈!*
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Estado*: Ha vuelto a su límite normal de conexiones.
