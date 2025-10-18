@@ -130,18 +130,18 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                     local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
 
                     case \$mes in
-                        \"enero\"|\"january\") mes_num=\"01\" ;;
-                        \"febrero\"|\"february\") mes_num=\"02\" ;;
-                        \"marzo\"|\"march\") mes_num=\"03\" ;;
-                        \"abril\"|\"april\") mes_num=\"04\" ;;
-                        \"mayo\"|\"may\") mes_num=\"05\" ;;
-                        \"junio\"|\"june\") mes_num=\"06\" ;;
-                        \"julio\"|\"july\") mes_num=\"07\" ;;
-                        \"agosto\"|\"august\") mes_num=\"08\" ;;
-                        \"septiembre\"|\"september\") mes_num=\"09\" ;;
-                        \"octubre\"|\"october\") mes_num=\"10\" ;;
-                        \"noviembre\"|\"november\") mes_num=\"11\" ;;
-                        \"diciembre\"|\"december\") mes_num=\"12\" ;;
+                        \"enero\") mes_num=\"01\" ;;
+                        \"febrero\") mes_num=\"02\" ;;
+                        \"marzo\") mes_num=\"03\" ;;
+                        \"abril\") mes_num=\"04\" ;;
+                        \"mayo\") mes_num=\"05\" ;;
+                        \"junio\") mes_num=\"06\" ;;
+                        \"julio\") mes_num=\"07\" ;;
+                        \"agosto\") mes_num=\"08\" ;;
+                        \"septiembre\") mes_num=\"09\" ;;
+                        \"octubre\") mes_num=\"10\" ;;
+                        \"noviembre\") mes_num=\"11\" ;;
+                        \"diciembre\") mes_num=\"12\" ;;
                         *) echo 0; return ;;
                     esac
 
@@ -166,6 +166,30 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                     echo \$dias_restantes
                 }
 
+                # Función para formatear fecha en español
+                formatear_fecha_espanol() {
+                    local fecha_std=\"\$1\"  # Formato: YYYY-MM-DD
+                    local dia=\$(echo \"\$fecha_std\" | cut -d'-' -f3)
+                    local mes=\$(echo \"\$fecha_std\" | cut -d'-' -f2)
+                    local anio=\$(echo \"\$fecha_std\" | cut -d'-' -f1)
+                    case \$mes in
+                        01) mes_nombre=\"enero\" ;;
+                        02) mes_nombre=\"febrero\" ;;
+                        03) mes_nombre=\"marzo\" ;;
+                        04) mes_nombre=\"abril\" ;;
+                        05) mes_nombre=\"mayo\" ;;
+                        06) mes_nombre=\"junio\" ;;
+                        07) mes_nombre=\"julio\" ;;
+                        08) mes_nombre=\"agosto\" ;;
+                        09) mes_nombre=\"septiembre\" ;;
+                        10) mes_nombre=\"octubre\" ;;
+                        11) mes_nombre=\"noviembre\" ;;
+                        12) mes_nombre=\"diciembre\" ;;
+                        *) mes_nombre=\"invalido\" ;;
+                    esac
+                    printf \"%02d/%s/%04d\" \"\$dia\" \"\$mes_nombre\" \"\$anio\"
+                }
+
                 # Función para monitorear conexiones
                 monitor_conexiones() {
                     while true; do
@@ -181,7 +205,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                     if [[ ! -f \"\$status_file\" || \$(cat \"\$status_file\") != \"exceeded\" ]]; then
                                         echo \"exceeded\" > \"\$status_file\"
                                         fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
-                                        ALERTA=\"⚠️ *OYE 😱 ${USER_NAME} HAY MAÑOSOS ACTIVOS* 🚨
+                                        ALERTA=\"⚠️ *¡Alerta de Seguridad! Sirenas sonando!* 🚨
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Problema*: Ha superado el límite de conexiones permitidas.
@@ -195,7 +219,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                 elif [[ \$conexiones -le \$moviles && -f \"\$status_file\" && \$(cat \"\$status_file\") == \"exceeded\" ]]; then
                                     echo \"normal\" > \"\$status_file\"
                                     fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
-                                    NOTIFICACION=\"✅ *¡Hola ${USER_NAME} Todo en orden!* 🛑
+                                    NOTIFICACION=\"✅ *¡Todo en orden, capitán!* 🫡
 
 👤 *Usuario*: \\\`\${usuario}\\\`
 📱 *Estado*: Ha vuelto a su límite normal de conexiones.
@@ -245,18 +269,18 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                             mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                                             anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
                                             case \$mes in
-                                                enero|january) mes_num=01 ;;
-                                                febrero|february) mes_num=02 ;;
-                                                marzo|march) mes_num=03 ;;
-                                                abril|april) mes_num=04 ;;
-                                                mayo|may) mes_num=05 ;;
-                                                junio|june) mes_num=06 ;;
-                                                julio|july) mes_num=07 ;;
-                                                agosto|august) mes_num=08 ;;
-                                                septiembre|september) mes_num=09 ;;
-                                                octubre|october) mes_num=10 ;;
-                                                noviembre|november) mes_num=11 ;;
-                                                diciembre|december) mes_num=12 ;;
+                                                enero) mes_num=01 ;;
+                                                febrero) mes_num=02 ;;
+                                                marzo) mes_num=03 ;;
+                                                abril) mes_num=04 ;;
+                                                mayo) mes_num=05 ;;
+                                                junio) mes_num=06 ;;
+                                                julio) mes_num=07 ;;
+                                                agosto) mes_num=08 ;;
+                                                septiembre) mes_num=09 ;;
+                                                octubre) mes_num=10 ;;
+                                                noviembre) mes_num=11 ;;
+                                                diciembre) mes_num=12 ;;
                                                 *) continue ;;
                                             esac
                                             fecha_formateada=\"\$anio-\$mes_num-\$dia\"
@@ -342,7 +366,8 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la fecha de expiración.\" -d parse_mode=Markdown >/dev/null
                                                         else
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
-                                                            fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
+                                                            fecha_expiracion_std=\$(date -d \"+\$DAYS days\" \"+%Y-%m-%d\")
+                                                            fecha_expiracion=\$(formatear_fecha_espanol \"\$fecha_expiracion_std\")
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
@@ -467,7 +492,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             EXPECTING_RENEW_USER=0
                                             RENEW_STEP=0
                                         else
-                                            fecha_expiracion_std=\$(echo \"\$fecha_expiracion\" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|;s|january|01|;s|february|02|;s|march|03|;s|april|04|;s|may|05|;s|june|06|;s|july|07|;s|august|08|;s|september|09|;s|october|10|;s|november|11|;s|december|12|')
+                                            fecha_expiracion_std=\$(echo \"\$fecha_expiracion\" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|')
                                             fecha_expiracion_std=\$(echo \"\$fecha_expiracion_std\" | awk -F'/' '{printf \"%04d-%02d-%02d\", \$3, \$2, \$1}')
                                             nueva_fecha_std=\$(date -d \"\$fecha_expiracion_std + \$DIAS_RENOVAR days\" \"+%Y-%m-%d\" 2>/dev/null)
                                             if [[ -z \"\$nueva_fecha_std\" ]]; then
@@ -487,12 +512,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     EXPECTING_RENEW_USER=0
                                                     RENEW_STEP=0
                                                 else
-                                                    nueva_fecha=\$(echo \"\$nueva_fecha_std\" | awk -F'-' '{
-                                                        meses[\"01\"]=\"enero\"; meses[\"02\"]=\"febrero\"; meses[\"03\"]=\"marzo\"; meses[\"04\"]=\"abril\";
-                                                        meses[\"05\"]=\"mayo\"; meses[\"06\"]=\"junio\"; meses[\"07\"]=\"julio\"; meses[\"08\"]=\"agosto\";
-                                                        meses[\"09\"]=\"septiembre\"; meses[\"10\"]=\"octubre\"; meses[\"11\"]=\"noviembre\"; meses[\"12\"]=\"diciembre\";
-                                                        printf \"%02d/%s/%04d\", \$3, meses[\$2], \$1
-                                                    }')
+                                                    nueva_fecha=\$(formatear_fecha_espanol \"\$nueva_fecha_std\")
                                                     dias_restantes=\$(calcular_dias_restantes \"\$nueva_fecha\")
                                                     if ! grep -q \"^\$USUARIO:\" \"\$REGISTROS\"; then
                                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error: el usuario \$USUARIO no se encuentra en los registros.* 😕
@@ -579,18 +599,19 @@ Escribe *hola* para volver al menú.\"
                                                 mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
                                                 mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                                                 case \$mes in
-                                                    enero|january) mes=\"ene\" ;;
-                                                    febrero|february) mes=\"feb\" ;;
-                                                    marzo|march) mes=\"mar\" ;;
-                                                    abril|april) mes=\"abr\" ;;
-                                                    mayo|may) mes=\"may\" ;;
-                                                    junio|june) mes=\"jun\" ;;
-                                                    julio|july) mes=\"jul\" ;;
-                                                    agosto|august) mes=\"ago\" ;;
-                                                    septiembre|september) mes=\"sep\" ;;
-                                                    octubre|october) mes=\"oct\" ;;
-                                                    noviembre|november) mes=\"nov\" ;;
-                                                    diciembre|december) mes=\"dic\" ;;
+                                                    enero) mes=\"ene\" ;;
+                                                    febrero) mes=\"feb\" ;;
+                                                    marzo) mes=\"mar\" ;;
+                                                    abril) mes=\"abr\" ;;
+                                                    mayo) mes=\"may\" ;;
+                                                    junio) mes=\"jun\" ;;
+                                                    julio) mes=\"jul\" ;;
+                                                    agosto) mes=\"ago\" ;;
+                                                    septiembre) mes=\"sep\" ;;
+                                                    octubre) mes=\"oct\" ;;
+                                                    noviembre) mes=\"nov\" ;;
+                                                    diciembre) mes=\"dic\" ;;
+                                                    *) mes=\"???\" ;;
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
