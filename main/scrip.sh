@@ -2557,6 +2557,7 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
+
 # ================================
 # FUNCIÓN AUXILIAR: AGREGAR USUARIOS CON EXCEPCIÓN
 # ================================
@@ -2635,6 +2636,7 @@ bloquear_compartir_proxy() {
         echo -e "${VERDE}✅ Monitoreo ya está activo (PID: $(cat "$PID_FILE")).${NC}"
     else
         echo -e "${AMARILLO}⚠️ Monitoreo no está activo.${NC}"
+        rm -f "$PID_FILE" 2>/dev/null  # Limpiar PID obsoleto
     fi
 
     echo -e "${AMARILLO_SUAVE}1. ✅ Activar monitoreo (impedir compartir para usuarios no exceptuados)${NC}"
@@ -2665,57 +2667,51 @@ bloquear_compartir_proxy() {
             EXCEPTION_FILE="/diana/proxy_exceptions.txt"
             touch "$EXCEPTION_FILE"
 
-            # Puertos objetivo
+            # Puertos objetivo (puertos locales en el cliente)
             PROXY_PORTS=(7071 5578 8080 3128 1080 8888)
 
-            # Ejecutar monitoreo en segundo plano
-            (
+            # Ejecutar monitoreo en segundo plano con nohup
+            nohup bash -c "
                 while true; do
-                    if [[ -f "$REGISTROS" ]]; then
+                    if [[ -f \"$REGISTROS\" ]]; then
                         while IFS=' ' read -r user_data _ _ moviles _; do
-                            usuario=${user_data%%:*}
-                            if ! id "$usuario" &>/dev/null; then
+                            usuario=\${user_data%%:*}
+                            if ! id \"\$usuario\" &>/dev/null; then
                                 continue
                             fi
 
                             # Verificar si el usuario está en la lista de excepciones
-                            if grep -Fx "$usuario" "$EXCEPTION_FILE" >/dev/null; then
-                                continue  # Ignorar usuarios con permiso
+                            if grep -Fx \"\$usuario\" \"$EXCEPTION_FILE\" >/dev/null; then
+                                continue
                             fi
 
-                            # Obtener todos los PIDs con conexiones TCP/UDP del usuario
-                            mapfile -t pids < <(ps -u "$usuario" -o pid=)
+                            # Obtener PIDs de procesos SSH/Dropbear
+                            mapfile -t pids < <(ps -u \"\$usuario\" -o pid=,comm= | grep -E 'sshd|dropbear' | awk '{print \$1}')
 
-                            for pid in "${pids[@]}"; do
+                            for pid in \"\${pids[@]}\"; do
                                 # Saltar si no es número
-                                [[ "$pid" =~ ^[0-9]+$ ]] || continue
+                                [[ \"\$pid\" =~ ^[0-9]+$ ]] || continue
 
-                                # Buscar conexiones que impliquen ese PID y destino en PROXY_PORTS
-                                if ss -tnp 2>/dev/null | grep -E "pid=$pid" >/dev/null; then
-                                    while IFS= read -r line; do
-                                        for port in "${PROXY_PORTS[@]}"; do
-                                            if echo "$line" | grep -E "[:\"]${port}([[:space:]]|$|,)" >/dev/null; then
-                                                # Acción: registrar e interrumpir conexión suavemente
-                                                ts="$(date '+%Y-%m-%d %H:%M:%S')"
-                                                echo "$ts: DETECTADO -> usuario=$usuario pid=$pid puerto_destino=$port linea='${line}'" >> "$PROXY_LOG"
-                                                echo "$ts: $usuario intentó compartir Internet vía proxy (puerto $port)." >> "$HISTORIAL"
-
-                                                # Interrumpir conexión con HUP
-                                                kill -HUP "$pid" 2>/dev/null || true
-
-                                                # Romper el ciclo para este PID
-                                                break 2
-                                            fi
-                                        done
-                                    done < <(ss -tnp 2>/dev/null | grep "pid=$pid")
+                                # Buscar conexiones SSH/Dropbear activas
+                                if ss -tnp 2>/dev/null | grep -E \"pid=\$pid\" >/dev/null; then
+                                    # Contar conexiones simultáneas (indicio de compartir)
+                                    conexiones=\$(ss -tnp 2>/dev/null | grep -E \"pid=\$pid\" | wc -l)
+                                    if [[ \$conexiones -gt 1 ]]; then
+                                        ts=\"\$(date '+%Y-%m-%d %H:%M:%S')\"
+                                        echo \"\$ts: DETECTADO -> usuario=\$usuario pid=\$pid conexiones=\$conexiones (posible compartir).\" >> \"$PROXY_LOG\"
+                                        echo \"\$ts: \$usuario intentó compartir Internet vía proxy.\" >> \"$HISTORIAL\"
+                                        kill -HUP \"\$pid\" 2>/dev/null || true
+                                    fi
                                 fi
                             done
-                        done < "$REGISTROS"
+                        done < \"$REGISTROS\"
+                    else
+                        ts=\"\$(date '+%Y-%m-%d %H:%M:%S')\"
+                        echo \"\$ts: ERROR -> No se encontró $REGISTROS.\" >> \"$PROXY_LOG\"
                     fi
-
-                    sleep 5  # Intervalo de chequeo (5 segundos)
+                    sleep 5
                 done
-            ) &  # Ejecutar en segundo plano
+            " > /dev/null 2>&1 &
 
             # Guardar el PID del proceso
             echo $! > "$PID_FILE"
@@ -2749,15 +2745,13 @@ bloquear_compartir_proxy() {
     esac
 }
 
-
-            
 # ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2796,7 +2790,7 @@ while true; do
         15) bloquear_compartir_proxy ;;
         0) 
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash   # ✅ vuelve al bash normal
+            exec /bin/bash
             ;;
         *) 
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
@@ -2805,3 +2799,4 @@ while true; do
     esac
 done
 fi
+    
