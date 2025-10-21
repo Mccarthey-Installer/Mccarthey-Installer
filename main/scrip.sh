@@ -2626,6 +2626,17 @@ agregar_excepcion_proxy() {
 bloquear_compartir_proxy() {
     clear
     echo -e "${AZUL_SUAVE}===== 🚫 GESTIONAR COMPARTIR INTERNET POR PROXY =====${NC}"
+
+    # Archivo PID para el monitoreo
+    PID_FILE="/diana/proxy_monitor.pid"
+
+    # Verificar si el monitoreo ya está activo
+    if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE" 2>/dev/null)" >/dev/null 2>&1; then
+        echo -e "${VERDE}✅ Monitoreo ya está activo (PID: $(cat "$PID_FILE")).${NC}"
+    else
+        echo -e "${AMARILLO}⚠️ Monitoreo no está activo.${NC}"
+    fi
+
     echo -e "${AMARILLO_SUAVE}1. ✅ Activar monitoreo (impedir compartir para usuarios no exceptuados)${NC}"
     echo -e "${AMARILLO_SUAVE}2. ❌ Desactivar monitoreo (permitir compartir a todos)${NC}"
     echo -e "${AMARILLO_SUAVE}3. ➕ Agregar usuarios con permiso para compartir${NC}"
@@ -2636,9 +2647,14 @@ bloquear_compartir_proxy() {
     case $subopcion in
         1)
             # Activar monitoreo
+            if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE" 2>/dev/null)" >/dev/null 2>&1; then
+                echo -e "${ROJO}❌ Monitoreo ya está activo (PID: $(cat "$PID_FILE")). Desactívalo primero.${NC}"
+                read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
+                return
+            fi
+
             clear
             echo -e "${VERDE}🔍 Activando monitoreo para detectar y limitar compartir Internet...${NC}"
-            echo -e "${AZUL}Presiona Ctrl+C para detener el monitoreo.${NC}"
 
             # Archivo de log
             PROXY_LOG="/var/log/bloqueo_proxy.log"
@@ -2652,57 +2668,69 @@ bloquear_compartir_proxy() {
             # Puertos objetivo
             PROXY_PORTS=(7071 5578 8080 3128 1080 8888)
 
-            echo -e "${VERDE}🔍 Monitoreando conexiones hacia puertos: ${PROXY_PORTS[*]}${NC}"
-
-            while true; do
-                if [[ -f "$REGISTROS" ]]; then
-                    while IFS=' ' read -r user_data _ _ moviles _; do
-                        usuario=${user_data%%:*}
-                        if ! id "$usuario" &>/dev/null; then
-                            continue
-                        fi
-
-                        # Verificar si el usuario está en la lista de excepciones
-                        if grep -Fx "$usuario" "$EXCEPTION_FILE" >/dev/null; then
-                            continue  # Ignorar usuarios con permiso
-                        fi
-
-                        # Obtener todos los PIDs con conexiones TCP/UDP del usuario
-                        mapfile -t pids < <(ps -u "$usuario" -o pid=)
-
-                        for pid in "${pids[@]}"; do
-                            # Saltar si no es número
-                            [[ "$pid" =~ ^[0-9]+$ ]] || continue
-
-                            # Buscar conexiones que impliquen ese PID y destino en PROXY_PORTS
-                            if ss -tnp 2>/dev/null | grep -E "pid=$pid" >/dev/null; then
-                                while IFS= read -r line; do
-                                    for port in "${PROXY_PORTS[@]}"; do
-                                        if echo "$line" | grep -E "[:\"]${port}([[:space:]]|$|,)" >/dev/null; then
-                                            # Acción: registrar e interrumpir conexión suavemente
-                                            ts="$(date '+%Y-%m-%d %H:%M:%S')"
-                                            echo "$ts: DETECTADO -> usuario=$usuario pid=$pid puerto_destino=$port linea='${line}'" >> "$PROXY_LOG"
-                                            echo "$ts: $usuario intentó compartir Internet vía proxy (puerto $port)." >> "$HISTORIAL"
-
-                                            # Interrumpir conexión con HUP
-                                            kill -HUP "$pid" 2>/dev/null || true
-
-                                            # Romper el ciclo para este PID
-                                            break 2
-                                        fi
-                                    done
-                                done < <(ss -tnp 2>/dev/null | grep "pid=$pid")
+            # Ejecutar monitoreo en segundo plano
+            (
+                while true; do
+                    if [[ -f "$REGISTROS" ]]; then
+                        while IFS=' ' read -r user_data _ _ moviles _; do
+                            usuario=${user_data%%:*}
+                            if ! id "$usuario" &>/dev/null; then
+                                continue
                             fi
-                        done
-                    done < "$REGISTROS"
-                fi
 
-                sleep 5  # Intervalo de chequeo (5 segundos)
-            done
+                            # Verificar si el usuario está en la lista de excepciones
+                            if grep -Fx "$usuario" "$EXCEPTION_FILE" >/dev/null; then
+                                continue  # Ignorar usuarios con permiso
+                            fi
+
+                            # Obtener todos los PIDs con conexiones TCP/UDP del usuario
+                            mapfile -t pids < <(ps -u "$usuario" -o pid=)
+
+                            for pid in "${pids[@]}"; do
+                                # Saltar si no es número
+                                [[ "$pid" =~ ^[0-9]+$ ]] || continue
+
+                                # Buscar conexiones que impliquen ese PID y destino en PROXY_PORTS
+                                if ss -tnp 2>/dev/null | grep -E "pid=$pid" >/dev/null; then
+                                    while IFS= read -r line; do
+                                        for port in "${PROXY_PORTS[@]}"; do
+                                            if echo "$line" | grep -E "[:\"]${port}([[:space:]]|$|,)" >/dev/null; then
+                                                # Acción: registrar e interrumpir conexión suavemente
+                                                ts="$(date '+%Y-%m-%d %H:%M:%S')"
+                                                echo "$ts: DETECTADO -> usuario=$usuario pid=$pid puerto_destino=$port linea='${line}'" >> "$PROXY_LOG"
+                                                echo "$ts: $usuario intentó compartir Internet vía proxy (puerto $port)." >> "$HISTORIAL"
+
+                                                # Interrumpir conexión con HUP
+                                                kill -HUP "$pid" 2>/dev/null || true
+
+                                                # Romper el ciclo para este PID
+                                                break 2
+                                            fi
+                                        done
+                                    done < <(ss -tnp 2>/dev/null | grep "pid=$pid")
+                                fi
+                            done
+                        done < "$REGISTROS"
+                    fi
+
+                    sleep 5  # Intervalo de chequeo (5 segundos)
+                done
+            ) &  # Ejecutar en segundo plano
+
+            # Guardar el PID del proceso
+            echo $! > "$PID_FILE"
+            echo -e "${VERDE}✅ Monitoreo activado en segundo plano (PID: $(cat "$PID_FILE")).${NC}"
+            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
             ;;
         2)
-            # Desactivar monitoreo (no hace nada, solo vuelve al menú)
-            echo -e "${VERDE}✅ Monitoreo desactivado. Todos los usuarios pueden compartir Internet.${NC}"
+            # Desactivar monitoreo
+            if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE" 2>/dev/null)" >/dev/null 2>&1; then
+                kill -9 "$(cat "$PID_FILE")" 2>/dev/null
+                rm -f "$PID_FILE"
+                echo -e "${VERDE}✅ Monitoreo desactivado. Todos los usuarios pueden compartir Internet.${NC}"
+            else
+                echo -e "${AMARILLO}⚠️ Monitoreo ya estaba desactivado.${NC}"
+            fi
             read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
             ;;
         3)
@@ -2722,7 +2750,7 @@ bloquear_compartir_proxy() {
 }
 
 
-
+            
 # ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
