@@ -2557,216 +2557,6 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
-
-# ================================
-# FUNCIÓN AUXILIAR: AGREGAR USUARIOS CON EXCEPCIÓN
-# ================================
-agregar_excepcion_proxy() {
-    clear
-    echo -e "${AZUL_SUAVE}===== 🚫 AGREGAR USUARIOS CON PERMISO PARA COMPARTIR INTERNET =====${NC}"
-    echo -e "${VERDE}📋 Lista de usuarios registrados:${NC}"
-
-    # Mostrar usuarios de /diana/reg.txt
-    if [[ -f "$REGISTROS" ]]; then
-        usuarios=()
-        while IFS=' ' read -r user_data _ _ moviles _; do
-            usuario=${user_data%%:*}
-            if id "$usuario" &>/dev/null; then
-                usuarios+=("$usuario")
-            fi
-        done < "$REGISTROS"
-
-        if [[ ${#usuarios[@]} -eq 0 ]]; then
-            echo -e "${ROJO}❌ No hay usuarios registrados.${NC}"
-            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-            return
-        fi
-
-        # Mostrar usuarios con índice
-        for i in "${!usuarios[@]}"; do
-            echo -e "${AMARILLO_SUAVE}$((i+1)). ${usuarios[i]}${NC}"
-        done
-
-        echo -e "${CIAN}➡️ Ingresa los números de los usuarios a los que quieres dar permiso (ej. 1 3 5, o 0 para cancelar):${NC}"
-        read -p "Selecciona: " seleccion
-
-        if [[ "$seleccion" == "0" ]]; then
-            echo -e "${AMARILLO}🚪 Cancelado.${NC}"
-            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-            return
-        fi
-
-        # Archivo de excepciones
-        EXCEPTION_FILE="/diana/proxy_exceptions.txt"
-        touch "$EXCEPTION_FILE"
-
-        # Procesar selección
-        for num in $seleccion; do
-            if [[ "$num" =~ ^[0-9]+$ && "$num" -ge 1 && "$num" -le ${#usuarios[@]} ]]; then
-                usuario=${usuarios[$((num-1))]}
-                if ! grep -Fx "$usuario" "$EXCEPTION_FILE" >/dev/null; then
-                    echo "$usuario" >> "$EXCEPTION_FILE"
-                    echo -e "${VERDE}✅ $usuario agregado a la lista de excepciones. Puede compartir Internet.${NC}"
-                else
-                    echo -e "${AMARILLO}⚠️ $usuario ya está en la lista de excepciones.${NC}"
-                fi
-            else
-                echo -e "${ROJO}❌ Número inválido: $num${NC}"
-            fi
-        done
-    else
-        echo -e "${ROJO}❌ No se encontró el archivo de registros ($REGISTROS).${NC}"
-    fi
-
-    read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-}
-
-# ================================
-# FUNCIÓN: DETECTAR Y LIMITAR COMPARTIR INTERNET POR PROXY
-# ================================
-bloquear_compartir_proxy() {
-    clear
-    echo -e "${AZUL_SUAVE}===== 🚫 GESTIONAR COMPARTIR INTERNET POR PROXY =====${NC}"
-
-    # Archivo PID para el monitoreo
-    PID_FILE="/diana/proxy_monitor.pid"
-
-    # Verificar si el monitoreo ya está activo
-    if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE" 2>/dev/null)" >/dev/null 2>&1; then
-        echo -e "${VERDE}✅ Monitoreo ya está activo (PID: $(cat "$PID_FILE")).${NC}"
-    else
-        echo -e "${AMARILLO}⚠️ Monitoreo no está activo.${NC}"
-    fi
-
-    echo -e "${AMARILLO_SUAVE}1. ✅ Activar monitoreo (impedir compartir para usuarios no exceptuados)${NC}"
-    echo -e "${AMARILLO_SUAVE}2. ❌ Desactivar monitoreo (permitir compartir a todos)${NC}"
-    echo -e "${AMARILLO_SUAVE}3. ➕ Agregar usuarios con permiso para compartir${NC}"
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Volver al menú principal${NC}"
-
-    read -p "$(echo -e ${ROSA}➡️ Selecciona una opción: ${NC})" subopcion
-
-    case $subopcion in
-        1)
-            # Activar monitoreo
-            if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE" 2>/dev/null)" >/dev/null 2>&1; then
-                echo -e "${ROJO}❌ Monitoreo ya está activo (PID: $(cat "$PID_FILE")). Desactívalo primero.${NC}"
-                read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-                return
-            fi
-
-            clear
-            echo -e "${VERDE}🔍 Activando monitoreo para detectar y limitar compartir Internet...${NC}"
-
-            # Archivo de log
-            PROXY_LOG="/var/log/bloqueo_proxy.log"
-            mkdir -p "$(dirname "$PROXY_LOG")"
-            [[ ! -f "$PROXY_LOG" ]] && touch "$PROXY_LOG"
-
-            # Archivo de excepciones
-            EXCEPTION_FILE="/diana/proxy_exceptions.txt"
-            touch "$EXCEPTION_FILE"
-
-            # Archivo de depuración
-            DEBUG_LOG="/var/log/proxy_debug.log"
-            mkdir -p "$(dirname "$DEBUG_LOG")"
-            [[ ! -f "$DEBUG_LOG" ]] && touch "$DEBUG_LOG"
-
-            # Puertos objetivo
-            PROXY_PORTS=(7071 5578 8080 3128 1080 8888)
-
-            # Ejecutar monitoreo en segundo plano
-            (
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Iniciando monitoreo de proxies en puertos: ${PROXY_PORTS[*]}" >> "$DEBUG_LOG"
-                while true; do
-                    if [[ -f "$REGISTROS" ]]; then
-                        while IFS=' ' read -r user_data _ _ moviles _; do
-                            usuario=${user_data%%:*}
-                            if ! id "$usuario" &>/dev/null; then
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario $usuario no existe, omitiendo" >> "$DEBUG_LOG"
-                                continue
-                            fi
-
-                            # Verificar si el usuario está en la lista de excepciones
-                            if grep -Fx "$usuario" "$EXCEPTION_FILE" >/dev/null; then
-                                echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario $usuario en excepciones, omitiendo" >> "$DEBUG_LOG"
-                                continue
-                            fi
-
-                            # Obtener todos los PIDs de procesos SSH/Dropbear del usuario
-                            mapfile -t pids < <(ps -u "$usuario" -o pid= --sort=start_time | grep -E '^[0-9]+$' || true)
-                            echo "$(date '+%Y-%m-%d %H:%M:%S'): Usuario $usuario, PIDs encontrados: ${pids[*]}" >> "$DEBUG_LOG"
-
-                            for pid in "${pids[@]}"; do
-                                # Buscar conexiones TCP asociadas al PID
-                                if ss -tnp 2>/dev/null | grep -E "pid=$pid" >/dev/null; then
-                                    while IFS= read -r line; do
-                                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión encontrada para PID $pid: $line" >> "$DEBUG_LOG"
-                                        for port in "${PROXY_PORTS[@]}"; do
-                                            # Buscar puerto como destino
-                                            if echo "$line" | grep -E "[0-9]+\.${port}\s" >/dev/null; then
-                                                ts="$(date '+%Y-%m-%d %H:%M:%S')"
-                                                echo "$ts: DETECTADO -> usuario=$usuario pid=$pid puerto_destino=$port linea='$line'" >> "$PROXY_LOG"
-                                                echo "$ts: $usuario intentó compartir Internet vía proxy (puerto $port)." >> "$HISTORIAL"
-
-                                                # Interrumpir conexión con HUP, luego con SIGTERM si persiste
-                                                kill -HUP "$pid" 2>/dev/null || true
-                                                sleep 1
-                                                if ps -p "$pid" >/dev/null 2>&1; then
-                                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): PID $pid persiste, forzando con SIGTERM" >> "$DEBUG_LOG"
-                                                    kill -TERM "$pid" 2>/dev/null || true
-                                                fi
-
-                                                # Romper el ciclo para este PID
-                                                break 2
-                                            fi
-                                        done
-                                    done < <(ss -tnp 2>/dev/null | grep "pid=$pid")
-                                else
-                                    echo "$(date '+%Y-%m-%d %H:%M:%S'): No hay conexiones TCP para PID $pid" >> "$DEBUG_LOG"
-                                fi
-                            done
-                        done < "$REGISTROS"
-                    else
-                        echo "$(date '+%Y-%m-%d %H:%M:%S'): Archivo $REGISTROS no encontrado" >> "$DEBUG_LOG"
-                    fi
-
-                    sleep 3  # Reducir intervalo para mayor responsividad
-                done
-            ) &  # Ejecutar en segundo plano
-
-            # Guardar el PID del proceso
-            echo $! > "$PID_FILE"
-            echo -e "${VERDE}✅ Monitoreo activado en segundo plano (PID: $(cat "$PID_FILE")).${NC}"
-            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-            ;;
-        2)
-            # Desactivar monitoreo
-            if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE" 2>/dev/null)" >/dev/null 2>&1; then
-                kill -9 "$(cat "$PID_FILE")" 2>/dev/null
-                rm -f "$PID_FILE"
-                echo -e "${VERDE}✅ Monitoreo desactivado. Todos los usuarios pueden compartir Internet.${NC}"
-            else
-                echo -e "${AMARILLO}⚠️ Monitoreo ya estaba desactivado.${NC}"
-            fi
-            read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-            ;;
-        3)
-            # Agregar usuarios con excepción
-            agregar_excepcion_proxy
-            ;;
-        0)
-            # Volver al menú principal
-            echo -e "${AMARILLO}🚪 Volviendo al menú principal...${NC}"
-            return
-            ;;
-        *)
-            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
-            ;;
-    esac
-}
-
-
 # ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
@@ -2788,7 +2578,6 @@ while true; do
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
     echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
     echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
-    echo -e "${AMARILLO_SUAVE}15. 🚫 Gestionar compartir Internet por proxy${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
@@ -2809,10 +2598,9 @@ while true; do
         12) ssh_bot ;;
         13) renovar_usuario ;;
         14) activar_desactivar_swap ;;
-        15) bloquear_compartir_proxy ;;
         0) 
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash
+            exec /bin/bash   # ✅ vuelve al bash normal
             ;;
         *) 
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
