@@ -122,13 +122,17 @@ ssh_bot() {
                 DAYS=''
                 MOBILES=''
 
+                calcular_expiracion() {
+                    local dias=\$1
+                    local fecha_expiracion=\$(date -d \"+\$dias days\" \"+%d/%B/%Y\")
+                    echo \$fecha_expiracion
+                }
+
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
                     local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
                     local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
-                    mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                     local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
-
                     case \$mes in
                         \"enero\") mes_num=\"01\" ;;
                         \"febrero\") mes_num=\"02\" ;;
@@ -144,50 +148,20 @@ ssh_bot() {
                         \"diciembre\") mes_num=\"12\" ;;
                         *) echo 0; return ;;
                     esac
-
                     local fecha_formateada=\"\$anio-\$mes_num-\$dia\"
                     local fecha_actual=\$(date \"+%Y-%m-%d\")
-
                     local fecha_exp_epoch=\$(date -d \"\$fecha_formateada\" \"+%s\" 2>/dev/null)
                     local fecha_act_epoch=\$(date -d \"\$fecha_actual\" \"+%s\")
-
                     if [[ -z \"\$fecha_exp_epoch\" ]]; then
                         echo 0
                         return
                     fi
-
                     local diff_segundos=\$((fecha_exp_epoch - fecha_act_epoch))
                     local dias_restantes=\$((diff_segundos / 86400))
-
                     if [ \$dias_restantes -lt 0 ]; then
                         dias_restantes=0
                     fi
-
                     echo \$dias_restantes
-                }
-
-                # Función para formatear fecha en español
-                formatear_fecha_espanol() {
-                    local fecha_std=\"\$1\"  # Formato: YYYY-MM-DD
-                    local dia=\$(echo \"\$fecha_std\" | cut -d'-' -f3)
-                    local mes=\$(echo \"\$fecha_std\" | cut -d'-' -f2)
-                    local anio=\$(echo \"\$fecha_std\" | cut -d'-' -f1)
-                    case \$mes in
-                        01) mes_nombre=\"enero\" ;;
-                        02) mes_nombre=\"febrero\" ;;
-                        03) mes_nombre=\"marzo\" ;;
-                        04) mes_nombre=\"abril\" ;;
-                        05) mes_nombre=\"mayo\" ;;
-                        06) mes_nombre=\"junio\" ;;
-                        07) mes_nombre=\"julio\" ;;
-                        08) mes_nombre=\"agosto\" ;;
-                        09) mes_nombre=\"septiembre\" ;;
-                        10) mes_nombre=\"octubre\" ;;
-                        11) mes_nombre=\"noviembre\" ;;
-                        12) mes_nombre=\"diciembre\" ;;
-                        *) mes_nombre=\"invalido\" ;;
-                    esac
-                    printf \"%02d/%s/%04d\" \"\$dia\" \"\$mes_nombre\" \"\$anio\"
                 }
 
                 # Función para monitorear conexiones
@@ -375,12 +349,11 @@ ssh_bot() {
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la fecha de expiración.\" -d parse_mode=Markdown >/dev/null
                                                         else
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
-                                                            fecha_expiracion_std=\$(date -d \"+\$DAYS days\" \"+%Y-%m-%d\" 2>/dev/null)
-                                                            if [[ -z \"\$fecha_expiracion_std\" ]]; then
+                                                            fecha_expiracion=\$(calcular_expiracion \"\$DAYS\")
+                                                            if [[ -z \"\$fecha_expiracion\" ]]; then
                                                                 userdel \"\$USERNAME\" 2>/dev/null
                                                                 curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al calcular la fecha de expiración para el registro.\" -d parse_mode=Markdown >/dev/null
                                                             else
-                                                                fecha_expiracion=\$(formatear_fecha_espanol \"\$fecha_expiracion_std\")
                                                                 echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                                 echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
                                                                 RESUMEN=\"✅ *Usuario creado correctamente:*
@@ -526,7 +499,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     EXPECTING_RENEW_USER=0
                                                     RENEW_STEP=0
                                                 else
-                                                    nueva_fecha=\$(formatear_fecha_espanol \"\$nueva_fecha_std\")
+                                                    nueva_fecha=\$(calcular_expiracion \$DIAS_RENOVAR)
                                                     dias_restantes=\$(calcular_dias_restantes \"\$nueva_fecha\")
                                                     if ! grep -q \"^\$USUARIO:\" \"\$REGISTROS\"; then
                                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error: el usuario \$USUARIO no se encuentra en los registros.* 😕
@@ -2577,7 +2550,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
