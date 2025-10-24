@@ -63,7 +63,7 @@ fi
 systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
-   ssh_bot() {
+ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -340,8 +340,14 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                         ;;
                                     3)
                                         DAYS=\"\$MSG_TEXT\"
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📱 Ingresa el límite de móviles:\" -d parse_mode=Markdown >/dev/null
-                                        USER_DATA_STEP=4
+                                        if ! [[ \"\$DAYS\" =~ ^[0-9]+$ ]] || [ \"\$DAYS\" -le 0 ]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Días inválidos.* Debe ser un número entero positivo. 😕 Intenta de nuevo.\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_USER_DATA=0
+                                            USER_DATA_STEP=0
+                                        else
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📱 Ingresa el límite de móviles:\" -d parse_mode=Markdown >/dev/null
+                                            USER_DATA_STEP=4
+                                        fi
                                         ;;
                                     4)
                                         MOBILES=\"\$MSG_TEXT\"
@@ -360,21 +366,28 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                                         userdel \"\$USERNAME\" 2>/dev/null
                                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la contraseña.\" -d parse_mode=Markdown >/dev/null
                                                     else
-                                                        fecha_expiracion_sistema=\$(date -d \"+\$((DAYS + 1)) days\" \"+%Y-%m-%d\")
-                                                        if ! chage -E \"\$fecha_expiracion_sistema\" \"\$USERNAME\" 2>/dev/null; then
+                                                        fecha_expiracion_sistema=\$(date -d \"+\$((DAYS + 1)) days\" \"+%Y-%m-%d\" 2>/dev/null)
+                                                        if [[ -z \"\$fecha_expiracion_sistema\" ]]; then
+                                                            userdel \"\$USERNAME\" 2>/dev/null
+                                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al calcular la fecha de expiración.\" -d parse_mode=Markdown >/dev/null
+                                                        elif ! chage -E \"\$fecha_expiracion_sistema\" \"\$USERNAME\" 2>/dev/null; then
                                                             userdel \"\$USERNAME\" 2>/dev/null
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la fecha de expiración.\" -d parse_mode=Markdown >/dev/null
                                                         else
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
-                                                            fecha_expiracion_std=\$(date -d \"+\$DAYS days\" \"+%Y-%m-%d\")
-                                                            fecha_expiracion=\$(formatear_fecha_espanol \"\$fecha_expiracion_std\")
-                                                            echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
-                                                            echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
-                                                            RESUMEN=\"✅ *Usuario creado correctamente:*
+                                                            fecha_expiracion_std=\$(date -d \"+\$DAYS days\" \"+%Y-%m-%d\" 2>/dev/null)
+                                                            if [[ -z \"\$fecha_expiracion_std\" ]]; then
+                                                                userdel \"\$USERNAME\" 2>/dev/null
+                                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al calcular la fecha de expiración para el registro.\" -d parse_mode=Markdown >/dev/null
+                                                            else
+                                                                fecha_expiracion=\$(formatear_fecha_espanol \"\$fecha_expiracion_std\")
+                                                                echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
+                                                                echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
+                                                                RESUMEN=\"✅ *Usuario creado correctamente:*
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
-\\\`📅 Expira: \${fecha_expiracion}\\\`
+📅 *Expira*: \\\`\${fecha_expiracion}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
@@ -395,7 +408,8 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
 
 ⚡👉 El incumplimiento resultará en suspensión inmediata.
 \\\`\\\`\\\`\"
-                                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
+                                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$RESUMEN\" -d parse_mode=Markdown >/dev/null
+                                                            fi
                                                         fi
                                                     fi
                                                 fi
@@ -2563,7 +2577,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
