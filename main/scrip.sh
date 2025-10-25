@@ -63,7 +63,7 @@ fi
 systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
-ssh_bot() {
+          ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -491,8 +491,8 @@ Escribe *hola* para volver al menú.\"
                                         MENU=\"¡Hola! 😏 *$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
 
 🔧 *Presiona 1* para crear usuario
-🗑️ *Presiona 2* para eliminar usuario
-📋 *Presiona 3* para ver los usuarios registrados
+📋 *Presiona 2* para ver los usuarios registrados
+🗑️ *Presiona 3* para eliminar usuario
 ✅ *Presiona 4* para mostrar usuarios conectados
 🔄 *Presiona 5* para renovar usuario
 💾 *Presiona 6* para crear backup
@@ -508,24 +508,6 @@ Escribe *hola* para volver al menú.\"
                                         USER_DATA_STEP=1
                                         ;;
                                     '2')
-                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
-                                        else
-                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
-
-\"
-                                            while IFS=' ' read -r user_data _; do
-                                                usuario=\${user_data%%:*}
-                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`
-\"
-                                            done < \"\$REGISTROS\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
-                                            EXPECTING_DELETE_USER=1
-                                        fi
-                                        ;;
-                                    '3')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📋 *Lista de Usuarios* ❌
 
@@ -568,6 +550,24 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             TOTAL=\$((count - 1))
                                             LISTA=\"\${LISTA}*Total registrados:* \$TOTAL usuarios\"
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                        fi
+                                        ;;
+                                    '3')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
+
+\"
+                                            while IFS=' ' read -r user_data _; do
+                                                usuario=\${user_data%%:*}
+                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`
+\"
+                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🗑️ Ingresa el nombre del usuario a eliminar:\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_DELETE_USER=1
                                         fi
                                         ;;
                                     '4')
@@ -750,9 +750,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                              
-           
-                                                                                            
+}                            
                                           
 function barra_sistema() {  
     # ================= Colores =================  
@@ -2490,7 +2488,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫💵PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======😋🥲PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
