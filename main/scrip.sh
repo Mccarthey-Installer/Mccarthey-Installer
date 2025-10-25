@@ -63,7 +63,7 @@ fi
 systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
-          ssh_bot() {
+              ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -493,8 +493,8 @@ Escribe *hola* para volver al menú.\"
 🔧 *Presiona 1* para crear usuario
 📋 *Presiona 2* para ver los usuarios registrados
 🗑️ *Presiona 3* para eliminar usuario
-✅ *Presiona 4* para mostrar usuarios conectados
-🔄 *Presiona 5* para renovar usuario
+🔄 *Presiona 4* para renovar usuario
+✅ *Presiona 5* para mostrar usuarios conectados
 💾 *Presiona 6* para crear backup
 📥 *Presiona 7* para restaurar backup
 🏠 *Presiona 0* para volver al menú principal\"
@@ -571,6 +571,29 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         ;;
                                     '4')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"🌸 *USUARIOS REGISTRADOS* 🌸
+
+Selecciona un usuario para renovar:
+
+\"
+                                            count=1
+                                            while IFS=' ' read -r user_data _; do
+                                                usuario=\${user_data%%:*}
+                                                LISTA=\"\${LISTA}\${count}. \\\`\${usuario}\\\`
+\"
+                                                ((count++))
+                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"👤 *Ingresa el nombre del usuario a renovar:*\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_RENEW_USER=1
+                                            RENEW_STEP=1
+                                        fi
+                                        ;;
+                                    '5')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
@@ -673,29 +696,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             rm -f \"\$temp_users\"
                                         fi
                                         ;;
-                                    '5')
-                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
-                                        else
-                                            LISTA=\"🌸 *USUARIOS REGISTRADOS* 🌸
-
-Selecciona un usuario para renovar:
-
-\"
-                                            count=1
-                                            while IFS=' ' read -r user_data _; do
-                                                usuario=\${user_data%%:*}
-                                                LISTA=\"\${LISTA}\${count}. \\\`\${usuario}\\\`
-\"
-                                                ((count++))
-                                            done < \"\$REGISTROS\"
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"👤 *Ingresa el nombre del usuario a renovar:*\" -d parse_mode=Markdown >/dev/null
-                                            EXPECTING_RENEW_USER=1
-                                            RENEW_STEP=1
-                                        fi
-                                        ;;
                                     '6')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados para crear backup.*
@@ -750,7 +750,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                            
+}                        
                                           
 function barra_sistema() {  
     # ================= Colores =================  
@@ -2488,7 +2488,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😋🥲PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
