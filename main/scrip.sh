@@ -2803,7 +2803,7 @@ restore_v2ray() {
         echo -e "${WHITE}Backups disponibles:${NC}"
         mapfile -t backups < <(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r)
         for i in "${!backups[@]}"; do
-            file="${backups[$i]}"
+            file="${backups[$i]}]}"
             size=$(du -h "$file" | cut -f1)
             date=$(basename "$file" | sed 's/v2ray_telegram_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
             echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
@@ -2822,17 +2822,17 @@ restore_v2ray() {
         # CREAR DIRECTORIOS
         mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
-        # EXTRAER ARCHIVOS
-        if ! tar -xzf "$backup_file" -C / 2>/dev/null; then
+        # EXTRAER DIRECTO AL LUGAR CORRECTO
+        if ! tar -xzf "$backup_file" -C "$CONFIG_DIR" --strip-components=1 2>/dev/null; then
             echo -e "${CROSS} ${RED}Error al extraer el backup.${NC}"
             systemctl start xray 2>/dev/null
             sleep 2
             return
         fi
 
-        # VERIFICAR QUE users.db EXISTE
+        # VERIFICAR QUE users.db FUE EXTRAÍDO
         if [ ! -f "$USERS_FILE" ]; then
-            echo -e "${CROSS} ${RED}Error: users.db no encontrado en el backup.${NC}"
+            echo -e "${CROSS} ${RED}Error: users.db no se extrajo correctamente.${NC}"
             systemctl start xray 2>/dev/null
             sleep 2
             return
@@ -2842,17 +2842,17 @@ restore_v2ray() {
         restored_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
         restored_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
 
-        # SI NO HAY PATH/HOST, USAR VALORES POR DEFECTO O ACTUALES
-        [ -z "$restored_path" ] && restored_path=$(grep '"path"' /tmp/config.json 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-        [ -z "$restored_host" ] && restored_host=$(grep '"Host"' /tmp/config.json 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+        # SI NO HAY, USAR POR DEFECTO
+        [ -z "$restored_path" ] && restored_path="/pams"
+        [ -z "$restored_host" ] && restored_host=""
 
-        # REGENERAR config.json CON TODOS LOS USUARIOS DE users.db
+        # REGENERAR config.json CON TODOS LOS USUARIOS
         generate_config "$restored_path" "$restored_host"
 
         # REINICIAR XRAY
-        systemctl start xray 2>/dev/null || systemctl restart xray 2>/dev/null
+        systemctl restart xray 2>/dev/null
 
-        # CONTAR USUARIOS RESTAURADOS
+        # CONTAR USUARIOS
         user_count=$(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)
 
         echo -e "${CHECK} ${GREEN}Backup restaurado correctamente:${NC}"
@@ -2994,7 +2994,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫❄️ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
