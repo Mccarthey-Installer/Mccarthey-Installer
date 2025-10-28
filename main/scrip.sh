@@ -2482,55 +2482,401 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
+# ========================================
+# MENÚ V2RAY (SUBMENÚ) - Integrado como opción 15
+# ========================================
+
+menu_v2ray() {
+    # === VARIABLES DEL V2RAY (no interfieren con tu menú principal) ===
+    local CONFIG_DIR="/usr/local/etc/xray"
+    local CONFIG_FILE="$CONFIG_DIR/config.json"
+    local SERVICE_FILE="/etc/systemd/system/xray.service"
+    local LOG_DIR="/var/log/xray"
+    local USERS_FILE="$CONFIG_DIR/users.db"
+    local BACKUP_DIR="$CONFIG_DIR/backups"
+    local IP=$(curl -s ifconfig.me || echo "IP_NO_DETECTADA")
+    local PORT=8080
+    local XRAY_BIN="/usr/local/bin/xray"
+
+    # COLORES LOCALES (no sobrescriben los tuyos)
+    local RED='\033[1;91m'
+    local GREEN='\033[1;92m'
+    local YELLOW='\033[1;93m'
+    local BLUE='\033[1;94m'
+    local PURPLE='\033[1;95m'
+    local CYAN='\033[1;96m'
+    local WHITE='\033[1;97m'
+    local GRAY='\033[0;90m'
+    local NC='\033[0m'
+
+    # EMOJIS
+    local FIRE="🔥"
+    local ROCKET="🚀"
+    local SPARK="✨"
+    local STAR="⭐"
+    local CHECK="✅"
+    local CROSS="❌"
+    local TRASH="🗑️"
+    local USER="👤"
+    local KEY="🔑"
+    local CAL="📅"
+    local DOWN="⬇️"
+    local UP="⬆️"
+
+    mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
+    [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
+
+    # === FUNCIONES LOCALES ===
+    midnight_tomorrow() {
+        date -d "tomorrow 00:00" +%s 2>/dev/null || date -d "next day 00:00" +%s
+    }
+
+    days_left_natural() {
+        local expires=$1
+        local now_midnight=$(date -d "today 00:00" +%s)
+        local expire_midnight=$(date -d "$(date -d "@$expires" +%Y-%m-%d) 00:00" +%s 2>/dev/null)
+        local days=$(( (expire_midnight - now_midnight) / 86400 ))
+        (( days < 0 )) && days=0
+        echo $days
+    }
+
+    install_xray() {
+        clear
+        echo -e "${ROCKET} ${PURPLE}Instalando Xray Core...${NC} $SPARK"
+        cd /tmp
+        wget -q https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
+        unzip -o Xray-linux-64.zip >/dev/null 2>&1
+        sudo mv xray "$XRAY_BIN" 2>/dev/null
+        sudo chmod +x "$XRAY_BIN"
+        echo -e "${CHECK} ${GREEN}Xray instalado correctamente.${NC}"
+        sleep 1.5
+    }
+
+    create_service() {
+        cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=Xray Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=$XRAY_BIN run -c $CONFIG_FILE
+Restart=on-failure
+RestartSec=3
+User=root
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        systemctl enable xray &>/dev/null
+    }
+
+    generate_config() {
+        local path="$1"
+        local host="$2"
+        {
+            echo "{"
+            echo '  "log": {'
+            echo '    "loglevel": "warning",'
+            echo "    \"access\": \"$LOG_DIR/access.log\","
+            echo "    \"error\": \"$LOG_DIR/error.log\""
+            echo '  },'
+            echo '  "inbounds": ['
+            echo '    {'
+            echo "      \"port\": $PORT,"
+            echo '      "listen": "0.0.0.0",'
+            echo '      "protocol": "vmess",'
+            echo '      "settings": {'
+            echo '        "clients": ['
+            
+            first=true
+            while IFS=: read -r name uuid created expires delete_at; do
+                [[ $name == "#"* ]] && continue
+                [ $(( $(date +%s) )) -ge $delete_at ] && continue
+                if [ "$first" = false ]; then echo "        },"; fi
+                echo "          {"
+                echo "            \"id\": \"$uuid\","
+                echo "            \"level\": 8,"
+                echo "            \"alterId\": 0"
+                first=false
+            done < <(grep -v "^#" "$USERS_FILE")
+            
+            [ "$first" = false ] && echo "        }"
+            echo '        ]'
+            echo '      },'
+            echo '      "streamSettings": {'
+            echo '        "network": "ws",'
+            echo '        "wsSettings": {'
+            echo "          \"path\": \"$path\""
+            [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
+            echo '        }'
+            echo '      }'
+            echo '    }'
+            echo '  ],'
+            echo '  "outbounds": [{ "protocol": "freedom" }]'
+            echo '}'
+        } > "$CONFIG_FILE"
+    }
+
+    add_user() {
+        clear
+        echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        read -p "Nombre del usuario: " name
+        read -p "Días de validez (1, 7, 30...): " days
+        [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
+
+        uuid=$($XRAY_BIN uuid 2>/dev/null || openssl rand -hex 16)
+        created=$(date +%s)
+        expires=$(( created + days * 86400 ))
+        delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) 2>/dev/null || $((expires + 86400)) ))
+
+        echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
+
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+
+        json_data=$(cat <<EOF
+{
+  "add": "$IP",
+  "port": "$PORT",
+  "id": "$uuid",
+  "aid": "0",
+  "security": "auto",
+  "net": "ws",
+  "type": "none",
+  "host": "$current_host",
+  "path": "$current_path",
+  "tls": ""
+}
+EOF
+)
+        vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
+
+        clear
+        echo -e "${CHECK} ${GREEN}USUARIO CREADO CON ÉXITO${NC} $FIRE"
+        echo -e "${GRAY}════════════════════════════════════${NC}"
+        echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
+        echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
+        echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
+        echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
+        echo -e "${GRAY}════════════════════════════════════${NC}"
+        echo -e "${ROCKET} ${BLUE}LINK VMESS:${NC}"
+        echo -e "${WHITE}$vmess_link${NC}"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        read -p "Presiona Enter para continuar..."
+    }
+
+    remove_user_menu() {
+        clear
+        echo -e "${TRASH} ${RED}ELIMINAR USUARIO${NC}"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+
+        mapfile -t users < "$USERS_FILE"
+        if [ ${#users[@]} -eq 0 ]; then
+            echo -e "${CROSS} ${YELLOW}No hay usuarios registrados.${NC}"
+            read -p "Enter..." && return
+        fi
+
+        i=1
+        for line in "${users[@]}"; do
+            name=$(echo "$line" | cut -d: -f1)
+            echo -e "$i) ${YELLOW}$name${NC}"
+            ((i++))
+        done
+
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        read -p "Elige número o escribe nombre: " input
+
+        if [[ "$input" =~ ^[0-9]+$ ]]; then
+            index=$((input-1))
+            user_line="${users[$index]}"
+            [ -z "$user_line" ] && { echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5; return; }
+            username=$(echo "$user_line" | cut -d: -f1)
+        else
+            username="$input"
+        fi
+
+        if ! grep -q "^$username:" "$USERS_FILE"; then
+            echo -e "${CROSS} ${RED}Usuario no encontrado.${NC}"
+            sleep 1.5
+            return
+        fi
+
+        sed -i "/^$username:/d" "$USERS_FILE"
+        generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"
+        systemctl restart xray 2>/dev/null
+
+        echo -e "${CHECK} ${GREEN}Usuario '$username' eliminado.${NC}"
+        sleep 1.5
+    }
+
+    list_users() {
+        clear
+        echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"
+        echo -e "${PURPLE}════════════════════════════════════${NC}"
+        active=0
+        while IFS=: read -r name uuid created expires delete_at; do
+            [[ $name == "#"* ]] && continue
+            [ $(date +%s) -ge $delete_at ] && continue
+            days_left=$(days_left_natural $expires)
+            active=1
+            echo -e "${USER} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
+            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
+            echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
+            echo -e "${TRASH} ${WHITE}Borrado:${NC}${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
+            echo -e "${PURPLE}────────────────────────────────────${NC}"
+        done < "$USERS_FILE"
+        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
+        read -p "Presiona Enter para volver..."
+    }
+
+    export_all_vmess() {
+        clear
+        echo -e "${ROCKET} ${BLUE}EXPORTAR TODOS (vmess://)${NC}"
+        echo -e "${PURPLE}════════════════════════════════${NC}"
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+        while IFS=: read -r name uuid created expires delete_at; do
+            [[ $name == "#"* ]] && continue
+            [ $(date +%s) -ge $delete_at ] && continue
+            json_data=$(cat <<EOF
+{
+  "add": "$IP",
+  "port": "$PORT",
+  "id": "$uuid",
+  "aid": "0",
+  "security": "auto",
+  "net": "ws",
+  "type": "none",
+  "host": "$current_host",
+  "path": "$current_path",
+  "tls": ""
+}
+EOF
+)
+            vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
+            echo -e "${YELLOW}→ $name${NC}"
+            echo -e "${CYAN}$vmess_link${NC}"
+            echo -e "${PURPLE}────────────────────────────────${NC}"
+        done < "$USERS_FILE"
+        read -p "Enter..."
+    }
+
+    show_v2ray_menu() {
+        while true; do
+            clear
+            current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
+            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "Ninguno")
+
+            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
+            echo -e "${GRAY}════════════════════════════════════════════════${NC}"
+            echo -e " ${UP} IP:     ${GREEN}$IP${NC}"
+            echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"
+            echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"
+            echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"
+            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
+            echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"
+            echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"
+            echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"
+            echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"
+            echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"
+            echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"
+            echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
+            echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
+            echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
+            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
+            read -p " ${ROCKET} Elige una opción: " opt
+
+            case $opt in
+                1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...";;
+                2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...";;
+                3) add_user; generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"; systemctl restart xray 2>/dev/null;;
+                4) remove_user_menu;;
+                5) list_users;;
+                6) export_all_vmess;;
+                7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5;;
+                8) 
+                    clear
+                    echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
+                    systemctl stop xray 2>/dev/null
+                    systemctl disable xray 2>/dev/null
+                    rm -f "$SERVICE_FILE" "$XRAY_BIN"
+                    rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
+                    echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
+                    sleep 2
+                    return
+                    ;;
+                0) return ;;  # Vuelve al menú principal
+                *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
+            esac
+        done
+    }
+
+    # === INICIO DEL SUBMENÚ ===
+    [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
+    show_v2ray_menu
+}
+
+
 # ==== MENU ====
 if [[ -t 0 ]]; then
-while true; do
-    clear
-    barra_sistema
-    echo
-    echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
-    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
-    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
-    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
-    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
-    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
-    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
-    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
-    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
+    while true; do
+        clear
+        barra_sistema
+        echo
+        echo -e "${VIOLETA}======✨PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${AMARILLO_SUAVE}1.  🆕 Crear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}2.  📋 Ver registros${NC}"
+        echo -e "${AMARILLO_SUAVE}3.  🗑️ Eliminar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}4.  📊 Información${NC}"
+        echo -e "${AMARILLO_SUAVE}5.  🟢 Verificar usuarios online${NC}"
+        echo -e "${AMARILLO_SUAVE}6.  🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}7.  🆕 Crear múltiples usuarios${NC}"
+        echo -e "${AMARILLO_SUAVE}8.  📋 Mini registro${NC}"
+        echo -e "${AMARILLO_SUAVE}9.  ⚙️ Activar/Desactivar limitador${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
+        echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
+        echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
+        echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
+        echo -e "${AMARILLO_SUAVE}15. 🔥 MENÚ V2RAY (Xray)${NC}"
+        echo -e "${AMARILLO_SUAVE}0.  🚪 Salir${NC}"
 
-    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
-    read -p "$PROMPT" OPCION  
+        PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")    
+        read -p "$PROMPT" OPCION    
 
-    case $OPCION in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_multiples_usuarios ;;
-        4) informacion_usuarios ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) activar_desactivar_limitador ;;
-        10) configurar_banner_ssh ;;
-        11) contador_online ;;
-        12) ssh_bot ;;
-        13) renovar_usuario ;;
-        14) activar_desactivar_swap ;;
-        0) 
-            echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash   # ✅ vuelve al bash normal
-            ;;
-        *) 
-            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
-            ;;
-    esac
-done
+        case $OPCION in  
+            1) crear_usuario ;;  
+            2) ver_registros ;;  
+            3) eliminar_multiples_usuarios ;;  
+            4) informacion_usuarios ;;  
+            5) verificar_online ;;  
+            6) bloquear_desbloquear_usuario ;;  
+            7) crear_multiples_usuarios ;;  
+            8) mini_registro ;;  
+            9) activar_desactivar_limitador ;;  
+            10) configurar_banner_ssh ;;  
+            11) contador_online ;;  
+            12) ssh_bot ;;  
+            13) renovar_usuario ;;  
+            14) activar_desactivar_swap ;;  
+            15) 
+                clear
+                echo -e "${CYAN}🔥 Accediendo al MENÚ V2RAY...${NC}"
+                sleep 1
+                menu_v2ray  # Llama al submenú V2RAY
+                ;;  
+            0)   
+                echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"  
+                exec /bin/bash   # vuelve al bash normal  
+                ;;  
+            *)   
+                echo -e "${ROJO}❌ ¡Opción inválida!${NC}"  
+                read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"  
+                ;;  
+        esac
+    done
 fi
