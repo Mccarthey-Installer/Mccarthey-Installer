@@ -2790,8 +2790,7 @@ EOF
             sleep 2
         fi
     }
-
-    restore_v2ray() {
+restore_v2ray() {
         clear
         echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP${NC} $SPARK"
         echo -e "${GRAY}────────────────────────────────────${NC}"
@@ -2817,23 +2816,35 @@ EOF
         backup_file="${backups[$index]}"
         [ -z "$backup_file" ] && { echo -e "${CROSS} No existe."; sleep 1.5; return; }
 
+        # DETENER SERVICIO
         systemctl stop xray 2>/dev/null
-        tar -xzf "$backup_file" -C / 2>/dev/null
-        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
-        if [ -f "$USERS_FILE" ]; then
-            current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-            generate_config "$current_path" "$current_host"
+        # EXTRAER
+        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+        tar -xzf "$backup_file" -C / 2>/dev/null
+
+        # VERIFICAR QUE users.db EXISTE
+        if [ ! -f "$USERS_FILE" ]; then
+            echo -e "${CROSS} ${RED}Error: users.db no encontrado en el backup.${NC}"
+            systemctl start xray 2>/dev/null
+            sleep 2
+            return
         fi
 
+        # REGENERAR config.json CON LOS USUARIOS DEL users.db
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+        generate_config "$current_path" "$current_host"
+
+        # REINICIAR
         systemctl start xray 2>/dev/null || systemctl restart xray 2>/dev/null
 
         echo -e "${CHECK} ${GREEN}Backup restaurado correctamente:${NC}"
         echo -e "${WHITE}   $(basename "$backup_file")${NC}"
+        echo -e "${CYAN}   Usuarios cargados: $(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)${NC}"
         sleep 2
     }
-
+    
     send_backup_telegram() {
         clear
         echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
