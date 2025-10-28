@@ -2621,24 +2621,24 @@ EOF
     }
 
     add_user() {
-        clear
-        echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-        read -p "Nombre del usuario: " name
-        read -p "Días de validez (1, 7, 30...): " days
-        [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
+    clear
+    echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
+    echo -e "${GRAY}────────────────────────────────────${NC}"
+    read -p "Nombre del usuario: " name
+    read -p "Días de validez (1, 7, 30...): " days
+    [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
 
-        uuid=$($XRAY_BIN uuid 2>/dev/null || openssl rand -hex 16)
-        created=$(date +%s)
-        expires=$(( created + days * 86400 ))
-        delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) 2>/dev/null || $((expires + 86400)) ))
+    uuid=$($XRAY_BIN uuid)
+    created=$(date +%s)
+    expires=$(( created + days * 86400 ))
+    delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) ))
 
-        echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
+    echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
 
-        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+    current_path=$(grep '"path"' $CONFIG_FILE 2>/dev/null | awk -F'"' '{print $4}' || echo "/pams")
+    current_host=$(grep '"Host"' $CONFIG_FILE 2>/dev/null | awk -F'"' '{print $4}' || echo "")
 
-        json_data=$(cat <<EOF
+    json_data=$(cat <<EOF
 {
   "add": "$IP",
   "port": "$PORT",
@@ -2653,21 +2653,21 @@ EOF
 }
 EOF
 )
-        vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
+    vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
 
-        clear
-        echo -e "${CHECK} ${GREEN}USUARIO CREADO CON ÉXITO${NC} $FIRE"
-        echo -e "${GRAY}════════════════════════════════════${NC}"
-        echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
-        echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
-        echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
-        echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
-        echo -e "${GRAY}════════════════════════════════════${NC}"
-        echo -e "${ROCKET} ${BLUE}LINK VMESS:${NC}"
-        echo -e "${WHITE}$vmess_link${NC}"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-        read -p "Presiona Enter para continuar..."
-    }
+    clear
+    echo -e "${CHECK} ${GREEN}USUARIO CREADO CON ÉXITO${NC} $FIRE"
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
+    echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
+    echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
+    echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    echo -e "${ROCKET} ${BLUE}LINK VMESS (HTTP CUSTOM):${NC}"
+    echo -e "${WHITE}$vmess_link${NC}"
+    echo -e "${GRAY}────────────────────────────────────${NC}"
+    read -p "Presiona Enter para continuar..."
+}
 
     remove_user_menu() {
         clear
