@@ -2821,62 +2821,62 @@ EOF
 }
 
 
-# ==== MENU ====
+# ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
-    while true; do
-        clear
-        barra_sistema
-        echo
-        echo -e "${VIOLETA}======✨PANEL DE USUARIOS VPN/SSH ======${NC}"
-        echo -e "${AMARILLO_SUAVE}1.  🆕 Crear usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}2.  📋 Ver registros${NC}"
-        echo -e "${AMARILLO_SUAVE}3.  🗑️ Eliminar usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}4.  📊 Información${NC}"
-        echo -e "${AMARILLO_SUAVE}5.  🟢 Verificar usuarios online${NC}"
-        echo -e "${AMARILLO_SUAVE}6.  🔒 Bloquear/Desbloquear usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}7.  🆕 Crear múltiples usuarios${NC}"
-        echo -e "${AMARILLO_SUAVE}8.  📋 Mini registro${NC}"
-        echo -e "${AMARILLO_SUAVE}9.  ⚙️ Activar/Desactivar limitador${NC}"
-        echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
-        echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
-        echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
-        echo -e "${AMARILLO_SUAVE}15. 🔥 MENÚ V2RAY (Xray)${NC}"
-        echo -e "${AMARILLO_SUAVE}0.  🚪 Salir${NC}"
+while true; do
+    clear
+    barra_sistema
+    echo
+    echo -e "${VIOLETA}======💫✨ PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
+    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
+    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
+    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
+    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
+    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
+    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
+    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
+    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
+    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}15. 🔥 MENÚ V2RAY (Xray)${NC}"
+    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
-        PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")    
-        read -p "$PROMPT" OPCION    
+    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+    read -p "$PROMPT" OPCION
 
-        case $OPCION in  
-            1) crear_usuario ;;  
-            2) ver_registros ;;  
-            3) eliminar_multiples_usuarios ;;  
-            4) informacion_usuarios ;;  
-            5) verificar_online ;;  
-            6) bloquear_desbloquear_usuario ;;  
-            7) crear_multiples_usuarios ;;  
-            8) mini_registro ;;  
-            9) activar_desactivar_limitador ;;  
-            10) configurar_banner_ssh ;;  
-            11) contador_online ;;  
-            12) ssh_bot ;;  
-            13) renovar_usuario ;;  
-            14) activar_desactivar_swap ;;  
-            15) 
-                clear
-                echo -e "${CYAN}🔥 Accediendo al MENÚ V2RAY...${NC}"
-                sleep 1
-                menu_v2ray  # Llama al submenú V2RAY
-                ;;  
-            0)   
-                echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"  
-                exec /bin/bash   # vuelve al bash normal  
-                ;;  
-            *)   
-                echo -e "${ROJO}❌ ¡Opción inválida!${NC}"  
-                read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"  
-                ;;  
-        esac
-    done
+    case $OPCION in
+        1)  crear_usuario ;;
+        2)  ver_registros ;;
+        3)  eliminar_multiples_usuarios ;;
+        4)  informacion_usuarios ;;
+        5)  verificar_online ;;
+        6)  bloquear_desbloquear_usuario ;;
+        7)  crear_multiples_usuarios ;;
+        8)  mini_registro ;;
+        9)  activar_desactivar_limitador ;;
+        10) configurar_banner_ssh ;;
+        11) contador_online ;;
+        12) ssh_bot ;;
+        13) renovar_usuario ;;
+        14) activar_desactivar_swap ;;
+        15)
+            clear
+            echo -e "${CYAN}🔥 Accediendo al MENÚ V2RAY...${NC}"
+            sleep 1
+            menu_v2ray   # ✅ Llama al submenú de XRAY
+        ;;
+        0)
+            echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
+            exec /bin/bash
+        ;;
+        *)
+            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+        ;;
+    esac
+done
 fi
