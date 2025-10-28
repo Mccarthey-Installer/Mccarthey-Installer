@@ -2803,7 +2803,7 @@ restore_v2ray() {
         echo -e "${WHITE}Backups disponibles:${NC}"
         mapfile -t backups < <(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r)
         for i in "${!backups[@]}"; do
-            file="${backups[$i]}]}"
+            file="${backups[$i]}"
             size=$(du -h "$file" | cut -f1)
             date=$(basename "$file" | sed 's/v2ray_telegram_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
             echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
