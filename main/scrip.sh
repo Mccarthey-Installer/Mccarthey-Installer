@@ -3038,6 +3038,7 @@ EOF
             echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
             echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"
             echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"
+            echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"
             echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
             echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
             read -p " ${ROCKET} Elige una opción: " opt
@@ -3063,6 +3064,8 @@ EOF
                     ;;
                 9) send_backup_telegram ;;
                 10) restore_v2ray ;;
+                10) restore_v2ray ;;
+                11) restore_from_telegram ;;
                 0) return ;;
                 *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
             esac
@@ -3085,7 +3088,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
