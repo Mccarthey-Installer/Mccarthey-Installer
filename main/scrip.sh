@@ -3006,7 +3006,7 @@ EOF
         return
     fi
 
-    # ENVIAR SIN CAPTION (o con caption vacío)
+    # ENVIAR ARCHIVO SIN CAPTION
     response=$(curl -s -F "chat_id=$USER_ID" \
         -F "document=@$backup_file" \
         "$URL/sendDocument")
@@ -3020,17 +3020,17 @@ EOF
     if echo "$response" | grep -q '"ok":true'; then
         file_id=$(echo "$response" | jq -r '.result.document.file_id')
         
-        # ENVIAR SOLO EL FILE ID COMO MENSAJE DE TEXTO
+        # ENVIAR MENSAJE CON FILE ID EN MONOESPACIADO
         curl -s -X POST "$URL/sendMessage" \
             -d "chat_id=$USER_ID" \
-            -d "text=Archivo ID: $file_id" \
-            -d "parse_mode=Markdown" > /dev/null
+            -d "text=Archivo ID: <code>$file_id</code>" \
+            -d "parse_mode=HTML" > /dev/null
 
         echo -e "${CHECK} ${GREEN}Backup enviado a Telegram!${NC}"
         echo -e "${WHITE}   Archivo ID: $file_id${NC}"
         echo -e "${CYAN}   Guardado local: $local_backup${NC}"
         echo -e "${GRAY}────────────────────────────────────${NC}"
-        echo -e "${ROCKET} El File ID también fue enviado por Telegram."
+        echo -e "${ROCKET} File ID enviado en monoespaciado por Telegram."
     else
         error=$(echo "$response" | jq -r '.description // "Error desconocido"')
         echo -e "${CROSS} ${RED}Error al enviar: $error${NC}"
