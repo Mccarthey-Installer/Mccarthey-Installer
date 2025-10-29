@@ -2867,6 +2867,88 @@ EOF
         sleep 3
     }
 
+    restore_from_telegram() {
+        clear
+        echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+
+        # Verificar bot
+        if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
+            echo -e "${CROSS} ${RED}Bot no configurado. Usa opción 12 del menú principal.${NC}"
+            sleep 2
+            return
+        fi
+
+        TOKEN=$(cat /root/sshbot_token)
+        URL="https://api.telegram.org/bot$TOKEN"
+
+        read -p "Pega el File ID del backup (ej: BQACAg...): " file_id
+        [[ -z "$file_id" ]] && { echo -e "${CROSS} ID vacío."; sleep 1.5; return; }
+
+        echo -e "${YELLOW}Descargando backup de Telegram...${NC}"
+        FILE_INFO=$(curl -s "$URL/getFile?file_id=$file_id")
+        if ! echo "$FILE_INFO" | grep -q '"ok":true'; then
+            error=$(echo "$FILE_INFO" | jq -r '.description')
+            echo -e "${CROSS} ${RED}Error: $error${NC}"
+            sleep 2
+            return
+        fi
+
+        FILE_PATH=$(echo "$FILE_INFO" | jq -r '.result.file_path')
+        DOWNLOAD_URL="https://api.telegram.org/file/bot$TOKEN/$FILE_PATH"
+
+        curl -s "$DOWNLOAD_URL" -o /tmp/v2ray_telegram_restore.tar.gz
+
+        if [[ ! -f /tmp/v2ray_telegram_restore.tar.gz ]]; then
+            echo -e "${CROSS} ${RED}Error al descargar el archivo.${NC}"
+            sleep 2
+            return
+        fi
+
+        # Instalar Xray si no existe
+        if [[ ! -f "$XRAY_BIN" ]]; then
+            echo -e "${YELLOW}Xray no instalado. Instalando...${NC}"
+            install_xray
+        fi
+
+        # Crear directorios
+        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+
+        # Extraer
+        if ! tar -xzf /tmp/v2ray_telegram_restore.tar.gz -C "$CONFIG_DIR" --strip-components=1 2>/dev/null; then
+            echo -e "${CROSS} ${RED}Error al extraer el backup.${NC}"
+            rm -f /tmp/v2ray_telegram_restore.tar.gz
+            sleep 2
+            return
+        fi
+
+        rm -f /tmp/v2ray_telegram_restore.tar.gz
+
+        # Verificar users.db
+        if [[ ! -f "$USERS_FILE" ]]; then
+            echo -e "${CROSS} ${RED}users.db no encontrado en el backup.${NC}"
+            sleep 2
+            return
+        fi
+
+        # Regenerar config
+        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+        generate_config "$path" "$host"
+
+        # Service
+        create_service
+        systemctl daemon-reload
+        systemctl restart xray 2>/dev/null
+
+        user_count=$(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)
+
+        echo -e "${CHECK} ${GREEN}Backup restaurado desde Telegram!${NC}"
+        echo -e "${WHITE}   Usuarios: $user_count${NC}"
+        echo -e "${CYAN}   Path: $path | Host: $host${NC}"
+        sleep 3
+    }
+
     send_backup_telegram() {
         clear
         echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
