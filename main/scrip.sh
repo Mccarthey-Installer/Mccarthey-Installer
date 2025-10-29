@@ -3039,6 +3039,100 @@ restore_v2ray() {
         read -p "Presiona Enter..."
     }
 
+    menu_v2ray() {
+    # === VARIABLES GLOBALES (asegúrate de tenerlas arriba) ===
+    CONFIG_DIR="/usr/local/etc/xray"
+    CONFIG_FILE="$CONFIG_DIR/config.json"
+    USERS_FILE="$CONFIG_DIR/users.db"
+    BACKUP_DIR="$CONFIG_DIR/backups"
+    XRAY_BIN="/usr/local/bin/xray"
+    SERVICE_FILE="/etc/systemd/system/xray.service"
+    PORT=8080
+    IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
+
+    # === FUNCIONES (pega aquí todas: install_xray, generate_config, add_user, etc.) ===
+    # ... [TODAS TUS FUNCIONES: install_xray, send_backup_telegram, restore_v2ray, etc.] ...
+
+    # === FUNCIÓN RESTAURAR DESDE TELEGRAM (CORREGIDA) ===
+    restore_from_telegram() {
+        clear
+        echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+
+        if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
+            echo -e "${CROSS} ${RED}Bot no configurado. Usa opción 12 del menú principal.${NC}"
+            sleep 2
+            return
+        fi
+
+        TOKEN=$(cat /root/sshbot_token)
+        URL="https://api.telegram.org/bot$TOKEN"
+
+        read -p "Pega el File ID del backup: " file_id
+        [[ -z "$file_id" ]] && { echo -e "${CROSS} ID vacío."; sleep 1.5; return; }
+
+        echo -e "${YELLOW}Descargando...${NC}"
+        FILE_INFO=$(curl -s "$URL/getFile?file_id=$file_id")
+        if ! echo "$FILE_INFO" | grep -q '"ok":true'; then
+            echo -e "${CROSS} ${RED}Error: $(echo "$FILE_INFO" | jq -r '.description')${NC}"
+            sleep 2
+            return
+        fi
+
+        FILE_PATH=$(echo "$FILE_INFO" | jq -r '.result.file_path')
+        curl -s "https://api.telegram.org/file/bot$TOKEN/$FILE_PATH" -o /tmp/v2ray_restore.tar.gz
+
+        if [[ ! -f /tmp/v2ray_restore.tar.gz ]]; then
+            echo -e "${CROSS} ${RED}Error al descargar.${NC}"
+            sleep 2
+            return
+        fi
+
+        # Instalar Xray si no existe
+        [[ ! -f "$XRAY_BIN" ]] && install_xray
+
+        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+        tar -xzf /tmp/v2ray_restore.tar.gz -C "$CONFIG_DIR" --strip-components=1 2>/dev/null
+        rm -f /tmp/v2ray_restore.tar.gz
+
+        [[ ! -f "$USERS_FILE" ]] && { echo -e "${CROSS} users.db no encontrado."; sleep 2; return; }
+
+        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+        generate_config "$path" "$host"
+
+        create_service
+        systemctl daemon-reload
+        systemctl restart xray 2>/dev/null
+
+        echo -e "${CHECK} ${GREEN}Restaurado desde Telegram!${NC}"
+        echo -e "${CYAN} Usuarios: $(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)${NC}"
+        sleep 2
+    }
+
+    # === OBTENER FILE ID ===
+    get_file_id_from_telegram() {
+        clear
+        echo -e "${SPARK} ${YELLOW}OBTENER FILE ID${NC}"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+
+        [[ ! -f /root/sshbot_token ]] && { echo -e "${CROSS} Bot no configurado."; sleep 2; return; }
+
+        TOKEN=$(cat /root/sshbot_token)
+        UPDATES=$(curl -s "https://api.telegram.org/bot$TOKEN/getUpdates?limit=20")
+        FILE_ID=$(echo "$UPDATES" | jq -r '.result[] | select(.message.document.file_name | contains("v2ray")) | .message.document.file_id' | head -1)
+
+        if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
+            echo -e "${CHECK} ${GREEN}File ID:${NC} $FILE_ID"
+            echo "$FILE_ID" | xclip -selection clipboard 2>/dev/null || true
+            echo -e "${CYAN} Usa este ID en opción 11.${NC}"
+        else
+            echo -e "${CROSS} ${RED}No hay backup reciente.${NC}"
+        fi
+        read -p "Enter..."
+    }
+
+    # === MENÚ PRINCIPAL (CORREGIDO) ===
     show_v2ray_menu() {
         while true; do
             clear
@@ -3069,21 +3163,21 @@ restore_v2ray() {
             read -p " ${ROCKET} Elige una opción: " opt
 
             case $opt in
-                1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...";;
-                2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...";;
-                3) add_user; generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"; systemctl restart xray 2>/dev/null;;
-                4) remove_user_menu;;
-                5) list_users;;
-                6) export_all_vmess;;
-                7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5;;
+                1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray; read -p "Enter..." ;;
+                2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray; read -p "Enter..." ;;
+                3) add_user; generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"; systemctl restart xray ;;
+                4) remove_user_menu ;;
+                5) list_users ;;
+                6) export_all_vmess ;;
+                7) systemctl restart xray; echo -e "${CHECK} Reiniciado."; sleep 1.5 ;;
                 8) 
                     clear
-                    echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
+                    echo -e "${TRASH} ${RED}DESINSTALANDO...${NC}"
                     systemctl stop xray 2>/dev/null
                     systemctl disable xray 2>/dev/null
                     rm -f "$SERVICE_FILE" "$XRAY_BIN"
                     rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
-                    echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
+                    echo -e "${CHECK} TODO BORRADO."
                     sleep 2
                     return
                     ;;
@@ -3092,16 +3186,15 @@ restore_v2ray() {
                 11) restore_from_telegram ;;
                 12) get_file_id_from_telegram ;;
                 0) return ;;
-                *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
+                *) echo -e "${CROSS} Inválido."; sleep 1.5 ;;
             esac
         done
     }
-  
-    # === INICIO DEL SUBMENÚ ===
-    [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
+
+    # === INICIO ===
+    [[ ! -f "$XRAY_BIN" ]] && echo -e "${YELLOW}Ejecuta opción 1 para instalar Xray.${NC}"
     show_v2ray_menu
 }
-
 
 # ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
@@ -3109,7 +3202,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
