@@ -2767,6 +2767,82 @@ EOF
         read -p "Enter..."
     }
 
+    backup_v2ray() {
+        clear
+        echo -e "${SPARK} ${YELLOW}HACIENDO BACKUP COMPLETO...${NC} $SPARK"
+        local timestamp=$(date +"%Y%m%d_%H%M%S")
+        local backup_file="$BACKUP_DIR/v2ray_backup_$timestamp.tar.gz"
+
+        mkdir -p "$BACKUP_DIR"
+
+        # Copiar archivos críticos
+        tar -czf "$backup_file" \
+            "$CONFIG_DIR/config.json" \
+            "$USERS_FILE" \
+            2>/dev/null
+
+        if [ $? -eq 0 ] && [ -f "$backup_file" ]; then
+            echo -e "${CHECK} ${GREEN}Backup creado:${NC}"
+            echo -e "${WHITE}   $backup_file${NC}"
+            echo -e "${CYAN}   Tamaño: $(du -h "$backup_file" | cut -f1)${NC}"
+            echo -e "${GRAY}────────────────────────────────────${NC}"
+            echo -e "${ROCKET} Copia este archivo a un lugar seguro."
+            read -p "Presiona Enter para continuar..."
+        else
+            echo -e "${CROSS} ${RED}Error al crear el backup.${NC}"
+            sleep 2
+        fi
+    }
+
+    restore_v2ray() {
+        clear
+        echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP${NC} $SPARK"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+
+        if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR"/*.tar.gz 2>/dev/null)" ]; then
+            echo -e "${CROSS} ${YELLOW}No hay backups en $BACKUP_DIR${NC}"
+            read -p "Enter..." && return
+        fi
+
+        echo -e "${WHITE}Backups disponibles:${NC}"
+        mapfile -t backups < <(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r)
+        for i in "${!backups[@]}"; do
+            file="${backups[$i]}"
+            size=$(du -h "$file" | cut -f1)
+            date=$(basename "$file" | grep -o '[0-9]\{8\}_[0-9]\{6\}' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)_\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
+            echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
+        done
+
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        read -p "Elige número de backup: " choice
+        [[ ! "$choice" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} Inválido."; sleep 1.5; return; }
+        index=$((choice-1))
+        backup_file="${backups[$index]}"
+        [ -z "$backup_file" ] && { echo -e "${CROSS} No existe."; sleep 1.5; return; }
+
+        # Detener servicio
+        systemctl stop xray 2>/dev/null
+
+        # Restaurar
+        tar -xzf "$backup_file" -C / 2>/dev/null
+
+        # Asegurar directorios
+        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
+
+        # Regenerar config si existe users.db
+        if [ -f "$USERS_FILE" ]; then
+            current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+            generate_config "$current_path" "$current_host"
+        fi
+
+        systemctl start xray 2>/dev/null || systemctl restart xray 2>/dev/null
+
+        echo -e "${CHECK} ${GREEN}Backup restaurado correctamente:${NC}"
+        echo -e "${WHITE}   $(basename "$backup_file")${NC}"
+        sleep 2
+    }
+
     show_v2ray_menu() {
         while true; do
             clear
@@ -2788,6 +2864,8 @@ EOF
             echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"
             echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
             echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
+            echo -e " ${STAR} 9) ${GREEN}Hacer Backup${NC} ${SPARK}"
+            echo -e " ${STAR}10) ${BLUE}Restaurar Backup${NC} ${ROCKET}"
             echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
             echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
             read -p " ${ROCKET} Elige una opción: " opt
@@ -2811,11 +2889,15 @@ EOF
                     sleep 2
                     return
                     ;;
+                9) backup_v2ray ;;
+                10) restore_v2ray ;;
                 0) return ;;  # Vuelve al menú principal
                 *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
             esac
         done
     }
+
+    
 
     # === INICIO DEL SUBMENÚ ===
     [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
