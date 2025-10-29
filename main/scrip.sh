@@ -2810,7 +2810,7 @@ EOF
         for i in "${!backups[@]}"; do
             file="${backups[$i]}"
             size=$(du -h "$file" | cut -f1)
-            date=$(basename "$file" | grep -o '[0-9]\{8\}_[0-9]\{6\}' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)_\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
+            date=$(basename "$file" | sed 's/v2ray_telegram_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
             echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
         done
 
@@ -2821,21 +2821,50 @@ EOF
         backup_file="${backups[$index]}"
         [ -z "$backup_file" ] && { echo -e "${CROSS} No existe."; sleep 1.5; return; }
 
+        # DETENER XRAY
         systemctl stop xray 2>/dev/null
-        tar -xzf "$backup_file" -C / 2>/dev/null
+
+        # CREAR DIRECTORIOS
         mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
-        if [ -f "$USERS_FILE" ]; then
-            current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-            generate_config "$current_path" "$current_host"
+        # EXTRAER DIRECTO AL LUGAR CORRECTO
+        if ! tar -xzf "$backup_file" -C "$CONFIG_DIR" --strip-components=1 2>/dev/null; then
+            echo -e "${CROSS} ${RED}Error al extraer el backup.${NC}"
+            systemctl start xray 2>/dev/null
+            sleep 2
+            return
         fi
 
-        systemctl start xray 2>/dev/null || systemctl restart xray 2>/dev/null
+        # VERIFICAR QUE users.db FUE EXTRAÍDO
+        if [ ! -f "$USERS_FILE" ]; then
+            echo -e "${CROSS} ${RED}Error: users.db no se extrajo correctamente.${NC}"
+            systemctl start xray 2>/dev/null
+            sleep 2
+            return
+        fi
+
+        # OBTENER PATH Y HOST DEL config.json RESTAURADO
+        restored_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
+        restored_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
+
+        # SI NO HAY, USAR POR DEFECTO
+        [ -z "$restored_path" ] && restored_path="/pams"
+        [ -z "$restored_host" ] && restored_host=""
+
+        # REGENERAR config.json CON TODOS LOS USUARIOS
+        generate_config "$restored_path" "$restored_host"
+
+        # REINICIAR XRAY
+        systemctl restart xray 2>/dev/null
+
+        # CONTAR USUARIOS
+        user_count=$(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)
 
         echo -e "${CHECK} ${GREEN}Backup restaurado correctamente:${NC}"
         echo -e "${WHITE}   $(basename "$backup_file")${NC}"
-        sleep 2
+        echo -e "${CYAN}   Usuarios restaurados: $user_count${NC}"
+        echo -e "${PURPLE}   Path: $restored_path | Host: $restored_host${NC}"
+        sleep 3
     }
 
     send_backup_telegram() {
