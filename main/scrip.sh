@@ -3163,38 +3163,55 @@ restore_v2ray() {
             read -p " ${ROCKET} Elige una opción: " opt
 
             case $opt in
-                1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray; read -p "Enter..." ;;
-                2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray; read -p "Enter..." ;;
-                3) add_user; generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"; systemctl restart xray ;;
+                1)
+                    install_xray
+                    read -p "Path: " p
+                    read -p "Host: " h
+                    generate_config "$p" "$h"
+                    create_service
+                    systemctl restart xray 2>/dev/null
+                    read -p "Enter..."
+                    ;;
+                2)
+                    read -p "Nuevo Path: " p
+                    read -p "Nuevo Host: " h
+                    generate_config "$p" "$h"
+                    systemctl restart xray 2>/dev/null
+                    read -p "Enter..."
+                    ;;
+                3)
+                    add_user
+                    generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"
+                    systemctl restart xray 2>/dev/null
+                    ;;
                 4) remove_user_menu ;;
                 5) list_users ;;
                 6) export_all_vmess ;;
-                7) systemctl restart xray; echo -e "${CHECK} Reiniciado."; sleep 1.5 ;;
-                8) 
+                7)
+                    systemctl restart xray 2>/dev/null
+                    echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"
+                    sleep 1.5
+                    ;;
+                8)
                     clear
-                    echo -e "${TRASH} ${RED}DESINSTALANDO...${NC}"
+                    echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
                     systemctl stop xray 2>/dev/null
                     systemctl disable xray 2>/dev/null
                     rm -f "$SERVICE_FILE" "$XRAY_BIN"
                     rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
-                    echo -e "${CHECK} TODO BORRADO."
+                    echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
                     sleep 2
                     return
                     ;;
-                9) send_backup_telegram ;;
+                9)  send_backup_telegram ;;
                 10) restore_v2ray ;;
                 11) restore_from_telegram ;;
                 12) get_file_id_from_telegram ;;
-                0) return ;;
-                *) echo -e "${CROSS} Inválido."; sleep 1.5 ;;
+                0)  return ;;
+                *)  echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5 ;;
             esac
         done
     }
-
-    # === INICIO ===
-    [[ ! -f "$XRAY_BIN" ]] && echo -e "${YELLOW}Ejecuta opción 1 para instalar Xray.${NC}"
-    show_v2ray_menu
-}
 
 # ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
