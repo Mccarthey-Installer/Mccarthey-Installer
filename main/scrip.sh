@@ -2894,7 +2894,7 @@ restore_v2ray() {
 
         
 # === MENÚ V2RAY COMPLETO + TELEGRAM + FILE ID (v2.5) ===
-menu_v2ray() {
+
 
     # === ENVIAR BACKUP POR TELEGRAM ===
     send_backup_telegram() {
