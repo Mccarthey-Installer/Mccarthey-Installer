@@ -3115,12 +3115,7 @@ restore_from_telegram() {
     show_menu
 }
 
-# ========================================
-# INICIO
-# ========================================
 
-[ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
-show_menu
 
 # ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
