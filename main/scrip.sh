@@ -2968,70 +2968,76 @@ EOF
     }
 
     send_backup_telegram() {
-        clear
-        echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
+    clear
+    echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
 
-        # Instalar jq si no existe
-        if ! command -v jq &>/dev/null; then
-            echo -e "${YELLOW}Instalando jq...${NC}"
-            curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
-            chmod +x /usr/bin/jq
-        fi
+    # Instalar jq si no existe
+    if ! command -v jq &>/dev/null; then
+        echo -e "${YELLOW}Instalando jq...${NC}"
+        curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
+        chmod +x /usr/bin/jq
+    fi
 
-        # Verificar bot
-        if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
-            echo -e "${CROSS} ${RED}Bot no configurado. Usa 'SSH BOT' primero.${NC}"
-            sleep 2
-            return
-        fi
+    # Verificar bot
+    if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
+        echo -e "${CROSS} ${RED}Bot no configurado. Usa 'SSH BOT' primero.${NC}"
+        sleep 2
+        return
+    fi
 
-        TOKEN=$(cat /root/sshbot_token)
-        USER_ID=$(cat /root/sshbot_userid)
-        URL="https://api.telegram.org/bot$TOKEN"
+    TOKEN=$(cat /root/sshbot_token)
+    USER_ID=$(cat /root/sshbot_userid)
+    URL="https://api.telegram.org/bot$TOKEN"
 
-        # Crear backup
-        local timestamp=$(date +"%Y%m%d_%H%M%S")
-        local backup_file="/tmp/v2ray_backup_$timestamp.tar.gz"
-        local config_backup="/tmp/config.json"
-        local users_backup="/tmp/users.db"
+    # Crear backup
+    local timestamp=$(date +"%Y%m%d_%H%M%S")
+    local backup_file="/tmp/v2ray_backup_$timestamp.tar.gz"
+    local config_backup="/tmp/config.json"
+    local users_backup="/tmp/users.db"
 
-        cp "$CONFIG_FILE" "$config_backup" 2>/dev/null || { echo "Error config"; return; }
-        cp "$USERS_FILE" "$users_backup" 2>/dev/null || { echo "Error users"; return; }
+    cp "$CONFIG_FILE" "$config_backup" 2>/dev/null || { echo "Error config"; return; }
+    cp "$USERS_FILE" "$users_backup" 2>/dev/null || { echo "Error users"; return; }
 
-        tar -czf "$backup_file" "$config_backup" "$users_backup" 2>/dev/null
+    tar -czf "$backup_file" "$config_backup" "$users_backup" 2>/dev/null
 
-        if [[ ! -f "$backup_file" ]]; then
-            echo -e "${CROSS} ${RED}Error al crear el backup.${NC}"
-            sleep 2
-            return
-        fi
+    if [[ ! -f "$backup_file" ]]; then
+        echo -e "${CROSS} ${RED}Error al crear el backup.${NC}"
+        sleep 2
+        return
+    fi
 
-        # Enviar a Telegram
-        response=$(curl -s -F "chat_id=$USER_ID" \
-            -F "document=@$backup_file" \
-            -F "caption=Backup V2Ray - $timestamp\nIP: $IP\nPuerto: $PORT\nUsuarios: $(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)\nPath: $(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1 || echo "/pams")" \
-            "$URL/sendDocument")
+    # ENVIAR SIN CAPTION (o con caption vacío)
+    response=$(curl -s -F "chat_id=$USER_ID" \
+        -F "document=@$backup_file" \
+        "$URL/sendDocument")
 
-        # GUARDAR TAMBIÉN LOCALMENTE (BONUS)
-        local local_backup="$BACKUP_DIR/v2ray_telegram_$timestamp.tar.gz"
-        cp "$backup_file" "$local_backup"
+    # GUARDAR LOCAL
+    local local_backup="$BACKUP_DIR/v2ray_telegram_$timestamp.tar.gz"
+    cp "$backup_file" "$local_backup"
 
-        rm -f "$backup_file" "$config_backup" "$users_backup"
+    rm -f "$backup_file" "$config_backup" "$users_backup"
 
-        if echo "$response" | grep -q '"ok":true'; then
-            file_id=$(echo "$response" | jq -r '.result.document.file_id')
-            echo -e "${CHECK} ${GREEN}Backup enviado a Telegram!${NC}"
-            echo -e "${WHITE}   Archivo ID: $file_id${NC}"
-            echo -e "${CYAN}   Guardado local: $local_backup${NC}"
-            echo -e "${GRAY}────────────────────────────────────${NC}"
-            echo -e "${ROCKET} Ahora puedes restaurar con opción 10 incluso sin internet."
-        else
-            error=$(echo "$response" | jq -r '.description // "Error desconocido"')
-            echo -e "${CROSS} ${RED}Error al enviar: $error${NC}"
-        fi
+    if echo "$response" | grep -q '"ok":true'; then
+        file_id=$(echo "$response" | jq -r '.result.document.file_id')
+        
+        # ENVIAR SOLO EL FILE ID COMO MENSAJE DE TEXTO
+        curl -s -X POST "$URL/sendMessage" \
+            -d "chat_id=$USER_ID" \
+            -d "text=Archivo ID: $file_id" \
+            -d "parse_mode=Markdown" > /dev/null
 
-        read -p "Presiona Enter..."
-    }
+        echo -e "${CHECK} ${GREEN}Backup enviado a Telegram!${NC}"
+        echo -e "${WHITE}   Archivo ID: $file_id${NC}"
+        echo -e "${CYAN}   Guardado local: $local_backup${NC}"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        echo -e "${ROCKET} El File ID también fue enviado por Telegram."
+    else
+        error=$(echo "$response" | jq -r '.description // "Error desconocido"')
+        echo -e "${CROSS} ${RED}Error al enviar: $error${NC}"
+    fi
+
+    read -p "Presiona Enter..."
+}
 
     show_v2ray_menu() {
         while true; do
