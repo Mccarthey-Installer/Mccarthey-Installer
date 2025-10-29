@@ -2891,7 +2891,7 @@ restore_v2ray() {
         sleep 3
     }
 
-    restore_from_telegram() {
+restore_from_telegram() {
         clear
         echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
         echo -e "${GRAY}────────────────────────────────────${NC}"
@@ -3039,76 +3039,7 @@ restore_v2ray() {
         read -p "Presiona Enter..."
     }
 
-    menu_v2ray() {
-    # === VARIABLES GLOBALES (asegúrate de tenerlas arriba) ===
-    CONFIG_DIR="/usr/local/etc/xray"
-    CONFIG_FILE="$CONFIG_DIR/config.json"
-    USERS_FILE="$CONFIG_DIR/users.db"
-    BACKUP_DIR="$CONFIG_DIR/backups"
-    XRAY_BIN="/usr/local/bin/xray"
-    SERVICE_FILE="/etc/systemd/system/xray.service"
-    PORT=8080
-    IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
-
-    # === FUNCIONES (pega aquí todas: install_xray, generate_config, add_user, etc.) ===
-    # ... [TODAS TUS FUNCIONES: install_xray, send_backup_telegram, restore_v2ray, etc.] ...
-
-    # === FUNCIÓN RESTAURAR DESDE TELEGRAM (CORREGIDA) ===
-    restore_from_telegram() {
-        clear
-        echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-
-        if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
-            echo -e "${CROSS} ${RED}Bot no configurado. Usa opción 12 del menú principal.${NC}"
-            sleep 2
-            return
-        fi
-
-        TOKEN=$(cat /root/sshbot_token)
-        URL="https://api.telegram.org/bot$TOKEN"
-
-        read -p "Pega el File ID del backup: " file_id
-        [[ -z "$file_id" ]] && { echo -e "${CROSS} ID vacío."; sleep 1.5; return; }
-
-        echo -e "${YELLOW}Descargando...${NC}"
-        FILE_INFO=$(curl -s "$URL/getFile?file_id=$file_id")
-        if ! echo "$FILE_INFO" | grep -q '"ok":true'; then
-            echo -e "${CROSS} ${RED}Error: $(echo "$FILE_INFO" | jq -r '.description')${NC}"
-            sleep 2
-            return
-        fi
-
-        FILE_PATH=$(echo "$FILE_INFO" | jq -r '.result.file_path')
-        curl -s "https://api.telegram.org/file/bot$TOKEN/$FILE_PATH" -o /tmp/v2ray_restore.tar.gz
-
-        if [[ ! -f /tmp/v2ray_restore.tar.gz ]]; then
-            echo -e "${CROSS} ${RED}Error al descargar.${NC}"
-            sleep 2
-            return
-        fi
-
-        # Instalar Xray si no existe
-        [[ ! -f "$XRAY_BIN" ]] && install_xray
-
-        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
-        tar -xzf /tmp/v2ray_restore.tar.gz -C "$CONFIG_DIR" --strip-components=1 2>/dev/null
-        rm -f /tmp/v2ray_restore.tar.gz
-
-        [[ ! -f "$USERS_FILE" ]] && { echo -e "${CROSS} users.db no encontrado."; sleep 2; return; }
-
-        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-        host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-        generate_config "$path" "$host"
-
-        create_service
-        systemctl daemon-reload
-        systemctl restart xray 2>/dev/null
-
-        echo -e "${CHECK} ${GREEN}Restaurado desde Telegram!${NC}"
-        echo -e "${CYAN} Usuarios: $(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)${NC}"
-        sleep 2
-    }
+    
 
     # === OBTENER FILE ID ===
     get_file_id_from_telegram() {
