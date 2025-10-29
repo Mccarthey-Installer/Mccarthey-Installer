@@ -2482,6 +2482,8 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
+
+    
 # ========================================
 # MENÚ V2RAY (SUBMENÚ) - Integrado como opción 15
 # ========================================
@@ -2764,336 +2766,29 @@ EOF
         done < "$USERS_FILE"
         read -p "Enter..."
     }
-# === BACKUP Y RESTAURAR ===
-    backup_v2ray() {
-        clear
-        echo -e "${SPARK} ${YELLOW}HACIENDO BACKUP COMPLETO...${NC} $SPARK"
-        local timestamp=$(date +"%Y%m%d_%H%M%S")
-        local backup_file="$BACKUP_DIR/v2ray_backup_$timestamp.tar.gz"
 
-        mkdir -p "$BACKUP_DIR"
-
-        tar -czf "$backup_file" \
-            "$CONFIG_FILE" \
-            "$USERS_FILE" \
-            2>/dev/null
-
-        if [ $? -eq 0 ] && [ -f "$backup_file" ]; then
-            echo -e "${CHECK} ${GREEN}Backup creado:${NC}"
-            echo -e "${WHITE}   $backup_file${NC}"
-            echo -e "${CYAN}   Tamaño: $(du -h "$backup_file" | cut -f1)${NC}"
-            echo -e "${GRAY}────────────────────────────────────${NC}"
-            echo -e "${ROCKET} Copia este archivo a un lugar seguro."
-            read -p "Presiona Enter para continuar..."
-        else
-            echo -e "${CROSS} ${RED}Error al crear el backup.${NC}"
-            sleep 2
-        fi
-    }
-
-    get_file_id_from_telegram() {
-        clear
-        echo -e "${SPARK} ${YELLOW}OBTENER FILE ID DEL ÚLTIMO BACKUP${NC}"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-
-        if [[ ! -f /root/sshbot_token ]]; then
-            echo -e "${CROSS} ${RED}Bot no configurado. Usa opción 12 del menú principal.${NC}"
-            sleep 2
-            return
-        fi
-
-        TOKEN=$(cat /root/sshbot_token)
-        UPDATES=$(curl -s "https://api.telegram.org/bot$TOKEN/getUpdates?limit=20")
-
-        FILE_ID=$(echo "$UPDATES" | jq -r '.result[] | select(.message.document.file_name | contains("v2ray") or contains("backup")) | .message.document.file_id' | head -1)
-
-        if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
-            echo -e "${CHECK} ${GREEN}File ID encontrado:${NC}"
-            echo -e "${WHITE}   $FILE_ID${NC}"
-            echo -e "${CYAN}   Cópiado al portapapeles (si usas tmux/screen)${NC}"
-            echo "$FILE_ID" | xclip -selection clipboard 2>/dev/null || echo -e "${GRAY}   (Pega manualmente)${NC}"
-            echo -e "${ROCKET} Usa este ID en la opción 11 para restaurar."
-        else
-            echo -e "${CROSS} ${RED}No se encontró backup reciente.${NC}"
-            echo -e "${YELLOW}   Envía 'hola' al bot y haz un backup (opción 9).${NC}"
-        fi
-        read -p "Presiona Enter..."
-    }
-restore_v2ray() {
-        clear
-        echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP${NC} $SPARK"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-
-        if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR"/*.tar.gz 2>/dev/null)" ]; then
-            echo -e "${CROSS} ${YELLOW}No hay backups en $BACKUP_DIR${NC}"
-            read -p "Enter..." && return
-        fi
-
-        echo -e "${WHITE}Backups disponibles:${NC}"
-        mapfile -t backups < <(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r)
-        for i in "${!backups[@]}"; do
-            file="${backups[$i]}"
-            size=$(du -h "$file" | cut -f1)
-            date=$(basename "$file" | sed 's/v2ray_telegram_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
-            echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
-        done
-
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-        read -p "Elige número de backup: " choice
-        [[ ! "$choice" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} Inválido."; sleep 1.5; return; }
-        index=$((choice-1))
-        backup_file="${backups[$index]}"
-        [ -z "$backup_file" ] && { echo -e "${CROSS} No existe."; sleep 1.5; return; }
-
-        # DETENER XRAY
-        systemctl stop xray 2>/dev/null
-
-        # CREAR DIRECTORIOS
-        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
-
-        # EXTRAER DIRECTO AL LUGAR CORRECTO
-        if ! tar -xzf "$backup_file" -C "$CONFIG_DIR" --strip-components=1 2>/dev/null; then
-            echo -e "${CROSS} ${RED}Error al extraer el backup.${NC}"
-            systemctl start xray 2>/dev/null
-            sleep 2
-            return
-        fi
-
-        # VERIFICAR QUE users.db FUE EXTRAÍDO
-        if [ ! -f "$USERS_FILE" ]; then
-            echo -e "${CROSS} ${RED}Error: users.db no se extrajo correctamente.${NC}"
-            systemctl start xray 2>/dev/null
-            sleep 2
-            return
-        fi
-
-        # OBTENER PATH Y HOST DEL config.json RESTAURADO
-        restored_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
-        restored_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
-
-        # SI NO HAY, USAR POR DEFECTO
-        [ -z "$restored_path" ] && restored_path="/pams"
-        [ -z "$restored_host" ] && restored_host=""
-
-        # REGENERAR config.json CON TODOS LOS USUARIOS
-        generate_config "$restored_path" "$restored_host"
-
-        # REINICIAR XRAY
-        systemctl restart xray 2>/dev/null
-
-        # CONTAR USUARIOS
-        user_count=$(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)
-
-        echo -e "${CHECK} ${GREEN}Backup restaurado correctamente:${NC}"
-        echo -e "${WHITE}   $(basename "$backup_file")${NC}"
-        echo -e "${CYAN}   Usuarios restaurados: $user_count${NC}"
-        echo -e "${PURPLE}   Path: $restored_path | Host: $restored_host${NC}"
-        sleep 3
-    }
-
-
-        
-# === MENÚ V2RAY COMPLETO + TELEGRAM + FILE ID (v2.5) ===
-
-
-    # === ENVIAR BACKUP POR TELEGRAM ===
-    send_backup_telegram() {
-        clear
-        echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
-
-        if ! command -v jq &>/dev/null; then
-            echo -e "${YELLOW}Instalando jq...${NC}"
-            curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
-            chmod +x /usr/bin/jq
-        fi
-
-        if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
-            echo -e "${CROSS} ${RED}Bot no configurado. Usa 'SSH BOT' primero.${NC}"
-            sleep 2
-            return
-        fi
-
-        TOKEN=$(cat /root/sshbot_token)
-        USER_ID=$(cat /root/sshbot_userid)
-        URL="https://api.telegram.org/bot$TOKEN"
-
-        local timestamp=$(date +"%Y%m%d_%H%M%S")
-        local backup_file="/tmp/v2ray_backup_$timestamp.tar.gz"
-        local config_backup="/tmp/config.json"
-        local users_backup="/tmp/users.db"
-
-        cp "$CONFIG_FILE" "$config_backup" 2>/dev/null || { echo "Error config"; return; }
-        cp "$USERS_FILE" "$users_backup" 2>/dev/null || { echo "Error users"; return; }
-
-        tar -czf "$backup_file" "$config_backup" "$users_backup" 2>/dev/null
-
-        if [[ ! -f "$backup_file" ]]; then
-            echo -e "${CROSS} ${RED}Error al crear el backup.${NC}"
-            sleep 2
-            return
-        fi
-
-        response=$(curl -s -F "chat_id=$USER_ID" \
-            -F "document=@$backup_file" \
-            -F "caption=Backup V2Ray - $timestamp\nIP: $IP\nPuerto: $PORT\nUsuarios: $(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)\nPath: $(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1 || echo "/pams")" \
-            "$URL/sendDocument")
-
-        local local_backup="$BACKUP_DIR/v2ray_telegram_$timestamp.tar.gz"
-        mkdir -p "$BACKUP_DIR"
-        cp "$backup_file" "$local_backup"
-
-        rm -f "$backup_file" "$config_backup" "$users_backup"
-
-        if echo "$response" | grep -q '"ok":true'; then
-            file_id=$(echo "$response" | jq -r '.result.document.file_id')
-            echo -e "${CHECK} ${GREEN}Backup enviado a Telegram!${NC}"
-            echo -e "${WHITE}   Archivo ID: $file_id${NC}"
-            echo -e "${CYAN}   Guardado local: $local_backup${NC}"
-            echo -e "${GRAY}────────────────────────────────────${NC}"
-            echo -e "${ROCKET} Usa opción 12 para copiar el ID."
-        else
-            error=$(echo "$response" | jq -r '.description // "Error desconocido"')
-            echo -e "${CROSS} ${RED}Error al enviar: $error${NC}"
-        fi
-        read -p "Presiona Enter..."
-    }
-
-    # === RESTAURAR DESDE TELEGRAM ===
-    restore_from_telegram() {
-        clear
-        echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-
-        if [[ ! -f /root/sshbot_token ]]; then
-            echo -e "${CROSS} ${RED}Bot no configurado.${NC}"
-            sleep 2; return
-        fi
-
-        TOKEN=$(cat /root/sshbot_token)
-        URL="https://api.telegram.org/bot$TOKEN"
-
-        read -p "Pega el File ID del backup: " file_id
-        [[ -z "$file_id" ]] && { echo -e "${CROSS} ID vacío."; sleep 1.5; return; }
-
-        echo -e "${YELLOW}Descargando...${NC}"
-        FILE_INFO=$(curl -s "$URL/getFile?file_id=$file_id")
-        [[ ! $(echo "$FILE_INFO" | grep '"ok":true') ]] && { echo -e "${CROSS} ${RED}File ID inválido.${NC}"; sleep 2; return; }
-
-        FILE_PATH=$(echo "$FILE_INFO" | jq -r '.result.file_path')
-        curl -s "https://api.telegram.org/file/bot$TOKEN/$FILE_PATH" -o /tmp/v2ray_restore.tar.gz
-
-        [[ ! -f /tmp/v2ray_restore.tar.gz ]] && { echo -e "${CROSS} ${RED}Error al descargar.${NC}"; sleep 2; return; }
-
-        [[ ! -f "$XRAY_BIN" ]] && { echo -e "${YELLOW}Instalando Xray...${NC}"; install_xray; }
-
-        mkdir -p "$CONFIG_DIR" "$LOG_DIR"
-        tar -xzf /tmp/v2ray_restore.tar.gz -C "$CONFIG_DIR" --strip-components=1 2>/dev/null
-        rm -f /tmp/v2ray_restore.tar.gz
-
-        [[ ! -f "$USERS_FILE" ]] && { echo -e "${CROSS} ${RED}users.db no encontrado.${NC}"; sleep 2; return; }
-
-        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-        host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-        generate_config "$path" "$host"
-
-        create_service
-        systemctl daemon-reload
-        systemctl restart xray 2>/dev/null
-
-        user_count=$(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)
-        echo -e "${CHECK} ${GREEN}¡Restaurado desde Telegram!${NC}"
-        echo -e "${WHITE}   Usuarios: $user_count${NC}"
-        echo -e "${CYAN}   Path: $path | Host: $host${NC}"
-        sleep 3
-    }
-
-    # === OBTENER FILE ID AUTOMÁTICO ===
-    get_file_id_from_telegram() {
-        clear
-        echo -e "${SPARK} ${YELLOW}OBTENER FILE ID${NC}"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-
-        [[ ! -f /root/sshbot_token ]] && { echo -e "${CROSS} Bot no configurado."; sleep 2; return; }
-
-        TOKEN=$(cat /root/sshbot_token)
-        UPDATES=$(curl -s "https://api.telegram.org/bot$TOKEN/getUpdates?limit=20")
-        FILE_ID=$(echo "$UPDATES" | jq -r '.result[] | select(.message.document.file_name | contains("v2ray")) | .message.document.file_id' | head -1)
-
-        if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
-            echo -e "${CHECK} ${GREEN}File ID:${NC} $FILE_ID"
-            echo "$FILE_ID" | xclip -selection clipboard 2>/dev/null || true
-            echo -e "${CYAN} Usa este ID en opción 11.${NC}"
-        else
-            echo -e "${CROSS} ${RED}No hay backup reciente.${NC}"
-        fi
-        read -p "Enter..."
-    }
-
-    # === RESTAURAR LOCAL ===
-    restore_v2ray() {
-        clear
-        echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP LOCAL${NC} $SPARK"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-
-        [[ ! -d "$BACKUP_DIR" || -z "$(ls "$BACKUP_DIR"/*.tar.gz 2>/dev/null)" ]] && {
-            echo -e "${CROSS} ${YELLOW}No hay backups locales.${NC}"
-            read -p "Enter..." && return
-        }
-
-        mapfile -t backups < <(ls -1 "$BACKUP_DIR"/*.tar.gz | sort -r)
-        for i in "${!backups[@]}"; do
-            file="${backups[$i]}"
-            size=$(du -h "$file" | cut -f1)
-            date=$(basename "$file" | sed 's/.*_\([0-9]\{8\}_[0-9]\{6\}\).*/\1/' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)_\([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
-            echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
-        done
-
-        read -p "Elige número: " choice
-        [[ ! "$choice" =~ ^[0-9]+$ ]] && return
-        backup_file="${backups[$((choice-1))]}"
-        [[ -z "$backup_file" ]] && return
-
-        systemctl stop xray 2>/dev/null
-        mkdir -p "$CONFIG_DIR"
-        tar -xzf "$backup_file" -C "$CONFIG_DIR" --strip-components=1 2>/dev/null
-        [[ ! -f "$USERS_FILE" ]] && { echo -e "${CROSS} users.db no encontrado."; systemctl start xray; return; }
-
-        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-        host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-        generate_config "$path" "$host"
-        systemctl restart xray 2>/dev/null
-
-        echo -e "${CHECK} ${GREEN}Backup local restaurado.${NC}"
-        sleep 2
-    }
-
-    # === MENÚ PRINCIPAL CON 12 OPCIONES ===
-    show_menu() {
+    show_v2ray_menu() {
         while true; do
             clear
             current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
             current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "Ninguno")
 
-            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}XRAY-MENU v2.5 (2025)${NC} ${FIRE}${FIRE}${FIRE}"
+            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
             echo -e "${GRAY}════════════════════════════════════════════════${NC}"
             echo -e " ${UP} IP:     ${GREEN}$IP${NC}"
             echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"
             echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"
             echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"
             echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
-            echo -e " ${STAR} 1) ${CYAN}Instalar desde cero${NC}"
+            echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"
             echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"
-            echo -e " ${STAR} 3) ${GREEN}Agregar usuario (+JSON)${NC}"
+            echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"
             echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"
-            echo -e " ${STAR} 5) ${BLUE}Listar usuarios (UUID completo)${NC}"
-            echo -e " ${STAR} 6) ${PURPLE}Exportar TODOS${NC}"
+            echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"
+            echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"
             echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
-            echo -e " ${STAR} 8) ${RED}Desinstalar TODO (borra todo)${NC} ${TRASH}"
-            echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"
-            echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"
-            echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"
-            echo -e " ${STAR}12) ${YELLOW}Obtener File ID del último backup${NC}"
-            echo -e " ${STAR} 0) ${GRAY}Salir${NC}"
+            echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
+            echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
             echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
             read -p " ${ROCKET} Elige una opción: " opt
 
@@ -3112,25 +2807,21 @@ restore_v2ray() {
                     systemctl disable xray 2>/dev/null
                     rm -f "$SERVICE_FILE" "$XRAY_BIN"
                     rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
-                    crontab -l 2>/dev/null | grep -v "$0" | crontab -
-                    echo -e "${CHECK} ${RED}TODO BORRADO. NADA QUEDÓ.${NC}"
+                    echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
                     sleep 2
-                    exit 0
+                    return
                     ;;
-                9)  send_backup_telegram ;;
-                10) restore_v2ray ;;
-                11) restore_from_telegram ;;
-                12) get_file_id_from_telegram ;;
-                0)  clear; echo -e "${STAR} ${GRAY}¡Hasta luego!${NC}"; exit 0;;
-                *)  echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
+                0) return ;;  # Vuelve al menú principal
+                *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
             esac
         done
     }
 
-    # === INICIAR MENÚ ===
-    show_menu
+    # === INICIO DEL SUBMENÚ ===
+    [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
+    show_v2ray_menu
 }
-    
+
 
 
 
