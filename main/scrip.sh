@@ -2790,6 +2790,35 @@ EOF
             sleep 2
         fi
     }
+
+    get_file_id_from_telegram() {
+        clear
+        echo -e "${SPARK} ${YELLOW}OBTENER FILE ID DEL ÚLTIMO BACKUP${NC}"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+
+        if [[ ! -f /root/sshbot_token ]]; then
+            echo -e "${CROSS} ${RED}Bot no configurado. Usa opción 12 del menú principal.${NC}"
+            sleep 2
+            return
+        fi
+
+        TOKEN=$(cat /root/sshbot_token)
+        UPDATES=$(curl -s "https://api.telegram.org/bot$TOKEN/getUpdates?limit=20")
+
+        FILE_ID=$(echo "$UPDATES" | jq -r '.result[] | select(.message.document.file_name | contains("v2ray") or contains("backup")) | .message.document.file_id' | head -1)
+
+        if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
+            echo -e "${CHECK} ${GREEN}File ID encontrado:${NC}"
+            echo -e "${WHITE}   $FILE_ID${NC}"
+            echo -e "${CYAN}   Cópiado al portapapeles (si usas tmux/screen)${NC}"
+            echo "$FILE_ID" | xclip -selection clipboard 2>/dev/null || echo -e "${GRAY}   (Pega manualmente)${NC}"
+            echo -e "${ROCKET} Usa este ID en la opción 11 para restaurar."
+        else
+            echo -e "${CROSS} ${RED}No se encontró backup reciente.${NC}"
+            echo -e "${YELLOW}   Envía 'hola' al bot y haz un backup (opción 9).${NC}"
+        fi
+        read -p "Presiona Enter..."
+    }
 restore_v2ray() {
         clear
         echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP${NC} $SPARK"
@@ -3034,6 +3063,7 @@ restore_v2ray() {
             echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"
             echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"
             echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"
+            echo -e " ${STAR}12) ${YELLOW}Obtener File ID del último backup${NC}"
             echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
             echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
             read -p " ${ROCKET} Elige una opción: " opt
@@ -3060,6 +3090,7 @@ restore_v2ray() {
                 9) send_backup_telegram ;;
                 10) restore_v2ray ;;
                 11) restore_from_telegram ;;
+                12) get_file_id_from_telegram ;;
                 0) return ;;
                 *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
             esac
@@ -3078,7 +3109,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵💫🎄 PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵💫PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
