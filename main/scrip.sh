@@ -2767,6 +2767,8 @@ EOF
         read -p "Enter..."
     }
 
+    
+    # === BACKUP Y RESTAURAR ===
     backup_v2ray() {
         clear
         echo -e "${SPARK} ${YELLOW}HACIENDO BACKUP COMPLETO...${NC} $SPARK"
@@ -2775,9 +2777,8 @@ EOF
 
         mkdir -p "$BACKUP_DIR"
 
-        # Copiar archivos críticos
         tar -czf "$backup_file" \
-            "$CONFIG_DIR/config.json" \
+            "$CONFIG_FILE" \
             "$USERS_FILE" \
             2>/dev/null
 
@@ -2820,16 +2821,10 @@ EOF
         backup_file="${backups[$index]}"
         [ -z "$backup_file" ] && { echo -e "${CROSS} No existe."; sleep 1.5; return; }
 
-        # Detener servicio
         systemctl stop xray 2>/dev/null
-
-        # Restaurar
         tar -xzf "$backup_file" -C / 2>/dev/null
-
-        # Asegurar directorios
         mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
-        # Regenerar config si existe users.db
         if [ -f "$USERS_FILE" ]; then
             current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
             current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
@@ -2841,6 +2836,72 @@ EOF
         echo -e "${CHECK} ${GREEN}Backup restaurado correctamente:${NC}"
         echo -e "${WHITE}   $(basename "$backup_file")${NC}"
         sleep 2
+    }
+
+    send_backup_telegram() {
+        clear
+        echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
+
+        # Instalar jq si no existe
+        if ! command -v jq &>/dev/null; then
+            echo -e "${YELLOW}Instalando jq...${NC}"
+            curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
+            chmod +x /usr/bin/jq
+        fi
+
+        # Verificar bot
+        if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
+            echo -e "${CROSS} ${RED}Bot no configurado. Usa 'SSH BOT' primero.${NC}"
+            sleep 2
+            return
+        fi
+
+        TOKEN=$(cat /root/sshbot_token)
+        USER_ID=$(cat /root/sshbot_userid)
+        URL="https://api.telegram.org/bot$TOKEN"
+
+        # Crear backup
+        local timestamp=$(date +"%Y%m%d_%H%M%S")
+        local backup_file="/tmp/v2ray_backup_$timestamp.tar.gz"
+        local config_backup="/tmp/config.json"
+        local users_backup="/tmp/users.db"
+
+        cp "$CONFIG_FILE" "$config_backup" 2>/dev/null || { echo "Error config"; return; }
+        cp "$USERS_FILE" "$users_backup" 2>/dev/null || { echo "Error users"; return; }
+
+        tar -czf "$backup_file" "$config_backup" "$users_backup" 2>/dev/null
+
+        if [[ ! -f "$backup_file" ]]; then
+            echo -e "${CROSS} ${RED}Error al crear el backup.${NC}"
+            sleep 2
+            return
+        fi
+
+        # Enviar a Telegram
+        response=$(curl -s -F "chat_id=$USER_ID" \
+            -F "document=@$backup_file" \
+            -F "caption=Backup V2Ray - $timestamp\nIP: $IP\nPuerto: $PORT\nUsuarios: $(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)\nPath: $(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1 || echo "/pams")" \
+            "$URL/sendDocument")
+
+        # GUARDAR TAMBIÉN LOCALMENTE (BONUS)
+        local local_backup="$BACKUP_DIR/v2ray_telegram_$timestamp.tar.gz"
+        cp "$backup_file" "$local_backup"
+
+        rm -f "$backup_file" "$config_backup" "$users_backup"
+
+        if echo "$response" | grep -q '"ok":true'; then
+            file_id=$(echo "$response" | jq -r '.result.document.file_id')
+            echo -e "${CHECK} ${GREEN}Backup enviado a Telegram!${NC}"
+            echo -e "${WHITE}   Archivo ID: $file_id${NC}"
+            echo -e "${CYAN}   Guardado local: $local_backup${NC}"
+            echo -e "${GRAY}────────────────────────────────────${NC}"
+            echo -e "${ROCKET} Ahora puedes restaurar con opción 10 incluso sin internet."
+        else
+            error=$(echo "$response" | jq -r '.description // "Error desconocido"')
+            echo -e "${CROSS} ${RED}Error al enviar: $error${NC}"
+        fi
+
+        read -p "Presiona Enter..."
     }
 
     show_v2ray_menu() {
@@ -2864,8 +2925,8 @@ EOF
             echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"
             echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
             echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
-            echo -e " ${STAR} 9) ${GREEN}Hacer Backup${NC} ${SPARK}"
-            echo -e " ${STAR}10) ${BLUE}Restaurar Backup${NC} ${ROCKET}"
+            echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"
+            echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"
             echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
             echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
             read -p " ${ROCKET} Elige una opción: " opt
@@ -2889,14 +2950,13 @@ EOF
                     sleep 2
                     return
                     ;;
-                9) backup_v2ray ;;
+                9) send_backup_telegram ;;
                 10) restore_v2ray ;;
-                0) return ;;  # Vuelve al menú principal
+                0) return ;;
                 *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
             esac
         done
     }
-
     
 
     # === INICIO DEL SUBMENÚ ===
@@ -2914,7 +2974,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💵🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💵PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
