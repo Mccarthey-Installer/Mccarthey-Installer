@@ -3133,66 +3133,63 @@ restore_v2ray() {
     }
 
     # === MENÚ PRINCIPAL (CORREGIDO) ===
-    show_v2ray_menu() {
-        while true; do
+    show_menu() {
+    clear
+    current_path=$(grep '"path"' $CONFIG_FILE 2>/dev/null | awk -F'"' '{print $4}' || echo "No configurado")
+    current_host=$(grep '"Host"' $CONFIG_FILE 2>/dev/null | awk -F'"' '{print $4}' || echo "Ninguno")
+
+    echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}XRAY-MENU v2.5 (2025)${NC} ${FIRE}${FIRE}${FIRE}"
+    echo -e "${GRAY}════════════════════════════════════════════════${NC}"
+    echo -e " ${UP} IP:     ${GREEN}$IP${NC}"
+    echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"
+    echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"
+    echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"
+    echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
+    echo -e " ${STAR} 1) ${CYAN}Instalar desde cero${NC}"
+    echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"
+    echo -e " ${STAR} 3) ${GREEN}Agregar usuario (+JSON)${NC}"
+    echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"
+    echo -e " ${STAR} 5) ${BLUE}Listar usuarios (UUID completo)${NC}"
+    echo -e " ${STAR} 6) ${PURPLE}Exportar TODOS${NC}"
+    echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
+    echo -e " ${STAR} 8) ${RED}Desinstalar TODO (borra todo)${NC} ${TRASH}"
+    echo -e " ${STAR} 0) ${GRAY}Salir${NC}"
+    echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
+    read -p " ${ROCKET} Elige una opción: " opt
+
+    case $opt in
+        1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...";;
+        2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...";;
+        3) add_user; generate_config "$(grep '"path"' $CONFIG_FILE | awk -F'"' '{print $4}')" "$(grep '"Host"' $CONFIG_FILE | awk -F'"' '{print $4}')"; systemctl restart xray 2>/dev/null;;
+        4) remove_user_menu;;
+        5) list_users;;
+        6) export_all_vmess;;
+        7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5;;
+        8) 
             clear
-            current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
-            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "Ninguno")
-
-            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
-            echo -e "${GRAY}════════════════════════════════════════════════${NC}"
-            echo -e " ${UP} IP:     ${GREEN}$IP${NC}"
-            echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"
-            echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"
-            echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
-            echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"
-            echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"
-            echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"
-            echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"
-            echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"
-            echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"
-            echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
-            echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
-            echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"
-            echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"
-            echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"
-            echo -e " ${STAR}12) ${YELLOW}Obtener File ID del último backup${NC}"
-            echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
-            read -p " ${ROCKET} Elige una opción: " opt
-
-            case $opt in
-                1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...";;
-                2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...";;
-                3) add_user; generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"; systemctl restart xray 2>/dev/null;;
-                4) remove_user_menu;;
-                5) list_users;;
-                6) export_all_vmess;;
-                7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5;;
-                8) 
-                    clear
-                    echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
-                    systemctl stop xray 2>/dev/null
-                    systemctl disable xray 2>/dev/null
-                    rm -f "$SERVICE_FILE" "$XRAY_BIN"
-                    rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
-                    echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
-                    sleep 2
-                    return
-                    ;;
-                9) send_backup_telegram ;;
-                10) restore_v2ray ;;
-                11) restore_from_telegram ;;
-                12) get_file_id_from_telegram ;;
-                0) return ;;
-                *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
-            esac
-        done
-    }
-
-    show_v2ray_menu
+            echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
+            systemctl stop xray 2>/dev/null
+            systemctl disable xray 2>/dev/null
+            rm -f $SERVICE_FILE $XRAY_BIN
+            rm -rf $CONFIG_DIR $LOG_DIR $BACKUP_DIR
+            crontab -l 2>/dev/null | grep -v "$0" | crontab -
+            echo -e "${CHECK} ${RED}TODO BORRADO. NADA QUEDÓ.${NC}"
+            echo -e "${GRAY}Adiós...${NC}"
+            sleep 2
+            exit 0
+            ;;
+        0) clear; echo -e "${STAR} ${GRAY}¡Hasta luego!${NC}"; exit 0;;
+        *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
+    esac
+    show_menu
 }
+
+# ========================================
+# INICIO
+# ========================================
+
+[ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
+show_menu
 
 # ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
