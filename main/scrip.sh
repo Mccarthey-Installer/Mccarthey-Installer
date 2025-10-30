@@ -2672,50 +2672,91 @@ EOF
     }
 
     remove_user_menu() {
-        clear
-        echo -e "${TRASH} ${RED}ELIMINAR USUARIO${NC}"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
+    clear
+    echo -e "${TRASH} ${RED}ELIMINAR USUARIOS${NC}"
+    echo -e "${GRAY}────────────────────────────────────${NC}"
 
-        mapfile -t users < "$USERS_FILE"
-        if [ ${#users[@]} -eq 0 ]; then
-            echo -e "${CROSS} ${YELLOW}No hay usuarios registrados.${NC}"
-            read -p "Enter..." && return
-        fi
+    mapfile -t users < "$USERS_FILE"
+    if [ ${#users[@]} -eq 0 ]; then
+        echo -e "${CROSS} ${YELLOW}No hay usuarios registrados.${NC}"
+        read -p "Enter..." && return
+    fi
 
-        i=1
-        for line in "${users[@]}"; do
-            name=$(echo "$line" | cut -d: -f1)
-            echo -e "$i) ${YELLOW}$name${NC}"
-            ((i++))
-        done
+    # Mostrar lista numerada
+    i=1
+    declare -A name_to_index
+    for line in "${users[@]}"; do
+        name=$(echo "$line" | cut -d: -f1)
+        echo -e "$i) ${YELLOW}$name${NC}"
+        name_to_index["$name"]=$i
+        ((i++))
+    done
 
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-        read -p "Elige número o escribe nombre: " input
+    echo -e "${GRAY}────────────────────────────────────${NC}"
+    echo -e "${WHITE}Puedes ingresar números, nombres o mezcla:${NC}"
+    echo -e "${CYAN}Ejemplos: 1 3 5  o  delms paty  o  1 delms 4${NC}"
+    echo -e "${GRAY}────────────────────────────────────${NC}"
+    read -p "Ingrese los usuarios a eliminar: " input
 
-        if [[ "$input" =~ ^[0-9]+$ ]]; then
-            index=$((input-1))
-            user_line="${users[$index]}"
-            [ -z "$user_line" ] && { echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5; return; }
-            username=$(echo "$user_line" | cut -d: -f1)
+    # Si no hay input
+    [[ -z "$input" ]] && { echo -e "${CROSS} ${RED}Entrada vacía.${NC}"; sleep 1.5; return; }
+
+    # Convertir comas en espacios y dividir
+    input=$(echo "$input" | tr ',' ' ')
+    read -ra selections <<< "$input"
+
+    deleted_count=0
+    failed=()
+
+    for sel in "${selections[@]}"; do
+        username=""
+        if [[ "$sel" =~ ^[0-9]+$ ]]; then
+            index=$((sel-1))
+            if [[ $index -ge 0 && $index -lt ${#users[@]} ]]; then
+                username=$(echo "${users[$index]}" | cut -d: -f1)
+            else
+                failed+=("Número $sel (fuera de rango)")
+                continue
+            fi
         else
-            username="$input"
+            # Buscar por nombre
+            if grep -q "^${sel}:" "$USERS_FILE"; then
+                username="$sel"
+            else
+                failed+=("Nombre '$sel' (no existe)")
+                continue
+            fi
         fi
 
-        if ! grep -q "^$username:" "$USERS_FILE"; then
-            echo -e "${CROSS} ${RED}Usuario no encontrado.${NC}"
-            sleep 1.5
-            return
-        fi
+        # Eliminar
+        sed -i "/^${username}:/d" "$USERS_FILE"
+        ((deleted_count++))
+    done
 
-        sed -i "/^$username:/d" "$USERS_FILE"
+    # Solo regenerar config si se eliminó al menos uno
+    if [ $deleted_count -gt 0 ]; then
         current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
         generate_config "$current_path" "$current_host"
         systemctl restart xray 2>/dev/null
+    fi
 
-        echo -e "${CHECK} ${GREEN}Usuario '$username' eliminado.${NC}"
-        sleep 1.5
-    }
+    # Resultado final
+    clear
+    echo -e "${TRASH} ${RED}RESULTADO DE ELIMINACIÓN${NC}"
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    if [ $deleted_count -gt 0 ]; then
+        echo -e "${CHECK} ${GREEN}Eliminados: $deleted_count usuario(s)${NC}"
+    fi
+    if [ ${#failed[@]} -gt 0 ]; then
+        echo -e "${CROSS} ${RED}Fallidos:${NC}"
+        for err in "${failed[@]}"; do
+            echo -e "   • $err"
+        done
+    fi
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    read -p "Presiona Enter para continuar..."
+}
 
     list_users() {
         clear
