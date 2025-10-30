@@ -2683,14 +2683,14 @@ EOF
         read -p "Enter..." && return
     fi
 
-    # === EMOJIS LOCALES (para que se vean SÍ o SÍ) ===
-    local TRASH="TRASH"
-    local STAR="STAR"
-    local KEY="KEY"
-    local CAL="CAL"
-    local ROCKET="ROCKET"
-    local CHECK="CHECK"
-    local CROSS="CROSS"
+        # === EMOJIS REALES ===
+    local TRASH="🗑️"
+    local STAR="⭐"
+    local KEY="🔑"
+    local CAL="📅"
+    local ROCKET="🚀"
+    local CHECK="✅"
+    local CROSS="❌"
     local GRAY='\033[0;90m'
     local RED='\033[1;91m'
     local GREEN='\033[1;92m'
