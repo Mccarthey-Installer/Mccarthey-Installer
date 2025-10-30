@@ -2500,7 +2500,7 @@ menu_v2ray() {
     local PORT=8080
     local XRAY_BIN="/usr/local/bin/xray"
 
-    # COLORES LOCALES (no sobrescriben los tuyos)
+     # COLORES LOCALES (no sobrescriben los tuyos)
     local RED='\033[1;91m'
     local GREEN='\033[1;92m'
     local YELLOW='\033[1;93m'
@@ -2512,18 +2512,18 @@ menu_v2ray() {
     local NC='\033[0m'
 
     # EMOJIS
-    local FIRE="FIRE"
-    local ROCKET="ROCKET"
-    local SPARK="SPARK"
-    local STAR="STAR"
-    local CHECK="CHECK"
-    local CROSS="CROSS"
-    local TRASH="TRASH"
-    local USER="USER"
-    local KEY="KEY"
-    local CAL="CAL"
-    local DOWN="DOWN"
-    local UP="UP"
+    local FIRE="🔥"
+    local ROCKET="🚀"
+    local SPARK="✨"
+    local STAR="⭐"
+    local CHECK="✅"
+    local CROSS="❌"
+    local TRASH="🗑️"
+    local USER="👤"
+    local KEY="🔑"
+    local CAL="📅"
+    local DOWN="⬇️"
+    local UP="⬆️"
 
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
