@@ -2489,7 +2489,7 @@ eliminar_swap() {
 # ========================================
 
 menu_v2ray() {
-    # === VARIABLES DEL V2RAY (no interfieren con tu menú principal) ===
+    # === VARIABLES DEL V2RAY ===
     local CONFIG_DIR="/usr/local/etc/xray"
     local CONFIG_FILE="$CONFIG_DIR/config.json"
     local SERVICE_FILE="/etc/systemd/system/xray.service"
@@ -2499,8 +2499,9 @@ menu_v2ray() {
     local IP=$(curl -s ifconfig.me || echo "IP_NO_DETECTADA")
     local PORT=8080
     local XRAY_BIN="/usr/local/bin/xray"
+    local CLEAN_SCRIPT="/usr/local/bin/clean_expired_v2ray.sh"
 
-   # COLORES LOCALES (no sobrescriben los tuyos)
+     # COLORES LOCALES
     local RED='\033[1;91m'
     local GREEN='\033[1;92m'
     local YELLOW='\033[1;93m'
@@ -2528,20 +2529,24 @@ menu_v2ray() {
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
 
-    # === FUNCIÓN: DÍAS RESTANTES (usa fecha real +1 día) ===
+    # === FUNCIÓN: CALCULAR DÍAS RESTANTES USANDO FECHA REAL (ISO) ===
     calcular_dias_restantes() {
-        local fecha_real="$1"  # formato: 2025-11-02
-        local fecha_actual=$(date "+%Y-%m-%d")
-        local fecha_exp_epoch=$(date -d "$fecha_real" "+%s" 2>/dev/null)
-        local fecha_act_epoch=$(date -d "$fecha_actual" "+%s")
-        if [[ -z "$fecha_exp_epoch" ]]; then
+        local real_expiry="$1"  # Formato: 2025-11-02 00:00:00
+        local exp_epoch=$(date -d "$real_expiry" "+%s" 2>/dev/null)
+        local now_epoch=$(date "+%s")
+
+        if [[ -z "$exp_epoch" ]]; then
             echo 0
             return
         fi
-        local diff_segundos=$((fecha_exp_epoch - fecha_act_epoch))
-        local dias_restantes=$((diff_segundos / 86400))
-        (( dias_restantes < 0 )) && dias_restantes=0
-        echo $dias_restantes
+
+        local diff_segundos=$((exp_epoch - now_epoch))
+        if (( diff_segundos <= 0 )); then
+            echo 0
+        else
+            local dias_restantes=$((diff_segundos / 86400))
+            echo $dias_restantes
+        fi
     }
 
     install_xray() {
@@ -2582,6 +2587,7 @@ EOF
         local host="$2"
 
         [[ -z "$path" ]] && path="/susi"
+
         if [[ "$host" == "Host" || "$host" == "host" || -z "$host" ]]; then
             host=""
         fi
@@ -2602,9 +2608,9 @@ EOF
             echo '        "clients": ['
 
             first=true
-            while IFS=: read -r name uuid fecha_mostrar dias created fecha_real; do
+            while IFS=: read -r name uuid display_expiry dias created real_expiry; do
                 [[ $name == "#"* ]] && continue
-                dias_restantes=$(calcular_dias_restantes "$fecha_real")
+                dias_restantes=$(calcular_dias_restantes "$real_expiry")
                 (( dias_restantes <= 0 )) && continue
                 if [ "$first" = false ]; then echo "          ,"; fi
                 echo "          {"
@@ -2621,6 +2627,7 @@ EOF
             echo '        "network": "ws",'
             echo '        "wsSettings": {'
             echo "          \"path\": \"$path\""
+            
             if [ -n "$host" ]; then
                 echo '          ,"headers": {'
                 echo "            \"Host\": \"$host\""
@@ -2628,6 +2635,7 @@ EOF
             else
                 echo '          ,"headers": {}'
             fi
+
             echo '        }'
             echo '      }'
             echo '    }'
@@ -2648,12 +2656,14 @@ EOF
         uuid=$($XRAY_BIN uuid)
         created=$(date "+%Y-%m-%d %H:%M:%S")
 
-        # === LO QUE TÚ QUIERES: +1 día para expiración real ===
-        fecha_mostrar=$(date -d "+$days days" "+%d/%B/%Y" | tr '[:upper:]' '[:lower:]')
-        fecha_real=$(date -d "+$((days + 1)) days" "+%Y-%m-%d")
+        # === FECHA MOSTRADA: expira en $days días ===
+        display_expiry=$(date -d "+$days days" "+%d/%B/%Y" | tr '[:upper:]' '[:lower:]')
 
-        # Guardar: name:uuid:mostrar:dias:creado:real
-        echo "$name:$uuid:$fecha_mostrar:$days:$created:$fecha_real" >> "$USERS_FILE"
+        # === FECHA REAL DE BORRADO: a las 00:00 del día después ===
+        real_expiry=$(date -d "+$((days + 1)) days" "+%Y-%m-%d 00:00:00")
+
+        # === GUARDAR: 6 campos ===
+        echo "$name:$uuid:$display_expiry:$days:$created:$real_expiry" >> "$USERS_FILE"
 
         current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "/pams")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
@@ -2680,7 +2690,7 @@ EOF
         echo -e "${GRAY}════════════════════════════════════${NC}"
         echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
         echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
-        echo -e "${CAL} Expira:   ${PURPLE}$fecha_mostrar${NC}"
+        echo -e "${CAL} Expira:   ${PURPLE}$display_expiry${NC}"
         echo -e "${CAL} Días:     ${GREEN}$days${NC}"
         echo -e "${CAL} Creado:   ${WHITE}$created${NC}"
         echo -e "${GRAY}════════════════════════════════════${NC}"
@@ -2739,15 +2749,15 @@ EOF
         echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
         active=0
-        while IFS=: read -r name uuid fecha_mostrar dias created fecha_real; do
+        while IFS=: read -r name uuid display_expiry dias created real_expiry; do
             [[ $name == "#"* ]] && continue
-            dias_restantes=$(calcular_dias_restantes "$fecha_real")
+            dias_restantes=$(calcular_dias_restantes "$real_expiry")
             (( dias_restantes <= 0 )) && continue
 
             active=1
             echo -e "${USER} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
             echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
-            echo -e "${CAL} ${WHITE}Expira:${NC}  ${PURPLE}$fecha_mostrar${NC}"
+            echo -e "${CAL} ${WHITE}Expira:${NC}  ${PURPLE}$display_expiry${NC}"
             echo -e "${CAL} ${WHITE}Días:${NC}    ${GREEN}$dias_restantes${NC} (de $dias)"
             echo -e "${CAL} ${WHITE}Creado:${NC}  ${WHITE}$created${NC}"
             echo -e "${PURPLE}────────────────────────────────────${NC}"
@@ -2762,9 +2772,9 @@ EOF
         echo -e "${PURPLE}════════════════════════════════${NC}"
         current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-        while IFS=: read -r name uuid fecha_mostrar dias created fecha_real; do
+        while IFS=: read -r name uuid display_expiry dias created real_expiry; do
             [[ $name == "#"* ]] && continue
-            dias_restantes=$(calcular_dias_restantes "$fecha_real")
+            dias_restantes=$(calcular_dias_restantes "$real_expiry")
             (( dias_restantes <= 0 )) && continue
             json_data=$(cat <<EOF
 {
@@ -2831,7 +2841,7 @@ EOF
         for i in "${!backups[@]}"; do
             file="${backups[$i]}"
             size=$(du -h "$file" | cut -f1)
-            date=$(basename "$file" | sed 's/v2ray_backup_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
+            date=$(basename "$file" | sed 's/v2ray_backup_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{6\}\)/\1-\2-\3 \4:\5:\6/')
             echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
         done
 
@@ -3018,7 +3028,64 @@ EOF
         read -p "Presiona Enter..."
     }
 
+    # === CRON: LIMPIAR USUARIOS CADUCADOS A LAS 00:05 ===
+    install_clean_cron() {
+        cat > "$CLEAN_SCRIPT" <<'EOF'
+#!/bin/bash
+USERS_FILE="/usr/local/etc/xray/users.db"
+CONFIG_FILE="/usr/local/etc/xray/config.json"
+XRAY_BIN="/usr/local/bin/xray"
+
+changed=0
+while IFS=: read -r name uuid display_expiry dias created real_expiry; do
+    [[ $name == "#"* ]] && continue
+    exp_epoch=$(date -d "$real_expiry" +%s 2>/dev/null)
+    now_epoch=$(date +%s)
+    if (( exp_epoch <= now_epoch )); then
+        sed -i "/^$name:/d" "$USERS_FILE"
+        changed=1
+    fi
+done < "$USERS_FILE"
+
+if (( changed )); then
+    path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+    host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+    {
+        echo "{"
+        echo '  "log": { "loglevel": "warning", "access": "/var/log/xray/access.log", "error": "/var/log/xray/error.log" },'
+        echo '  "inbounds": [ {'
+        echo '    "port": 8080, "listen": "0.0.0.0", "protocol": "vmess",'
+        echo '    "settings": { "clients": ['
+        first=true
+        while IFS=: read -r n u d di c re; do
+            [[ $n == "#"* ]] && continue
+            re_epoch=$(date -d "$re" +%s 2>/dev/null)
+            now=$(date +%s)
+            (( re_epoch <= now )) && continue
+            [ "$first" = false ] && echo "          ,"
+            echo "          { \"id\": \"$u\", \"level\": 8, \"alterId\": 0 }"
+            first=false
+        done < "$USERS_FILE"
+        echo '        ] },'
+        echo '    "streamSettings": { "network": "ws", "wsSettings": {'
+        echo "      \"path\": \"$path\""
+        [ -n "$host" ] && echo '      , "headers": { "Host": "'$host'" }'
+        [ -z "$host" ] && echo '      , "headers": {}'
+        echo '    } } } ],'
+        echo '  "outbounds": [{ "protocol": "freedom" }]'
+        echo '}'
+    } > "$CONFIG_FILE"
+    systemctl restart xray 2>/dev/null
+fi
+EOF
+        chmod +x "$CLEAN_SCRIPT"
+        (crontab -l 2>/dev/null; echo "5 0 * * * $CLEAN_SCRIPT") | crontab -
+    }
+
     show_v2ray_menu() {
+        # Instalar cron si no existe
+        [ ! -f "$CLEAN_SCRIPT" ] && install_clean_cron
+
         while true; do
             clear
             current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
@@ -3059,8 +3126,9 @@ EOF
                     echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
                     systemctl stop xray 2>/dev/null
                     systemctl disable xray 2>/dev/null
-                    rm -f "$SERVICE_FILE" "$XRAY_BIN"
+                    rm -f "$SERVICE_FILE" "$XRAY_BIN" "$CLEAN_SCRIPT"
                     rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
+                    (crontab -l 2>/dev/null | grep -v "$CLEAN_SCRIPT") | crontab -
                     echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
                     sleep 2
                     return
