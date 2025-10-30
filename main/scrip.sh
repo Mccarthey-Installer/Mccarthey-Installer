@@ -3020,17 +3020,19 @@ EOF
     if echo "$response" | grep -q '"ok":true'; then
         file_id=$(echo "$response" | jq -r '.result.document.file_id')
         
-        # ENVIAR MENSAJE CON FILE ID EN MONOESPACIADO
+        # ENVIAR MENSAJE CON FILE ID EN MONOESPACIADO (FORZADO CON PRINTF)
+        encoded_text=$(printf 'Archivo ID: <code>%s</code>' "$file_id")
         curl -s -X POST "$URL/sendMessage" \
             -d "chat_id=$USER_ID" \
-            -d "text=Archivo ID: <code>$file_id</code>" \
-            -d "parse_mode=HTML" > /dev/null
+            -d "text=$encoded_text" \
+            -d "parse_mode=HTML" \
+            -d "disable_web_page_preview=true" > /dev/null
 
         echo -e "${CHECK} ${GREEN}Backup enviado a Telegram!${NC}"
         echo -e "${WHITE}   Archivo ID: $file_id${NC}"
         echo -e "${CYAN}   Guardado local: $local_backup${NC}"
         echo -e "${GRAY}────────────────────────────────────${NC}"
-        echo -e "${ROCKET} File ID enviado en monoespaciado por Telegram."
+        echo -e "${ROCKET} File ID enviado en MONOESPACIADO."
     else
         error=$(echo "$response" | jq -r '.description // "Error desconocido"')
         echo -e "${CROSS} ${RED}Error al enviar: $error${NC}"
