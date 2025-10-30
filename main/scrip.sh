@@ -3175,6 +3175,7 @@ while true; do
         ;;
         0)
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
+            cd ~           # <- Aquí regresas al home
             exec /bin/bash
         ;;
         *)
