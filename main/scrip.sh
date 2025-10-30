@@ -2671,37 +2671,63 @@ EOF
         read -p "Presiona Enter para continuar..."
     }
 
+    
     remove_user_menu() {
     clear
-    echo -e "${TRASH} ${RED}ELIMINAR USUARIOS${NC}"
-    echo -e "${GRAY}────────────────────────────────────${NC}"
+    echo -e "ELIMINAR USUARIOS"
+    echo -e "════════════════════════════════════"
 
     mapfile -t users < "$USERS_FILE"
     if [ ${#users[@]} -eq 0 ]; then
-        echo -e "${CROSS} ${YELLOW}No hay usuarios registrados.${NC}"
+        echo -e "No hay usuarios registrados."
         read -p "Enter..." && return
     fi
 
-    # Mostrar lista numerada
+    # === EMOJIS LOCALES (para que se vean SÍ o SÍ) ===
+    local TRASH="TRASH"
+    local STAR="STAR"
+    local KEY="KEY"
+    local CAL="CAL"
+    local ROCKET="ROCKET"
+    local CHECK="CHECK"
+    local CROSS="CROSS"
+    local GRAY='\033[0;90m'
+    local RED='\033[1;91m'
+    local GREEN='\033[1;92m'
+    local YELLOW='\033[1;93m'
+    local CYAN='\033[1;96m'
+    local PURPLE='\033[1;95m'
+    local WHITE='\033[1;97m'
+    local NC='\033[0m'
+
+    # Mostrar lista con info completa + emojis reales
     i=1
     declare -A name_to_index
     for line in "${users[@]}"; do
-        name=$(echo "$line" | cut -d: -f1)
-        echo -e "$i) ${YELLOW}$name${NC}"
+        IFS=':' read -r name uuid created expires delete_at <<< "$line"
+        [[ $name == "#"* ]] && continue
+        [ $(date +%s) -ge $delete_at ] && continue
+
+        days_left=$(days_left_natural $expires 2>/dev/null || echo "0")
+        expire_date=$(date -d "@$expires" +"%d/%m/%Y" 2>/dev/null || echo "??")
+        full_uuid="$uuid"
+
+        echo -e "${STAR} ${WHITE}$i)${NC} ${YELLOW}$name${NC}"
+        echo -e "   ${KEY} ${CYAN}UUID:${NC} $full_uuid"
+        echo -e "   ${CAL} ${GREEN}Vence en $days_left días${NC} → ${PURPLE}$expire_date${NC}"
+        echo -e "${GRAY}   ──────────────────────────────────${NC}"
+
         name_to_index["$name"]=$i
         ((i++))
     done
 
-    echo -e "${GRAY}────────────────────────────────────${NC}"
-    echo -e "${WHITE}Puedes ingresar números, nombres o mezcla:${NC}"
-    echo -e "${CYAN}Ejemplos: 1 3 5  o  delms paty  o  1 delms 4${NC}"
-    echo -e "${GRAY}────────────────────────────────────${NC}"
-    read -p "Ingrese los usuarios a eliminar: " input
+    echo -e "${ROCKET} ${WHITE}Puedes ingresar números, nombres o mezcla:${NC}"
+    echo -e "   ${CYAN}Ejemplos: 1 3 5  •  delms paty  •  1 delms 4${NC}"
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    read -p " ${TRASH} Ingrese usuarios a eliminar: " input
 
-    # Si no hay input
     [[ -z "$input" ]] && { echo -e "${CROSS} ${RED}Entrada vacía.${NC}"; sleep 1.5; return; }
 
-    # Convertir comas en espacios y dividir
     input=$(echo "$input" | tr ',' ' ')
     read -ra selections <<< "$input"
 
@@ -2715,25 +2741,22 @@ EOF
             if [[ $index -ge 0 && $index -lt ${#users[@]} ]]; then
                 username=$(echo "${users[$index]}" | cut -d: -f1)
             else
-                failed+=("Número $sel (fuera de rango)")
+                failed+=("${CROSS} Número $sel (fuera de rango)")
                 continue
             fi
         else
-            # Buscar por nombre
             if grep -q "^${sel}:" "$USERS_FILE"; then
                 username="$sel"
             else
-                failed+=("Nombre '$sel' (no existe)")
+                failed+=("${CROSS} Nombre '$sel' (no existe)")
                 continue
             fi
         fi
 
-        # Eliminar
         sed -i "/^${username}:/d" "$USERS_FILE"
         ((deleted_count++))
     done
 
-    # Solo regenerar config si se eliminó al menos uno
     if [ $deleted_count -gt 0 ]; then
         current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
@@ -2741,7 +2764,7 @@ EOF
         systemctl restart xray 2>/dev/null
     fi
 
-    # Resultado final
+    # RESULTADO FINAL
     clear
     echo -e "${TRASH} ${RED}RESULTADO DE ELIMINACIÓN${NC}"
     echo -e "${GRAY}════════════════════════════════════${NC}"
@@ -2749,7 +2772,7 @@ EOF
         echo -e "${CHECK} ${GREEN}Eliminados: $deleted_count usuario(s)${NC}"
     fi
     if [ ${#failed[@]} -gt 0 ]; then
-        echo -e "${CROSS} ${RED}Fallidos:${NC}"
+        echo -e "${CROSS} ${RED}Errores:${NC}"
         for err in "${failed[@]}"; do
             echo -e "   • $err"
         done
