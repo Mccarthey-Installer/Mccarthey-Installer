@@ -2792,8 +2792,8 @@ EOF
             days_left=$(days_left_natural $expires)
             active=1
             echo -e "${USER} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
             echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
+            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
             echo -e "${TRASH} ${WHITE}Borrado:${NC}${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
             echo -e "${PURPLE}────────────────────────────────────${NC}"
         done < "$USERS_FILE"
