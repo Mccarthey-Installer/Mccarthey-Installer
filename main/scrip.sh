@@ -2485,10 +2485,11 @@ eliminar_swap() {
 
     # ========================================
 # MENÚ V2RAY (SUBMENÚ) - Integrado como opción 15
+# Expira visual: +3 días | Se borra: +4 días (00:05)
 # ========================================
 
 menu_v2ray() {
-    # === VARIABLES DEL V2RAY (no interfieren con tu menú principal) ===
+    # === VARIABLES DEL V2RAY ===
     local CONFIG_DIR="/usr/local/etc/xray"
     local CONFIG_FILE="$CONFIG_DIR/config.json"
     local SERVICE_FILE="/etc/systemd/system/xray.service"
@@ -2499,7 +2500,7 @@ menu_v2ray() {
     local PORT=8080
     local XRAY_BIN="/usr/local/bin/xray"
 
-     # COLORES LOCALES (no sobrescriben los tuyos)
+    # COLORES
     local RED='\033[1;91m'
     local GREEN='\033[1;92m'
     local YELLOW='\033[1;93m'
@@ -2527,42 +2528,96 @@ menu_v2ray() {
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
 
-    # === FUNCIÓN: CALCULAR DÍAS RESTANTES (usa fecha real en columna 6) ===
+    # === FUNCIÓN: DÍAS RESTANTES (creación + días + 1) ===
     calcular_dias_restantes() {
-        local linea="$1"
-        local fecha_real=$(echo "$linea" | cut -d: -f6)
+        local created="$1"
+        local dias_asignados="$2"
+        local fecha_creacion=$(echo "$created" | cut -d' ' -f1)
+        local dias_totales=$((dias_asignados + 1))
+        local fecha_eliminacion=$(date -d "$fecha_creacion + $dias_totales days" "+%Y-%m-%d" 2>/dev/null)
+        [ -z "$fecha_eliminacion" ] && echo 0 && return
+        local hoy=$(date "+%Y-%m-%d")
+        local epoch_hoy=$(date -d "$hoy" "+%s")
+        local epoch_exp=$(date -d "$fecha_eliminacion" "+%s")
+        local diff=$((epoch_exp - epoch_hoy))
+        local dias=$((diff / 86400))
+        (( dias < 0 )) && dias=0
+        echo $dias
+    }
 
-        # Compatibilidad con usuarios antiguos (sin fecha_real)
-        if [[ -z "$fecha_real" || "$fecha_real" == "null" ]]; then
-            local fecha_visible=$(echo "$linea" | cut -d: -f3)
-            local dia=$(echo "$fecha_visible" | cut -d'/' -f1)
-            local mes=$(echo "$fecha_visible" | cut -d'/' -f2)
-            local anio=$(echo "$fecha_visible" | cut -d'/' -f3)
+    # === CRON: LIMPIEZA DIARIA A LAS 00:05 ===
+    setup_cron() {
+        local script_path="/usr/local/bin/clean_expired_v2ray.sh"
+        cat > "$script_path" <<'EOF'
+#!/bin/bash
+USERS_FILE="/usr/local/etc/xray/users.db"
+CONFIG_FILE="/usr/local/etc/xray/config.json"
+XRAY_BIN="/usr/local/bin/xray"
 
-            case $mes in
-                "enero") mes_num="01" ;; "febrero") mes_num="02" ;; "marzo") mes_num="03" ;;
-                "abril") mes_num="04" ;; "mayo") mes_num="05" ;; "junio") mes_num="06" ;;
-                "julio") mes_num="07" ;; "agosto") mes_num="08" ;; "septiembre") mes_num="09" ;;
-                "octubre") mes_num="10" ;; "noviembre") mes_num="11" ;; "diciembre") mes_num="12" ;;
-                *) echo 0; return ;;
-            esac
+calcular_dias_restantes() {
+    local created="$1"
+    local dias_asignados="$2"
+    local fecha_creacion=$(echo "$created" | cut -d' ' -f1)
+    local dias_totales=$((dias_asignados + 1))
+    local fecha_eliminacion=$(date -d "$fecha_creacion + $dias_totales days" "+%Y-%m-%d" 2>/dev/null)
+    [ -z "$fecha_eliminacion" ] && echo 0 && return
+    local hoy=$(date "+%Y-%m-%d")
+    local epoch_hoy=$(date -d "$hoy" "+%s")
+    local epoch_exp=$(date -d "$fecha_eliminacion" "+%s")
+    local diff=$((epoch_exp - epoch_hoy))
+    local dias=$((diff / 86400))
+    (( dias < 0 )) && dias=0
+    echo $dias
+}
 
-            local fecha_formateada="$anio-$mes_num-$dia"
-            fecha_real=$(date -d "$fecha_formateada +1 day" "+%Y-%m-%d" 2>/dev/null || echo "")
+remove_expired() {
+    local changed=0
+    while IFS=: read -r name uuid fecha_texto dias created; do
+        [[ $name == "#"* ]] && continue
+        dias_restantes=$(calcular_dias_restantes "$created" "$dias")
+        if (( dias_restantes <= 0 )); then
+            sed -i "/^$name:/d" "$USERS_FILE"
+            changed=1
+            echo "[$(date)] Eliminado: $name (UUID: $uuid)" >> /var/log/xray/expired.log
         fi
+    done < "$USERS_FILE"
 
-        [[ -z "$fecha_real" ]] && { echo 0; return; }
+    if (( changed == 1 )); then
+        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/susi")
+        host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
+        {
+            echo "{"
+            echo '  "log": { "loglevel": "warning", "access": "/var/log/xray/access.log", "error": "/var/log/xray/error.log" },'
+            echo '  "inbounds": [{'
+            echo '    "port": 8080, "listen": "0.0.0.0", "protocol": "vmess",'
+            echo '    "settings": { "clients": ['
+            first=true
+            while IFS=: read -r n u f d c; do
+                [[ $n == "#"* ]] && continue
+                dr=$(calcular_dias_restantes "$c" "$d")
+                (( dr <= 0 )) && continue
+                [ "$first" = false ] && echo "          ,"
+                echo "          { \"id\": \"$u\", \"level\": 8, \"alterId\": 0 }"
+                first=false
+            done < "$USERS_FILE"
+            echo '        ] },'
+            echo '    "streamSettings": { "network": "ws", "wsSettings": {'
+            echo "      \"path\": \"$path\""
+            [ -n "$host" ] && echo "      , \"headers\": { \"Host\": \"$host\" }" || echo '      , "headers": {}'
+            echo '    } }'
+            echo '  }],'
+            echo '  "outbounds": [{ "protocol": "freedom" }]'
+            echo '}'
+        } > "$CONFIG_FILE"
+        systemctl restart xray &>/dev/null
+    fi
+}
 
-        local fecha_actual=$(date "+%Y-%m-%d")
-        local fecha_exp_epoch=$(date -d "$fecha_real" "+%s" 2>/dev/null)
-        local fecha_act_epoch=$(date -d "$fecha_actual" "+%s")
-
-        [[ -z "$fecha_exp_epoch" ]] && { echo 0; return; }
-
-        local diff_segundos=$((fecha_exp_epoch - fecha_act_epoch))
-        local dias_restantes=$((diff_segundos / 86400))
-        (( dias_restantes < 0 )) && dias_restantes=0
-        echo $dias_restantes
+remove_expired
+EOF
+        chmod +x "$script_path"
+        (crontab -l 2>/dev/null | grep -q "$script_path") || \
+            (crontab -l 2>/dev/null; echo "5 0 * * * $script_path") | crontab -
     }
 
     install_xray() {
@@ -2601,9 +2656,7 @@ EOF
     generate_config() {
         local path="$1"
         local host="$2"
-
         [[ -z "$path" ]] && path="/susi"
-
         if [[ "$host" == "Host" || "$host" == "host" || -z "$host" ]]; then
             host=""
         fi
@@ -2622,12 +2675,10 @@ EOF
             echo '      "protocol": "vmess",'
             echo '      "settings": {'
             echo '        "clients": ['
-
             first=true
-            while IFS=: read -r name uuid fecha_texto dias created fecha_real; do
+            while IFS=: read -r name uuid fecha_texto dias created; do
                 [[ $name == "#"* ]] && continue
-                linea="$name:$uuid:$fecha_texto:$dias:$created:$fecha_real"
-                dias_restantes=$(calcular_dias_restantes "$linea")
+                dias_restantes=$(calcular_dias_restantes "$created" "$dias")
                 (( dias_restantes <= 0 )) && continue
                 if [ "$first" = false ]; then echo "          ,"; fi
                 echo "          {"
@@ -2637,14 +2688,12 @@ EOF
                 echo "          }"
                 first=false
             done < "$USERS_FILE"
-
             echo '        ]'
             echo '      },'
             echo '      "streamSettings": {'
             echo '        "network": "ws",'
             echo '        "wsSettings": {'
             echo "          \"path\": \"$path\""
-            
             if [ -n "$host" ]; then
                 echo '          ,"headers": {'
                 echo "            \"Host\": \"$host\""
@@ -2652,7 +2701,6 @@ EOF
             else
                 echo '          ,"headers": {}'
             fi
-
             echo '        }'
             echo '      }'
             echo '    }'
@@ -2662,7 +2710,7 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-    # === AGREGAR USUARIO (FECHA VISIBLE = -1 DÍA, REAL = +0) ===
+    # === AGREGAR USUARIO ===
     add_user() {
         clear
         echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
@@ -2673,22 +2721,11 @@ EOF
 
         uuid=$($XRAY_BIN uuid)
         created=$(date "+%Y-%m-%d %H:%M:%S")
+        fecha_texto=$(date -d "+$days days" "+%d/%B/%Y" | tr '[:upper:]' '[:lower:]')
 
-        # === FECHA REAL DE EXPIRACIÓN (para borrar a las 00:00 del día siguiente) ===
-        fecha_real_expiracion=$(date -d "+$days days" "+%Y-%m-%d")
+        echo "$name:$uuid:$fecha_texto:$days:$created" >> "$USERS_FILE"
 
-        # === FECHA VISIBLE: 1 día antes (para que diga "expira el 1", pero se borre el 2) ===
-        if (( days > 1 )); then
-            fecha_visible=$(date -d "+$((days - 1)) days" "+%d/%B/%Y")
-        else
-            fecha_visible=$(date -d "+$days days" "+%d/%B/%Y")
-        fi
-        fecha_visible=$(echo "$fecha_visible" | tr '[:upper:]' '[:lower:]')
-
-        # Guardar: nombre:uuid:fecha_visible:dias_reales:created:fecha_real
-        echo "$name:$uuid:$fecha_visible:$days:$created:$fecha_real_expiracion" >> "$USERS_FILE"
-
-        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "/pams")
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "/susi")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
 
         json_data=$(cat <<EOF
@@ -2713,16 +2750,22 @@ EOF
         echo -e "${GRAY}════════════════════════════════════${NC}"
         echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
         echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
-        echo -e "${CAL} Expira:   ${PURPLE}$fecha_visible${NC}"
+        echo -e "${CAL} Expira:   ${PURPLE}$fecha_texto${NC}"
         echo -e "${CAL} Días:     ${GREEN}$days${NC}"
         echo -e "${CAL} Creado:   ${WHITE}$created${NC}"
         echo -e "${GRAY}════════════════════════════════════${NC}"
         echo -e "${ROCKET} ${BLUE}LINK VMESS (HTTP CUSTOM):${NC}"
         echo -e "${WHITE}$vmess_link${NC}"
         echo -e "${GRAY}────────────────────────────────────${NC}"
+        echo -e "${YELLOW}Se eliminará a las 00:05 del día siguiente a la fecha de expiración.${NC}"
         read -p "Presiona Enter para continuar..."
+
+        generate_config "$current_path" "$current_host"
+        systemctl restart xray 2>/dev/null
+        setup_cron
     }
 
+    # === ELIMINAR USUARIO ===
     remove_user_menu() {
         clear
         echo -e "${TRASH} ${RED}ELIMINAR USUARIO${NC}"
@@ -2767,22 +2810,22 @@ EOF
         sleep 1.5
     }
 
+    # === LISTAR USUARIOS ===
     list_users() {
         clear
         echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
         active=0
-        while IFS=: read -r name uuid fecha_texto dias created fecha_real; do
+        while IFS=: read -r name uuid fecha_texto dias created; do
             [[ $name == "#"* ]] && continue
-            linea="$name:$uuid:$fecha_texto:$dias:$created:$fecha_real"
-            dias_restantes=$(calcular_dias_restantes "$linea")
+            dias_restantes=$(calcular_dias_restantes "$created" "$dias")
             (( dias_restantes <= 0 )) && continue
 
             active=1
             echo -e "${USER} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
             echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
-            echo -e "${CAL} ${WHITE}Expira:${NC}  ${PURPLE}$fecha_texto${NC}"
-            echo -e "${CAL} ${WHITE}Días:${NC}    ${GREEN}$dias_restantes${NC} (de $dias)"
+            echo -e "${CAL} ${WHITE}Expira:${NC}  ${PURPLE}$fecha_texto${NC} (visual)"
+            echo -e "${CAL} ${WHITE}Días:${NC}    ${GREEN}$dias_restantes${NC} (hasta eliminación)"
             echo -e "${CAL} ${WHITE}Creado:${NC}  ${WHITE}$created${NC}"
             echo -e "${PURPLE}────────────────────────────────────${NC}"
         done < "$USERS_FILE"
@@ -2790,16 +2833,16 @@ EOF
         read -p "Presiona Enter para volver..."
     }
 
+    # === EXPORTAR TODOS ===
     export_all_vmess() {
         clear
         echo -e "${ROCKET} ${BLUE}EXPORTAR TODOS (vmess://)${NC}"
         echo -e "${PURPLE}════════════════════════════════${NC}"
-        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/susi")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-        while IFS=: read -r name uuid fecha_texto dias created fecha_real; do
+        while IFS=: read -r name uuid fecha_texto dias created; do
             [[ $name == "#"* ]] && continue
-            linea="$name:$uuid:$fecha_texto:$dias:$created:$fecha_real"
-            dias_restantes=$(calcular_dias_restantes "$linea")
+            dias_restantes=$(calcular_dias_restantes "$created" "$dias")
             (( dias_restantes <= 0 )) && continue
             json_data=$(cat <<EOF
 {
@@ -2824,7 +2867,7 @@ EOF
         read -p "Enter..."
     }
 
-    # === BACKUP Y RESTAURAR ===
+    # === BACKUP LOCAL ===
     backup_v2ray() {
         clear
         echo -e "${SPARK} ${YELLOW}HACIENDO BACKUP COMPLETO...${NC} $SPARK"
@@ -2838,7 +2881,7 @@ EOF
             "$USERS_FILE" \
             2>/dev/null
 
-        if [ $? -eq 0 ] && [ -f "$backup_file" ]; then
+        if [ $? -m 0 ] && [ -f "$backup_file" ]; then
             echo -e "${CHECK} ${GREEN}Backup creado:${NC}"
             echo -e "${WHITE}   $backup_file${NC}"
             echo -e "${CYAN}   Tamaño: $(du -h "$backup_file" | cut -f1)${NC}"
@@ -2851,6 +2894,7 @@ EOF
         fi
     }
 
+    # === RESTAURAR LOCAL ===
     restore_v2ray() {
         clear
         echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP${NC} $SPARK"
@@ -2866,7 +2910,7 @@ EOF
         for i in "${!backups[@]}"; do
             file="${backups[$i]}"
             size=$(du -h "$file" | cut -f1)
-            date=$(basename "$file" | sed 's/v2ray_backup_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{6\}\)/\1-\2-\3 \4:\5:\6/')
+            date=$(basename "$file" | sed 's/v2ray_backup_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
             echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
         done
 
@@ -2896,7 +2940,7 @@ EOF
 
         restored_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
         restored_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1)
-        [ -z "$restored_path" ] && restored_path="/pams"
+        [ -z "$restored_path" ] && restored_path="/susi"
         [ -z "$restored_host" ] && restored_host=""
 
         generate_config "$restored_path" "$restored_host"
@@ -2911,6 +2955,7 @@ EOF
         sleep 3
     }
 
+    # === RESTAURAR DESDE TELEGRAM ===
     restore_from_telegram() {
         clear
         echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
@@ -2970,7 +3015,7 @@ EOF
             return
         fi
 
-        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/susi")
         host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
         generate_config "$path" "$host"
 
@@ -2986,6 +3031,7 @@ EOF
         sleep 3
     }
 
+    # === ENVIAR BACKUP A TELEGRAM ===
     send_backup_telegram() {
         clear
         echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
@@ -3053,7 +3099,9 @@ EOF
         read -p "Presiona Enter..."
     }
 
+    # === MENÚ PRINCIPAL ===
     show_v2ray_menu() {
+        setup_cron
         while true; do
             clear
             current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
@@ -3084,7 +3132,7 @@ EOF
             case $opt in
                 1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...";;
                 2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...";;
-                3) add_user; generate_config "$(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1)" "$(grep '"Host"' "$CONFIG_FILE" | awk -F'"' '{print $4}')"; systemctl restart xray 2>/dev/null;;
+                3) add_user;;
                 4) remove_user_menu;;
                 5) list_users;;
                 6) export_all_vmess;;
@@ -3094,8 +3142,9 @@ EOF
                     echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
                     systemctl stop xray 2>/dev/null
                     systemctl disable xray 2>/dev/null
-                    rm -f "$SERVICE_FILE" "$XRAY_BIN"
+                    rm -f "$SERVICE_FILE" "$XRAY_BIN" "/usr/local/bin/clean_expired_v2ray.sh"
                     rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
+                    (crontab -l 2>/dev/null | grep -v "clean_expired_v2ray.sh") | crontab -
                     echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
                     sleep 2
                     return
@@ -3120,7 +3169,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
