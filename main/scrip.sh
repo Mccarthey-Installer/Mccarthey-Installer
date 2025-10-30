@@ -2953,14 +2953,12 @@ EOF
         clear
         echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
 
-        # Instalar jq si no existe
         if ! command -v jq &>/dev/null; then
             echo -e "${YELLOW}Instalando jq...${NC}"
             curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
             chmod +x /usr/bin/jq
         fi
 
-        # Verificar bot
         if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
             echo -e "${CROSS} ${RED}Bot no configurado. Usa 'SSH BOT' primero.${NC}"
             sleep 2
@@ -2971,7 +2969,6 @@ EOF
         USER_ID=$(cat /root/sshbot_userid)
         URL="https://api.telegram.org/bot$TOKEN"
 
-        # Crear backup
         local timestamp=$(date +"%Y%m%d_%H%M%S")
         local backup_file="/tmp/v2ray_backup_$timestamp.tar.gz"
         local config_backup="/tmp/config.json"
@@ -2988,13 +2985,10 @@ EOF
             return
         fi
 
-        # Enviar a Telegram
         response=$(curl -s -F "chat_id=$USER_ID" \
             -F "document=@$backup_file" \
-            -F "caption=Backup V2Ray - $timestamp\nIP: $IP\nPuerto: $PORT\nUsuarios: $(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)\nPath: $(grep '"path"' "$CONFIG_FILE" | awk -F'"' '{print $4}' | head -1 || echo "/pams")" \
             "$URL/sendDocument")
 
-        # GUARDAR TAMBIÉN LOCALMENTE (BONUS)
         local local_backup="$BACKUP_DIR/v2ray_telegram_$timestamp.tar.gz"
         cp "$backup_file" "$local_backup"
 
@@ -3002,11 +2996,18 @@ EOF
 
         if echo "$response" | grep -q '"ok":true'; then
             file_id=$(echo "$response" | jq -r '.result.document.file_id')
+            encoded_text=$(printf 'Archivo ID: <code>%s</code>' "$file_id")
+            curl -s -X POST "$URL/sendMessage" \
+                -d "chat_id=$USER_ID" \
+                -d "text=$encoded_text" \
+                -d "parse_mode=HTML" \
+                -d "disable_web_page_preview=true" > /dev/null
+
             echo -e "${CHECK} ${GREEN}Backup enviado a Telegram!${NC}"
             echo -e "${WHITE}   Archivo ID: $file_id${NC}"
             echo -e "${CYAN}   Guardado local: $local_backup${NC}"
             echo -e "${GRAY}────────────────────────────────────${NC}"
-            echo -e "${ROCKET} Ahora puedes restaurar con opción 10 incluso sin internet."
+            echo -e "${ROCKET} File ID enviado en MONOESPACIADO."
         else
             error=$(echo "$response" | jq -r '.description // "Error desconocido"')
             echo -e "${CROSS} ${RED}Error al enviar: $error${NC}"
@@ -3088,7 +3089,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
