@@ -2500,7 +2500,7 @@ menu_v2ray() {
     local PORT=8080
     local XRAY_BIN="/usr/local/bin/xray"
 
-    # COLORES LOCALES (no sobrescriben los tuyos)
+     # COLORES LOCALES (no sobrescriben los tuyos)
     local RED='\033[1;91m'
     local GREEN='\033[1;92m'
     local YELLOW='\033[1;93m'
@@ -2524,7 +2524,7 @@ menu_v2ray() {
     local CAL="📅"
     local DOWN="⬇️"
     local UP="⬆️"
-
+    
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
 
@@ -2640,24 +2640,29 @@ EOF
     }
 
     add_user() {
-    clear
-    echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
-    echo -e "${GRAY}────────────────────────────────────${NC}"
-    read -p "Nombre del usuario: " name
-    read -p "Días de validez (1, 7, 30...): " days
-    [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
+        clear
+        echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        read -p "Nombre del usuario: " name
+        read -p "Días de validez (1, 7, 30...): " days
+        [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
 
-    uuid=$($XRAY_BIN uuid)
-    created=$(date +%s)
-    expires=$(( created + days * 86400 ))
-    delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) ))
+        uuid=$($XRAY_BIN uuid)
+        created=$(date +%s)
+        expires=$(( created + days * 86400 ))
+        delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) ))
 
-    echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
+        echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
 
-    current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-    current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
+        if [ -f "$CONFIG_FILE" ]; then
+            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
+            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
+        else
+            current_path="/pams"
+            current_host=""
+        fi
 
-    json_data=$(cat <<EOF
+        json_data=$(cat <<EOF
 {
   "add": "$IP",
   "port": "$PORT",
@@ -2672,21 +2677,21 @@ EOF
 }
 EOF
 )
-    vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
+        vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
 
-    clear
-    echo -e "${CHECK} ${GREEN}USUARIO CREADO CON ÉXITO${NC} $FIRE"
-    echo -e "${GRAY}════════════════════════════════════${NC}"
-    echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
-    echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
-    echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
-    echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
-    echo -e "${GRAY}════════════════════════════════════${NC}"
-    echo -e "${ROCKET} ${BLUE}LINK VMESS (HTTP CUSTOM):${NC}"
-    echo -e "${WHITE}$vmess_link${NC}"
-    echo -e "${GRAY}────────────────────────────────────${NC}"
-    read -p "Presiona Enter para continuar..."
-}
+        clear
+        echo -e "${CHECK} ${GREEN}USUARIO CREADO CON ÉXITO${NC} $FIRE"
+        echo -e "${GRAY}════════════════════════════════════${NC}"
+        echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
+        echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
+        echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
+        echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
+        echo -e "${GRAY}════════════════════════════════════${NC}"
+        echo -e "${ROCKET} ${BLUE}LINK VMESS (HTTP CUSTOM):${NC}"
+        echo -e "${WHITE}$vmess_link${NC}"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        read -p "Presiona Enter para continuar..."
+    }
 
     remove_user_menu() {
         clear
@@ -2725,7 +2730,12 @@ EOF
         fi
 
         sed -i "/^$username:/d" "$USERS_FILE"
-        generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")"
+
+        if [ -f "$CONFIG_FILE" ]; then
+            generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")"
+        else
+            generate_config "/pams" ""
+        fi
         systemctl restart xray 2>/dev/null
 
         echo -e "${CHECK} ${GREEN}Usuario '$username' eliminado.${NC}"
@@ -2756,8 +2766,15 @@ EOF
         clear
         echo -e "${ROCKET} ${BLUE}EXPORTAR TODOS (vmess://)${NC}"
         echo -e "${PURPLE}════════════════════════════════${NC}"
-        current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-        current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
+
+        if [ -f "$CONFIG_FILE" ]; then
+            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
+            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
+        else
+            current_path="/pams"
+            current_host=""
+        fi
+
         while IFS=: read -r name uuid created expires delete_at; do
             [[ $name == "#"* ]] && continue
             [ $(date +%s) -ge $delete_at ] && continue
@@ -2784,7 +2801,6 @@ EOF
         read -p "Enter..."
     }
 
-    
     # === BACKUP Y RESTAURAR ===
     backup_v2ray() {
         clear
@@ -2838,13 +2854,9 @@ EOF
         backup_file="${backups[$index]}"
         [ -z "$backup_file" ] && { echo -e "${CROSS} No existe."; sleep 1.5; return; }
 
-        # DETENER XRAY
         systemctl stop xray 2>/dev/null
-
-        # CREAR DIRECTORIOS
         mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
-        # EXTRAER DIRECTO AL LUGAR CORRECTO
         if ! tar -xzf "$backup_file" -C "$CONFIG_DIR" --strip-components=1 2>/dev/null; then
             echo -e "${CROSS} ${RED}Error al extraer el backup.${NC}"
             systemctl start xray 2>/dev/null
@@ -2852,7 +2864,6 @@ EOF
             return
         fi
 
-        # VERIFICAR QUE users.db FUE EXTRAÍDO
         if [ ! -f "$USERS_FILE" ]; then
             echo -e "${CROSS} ${RED}Error: users.db no se extrajo correctamente.${NC}"
             systemctl start xray 2>/dev/null
@@ -2860,17 +2871,17 @@ EOF
             return
         fi
 
-        # OBTENER PATH Y HOST DEL config.json RESTAURADO
-        restored_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-        restored_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
+        if [ -f "$CONFIG_FILE" ]; then
+            restored_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
+            restored_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
+        else
+            restored_path="/pams"
+            restored_host=""
+        fi
 
-        # REGENERAR config.json CON TODOS LOS USUARIOS
         generate_config "$restored_path" "$restored_host"
-
-        # REINICIAR XRAY
         systemctl restart xray 2>/dev/null
 
-        # CONTAR USUARIOS
         user_count=$(wc -l < "$USERS_FILE" 2>/dev/null || echo 0)
 
         echo -e "${CHECK} ${GREEN}Backup restaurado correctamente:${NC}"
@@ -2885,7 +2896,6 @@ EOF
         echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
         echo -e "${GRAY}────────────────────────────────────${NC}"
 
-        # Verificar bot
         if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
             echo -e "${CROSS} ${RED}Bot no configurado. Usa opción 12 del menú principal.${NC}"
             sleep 2
@@ -2918,16 +2928,13 @@ EOF
             return
         fi
 
-        # Instalar Xray si no existe
         if [[ ! -f "$XRAY_BIN" ]]; then
             echo -e "${YELLOW}Xray no instalado. Instalando...${NC}"
             install_xray
         fi
 
-        # Crear directorios
         mkdir -p "$CONFIG_DIR" "$LOG_DIR"
 
-        # Extraer
         if ! tar -xzf /tmp/v2ray_telegram_restore.tar.gz -C "$CONFIG_DIR" --strip-components=1 2>/dev/null; then
             echo -e "${CROSS} ${RED}Error al extraer el backup.${NC}"
             rm -f /tmp/v2ray_telegram_restore.tar.gz
@@ -2937,19 +2944,21 @@ EOF
 
         rm -f /tmp/v2ray_telegram_restore.tar.gz
 
-        # Verificar users.db
         if [[ ! -f "$USERS_FILE" ]]; then
             echo -e "${CROSS} ${RED}users.db no encontrado en el backup.${NC}"
             sleep 2
             return
         fi
 
-        # Regenerar config
-        path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-        host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
-        generate_config "$path" "$host"
+        if [ -f "$CONFIG_FILE" ]; then
+            path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
+            host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
+        else
+            path="/pams"
+            host=""
+        fi
 
-        # Service
+        generate_config "$path" "$host"
         create_service
         systemctl daemon-reload
         systemctl restart xray 2>/dev/null
@@ -3032,8 +3041,14 @@ EOF
     show_v2ray_menu() {
         while true; do
             clear
-            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "No configurado"' "$CONFIG_FILE")
-            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // "Ninguno"' "$CONFIG_FILE")
+
+            if [ -f "$CONFIG_FILE" ]; then
+                current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "No configurado"' "$CONFIG_FILE")
+                current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // "Ninguno"' "$CONFIG_FILE")
+            else
+                current_path="No configurado"
+                current_host="Ninguno"
+            fi
 
             echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
             echo -e "${GRAY}════════════════════════════════════════════════${NC}"
@@ -3060,7 +3075,13 @@ EOF
             case $opt in
                 1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...";;
                 2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...";;
-                3) add_user; generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")"; systemctl restart xray 2>/dev/null;;
+                3) add_user;
+                   if [ -f "$CONFIG_FILE" ]; then
+                       generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")"
+                   else
+                       generate_config "/pams" ""
+                   fi
+                   systemctl restart xray 2>/dev/null;;
                 4) remove_user_menu;;
                 5) list_users;;
                 6) export_all_vmess;;
@@ -3084,7 +3105,6 @@ EOF
             esac
         done
     }
-    
 
     # === INICIO DEL SUBMENÚ ===
     [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
