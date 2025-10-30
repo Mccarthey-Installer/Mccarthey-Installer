@@ -2483,7 +2483,8 @@ eliminar_swap() {
 }
 
 
-    # ========================================
+    
+# ========================================
 # MENÚ V2RAY (SUBMENÚ) - Integrado como opción 15
 # ========================================
 
@@ -2499,7 +2500,7 @@ menu_v2ray() {
     local PORT=8080
     local XRAY_BIN="/usr/local/bin/xray"
 
-    # COLORES LOCALES (no sobrescriben los tuyos)
+   # COLORES LOCALES (no sobrescriben los tuyos)
     local RED='\033[1;91m'
     local GREEN='\033[1;92m'
     local YELLOW='\033[1;93m'
@@ -2527,39 +2528,16 @@ menu_v2ray() {
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
 
-    # === FUNCIÓN COMPARTIDA: IGUAL QUE ssh_bot ===
+    # === FUNCIÓN: DÍAS RESTANTES (usa fecha real +1 día) ===
     calcular_dias_restantes() {
-        local fecha_expiracion="$1"
-        local dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
-        local mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
-        local anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
-
-        case $mes in
-            "enero") mes_num="01" ;;
-            "febrero") mes_num="02" ;;
-            "marzo") mes_num="03" ;;
-            "abril") mes_num="04" ;;
-            "mayo") mes_num="05" ;;
-            "junio") mes_num="06" ;;
-            "julio") mes_num="07" ;;
-            "agosto") mes_num="08" ;;
-            "septiembre") mes_num="09" ;;
-            "octubre") mes_num="10" ;;
-            "noviembre") mes_num="11" ;;
-            "diciembre") mes_num="12" ;;
-            *) echo 0; return ;;
-        esac
-
-        local fecha_formateada="$anio-$mes_num-$dia"
+        local fecha_real="$1"  # formato: 2025-11-02
         local fecha_actual=$(date "+%Y-%m-%d")
-        local fecha_exp_epoch=$(date -d "$fecha_formateada" "+%s" 2>/dev/null)
+        local fecha_exp_epoch=$(date -d "$fecha_real" "+%s" 2>/dev/null)
         local fecha_act_epoch=$(date -d "$fecha_actual" "+%s")
-
         if [[ -z "$fecha_exp_epoch" ]]; then
             echo 0
             return
         fi
-
         local diff_segundos=$((fecha_exp_epoch - fecha_act_epoch))
         local dias_restantes=$((diff_segundos / 86400))
         (( dias_restantes < 0 )) && dias_restantes=0
@@ -2604,7 +2582,6 @@ EOF
         local host="$2"
 
         [[ -z "$path" ]] && path="/susi"
-
         if [[ "$host" == "Host" || "$host" == "host" || -z "$host" ]]; then
             host=""
         fi
@@ -2625,9 +2602,9 @@ EOF
             echo '        "clients": ['
 
             first=true
-            while IFS=: read -r name uuid fecha_texto dias created; do
+            while IFS=: read -r name uuid fecha_mostrar dias created fecha_real; do
                 [[ $name == "#"* ]] && continue
-                dias_restantes=$(calcular_dias_restantes "$fecha_texto")
+                dias_restantes=$(calcular_dias_restantes "$fecha_real")
                 (( dias_restantes <= 0 )) && continue
                 if [ "$first" = false ]; then echo "          ,"; fi
                 echo "          {"
@@ -2644,7 +2621,6 @@ EOF
             echo '        "network": "ws",'
             echo '        "wsSettings": {'
             echo "          \"path\": \"$path\""
-            
             if [ -n "$host" ]; then
                 echo '          ,"headers": {'
                 echo "            \"Host\": \"$host\""
@@ -2652,7 +2628,6 @@ EOF
             else
                 echo '          ,"headers": {}'
             fi
-
             echo '        }'
             echo '      }'
             echo '    }'
@@ -2672,10 +2647,13 @@ EOF
 
         uuid=$($XRAY_BIN uuid)
         created=$(date "+%Y-%m-%d %H:%M:%S")
-        fecha_texto=$(date -d "+$days days" "+%d/%B/%Y")
-        fecha_texto=$(echo "$fecha_texto" | tr '[:upper:]' '[:lower:]')
 
-        echo "$name:$uuid:$fecha_texto:$days:$created" >> "$USERS_FILE"
+        # === LO QUE TÚ QUIERES: +1 día para expiración real ===
+        fecha_mostrar=$(date -d "+$days days" "+%d/%B/%Y" | tr '[:upper:]' '[:lower:]')
+        fecha_real=$(date -d "+$((days + 1)) days" "+%Y-%m-%d")
+
+        # Guardar: name:uuid:mostrar:dias:creado:real
+        echo "$name:$uuid:$fecha_mostrar:$days:$created:$fecha_real" >> "$USERS_FILE"
 
         current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "/pams")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
@@ -2702,7 +2680,7 @@ EOF
         echo -e "${GRAY}════════════════════════════════════${NC}"
         echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
         echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
-        echo -e "${CAL} Expira:   ${PURPLE}$fecha_texto${NC}"
+        echo -e "${CAL} Expira:   ${PURPLE}$fecha_mostrar${NC}"
         echo -e "${CAL} Días:     ${GREEN}$days${NC}"
         echo -e "${CAL} Creado:   ${WHITE}$created${NC}"
         echo -e "${GRAY}════════════════════════════════════${NC}"
@@ -2761,15 +2739,15 @@ EOF
         echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
         active=0
-        while IFS=: read -r name uuid fecha_texto dias created; do
+        while IFS=: read -r name uuid fecha_mostrar dias created fecha_real; do
             [[ $name == "#"* ]] && continue
-            dias_restantes=$(calcular_dias_restantes "$fecha_texto")
+            dias_restantes=$(calcular_dias_restantes "$fecha_real")
             (( dias_restantes <= 0 )) && continue
 
             active=1
             echo -e "${USER} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
             echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
-            echo -e "${CAL} ${WHITE}Expira:${NC}  ${PURPLE}$fecha_texto${NC}"
+            echo -e "${CAL} ${WHITE}Expira:${NC}  ${PURPLE}$fecha_mostrar${NC}"
             echo -e "${CAL} ${WHITE}Días:${NC}    ${GREEN}$dias_restantes${NC} (de $dias)"
             echo -e "${CAL} ${WHITE}Creado:${NC}  ${WHITE}$created${NC}"
             echo -e "${PURPLE}────────────────────────────────────${NC}"
@@ -2784,9 +2762,9 @@ EOF
         echo -e "${PURPLE}════════════════════════════════${NC}"
         current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
         current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-        while IFS=: read -r name uuid fecha_texto dias created; do
+        while IFS=: read -r name uuid fecha_mostrar dias created fecha_real; do
             [[ $name == "#"* ]] && continue
-            dias_restantes=$(calcular_dias_restantes "$fecha_texto")
+            dias_restantes=$(calcular_dias_restantes "$fecha_real")
             (( dias_restantes <= 0 )) && continue
             json_data=$(cat <<EOF
 {
@@ -3099,6 +3077,7 @@ EOF
     [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
     show_v2ray_menu
 }
+
 
 
 # ==== MENU PRINCIPAL ====
