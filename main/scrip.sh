@@ -2500,7 +2500,7 @@ menu_v2ray() {
     local PORT=8080
     local XRAY_BIN="/usr/local/bin/xray"
 
-     # COLORES LOCALES (no sobrescriben los tuyos)
+    # COLORES LOCALES (no sobrescriben los tuyos)
     local RED='\033[1;91m'
     local GREEN='\033[1;92m'
     local YELLOW='\033[1;93m'
@@ -2512,38 +2512,21 @@ menu_v2ray() {
     local NC='\033[0m'
 
     # EMOJIS
-    local FIRE="🔥"
-    local ROCKET="🚀"
-    local SPARK="✨"
-    local STAR="⭐"
-    local CHECK="✅"
-    local CROSS="❌"
-    local TRASH="🗑️"
-    local USER="👤"
-    local KEY="🔑"
-    local CAL="📅"
-    local DOWN="⬇️"
-    local UP="⬆️"
-    
+    local FIRE="FIRE"
+    local ROCKET="ROCKET"
+    local SPARK="SPARK"
+    local STAR="STAR"
+    local CHECK="CHECK"
+    local CROSS="CROSS"
+    local TRASH="TRASH"
+    local USER="USER"
+    local KEY="KEY"
+    local CAL="CAL"
+    local DOWN="DOWN"
+    local UP="UP"
+
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
-
-    # === INSTALAR jq SI NO EXISTE ===
-    install_jq() {
-        if ! command -v jq >/dev/null 2>&1; then
-            echo -e "${YELLOW}Instalando jq (necesario para leer JSON)...${NC}"
-            curl -L -s -o /usr/local/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
-            chmod +x /usr/local/bin/jq
-            if ! command -v jq >/dev/null 2>&1; then
-                echo -e "${CROSS} ${RED}Error: No se pudo instalar jq.${NC}"
-                sleep 2
-                return 1
-            fi
-            echo -e "${CHECK} ${GREEN}jq instalado correctamente.${NC}"
-        fi
-    }
-
-    install_jq || return 1
 
     # === FUNCIONES LOCALES ===
     midnight_tomorrow() {
@@ -2654,13 +2637,8 @@ EOF
 
         echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
 
-        if [ -f "$CONFIG_FILE" ]; then
-            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
-        else
-            current_path="/pams"
-            current_host=""
-        fi
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
 
         json_data=$(cat <<EOF
 {
@@ -2730,12 +2708,9 @@ EOF
         fi
 
         sed -i "/^$username:/d" "$USERS_FILE"
-
-        if [ -f "$CONFIG_FILE" ]; then
-            generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")"
-        else
-            generate_config "/pams" ""
-        fi
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
+        generate_config "$current_path" "$current_host"
         systemctl restart xray 2>/dev/null
 
         echo -e "${CHECK} ${GREEN}Usuario '$username' eliminado.${NC}"
@@ -2766,15 +2741,8 @@ EOF
         clear
         echo -e "${ROCKET} ${BLUE}EXPORTAR TODOS (vmess://)${NC}"
         echo -e "${PURPLE}════════════════════════════════${NC}"
-
-        if [ -f "$CONFIG_FILE" ]; then
-            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
-        else
-            current_path="/pams"
-            current_host=""
-        fi
-
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
         while IFS=: read -r name uuid created expires delete_at; do
             [[ $name == "#"* ]] && continue
             [ $(date +%s) -ge $delete_at ] && continue
@@ -2843,7 +2811,7 @@ EOF
         for i in "${!backups[@]}"; do
             file="${backups[$i]}"
             size=$(du -h "$file" | cut -f1)
-            date=$(basename "$file" | sed 's/v2ray_telegram_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{6\}\)/\1-\2-\3 \4:\5:\6/')
+            date=$(basename "$file" | sed 's/v2ray_telegram_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g' | sed 's/\([0-9]\{4\}\)\([0-9]\{2\}\)\([0-9]\{2\}\) \([0-9]\{2\}\)\([0-9]\{2\}\)\([0-9]\{2\}\)/\1-\2-\3 \4:\5:\6/')
             echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
         done
 
@@ -2871,13 +2839,8 @@ EOF
             return
         fi
 
-        if [ -f "$CONFIG_FILE" ]; then
-            restored_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-            restored_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
-        else
-            restored_path="/pams"
-            restored_host=""
-        fi
+        restored_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        restored_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
 
         generate_config "$restored_path" "$restored_host"
         systemctl restart xray 2>/dev/null
@@ -2950,15 +2913,10 @@ EOF
             return
         fi
 
-        if [ -f "$CONFIG_FILE" ]; then
-            path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")
-            host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")
-        else
-            path="/pams"
-            host=""
-        fi
-
+        path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+        host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
         generate_config "$path" "$host"
+
         create_service
         systemctl daemon-reload
         systemctl restart xray 2>/dev/null
@@ -3041,14 +2999,8 @@ EOF
     show_v2ray_menu() {
         while true; do
             clear
-
-            if [ -f "$CONFIG_FILE" ]; then
-                current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "No configurado"' "$CONFIG_FILE")
-                current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // "Ninguno"' "$CONFIG_FILE")
-            else
-                current_path="No configurado"
-                current_host="Ninguno"
-            fi
+            current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
+            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "Ninguno")
 
             echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
             echo -e "${GRAY}════════════════════════════════════════════════${NC}"
@@ -3075,13 +3027,7 @@ EOF
             case $opt in
                 1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...";;
                 2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...";;
-                3) add_user;
-                   if [ -f "$CONFIG_FILE" ]; then
-                       generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE")"
-                   else
-                       generate_config "/pams" ""
-                   fi
-                   systemctl restart xray 2>/dev/null;;
+                3) add_user; current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams"); current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo ""); generate_config "$current_path" "$current_host"; systemctl restart xray 2>/dev/null;;
                 4) remove_user_menu;;
                 5) list_users;;
                 6) export_all_vmess;;
