@@ -2782,24 +2782,31 @@ EOF
 }
 
     list_users() {
-        clear
-        echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
-        active=0
-        while IFS=: read -r name uuid created expires delete_at; do
-            [[ $name == "#"* ]] && continue
-            [ $(date +%s) -ge $delete_at ] && continue
-            days_left=$(days_left_natural $expires)
-            active=1
-            echo -e "${USER} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
-            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
-            echo -e "${TRASH} ${WHITE}Borrado:${NC}${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
-            echo -e "${PURPLE}────────────────────────────────────${NC}"
-        done < "$USERS_FILE"
-        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
-        read -p "Presiona Enter para volver..."
-    }
+    clear
+    echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
+    active=0
+    count=1  # ← Contador
+
+    while IFS=: read -r name uuid created expires delete_at; do
+        [[ $name == "#"* ]] && continue
+        [ $(date +%s) -ge $delete_at ] && continue
+
+        days_left=$(days_left_natural "$expires")
+        active=1
+
+        echo -e "👤 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
+        echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
+        echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
+        echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
+        echo -e "${PURPLE}────────────────────────────────────${NC}"
+
+        ((count++))  # Incrementa el contador
+    done < "$USERS_FILE"
+
+    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
+    read -p "Presiona Enter para volver..."
+}
 
     export_all_vmess() {
         clear
