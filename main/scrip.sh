@@ -2568,7 +2568,7 @@ menu_v2ray() {
         echo $dias_restantes
     }
 
-    # === FUNCIÓN: ¿AÚN VÁLIDO HASTA FIN DEL DÍA? (para config y cron) ===
+    # === FUNCIÓN: ¿AÚN VÁLIDO HASTA 23:59:59? (para config y cron) ===
     calcular_dias_incluyendo_hoy() {
         local fecha_expiracion="$1"
         local dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
@@ -3073,13 +3073,19 @@ EOF
         read -p "Presiona Enter..."
     }
 
-    # === CRON: LIMPIEZA DIARIA A LAS 00:00 ===
+    # === CRON: LIMPIEZA DIARIA A LAS 00:00 (SCRIPT COMPLETO) ===
     setup_cron_cleanup() {
         cat > "$CLEANUP_SCRIPT" <<'EOF'
 #!/bin/bash
+# Limpieza diaria de usuarios expirados a las 00:00
+
 CONFIG_DIR="/usr/local/etc/xray"
 USERS_FILE="$CONFIG_DIR/users.db"
 CONFIG_FILE="$CONFIG_DIR/config.json"
+LOG_FILE="/var/log/xray/cleanup.log"
+
+mkdir -p "$(dirname "$LOG_FILE")"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Iniciando limpieza..." >> "$LOG_FILE"
 
 calcular_dias_incluyendo_hoy() {
     local fecha_expiracion="$1"
@@ -3101,10 +3107,71 @@ calcular_dias_incluyendo_hoy() {
     [[ -n "$fecha_exp_epoch" ]] && (( fecha_exp_epoch >= fecha_act_epoch ))
 }
 
+generate_config() {
+    local path="$1"
+    local host="$2"
+    [[ -z "$path" ]] && path="/susi"
+    [[ "$host" == "Host" || "$host" == "host" || -z "$host" ]] && host=""
+
+    {
+        echo "{"
+        echo '  "log": {'
+        echo '    "loglevel": "warning",'
+        echo "    \"access\": \"$LOG_DIR/access.log\","
+        echo "    \"error\": \"$LOG_DIR/error.log\""
+        echo '  },'
+        echo '  "inbounds": ['
+        echo '    {'
+        echo "      \"port\": 8080,"
+        echo '      "listen": "0.0.0.0",'
+        echo '      "protocol": "vmess",'
+        echo '      "settings": {'
+        echo '        "clients": ['
+        
+        first=true
+        while IFS=: read -r name uuid fecha_texto dias created; do
+            [[ $name == "#"* ]] && continue
+            if ! calcular_dias_incluyendo_hoy "$fecha_texto"; then
+                continue
+            fi
+            if [ "$first" = false ]; then echo "          ,"; fi
+            echo "          {"
+            echo "            \"id\": \"$uuid\","
+            echo "            \"level\": 8,"
+            echo "            \"alterId\": 0"
+            echo "          }"
+            first=false
+        done < "$USERS_FILE"
+
+        echo '        ]'
+        echo '      },'
+        echo '      "streamSettings": {'
+        echo '        "network": "ws",'
+        echo '        "wsSettings": {'
+        echo "          \"path\": \"$path\""
+        if [ -n "$host" ]; then
+            echo '          ,"headers": {'
+            echo "            \"Host\": \"$host\""
+            echo '          }'
+        else
+            echo '          ,"headers": {}'
+        fi
+        echo '        }'
+        echo '      }'
+        echo '    }'
+        echo '  ],'
+        echo '  "outbounds": [{ "protocol": "freedom" }]'
+        echo '}'
+    } > "$CONFIG_FILE"
+}
+
 changed=0
+[ ! -f "$USERS_FILE" ] && { echo "[$(date)] ERROR: $USERS_FILE no existe" >> "$LOG_FILE"; exit 1; }
+
 while IFS=: read -r name uuid fecha_texto dias created; do
     [[ $name == "#"* ]] && continue
     if ! calcular_dias_incluyendo_hoy "$fecha_texto"; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Eliminado: $name (exp: $fecha_texto)" >> "$LOG_FILE"
         sed -i "/^$name:/d" "$USERS_FILE"
         changed=1
     fi
@@ -3113,21 +3180,25 @@ done < "$USERS_FILE"
 if (( changed == 1 )) && [ -f "$CONFIG_FILE" ]; then
     path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/susi")
     host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' || echo "")
-    generate_config() {
-        { ... } > "$CONFIG_FILE"  # (mismo que arriba, pero sin funciones externas)
-    }
+    generate_config "$path" "$host"
     systemctl restart xray 2>/dev/null
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config regenerada y Xray reiniciado." >> "$LOG_FILE"
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Sin cambios." >> "$LOG_FILE"
 fi
+
+exit 0
 EOF
         chmod +x "$CLEANUP_SCRIPT"
 
+        # Instalar CRON
         (crontab -l 2>/dev/null | grep -v "$CLEANUP_SCRIPT") | crontab -
         (crontab -l 2>/dev/null; echo "0 0 * * * $CLEANUP_SCRIPT") | crontab -
     }
 
     # === MENÚ PRINCIPAL ===
     show_v2ray_menu() {
-        setup_cron_cleanup  # Asegurar cron
+        setup_cron_cleanup
         while true; do
             clear
             current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
