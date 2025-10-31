@@ -2828,14 +2828,26 @@ EOF
 
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
 
-    # === REGENERAR CONFIG Y REINICIAR XRAY ===
+    # === REGENERAR CONFIG Y REINICIAR XRAY (INTELIGENTE) ===
     current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
     current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
     generate_config "$current_path" "$current_host"
-    systemctl restart xray 2>/dev/null && echo -e "${ROCKET} ${GREEN}Xray reiniciado.${NC}" || echo -e "${CROSS} ${RED}Error al reiniciar Xray.${NC}"
+
+    active_connections=$(ss -tnp | grep -c "$PORT" 2>/dev/null || echo 0)
+
+    if [[ $active_connections -gt 0 ]]; then
+        echo -e "${YELLOW}Advertencia: Hay $active_connections conexión(es) activa(s).${NC}"
+        echo -e "${YELLOW}Advertencia: Config actualizada, pero NO se reiniciará Xray.${NC}"
+        echo -e "${YELLOW}Advertencia: Usa opción 7 para reiniciar manualmente.${NC}"
+    else
+        systemctl restart xray 2>/dev/null && \
+            echo -e "${ROCKET} ${GREEN}Xray reiniciado.${NC}" || \
+            echo -e "${CROSS} ${RED}Error al reiniciar Xray.${NC}"
+    fi
 
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
 }
+    
 
     export_all_vmess() {
         reset_terminal
