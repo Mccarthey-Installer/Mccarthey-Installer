@@ -3116,17 +3116,17 @@ EOF
         expiring_today=""
         while IFS=: read -r name uuid created expires delete_at; do
             [[ $name == "#"* ]] && continue
-            [ $(date +%s) -ge $delete_at ] && continue  # ya eliminado
+            [ $(date +%s) -ge $delete_at ] && continue
 
             days_left=$(days_left_natural "$expires")
             if [[ "$days_left" -eq 0 ]]; then
-                expiring_today+="$name 0 Días\n"
+                expiring_today+="$name  0 días   "
             fi
         done < "$USERS_FILE"
 
         if [[ -n "$expiring_today" ]]; then
-            echo -e "${RED}USUARIOS QUE EXPIRAN HOY:${NC}"
-            echo -e "${YELLOW}$(echo -e "$expiring_today" | sed '/^$/d' | sed 's/$/ /' | tr -d '\n' | sed 's/ $//;s/ /  •  /g')${NC}"
+            echo -e "⚠️${RED}USUARIOS QUE EXPIRAN HOY:${NC}"
+            echo -e "${YELLOW}$(echo "$expiring_today" | sed 's/   $//')${NC}"
             echo
         fi
 
