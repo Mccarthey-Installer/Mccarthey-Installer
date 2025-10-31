@@ -2788,31 +2788,33 @@ EOF
 
     # === LIMPIEZA AUTOMÁTICA DE EXPIRADOS ===
     local temp_file=$(mktemp)
+    local cleaned=0
     while IFS=: read -r name uuid created expires delete_at; do
         [[ $name == "#"* ]] && continue
         if [ $(date +%s) -ge $delete_at ]; then
-            echo -e "${TRASH} ${RED}Eliminando usuario expirado: $name (UUID: $uuid)${NC}" >&2
-            continue  # No copiar al temp
+            echo -e "${TRASH} ${RED}Eliminado: $name (expiró el $(date -d "@$delete_at" +"%d/%m/%Y"))${NC}"
+            ((cleaned++))
+            continue
         fi
         echo "$name:$uuid:$created:$expires:$delete_at" >> "$temp_file"
     done < "$USERS_FILE"
 
-    # Reemplazar el archivo original solo si hubo cambios
+    # Reemplazar archivo original
     if [ -f "$temp_file" ]; then
         mv "$temp_file" "$USERS_FILE"
     else
-        : > "$USERS_FILE"  # vaciar si no hay usuarios
+        : > "$USERS_FILE"
     fi
 
     # === MOSTRAR USUARIOS ACTIVOS ===
     while IFS=: read -r name uuid created expires delete_at; do  
         [[ $name == "#"* ]] && continue  
-        [ $(date +%s) -ge $delete_at ] && continue  # doble seguridad
+        [ $(date +%s) -ge $delete_at ] && continue
 
         days_left=$(days_left_natural "$expires")  
         active=1  
 
-        echo -e "👤 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+        echo -e "🧑‍💻 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
         echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
         echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
         echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
@@ -2821,7 +2823,17 @@ EOF
         ((count++))  
     done < "$USERS_FILE"  
 
-    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"  
+    # Mensaje si se limpiaron usuarios
+    (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Se eliminaron $cleaned usuario(s) expirado(s).${NC}"
+
+    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
+
+    # === REGENERAR CONFIG Y REINICIAR XRAY ===
+    current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
+    current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
+    generate_config "$current_path" "$current_host"
+    systemctl restart xray 2>/dev/null && echo -e "${ROCKET} ${GREEN}Xray reiniciado.${NC}" || echo -e "${CROSS} ${RED}Error al reiniciar Xray.${NC}"
+
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
 }
 
