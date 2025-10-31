@@ -2767,7 +2767,7 @@ EOF
         days_left=$(days_left_natural "$expires")  
         active=1  
 
-        echo -e "User ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+        echo -e "👩‍💻 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
         echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
         echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
         echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
