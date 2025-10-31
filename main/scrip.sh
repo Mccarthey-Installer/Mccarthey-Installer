@@ -3096,62 +3096,83 @@ EOF
         read -p "Presiona Enter...${NC}" -r </dev/tty
     }
 
-    show_v2ray_menu() {
-        reset_terminal  # Limpia al entrar
-        while true; do
-            reset_terminal  # Limpia en cada iteración
-            current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")
-            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "Ninguno")
+    show_v2ray_menu() {  
+    reset_terminal  
+    while true; do  
+        reset_terminal  
 
-            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
-            echo -e "${GRAY}════════════════════════════════════════════════${NC}"
-            echo -e " ${UP} IP:     ${GREEN}$IP${NC}"
-            echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"
-            echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"
-            echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
-            echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"
-            echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"
-            echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"
-            echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"
-            echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"
-            echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"
-            echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
-            echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
-            echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"
-            echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"
-            echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"
-            echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
-            read -p " ${ROCKET} Elige una opción: " opt
+        current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")  
+        current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "Ninguno")  
 
-            case $opt in
-                1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;
-                2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;
-                3) add_user; current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams"); current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo ""); generate_config "$current_path" "$current_host"; systemctl restart xray 2>/dev/null;;
-                4) remove_user_menu;;
-                5) list_users;;
-                6) export_all_vmess;;
-                7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5;;
-                8) 
-                    reset_terminal
-                    echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"
-                    systemctl stop xray 2>/dev/null
-                    systemctl disable xray 2>/dev/null
-                    rm -f "$SERVICE_FILE" "$XRAY_BIN"
-                    rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
-                    echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"
-                    sleep 2
-                    return
-                    ;;
-                9) send_backup_telegram ;;
-                10) restore_v2ray ;;
-                11) restore_from_telegram ;;
-                0) return ;;
-                *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;
-            esac
-        done
-    }
+        echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"  
+        echo -e "${GRAY}════════════════════════════════════════════════${NC}"  
+        echo -e " ${UP} IP:     ${GREEN}$IP${NC}"  
+        echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"  
+        echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"  
+        echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"  
+        echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
+
+        # === MOSTRAR USUARIOS QUE EXPIRAN HOY (0 DÍAS) ===
+        expiring_today=""
+        while IFS=: read -r name uuid created expires delete_at; do
+            [[ $name == "#"* ]] && continue
+            [ $(date +%s) -ge $delete_at ] && continue  # ya eliminado
+
+            days_left=$(days_left_natural "$expires")
+            if [[ "$days_left" -eq 0 ]]; then
+                expiring_today+="$name 0 Días\n"
+            fi
+        done < "$USERS_FILE"
+
+        if [[ -n "$expiring_today" ]]; then
+            echo -e "${RED}USUARIOS QUE EXPIRAN HOY:${NC}"
+            echo -e "${YELLOW}$(echo -e "$expiring_today" | sed '/^$/d' | sed 's/$/ /' | tr -d '\n' | sed 's/ $//;s/ /  •  /g')${NC}"
+            echo
+        fi
+
+        # === MENÚ ===
+        echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"  
+        echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"  
+        echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"  
+        echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"  
+        echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"  
+        echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"  
+        echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"  
+        echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"  
+        echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"  
+        echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"  
+        echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"  
+        echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"  
+        echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
+        read -p " ${ROCKET} Elige una opción: " opt  
+
+        case $opt in  
+            1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;  
+            2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;  
+            3) add_user; current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams"); current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo ""); generate_config "$current_path" "$current_host"; systemctl restart xray 2>/dev/null;;  
+            4) remove_user_menu;;  
+            5) list_users;;  
+            6) export_all_vmess;;  
+            7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5;;  
+            8)   
+                reset_terminal  
+                echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"  
+                systemctl stop xray 2>/dev/null  
+                systemctl disable xray 2>/dev/null  
+                rm -f "$SERVICE_FILE" "$XRAY_BIN"  
+                rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"  
+                echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"  
+                sleep 2  
+                return  
+                ;;  
+            9) send_backup_telegram ;;  
+            10) restore_v2ray ;;  
+            11) restore_from_telegram ;;  
+            0) return ;;  
+            *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;  
+        esac  
+    done  
+}
 
     # === INICIO DEL SUBMENÚ ===
     [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
