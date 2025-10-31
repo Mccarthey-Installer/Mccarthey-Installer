@@ -3125,7 +3125,7 @@ EOF
         done < "$USERS_FILE"
 
         if [[ -n "$expiring_today" ]]; then
-            echo -e "⚠️${RED}USUARIOS QUE EXPIRAN HOY:${NC}"
+            echo -e "⚠️${RED} USUARIOS QUE EXPIRAN HOY:${NC}"
             echo -e "${YELLOW}$(echo "$expiring_today" | sed 's/   $//')${NC}"
             echo
         fi
