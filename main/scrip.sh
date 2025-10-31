@@ -3157,21 +3157,7 @@ EOF
         case $opt in  
             1) install_xray; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;  
             2) read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;  
-            3) 
-                add_user
-                current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
-                current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
-                generate_config "$current_path" "$current_host"
-                
-                # RECARGAR CONFIG SIN REINICIAR
-                if systemctl is-active xray &>/dev/null; then
-                    $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null && \
-                        echo -e "${ROCKET} ${GREEN}Usuario activado al instante (sin desconectar).${NC}"
-                else
-                    systemctl restart xray &>/dev/null
-                fi
-                sleep 1.5
-                ;;  
+            3) add_user; current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams"); current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo ""); generate_config "$current_path" "$current_host"; systemctl restart xray 2>/dev/null;;  
             4) remove_user_menu;;  
             5) list_users;;  
             6) export_all_vmess;;  
