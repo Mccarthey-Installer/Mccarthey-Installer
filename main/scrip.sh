@@ -2506,19 +2506,21 @@ menu_v2ray() {
     local GRAY='\033[0;90m'  
     local NC='\033[0m'  
   
-    # EMOJIS  
+ 
+
+    # EMOJIS
     local FIRE="🔥"
-local ROCKET="🚀"
-local SPARK="✨"
-local STAR="⭐"
-local CHECK="✅"
-local CROSS="❌"
-local TRASH="🗑️"
-local USER="👤"
-local KEY="🔑"
-local CAL="📅"
-local DOWN="⬇️"
-local UP="⬆️"
+    local ROCKET="🚀"
+    local SPARK="✨"
+    local STAR="⭐"
+    local CHECK="✅"
+    local CROSS="❌"
+    local TRASH="🗑️"
+    local USER="👤"
+    local KEY="🔑"
+    local CAL="📅"
+    local DOWN="⬇️"
+    local UP="⬆️"
   
     # === LIMPIADOR DE TERMINAL ===  
     reset_terminal() {  
@@ -2560,8 +2562,8 @@ local UP="⬆️"
         done < "$USERS_FILE"
 
         if [ $cleaned -gt 0 ]; then
-            local backup_name="$USERS_FILE.bak.$(date +%Y%m%d_%H%M%S)"
-            cp "$USERS_FILE" "$backup_name" 2>/dev/null
+            local backup_file="$USERS_FILE.bak.$(date +%Y%m%d_%H%M%S)"
+            cp "$USERS_FILE" "$backup_file" 2>/dev/null
             mv "$temp_file" "$USERS_FILE"
             chmod 600 "$USERS_FILE"
             echo $cleaned  # Devuelve cuántos se limpiaron
@@ -2699,12 +2701,11 @@ EOF
         echo -e "${GRAY}────────────────────────────────────${NC}"  
         read -p "Presiona Enter para continuar...${NC}" -r </dev/tty  
 
-        # === LIMPIEZA AUTOMÁTICA ===
+        # Regenerar config + limpiar caducados
+        generate_config "$current_path" "$current_host"
+        systemctl restart xray 2>/dev/null
         cleaned=$(clean_expired_users)
-        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados del registro.${NC}"
-
-        generate_config "$current_path" "$current_host"  
-        systemctl restart xray 2>/dev/null  
+        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados del archivo.${NC}"
     }  
   
     remove_user_menu() {  
@@ -2718,13 +2719,18 @@ EOF
             read -p "Enter...${NC}" -r </dev/tty && return  
         fi  
   
-        local TRASH="🗑️"
-        local STAR="⭐"
-        local KEY="🔑"
-        local CAL="📅"
-        local ROCKET="🚀"
-        local CHECK="✅"
-        local CROSS="❌"
+local FIRE="🔥"
+local ROCKET="🚀"
+local SPARK="✨"
+local STAR="⭐"
+local CHECK="✅"
+local CROSS="❌"
+local TRASH="🗑️"
+local USER="👤"
+local KEY="🔑"
+local CAL="📅"
+local DOWN="⬇️"
+local UP="⬆️"
         local GRAY='\033[0;90m'  
         local RED='\033[1;91m'  
         local GREEN='\033[1;92m'  
@@ -2792,14 +2798,13 @@ EOF
   
         if [ $deleted_count -gt 0 ]; then  
             current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")  
-            current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")  
+            current_host=$(grep '"Host'" "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")  
             generate_config "$current_path" "$current_host"  
             systemctl restart xray 2>/dev/null  
         fi  
 
-        # === LIMPIEZA AUTOMÁTICA ===
         cleaned=$(clean_expired_users)
-        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados del registro.${NC}"
+        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados del archivo.${NC}"
   
         reset_terminal  
         echo -e "${TRASH} ${RED}RESULTADO DE ELIMINACIÓN${NC}"  
@@ -2818,10 +2823,9 @@ EOF
     }  
   
     list_users() {  
-        # === LIMPIEZA ANTES DE MOSTRAR ===
         cleaned=$(clean_expired_users)
-        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados.${NC}" && sleep 1.5
-
+        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados.${NC}"
+        
         reset_terminal  
         echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"  
         echo -e "${PURPLE}════════════════════════════════════${NC}"  
@@ -2835,7 +2839,7 @@ EOF
             days_left=$(days_left_natural "$expires")  
             active=1  
   
-            echo -e "USER ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+            echo -e "user ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
             echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
             echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
             echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
@@ -3109,10 +3113,9 @@ EOF
   
     show_v2ray_menu() {  
         reset_terminal  
-        # === LIMPIEZA AL ENTRAR AL MENÚ ===
         cleaned=$(clean_expired_users)
-        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados al iniciar.${NC}" && sleep 1.5
-
+        [ $cleaned -gt 0 ] && echo -e "${TRASH} ${RED}Limpiados $cleaned usuarios caducados al iniciar.${NC}"
+        
         while true; do  
             reset_terminal  
             current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "No configurado")  
@@ -3120,7 +3123,7 @@ EOF
   
             echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"  
             echo -e "${GRAY}════════════════════════════════════════════════${NC}"  
-            echo -e " ${UP} IP:     ${GREEN}$IP${NC}"  
+            echo -e " ${UP} IP:     ${GREEN}$IP_HAVE${NC}"  
             echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"  
             echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"  
             echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"  
