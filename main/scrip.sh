@@ -2814,7 +2814,7 @@ EOF
         days_left=$(days_left_natural "$expires")  
         active=1  
 
-        echo -e "🧑‍💻 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+        echo -e "User ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
         echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
         echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
         echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
@@ -2823,26 +2823,18 @@ EOF
         ((count++))  
     done < "$USERS_FILE"  
 
-    # Mensaje si se limpiaron usuarios
-    (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Se eliminaron $cleaned usuario(s) expirado(s).${NC}"
-
-    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
-
-    # === REGENERAR CONFIG Y REINICIAR SILENCIOSAMENTE ===
+    # === REGENERAR CONFIG ===
     current_path=$(grep '"path"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $4}' | head -1 || echo "/pams")
     current_host=$(grep '"Host"' "$CONFIG_FILE" 2>/dev/null | awk -F'"' '{print $6}' | head -1 || echo "")
     generate_config "$current_path" "$current_host"
 
-    # Contar conexiones activas
-    active_connections=$(ss -tnp | grep -c ":$PORT" 2>/dev/null || echo 0)
-
-    if [[ $active_connections -eq 0 ]]; then
-        systemctl restart xray &>/dev/null  # Silencioso
+    # === RECARGAR XRAY SIN DESCONECTAR (SI HAY SERVICIO) ===
+    if systemctl is-active xray &>/dev/null; then
+        $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
     fi
 
-    # Solo mostrar mensaje de limpieza (si hubo)
+    # === MENSAJES FINALES (UNA SOLA VEZ) ===
     (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Se eliminaron $cleaned usuario(s) expirado(s).${NC}"
-
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
 
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
