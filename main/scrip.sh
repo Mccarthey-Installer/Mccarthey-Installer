@@ -2484,15 +2484,16 @@ eliminar_swap() {
 
 
 menu_v2ray() {
-    # === RUTAS ===
+    # === DIRECTORIOS Y ARCHIVOS ===
     local CONFIG_DIR="/usr/local/etc/xray"
     local CONFIG_FILE="$CONFIG_DIR/config.json"
     local SERVICE_FILE="/etc/systemd/system/xray.service"
     local LOG_DIR="/var/log/xray"
     local USERS_FILE="$CONFIG_DIR/users.db"
+    local SETTINGS_FILE="$CONFIG_DIR/settings.json"  # GUARDA: server, path, host
     local BACKUP_DIR="$CONFIG_DIR/backups"
-    local SETTINGS_FILE="$CONFIG_DIR/settings.json"  # NUEVO: guarda path, host, server
     local XRAY_BIN="/usr/local/bin/xray"
+    local PORT=8080
 
     # === COLORES ===
     local RED='\033[1;91m'
@@ -2506,64 +2507,69 @@ menu_v2ray() {
     local NC='\033[0m'
 
     # === EMOJIS ===
-    local FIRE="🔥"
-    local ROCKET="🚀"
-    local SPARK="✨"
-    local STAR="⭐"
-    local CHECK="✅"
-    local CROSS="❌"
-    local TRASH="🗑️"
-    local USER="👤"
-    local KEY="🔑"
-    local CAL="📅"
-    local UP="⬆️"
+    local FIRE="FIRE"
+    local ROCKET="ROCKET"
+    local SPARK="SPARK"
+    local STAR="STAR"
+    local CHECK="CHECK"
+    local CROSS="CROSS"
+    local TRASH="TRASH"
+    local USER="USER"
+    local KEY="KEY"
+    local CAL="CALENDAR"
+    local UP="UP"
 
-    # === LIMPIADOR DE TERMINAL ===
+    # === LIMPIAR PANTALLA ===
     reset_terminal() {
         clear
         printf '\033[3J'
         stty sane
     }
 
+    # === INSTALAR jq SI NO EXISTE ===
+    if ! command -v jq &>/dev/null; then
+        echo -e "${YELLOW}Instalando jq...${NC}"
+        if command -v apt-get &>/dev/null; then
+            apt-get update -qq && apt-get install -y jq >/dev/null 2>&1
+        elif command -v yum &>/dev/null; then
+            yum install -y jq >/dev/null 2>&1
+        elif command -v dnf &>/dev/null; then
+            dnf install -y jq >/dev/null 2>&1
+        else
+            curl -sL -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
+            chmod +x /usr/bin/jq
+        fi
+    fi
+
     # === CREAR ESTRUCTURA ===
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
-    [ ! -f "$SETTINGS_FILE" ] && echo '{"server":"", "path":"/alexa", "host":"pruebat.org"}' > "$SETTINGS_FILE"
 
-    # === INSTALAR DEPENDENCIAS (jq, curl, etc.) ===
-    install_deps() {
-        if ! command -v jq &>/dev/null; then
-            echo -e "${YELLOW}Instalando jq...${NC}"
-            if command -v apt-get &>/dev/null; then
-                apt-get update -qq && apt-get install -y jq curl > /dev/null 2>&1
-            elif command -v yum &>/dev/null; then
-                yum install -y jq curl > /dev/null 2>&1
-            elif command -v dnf &>/dev/null; then
-                dnf install -y jq curl > /dev/null 2>&1
-            else
-                curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
-                chmod +x /usr/bin/jq
-            fi
+    # === CARGAR / GUARDAR SETTINGS (server, path, host) ===
+    load_settings() {
+        if [[ -f "$SETTINGS_FILE" ]] && jq -e . "$SETTINGS_FILE" >/dev/null 2>&1; then
+            SERVER=$(jq -r '.server // "IP_NO_DETECTADA"' "$SETTINGS_FILE")
+            PATH_VAL=$(jq -r '.path // "/alexa"' "$SETTINGS_FILE")
+            HOST_VAL=$(jq -r '.host // ""' "$SETTINGS_FILE")
+        else
+            SERVER="IP_NO_DETECTADA"
+            PATH_VAL="/alexa"
+            HOST_VAL=""
+            save_settings
         fi
     }
-    install_deps
 
-    # === CARGAR SETTINGS CON jq ===
-    load_settings() {
-        SERVER=$(jq -r '.server // ""' "$SETTINGS_FILE")
-        PATH=$(jq -r '.path // "/alexa"' "$SETTINGS_FILE")
-        HOST=$(jq -r '.host // "pruebat.org"' "$SETTINGS_FILE")
-        [ -z "$SERVER" ] && SERVER="front.alisson.shop"  # valor por defecto
-    }
-    load_settings
-
-    # === GUARDAR SETTINGS ===
     save_settings() {
-        jq -n --arg s "$SERVER" --arg p "$PATH" --arg h "$HOST" \
-           '{server: $s, path: $p, host: $h}' > "$SETTINGS_FILE"
+        jq -n \
+          --arg s "$SERVER" \
+          --arg p "$PATH_VAL" \
+          --arg h "$HOST_VAL" \
+          '{server: $s, path: $p, host: $h}' > "$SETTINGS_FILE"
     }
 
-    # === FUNCIONES ===
+    load_settings  # CARGAR AL INICIO
+
+    # === FUNCIONES AUXILIARES ===
     midnight_tomorrow() {
         date -d "tomorrow 00:00" +%s 2>/dev/null || date -d "next day 00:00" +%s
     }
@@ -2577,6 +2583,7 @@ menu_v2ray() {
         echo $days
     }
 
+    # === INSTALAR XRAY ===
     install_xray() {
         reset_terminal
         echo -e "${ROCKET} ${PURPLE}Instalando Xray Core...${NC} $SPARK"
@@ -2589,6 +2596,7 @@ menu_v2ray() {
         sleep 1.5
     }
 
+    # === CREAR SERVICIO SYSTEMD ===
     create_service() {
         cat > "$SERVICE_FILE" <<EOF
 [Unit]
@@ -2610,6 +2618,7 @@ EOF
         systemctl enable xray &>/dev/null
     }
 
+    # === GENERAR CONFIG.JSON ===
     generate_config() {
         local path="$1"
         local host="$2"
@@ -2622,7 +2631,7 @@ EOF
             echo '  },'
             echo '  "inbounds": ['
             echo '    {'
-            echo "      \"port\": 8080,"
+            echo "      \"port\": $PORT,"
             echo '      "listen": "0.0.0.0",'
             echo '      "protocol": "vmess",'
             echo '      "settings": {'
@@ -2633,11 +2642,13 @@ EOF
                 [[ $name == "#"* ]] && continue
                 [ $(date +%s) -ge $delete_at ] && continue
                 if [ "$first" = false ]; then echo "        ,"; fi
-                echo "          {"
-                echo "            \"id\": \"$uuid\","
-                echo "            \"level\": 8,"
-                echo "            \"alterId\": 0"
-                echo "          }"
+                cat <<EOF
+          {
+            "id": "$uuid",
+            "level": 8,
+            "alterId": 0
+          }
+EOF
                 first=false
             done < <(grep -v "^#" "$USERS_FILE")
 
@@ -2657,11 +2668,40 @@ EOF
         } > "$CONFIG_FILE"
     }
 
+    # === LISTAR USUARIOS ===
+    list_users() {  
+        reset_terminal  
+        echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"  
+        echo -e "${PURPLE}════════════════════════════════════${NC}"  
+        active=0  
+        count=1  
+
+        while IFS=: read -r name uuid created expires delete_at; do  
+            [[ $name == "#"* ]] && continue  
+            [ $(date +%s) -ge $delete_at ] && continue
+
+            days_left=$(days_left_natural "$expires")  
+            active=1  
+
+            echo -e "USER ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+            echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
+            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
+            echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
+            echo -e "${PURPLE}────────────────────────────────────${NC}"  
+            ((count++))  
+        done < "$USERS_FILE"  
+
+        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
+        read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
+    }
+
+    # === AGREGAR USUARIO ===
     add_user() {
         reset_terminal
         echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
         echo -e "${GRAY}────────────────────────────────────${NC}"
         read -p "Nombre del usuario: " name
+        [[ -z "$name" ]] && { echo -e "${CROSS} Nombre vacío."; sleep 1.5; return; }
         read -p "Días de validez (1, 7, 30...): " days
         [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
 
@@ -2672,186 +2712,249 @@ EOF
 
         echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
 
-        load_settings
-        json_data=$(cat <<EOF
-{
-  "add": "$SERVER",
-  "port": "8080",
-  "id": "$uuid",
-  "aid": "0",
-  "security": "auto",
-  "net": "ws",
-  "type": "none",
-  "host": "$HOST",
-  "path": "$PATH",
-  "tls": ""
-}
-EOF
-)
-        vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
+        generate_config "$PATH_VAL" "$HOST_VAL"
+        systemctl restart xray 2>/dev/null
+
+        vmess_json=$(jq -n \
+          --arg add "$SERVER" \
+          --arg id "$uuid" \
+          --arg host "$HOST_VAL" \
+          --arg path "$PATH_VAL" \
+          '{add: $add, port: "8080", id: $id, aid: "0", net: "ws", type: "none", host: $host, path: $path, tls: "", security: "auto"}')
+
+        vmess_link="vmess://$(echo "$vmess_json" | jq -r '@base64')"
 
         reset_terminal
-        echo -e "${CHECK} ${GREEN}USUARIO CREADO${NC} $FIRE"
+        echo -e "${CHECK} ${GREEN}USUARIO CREADO CON ÉXITO${NC} $FIRE"
         echo -e "${GRAY}════════════════════════════════════${NC}"
         echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
         echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
         echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
+        echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
         echo -e "${GRAY}════════════════════════════════════${NC}"
         echo -e "${ROCKET} ${BLUE}LINK VMESS:${NC}"
         echo -e "${WHITE}$vmess_link${NC}"
         echo -e "${GRAY}────────────────────────────────────${NC}"
-        read -p "Enter...${NC}" -r </dev/tty
-
-        generate_config "$PATH" "$HOST"
-        systemctl restart xray &>/dev/null
+        read -p "Presiona Enter para continuar...${NC}" -r </dev/tty
     }
 
-    list_users() {
-        reset_terminal
-        echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
-        active=0; count=1; cleaned=0
-
-        local temp_file=$(mktemp)
-        while IFS=: read -r name uuid created expires delete_at; do
-            [[ $name == "#"* ]] && continue
-            if [ $(date +%s) -ge $delete_at ]; then
-                echo -e "${TRASH} ${RED}Eliminado: $name (expiró)${NC}"
-                ((cleaned++))
-                continue
-            fi
-            echo "$name:$uuid:$created:$expires:$delete_at" >> "$temp_file"
-        done < "$USERS_FILE"
-        mv "$temp_file" "$USERS_FILE"
-
-        while IFS=: read -r name uuid created expires delete_at; do
-            days_left=$(days_left_natural "$expires")
-            echo -e "👩‍💻 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
-            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
-            echo -e "${PURPLE}────────────────────────────────────${NC}"
-            ((count++)); active=1
-        done < "$USERS_FILE"
-
-        load_settings
-        generate_config "$PATH" "$HOST"
-        $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
-
-        (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Eliminados $cleaned expirados.${NC}"
-        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
-        read -p "Enter...${NC}" -r </dev/tty
-    }
-
+    # === EXPORTAR TODOS (vmess://) ===
     export_all_vmess() {
         reset_terminal
         echo -e "${ROCKET} ${BLUE}EXPORTAR TODOS (vmess://)${NC}"
         echo -e "${PURPLE}════════════════════════════════${NC}"
-        load_settings
         while IFS=: read -r name uuid created expires delete_at; do
             [[ $name == "#"* ]] && continue
             [ $(date +%s) -ge $delete_at ] && continue
-            json_data=$(cat <<EOF
-{
-  "add": "$SERVER",
-  "port": "8080",
-  "id": "$uuid",
-  "aid": "0",
-  "security": "auto",
-  "net": "ws",
-  "type": "none",
-  "host": "$HOST",
-  "path": "$PATH",
-  "tls": ""
-}
-EOF
-)
-            vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
+            vmess_json=$(jq -n \
+              --arg add "$SERVER" \
+              --arg id "$uuid" \
+              --arg host "$HOST_VAL" \
+              --arg path "$PATH_VAL" \
+              '{add: $add, port: "8080", id: $id, aid: "0", net: "ws", type: "none", host: $host, path: $path, tls: "", security: "auto"}')
+            vmess_link="vmess://$(echo "$vmess_json" | jq -r '@base64')"
             echo -e "${YELLOW}→ $name${NC}"
             echo -e "${CYAN}$vmess_link${NC}"
             echo -e "${PURPLE}────────────────────────────────${NC}"
         done < "$USERS_FILE"
+        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+    }
+
+    # === ELIMINAR USUARIO ===
+    remove_user_menu() {
+        reset_terminal
+        echo -e "${TRASH} ${RED}ELIMINAR USUARIOS${NC}"
+        echo -e "${GRAY}════════════════════════════════════${NC}"
+
+        mapfile -t users < "$USERS_FILE"
+        if [ ${#users[@]} -eq 0 ]; then
+            echo -e "${CROSS} No hay usuarios."
+            read -p "Enter...${NC}" -r </dev/tty && return
+        fi
+
+        i=1
+        declare -A name_to_index
+        for line in "${users[@]}"; do
+            IFS=':' read -r name uuid created expires delete_at <<< "$line"
+            [[ $name == "#"* ]] && continue
+            [ $(date +%s) -ge $delete_at ] && continue
+
+            days_left=$(days_left_natural $expires 2>/dev/null || echo "0")
+            expire_date=$(date -d "@$expires" +"%d/%m/%Y" 2>/dev/null || echo "??")
+            echo -e "${STAR} ${WHITE}$i)${NC} ${YELLOW}$name${NC} → ${GREEN}$days_left días${NC}"
+            name_to_index["$name"]=$i
+            ((i++))
+        done
+
+        read -p " ${TRASH} Ingresa números o nombres: " input
+        [[ -z "$input" ]] && return
+
+        input=$(echo "$input" | tr ',' ' ')
+        read -ra selections <<< "$input"
+        deleted_count=0
+
+        for sel in "${selections[@]}"; do
+            if [[ "$sel" =~ ^[0-9]+$ ]]; then
+                index=$((sel-1))
+                if [[ $index -ge 0 && $index -lt ${#users[@]} ]]; then
+                    username=$(echo "${users[$index]}" | cut -d: -f1)
+                    sed -i "/^${username}:/d" "$USERS_FILE"
+                    ((deleted_count++))
+                fi
+            else
+                if grep -q "^${sel}:" "$USERS_FILE"; then
+                    sed -i "/^${sel}:/d" "$USERS_FILE"
+                    ((deleted_count++))
+                fi
+            fi
+        done
+
+        if [ $deleted_count -gt 0 ]; then
+            generate_config "$PATH_VAL" "$HOST_VAL"
+            systemctl restart xray 2>/dev/null
+        fi
+
+        reset_terminal
+        echo -e "${CHECK} ${GREEN}Eliminados: $deleted_count usuario(s)${NC}"
         read -p "Enter...${NC}" -r </dev/tty
     }
 
-    change_path_host() {
+    # === CAMBIAR CONFIGURACIÓN ===
+    change_settings() {
         reset_terminal
-        echo -e "${STAR} ${CYAN}CAMBIAR PATH / HOST / DOMINIO${NC}"
+        echo -e "${STAR} ${CYAN}CONFIGURAR SERVIDOR${NC}"
         echo -e "${GRAY}────────────────────────────────────${NC}"
         read -p "Dominio del servidor (ej: front.alisson.shop): " new_server
         read -p "Path (ej: /alexa): " new_path
-        read -p "Host (ej: pruebat.org): " new_host
+        read -p "Host (SNI, ej: pruebat.org): " new_host
 
-        [[ -z "$new_server" || -z "$new_path" || -z "$new_host" ]] && {
-            echo -e "${CROSS} ${RED}Todos los campos son obligatorios.${NC}"; sleep 1.5; return
-        }
+        [[ -z "$new_server" ]] && new_server="$SERVER"
+        [[ -z "$new_path" ]] && new_path="$PATH_VAL"
+        [[ -z "$new_host" ]] && new_host="$HOST_VAL"
 
         SERVER="$new_server"
-        PATH="$new_path"
-        HOST="$new_host"
+        PATH_VAL="$new_path"
+        HOST_VAL="$new_host"
         save_settings
-        generate_config "$PATH" "$HOST"
-        systemctl restart xray &>/dev/null
-        echo -e "${CHECK} ${GREEN}Configuración actualizada.${NC}"
+        generate_config "$PATH_VAL" "$HOST_VAL"
+        systemctl restart xray 2>/dev/null
+        echo -e "${CHECK} ${GREEN}Configuración guardada${NC}"
         sleep 2
     }
 
+    # === BACKUP LOCAL ===
     backup_v2ray() {
         reset_terminal
         local timestamp=$(date +"%Y%m%d_%H%M%S")
         local backup_file="$BACKUP_DIR/v2ray_backup_$timestamp.tar.gz"
         mkdir -p "$BACKUP_DIR"
-
         tar -czf "$backup_file" "$CONFIG_FILE" "$USERS_FILE" "$SETTINGS_FILE" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            echo -e "${CHECK} ${GREEN}Backup creado: $backup_file${NC}"
-            echo -e "${CYAN}Tamaño: $(du -h "$backup_file" | cut -f1)${NC}"
+        echo -e "${CHECK} ${GREEN}Backup creado: $backup_file${NC}"
+        read -p "Enter...${NC}" -r </dev/tty
+    }
+
+    # === RESTAURAR LOCAL ===
+    restore_v2ray() {
+        reset_terminal
+        if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR"/*.tar.gz 2>/dev/null)" ]; then
+            echo -e "${CROSS} No hay backups locales."
+            read -p "Enter...${NC}" -r </dev/tty && return
+        fi
+        mapfile -t backups < <(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r)
+        for i in "${!backups[@]}"; do
+            echo " $((i+1))) $(basename "${backups[$i]}")"
+        done
+        read -p "Elige número: " choice
+        [[ ! "$choice" =~ ^[0-9]+$ ]] && return
+        backup_file="${backups[$((choice-1))]}"
+        [ -z "$backup_file" ] && return
+
+        systemctl stop xray 2>/dev/null
+        tar -xzf "$backup_file" -C "$CONFIG_DIR" --strip-components=1 2>/dev/null
+        load_settings
+        generate_config "$PATH_VAL" "$HOST_VAL"
+        systemctl restart xray 2>/dev/null
+        echo -e "${CHECK} Restaurado correctamente."
+        sleep 2
+    }
+
+    # === ENVIAR A TELEGRAM ===
+    send_backup_telegram() {
+        reset_terminal
+        if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
+            echo -e "${CROSS} Bot no configurado."
+            sleep 2; return
+        fi
+        TOKEN=$(cat /root/sshbot_token)
+        USER_ID=$(cat /root/sshbot_userid)
+        URL="https://api.telegram.org/bot$TOKEN"
+
+        local timestamp=$(date +"%Y%m%d_%H%M%S")
+        local backup_file="/tmp/v2ray_backup_$timestamp.tar.gz"
+        tar -czf "$backup_file" "$CONFIG_FILE" "$USERS_FILE" "$SETTINGS_FILE" 2>/dev/null
+
+        response=$(curl -s -F "chat_id=$USER_ID" -F "document=@$backup_file" "$URL/sendDocument")
+        local local_backup="$BACKUP_DIR/v2ray_telegram_$timestamp.tar.gz"
+        cp "$backup_file" "$local_backup"
+        rm "$backup_file"
+
+        if echo "$response" | grep -q '"ok":true'; then
+            file_id=$(echo "$response" | jq -r '.result.document.file_id')
+            curl -s -X POST "$URL/sendMessage" \
+                -d "chat_id=$USER_ID" \
+                -d "text=Archivo ID: <code>$file_id</code>" \
+                -d "parse_mode=HTML" > /dev/null
+            echo -e "${CHECK} Enviado a Telegram! ID: $file_id"
         else
-            echo -e "${CROSS} ${RED}Error al crear backup.${NC}"
+            echo -e "${CROSS} Error al enviar."
         fi
         read -p "Enter...${NC}" -r </dev/tty
     }
 
+    # === RESTAURAR DESDE TELEGRAM ===
     restore_from_telegram() {
         reset_terminal
-        echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC}"
-        [ ! -f /root/sshbot_token ] && { echo -e "${CROSS} Bot no configurado."; sleep 2; return; }
+        if [[ ! -f /root/sshbot_token ]]; then
+            echo -e "${CROSS} Bot no configurado."
+            sleep 2; return
+        fi
         TOKEN=$(cat /root/sshbot_token)
-        read -p "File ID: " file_id
+        URL="https://api.telegram.org/bot$TOKEN"
+        read -p "File ID del backup: " file_id
         [[ -z "$file_id" ]] && return
 
-        FILE_INFO=$(curl -s "https://api.telegram.org/bot$TOKEN/getFile?file_id=$file_id")
-        [[ ! $(echo "$FILE_INFO" | jq -r .ok) == "true" ]] && { echo -e "${CROSS} Error en File ID."; return; }
+        FILE_INFO=$(curl -s "$URL/getFile?file_id=$file_id")
+        if ! echo "$FILE_INFO" | grep -q '"ok":true'; then
+            echo -e "${CROSS} ID inválido."
+            sleep 2; return
+        fi
 
         FILE_PATH=$(echo "$FILE_INFO" | jq -r '.result.file_path')
         curl -s "https://api.telegram.org/file/bot$TOKEN/$FILE_PATH" -o /tmp/restore.tar.gz
-
-        systemctl stop xray &>/dev/null
-        tar -xzf /tmp/restore.tar.gz -C "$CONFIG_DIR" 2>/dev/null
-        rm -f /tmp/restore.tar.gz
-
+        systemctl stop xray 2>/dev/null
+        tar -xzf /tmp/restore.tar.gz -C "$CONFIG_DIR" --strip-components=1 2>/dev/null
+        rm /tmp/restore.tar.gz
         load_settings
-        generate_config "$PATH" "$HOST"
+        generate_config "$PATH_VAL" "$HOST_VAL"
         create_service
-        systemctl restart xray &>/dev/null
-
-        echo -e "${CHECK} ${GREEN}Restaurado desde Telegram!${NC}"
-        echo -e "${WHITE}Server: $SERVER | Path: $PATH | Host: $HOST${NC}"
+        systemctl restart xray 2>/dev/null
+        echo -e "${CHECK} Restaurado desde Telegram!"
         sleep 3
     }
 
-    show_v2ray_menu() {
-        reset_terminal
-        while true; do
-            load_settings
-            reset_terminal
+    # === MENÚ PRINCIPAL ===
+    show_v2ray_menu() {  
+        reset_terminal  
+        while true; do  
+            reset_terminal  
 
-            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
-            echo -e "${GRAY}════════════════════════════════════════════════${NC}"
-            echo -e " ${UP} IP:     ${GREEN}$SERVER${NC}"
-            echo -e " ${UP} Puerto: ${GREEN}8080${NC}"
-            echo -e " ${UP} Path:   ${YELLOW}$PATH${NC}"
-            echo -e " ${UP} Host:   ${YELLOW}$HOST${NC}"
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
+            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"  
+            echo -e "${GRAY}════════════════════════════════════════════════${NC}"  
+            echo -e " ${UP} Servidor: ${GREEN}$SERVER${NC}"  
+            echo -e " ${UP} Puerto:   ${GREEN}$PORT${NC}"  
+            echo -e " ${UP} Path:     ${YELLOW}$PATH_VAL${NC}"  
+            echo -e " ${UP} Host:     ${YELLOW}$HOST_VAL${NC}"  
+            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
 
             expiring_today=""
             while IFS=: read -r name uuid created expires delete_at; do
@@ -2859,43 +2962,43 @@ EOF
                 [ $(date +%s) -ge $delete_at ] && continue
                 [[ $(days_left_natural "$expires") -eq 0 ]] && expiring_today+="$name  0 días   "
             done < "$USERS_FILE"
+            [[ -n "$expiring_today" ]] && echo -e "WARNING${RED} USUARIOS QUE EXPIRAN HOY:${NC}\n${YELLOW}$(echo "$expiring_today" | sed 's/   $//')${NC}\n"
 
-            [[ -n "$expiring_today" ]] && echo -e "⚠️${RED} USUARIOS QUE EXPIRAN HOY:${NC}\n${YELLOW}$(echo "$expiring_today" | sed 's/   $//') ${NC}\n"
+            echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"  
+            echo -e " ${STAR} 2) ${CYAN}Cambiar Servidor / Path / Host${NC}"  
+            echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"  
+            echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"  
+            echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"  
+            echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"  
+            echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"  
+            echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"  
+            echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"  
+            echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"  
+            echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"  
+            echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"  
+            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
+            read -p " ${ROCKET} Elige una opción: " opt  
 
-            echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"
-            echo -e " ${STAR} 2) ${CYAN}Cambiar Dominio / Path / Host${NC}"
-            echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"
-            echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"
-            echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"
-            echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"
-            echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"
-            echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"
-            echo -e " ${STAR} 9) ${GREEN}Backup local${NC}"
-            echo -e " ${STAR}10) ${BLUE}Restaurar local${NC}"
-            echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram${NC}"
-            echo -e " ${STAR} 0) ${GRAY}Volver${NC}"
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
-            read -p " ${ROCKET} Opción: " opt
-
-            case $opt in
-                1) install_xray; change_path_host; create_service; systemctl restart xray;;
-                2) change_path_host;;
-                3) add_user;;
-                4) remove_user_menu;;
-                5) list_users;;
-                6) export_all_vmess;;
-                7) systemctl restart xray; echo -e "${CHECK} Reiniciado."; sleep 1.5;;
-                8) rm -rf "$CONFIG_DIR" "$LOG_DIR" "$SERVICE_FILE" "$XRAY_BIN"; echo -e "${CHECK} TODO BORRADO."; sleep 2; return;;
-                9) backup_v2ray;;
-                10) restore_v2ray;;
-                11) restore_from_telegram;;
-                0) return;;
-                *) echo -e "${CROSS} Inválido."; sleep 1;;
-            esac
-        done
+            case $opt in  
+                1) install_xray; change_settings; create_service; systemctl restart xray;;  
+                2) change_settings;;  
+                3) add_user;;  
+                4) remove_user_menu;;  
+                5) list_users;;  
+                6) export_all_vmess;;  
+                7) systemctl restart xray; echo -e "${CHECK} Reiniciado."; sleep 1.5;;  
+                8) systemctl stop xray; systemctl disable xray; rm -rf "$CONFIG_DIR" "$LOG_DIR" "$SERVICE_FILE" "$XRAY_BIN"; echo -e "${CHECK} TODO BORRADO."; sleep 2; return;;  
+                9) send_backup_telegram;;  
+                10) restore_v2ray;;  
+                11) restore_from_telegram;;  
+                0) return;;  
+                *) echo -e "${CROSS} Inválido."; sleep 1.5;;  
+            esac  
+        done  
     }
 
-    [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta opción 1 para instalar Xray.${NC}"
+    # === INICIAR MENÚ ===
+    [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
     show_v2ray_menu
 }
 
