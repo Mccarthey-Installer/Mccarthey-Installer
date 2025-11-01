@@ -2631,7 +2631,8 @@ EOF
 
     
 
-    remove_user_menu() {
+    
+remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
         echo -e "════════════════════════════════════"
@@ -2718,7 +2719,9 @@ EOF
             current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
             current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
             generate_config "$current_path" "$current_host"
-            systemctl restart xray 2>/dev/null
+            if systemctl is-active xray &>/dev/null; then
+                $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
+            fi
         fi
 
         reset_terminal
