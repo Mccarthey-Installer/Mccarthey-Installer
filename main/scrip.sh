@@ -2695,7 +2695,9 @@ EOF
     
          
     
-generate_config() {
+
+
+        generate_config() {
     local path="$1"
     local host="$2"
 
@@ -2732,7 +2734,8 @@ generate_config() {
             echo "          {"
             echo "            \"id\": \"$uuid\","
             echo "            \"level\": 8,"
-            echo "            \"alterId\": 0"
+            echo "            \"alterId\": 1,"           # FUERZA UUID EN LOGS
+            echo "            \"security\": \"aes-128-gcm\""  # EVITA "auto"
             first=false
         done < <(grep -v "^#" "$USERS_FILE")
         
