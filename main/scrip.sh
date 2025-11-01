@@ -2630,18 +2630,16 @@ EOF
     }
 
     
-
-    
 remove_user_menu() {
-        reset_terminal
-        echo -e "ELIMINAR USUARIOS"
-        echo -e "════════════════════════════════════"
+    reset_terminal
+    echo -e "ELIMINAR USUARIOS"
+    echo -e "════════════════════════════════════"
 
-        mapfile -t users < "$USERS_FILE"
-        if [ ${#users[@]} -eq 0 ]; then
-            echo -e "No hay usuarios registrados."
-            read -p "Enter...${NC}" -r </dev/tty && return
-        fi
+    mapfile -t users < "$USERS_FILE"
+    if [ ${#users[@]} -eq 0 ]; then
+        echo -e "No hay usuarios registrados."
+        read -p "Enter...${NC}" -r </dev/tty && return
+    fi
 
         local TRASH="🗑️"
         local STAR="⭐"
@@ -2659,86 +2657,101 @@ remove_user_menu() {
         local WHITE='\033[1;97m'
         local NC='\033[0m'
 
-        i=1
-        declare -A name_to_index
-        for line in "${users[@]}"; do
-            IFS=':' read -r name uuid created expires delete_at <<< "$line"
-            [[ $name == "#"* ]] && continue
-            [ $(date +%s) -ge $delete_at ] && continue
+    i=1
+    declare -A name_to_index
+    for line in "${users[@]}"; do
+        IFS=':' read -r name uuid created expires delete_at <<< "$line"
+        [[ $name == "#"* ]] && continue
+        [ $(date +%s) -ge $delete_at ] && continue
 
-            days_left=$(days_left_natural $expires 2>/dev/null || echo "0")
-            expire_date=$(date -d "@$expires" +"%d/%m/%Y" 2>/dev/null || echo "??")
-            full_uuid="$uuid"
+        days_left=$(days_left_natural $expires 2>/dev/null || echo "0")
+        expire_date=$(date -d "@$expires" +"%d/%m/%Y" 2>/dev/null || echo "??")
+        full_uuid="$uuid"
 
-            echo -e "${STAR} ${WHITE}$i)${NC} ${YELLOW}$name${NC}"
-            echo -e "   ${KEY} ${CYAN}UUID:${NC} $full_uuid"
-            echo -e "   ${CAL} ${GREEN}Vence en $days_left días${NC} → ${PURPLE}$expire_date${NC}"
-            echo -e "${GRAY}   ──────────────────────────────────${NC}"
+        echo -e "${STAR} ${WHITE}$i)${NC} ${YELLOW}$name${NC}"
+        echo -e "   ${KEY} ${CYAN}UUID:${NC} $full_uuid"
+        echo -e "   ${CAL} ${GREEN}Vence en $days_left días${NC} → ${PURPLE}$expire_date${NC}"
+        echo -e "${GRAY}   ──────────────────────────────────${NC}"
 
-            name_to_index["$name"]=$i
-            ((i++))
-        done
+        name_to_index["$name"]=$i
+        ((i++))
+    done
 
-        echo -e "${ROCKET} ${WHITE}Puedes ingresar números, nombres o mezcla:${NC}"
-        echo -e "   ${CYAN}Ejemplos: 1 3 5  •  delms paty  •  1 delms 4${NC}"
-        echo -e "${GRAY}════════════════════════════════════${NC}"
-        read -p " ${TRASH} Ingrese usuarios a eliminar: " input
+    echo -e "${ROCKET} ${WHITE}Puedes ingresar números, nombres o mezcla:${NC}"
+    echo -e "   ${CYAN}Ejemplos: 1 3 5  •  delms paty  •  1 delms 4${NC}"
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    read -p " ${TRASH} Ingrese usuarios a eliminar: " input
 
-        [[ -z "$input" ]] && { echo -e "${CROSS} ${RED}Entrada vacía.${NC}"; sleep 1.5; return; }
+    [[ -z "$input" ]] && { echo -e "${CROSS} ${RED}Entrada vacía.${NC}"; sleep 1.5; return; }
 
-        input=$(echo "$input" | tr ',' ' ')
-        read -ra selections <<< "$input"
+    input=$(echo "$input" | tr ',' ' ')
+    read -ra selections <<< "$input"
 
-        deleted_count=0
-        failed=()
+    deleted_count=0
+    failed=()
 
-        for sel in "${selections[@]}"; do
-            username=""
-            if [[ "$sel" =~ ^[0-9]+$ ]]; then
-                index=$((sel-1))
-                if [[ $index -ge 0 && $index -lt ${#users[@]} ]]; then
-                    username=$(echo "${users[$index]}" | cut -d: -f1)
-                else
-                    failed+=("${CROSS} Número $sel (fuera de rango)")
-                    continue
-                fi
+    for sel in "${selections[@]}"; do
+        username=""
+        if [[ "$sel" =~ ^[0-9]+$ ]]; then
+            index=$((sel-1))
+            if [[ $index -ge 0 && $index -lt ${#users[@]} ]]; then
+                username=$(echo "${users[$index]}" | cut -d: -f1)
             else
-                if grep -q "^${sel}:" "$USERS_FILE"; then
-                    username="$sel"
-                else
-                    failed+=("${CROSS} Nombre '$sel' (no existe)")
-                    continue
-                fi
+                failed+=("${CROSS} Número $sel (fuera de rango)")
+                continue
             fi
+        else
+            if grep -q "^${sel}:" "$USERS_FILE"; then
+                username="$sel"
+            else
+                failed+=("${CROSS} Nombre '$sel' (no existe)")
+                continue
+            fi
+        fi
 
-            sed -i "/^${username}:/d" "$USERS_FILE"
-            ((deleted_count++))
+        sed -i "/^${username}:/d" "$USERS_FILE"
+        ((deleted_count++))
+    done
+
+    # === RECARGAR XRAY EN CALIENTE (SIN DESCONECTAR) ===
+    if [ $deleted_count -gt 0 ]; then
+        current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "/pams"' "$CONFIG_FILE" 2>/dev/null)
+        current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host // ""' "$CONFIG_FILE" 2>/dev/null)
+
+        generate_config "$current_path" "$current_host"
+
+        if systemctl is-active --quiet xray; then
+            if $XRAY_BIN -config "$CONFIG_FILE" -test >/dev/null 2>&1; then
+                $XRAY_BIN -config "$CONFIG_FILE" -reload >/dev/null 2>&1 && \
+                    echo -e "${CHECK} ${GREEN}Configuración recargada en caliente (sin desconexiones)${NC}"
+            else
+                echo -e "${CROSS} ${RED}Error en config.json. Reiniciando Xray...${NC}"
+                systemctl restart xray
+            fi
+        fi
+    fi
+
+    # === RESULTADO ===
+    reset_terminal
+    echo -e "${TRASH} ${RED}RESULTADO DE ELIMINACIÓN${NC}"
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    if [ $deleted_count -gt 0 ]; then
+        echo -e "${CHECK} ${GREEN}Eliminados: $deleted_count usuario(s)${NC}"
+        echo -e "${CHECK} ${GREEN}Cambios aplicados al instante${NC}"
+    fi
+    if [ ${#failed[@]} -gt 0 ]; then
+        echo -e "${CROSS} ${RED}Errores:${NC}"
+        for err in "${failed[@]}"; do
+            echo -e "   • $err"
         done
+    fi
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    read -p "Presiona Enter para continuar...${NC}" -r </dev/tty
+}
+    
 
-        if [ $deleted_count -gt 0 ]; then
-            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
-            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
-            generate_config "$current_path" "$current_host"
-            if systemctl is-active xray &>/dev/null; then
-                $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
-            fi
-        fi
 
-        reset_terminal
-        echo -e "${TRASH} ${RED}RESULTADO DE ELIMINACIÓN${NC}"
-        echo -e "${GRAY}════════════════════════════════════${NC}"
-        if [ $deleted_count -gt 0 ]; then
-            echo -e "${CHECK} ${GREEN}Eliminados: $deleted_count usuario(s)${NC}"
-        fi
-        if [ ${#failed[@]} -gt 0 ]; then
-            echo -e "${CROSS} ${RED}Errores:${NC}"
-            for err in "${failed[@]}"; do
-                echo -e "   • $err"
-            done
-        fi
-        echo -e "${GRAY}════════════════════════════════════${NC}"
-        read -p "Presiona Enter para continuar...${NC}" -r </dev/tty
-    }
+            
 
     list_users() {  
     reset_terminal  
