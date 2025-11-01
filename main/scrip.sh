@@ -2929,8 +2929,7 @@ EOF
     show_v2ray_menu
 }
 
-# === EJECUTAR ===
-menu_v2ray
+
 
 
 # ==== MENU PRINCIPAL ====
