@@ -2582,52 +2582,7 @@ EOF
         systemctl enable xray &>/dev/null
     }
 
-    generate_config() {
-        local path="$1"
-        local host="$2"
-        {
-            echo "{"
-            echo '  "log": {'
-            echo '    "loglevel": "warning",'
-            echo "    \"access\": \"$LOG_DIR/access.log\","
-            echo "    \"error\": \"$LOG_DIR/error.log\""
-            echo '  },'
-            echo '  "inbounds": ['
-            echo '    {'
-            echo "      \"port\": $PORT,"
-            echo '      "listen": "0.0.0.0",'
-            echo '      "protocol": "vmess",'
-            echo '      "settings": {'
-            echo '        "clients": ['
-            
-            first=true
-            while IFS=: read -r name uuid created expires delete_at; do
-                [[ $name == "#"* ]] && continue
-                [ $(( $(date +%s) )) -ge $delete_at ] && continue
-                if [ "$first" = false ]; then echo "        },"; fi
-                echo "          {"
-                echo "            \"id\": \"$uuid\","
-                echo "            \"level\": 8,"
-                echo "            \"alterId\": 0"
-                first=false
-            done < <(grep -v "^#" "$USERS_FILE")
-            
-            [ "$first" = false ] && echo "        }"
-            echo '        ]'
-            echo '      },'
-            echo '      "streamSettings": {'
-            echo '        "network": "ws",'
-            echo '        "wsSettings": {'
-            echo "          \"path\": \"$path\""
-            [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
-            echo '        }'
-            echo '      }'
-            echo '    }'
-            echo '  ],'
-            echo '  "outbounds": [{ "protocol": "freedom" }]'
-            echo '}'
-        } > "$CONFIG_FILE"
-    }
+    
 
     
 
@@ -2738,18 +2693,20 @@ EOF
     }
 
     
-         list_users() {  
+         
+    list_users() {  
     reset_terminal  
     echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"  
     echo -e "${PURPLE}════════════════════════════════════${NC}"  
     active=0  
     count=1  
 
+    local CONFIG_DIR="/usr/local/etc/xray"
+    local LOG_DIR="/var/log/xray"
     local CONNECTION_STATE_FILE="/tmp/xray_connections.state"
     local PID_FILE="/tmp/xray_monitor.pid"
-    local LOG_DIR="/var/log/xray"
 
-    # === INICIAR MONITOR EN BACKGROUND (si no está corriendo) ===
+    # === INICIAR MONITOR EN BACKGROUND (SI NO ESTÁ CORRIENDO) ===
     if [ ! -f "$PID_FILE" ] || ! kill -0 $(cat "$PID_FILE" 2>/dev/null) 2>/dev/null; then
         nohup bash -c '
             STATE_FILE="'"$CONNECTION_STATE_FILE"'"
@@ -2778,14 +2735,9 @@ EOF
                     done < <(tail -n 500 "$LOG_FILE" 2>/dev/null | grep -i "accepted.*vmess")
                 fi
 
-                # Escribir estado
                 {
                     for uuid in "${!last_seen[@]}"; do
                         start_time=${last_seen[$uuid]}
-                        elapsed=$((now - start_time))
-                        hours=$((elapsed / 3600))
-                        mins=$(( (elapsed % 3600) / 60 ))
-                        secs=$((elapsed % 60))
                         printf "%s|%d|%d\n" "$uuid" "$start_time" "${devices[$uuid]}"
                     done
                 } > "$STATE_FILE.tmp"
@@ -2849,7 +2801,7 @@ EOF
             devices="0 dispositivos"
         fi
 
-        echo -e "👩‍💻 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+        echo -e "Usuario ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
         echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
         echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
         echo -e "   ${WHITE}Estado:${NC} $status"  
@@ -2861,12 +2813,11 @@ EOF
         ((count++))  
     done < "$USERS_FILE"  
 
-    # === REGENERAR CONFIG ===
+    # === REGENERAR CONFIG Y RECARGAR XRAY ===
     current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
     current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
     generate_config "$current_path" "$current_host"
 
-    # === RECARGAR XRAY SIN DESCONECTAR ===
     if systemctl is-active xray &>/dev/null; then
         $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
     fi
@@ -2877,6 +2828,54 @@ EOF
     echo -e "${GRAY}Cronómetro en vivo (se reinicia al reconectar)${NC}"
 
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
+}
+
+
+generate_config() {
+    local path="$1"
+    local host="$2"
+    {
+        echo "{"
+        echo '  "log": {'
+        echo '    "loglevel": "info",'  # NECESARIO PARA CRONÓMETRO
+        echo "    \"access\": \"$LOG_DIR/access.log\","
+        echo "    \"error\": \"$LOG_DIR/error.log\""
+        echo '  },'
+        echo '  "inbounds": ['
+        echo '    {'
+        echo "      \"port\": $PORT,"
+        echo '      "listen": "0.0.0.0",'
+        echo '      "protocol": "vmess",'
+        echo '      "settings": {'
+        echo '        "clients": ['
+        
+        first=true
+        while IFS=: read -r name uuid created expires delete_at; do
+            [[ $name == "#"* ]] && continue
+            [ $(( $(date +%s) )) -ge $delete_at ] && continue
+            if [ "$first" = false ]; then echo "        },"; fi
+            echo "          {"
+            echo "            \"id\": \"$uuid\","
+            echo "            \"level\": 8,"
+            echo "            \"alterId\": 0"
+            first=false
+        done < <(grep -v "^#" "$USERS_FILE")
+        
+        [ "$first" = false ] && echo "        }"
+        echo '        ]'
+        echo '      },'
+        echo '      "streamSettings": {'
+        echo '        "network": "ws",'
+        echo '        "wsSettings": {'
+        echo "          \"path\": \"$path\""
+        [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
+        echo '        }'
+        echo '      }'
+        echo '    }'
+        echo '  ],'
+        echo '  "outbounds": [{ "protocol": "freedom" }]'
+        echo '}'
+    } > "$CONFIG_FILE"
 }
         
 
