@@ -2834,10 +2834,17 @@ EOF
 generate_config() {
     local path="$1"
     local host="$2"
+
+    # === FORZAR CREACIÓN DE DIRECTORIO Y ARCHIVOS DE LOG ===
+    mkdir -p "$LOG_DIR"
+    touch "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
+    chmod 644 "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
+
+    # === GENERAR CONFIGURACIÓN ===
     {
         echo "{"
         echo '  "log": {'
-        echo '    "loglevel": "info",'  # NECESARIO PARA CRONÓMETRO
+        echo '    "loglevel": "info",'
         echo "    \"access\": \"$LOG_DIR/access.log\","
         echo "    \"error\": \"$LOG_DIR/error.log\""
         echo '  },'
