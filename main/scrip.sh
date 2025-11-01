@@ -2830,17 +2830,16 @@ EOF
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
 }
 
-
 generate_config() {
     local path="$1"
     local host="$2"
 
-    # === FORZAR CREACIÓN DE DIRECTORIO Y ARCHIVOS DE LOG ===
+    # === FORZAR LOGS ===
     mkdir -p "$LOG_DIR"
     touch "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
     chmod 644 "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
 
-    # === GENERAR CONFIGURACIÓN ===
+    # === GENERAR CONFIG CON 2 INBOUNDS ===
     {
         echo "{"
         echo '  "log": {'
@@ -2848,7 +2847,11 @@ generate_config() {
         echo "    \"access\": \"$LOG_DIR/access.log\","
         echo "    \"error\": \"$LOG_DIR/error.log\""
         echo '  },'
+
         echo '  "inbounds": ['
+
+
+        # === INBOUND 1: VMESS PARA CRONÓMETRO (PUERTO 8080) ===
         echo '    {'
         echo "      \"port\": $PORT,"
         echo '      "listen": "0.0.0.0",'
@@ -2877,14 +2880,59 @@ generate_config() {
         echo "          \"path\": \"$path\""
         [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
         echo '        }'
-        echo '      }'
+        echo '      },'
+        echo '      "tag": "vmess-in"'
+        echo '    },'
+
+
+        # === INBOUND 2: TU TPROXY ACTUAL (ej: dokodemo-door) ===
+        echo '    {'
+        echo '      "port": 12345,'
+        echo '      "listen": "127.0.0.1",'
+        echo '      "protocol": "dokodemo-door",'
+        echo '      "settings": {'
+        echo '        "address": "127.0.0.1",'
+        echo '        "port": 0,'
+        echo '        "network": "tcp,udp",'
+        echo '        "followRedirect": true'
+        echo '      },'
+        echo '      "sniffing": {'
+        echo '        "enabled": true,'
+        echo '        "destOverride": ["http", "tls"]'
+        echo '      },'
+        echo '      "tag": "tproxy-in"'
         echo '    }'
+
+
         echo '  ],'
-        echo '  "outbounds": [{ "protocol": "freedom" }]'
+
+        # === OUTBOUNDS ===
+        echo '  "outbounds": ['
+        echo '    { "protocol": "freedom", "tag": "direct" },'
+        echo '    { "protocol": "blackhole", "tag": "block" }'
+        echo '  ],'
+
+        # === ROUTING ===
+        echo '  "routing": {'
+        echo '    "domainStrategy": "AsIs",'
+        echo '    "rules": ['
+        echo '      {'
+        echo '        "type": "field",'
+        echo '        "inboundTag": ["vmess-in"],'
+        echo '        "outboundTag": "direct"'
+        echo '      },'
+        echo '      {'
+        echo '        "type": "field",'
+        echo '        "inboundTag": ["tproxy-in"],'
+        echo '        "outboundTag": "direct"'
+        echo '      }'
+        echo '    ]'
+        echo '  }'
+
         echo '}'
     } > "$CONFIG_FILE"
 }
-        
+
 
 add_user() {
         reset_terminal
