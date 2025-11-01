@@ -2839,11 +2839,11 @@ generate_config() {
     touch "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
     chmod 644 "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
 
-    # === GENERAR CONFIG CON 2 INBOUNDS ===
+    # === GENERAR CONFIG ===
     {
         echo "{"
         echo '  "log": {'
-        echo '    "loglevel": "info",'
+        echo '    "loglevel": "debug",'   # AQUÍ: debug
         echo "    \"access\": \"$LOG_DIR/access.log\","
         echo "    \"error\": \"$LOG_DIR/error.log\""
         echo '  },'
@@ -2851,7 +2851,7 @@ generate_config() {
         echo '  "inbounds": ['
 
 
-        # === INBOUND 1: VMESS PARA CRONÓMETRO (PUERTO 8080) ===
+        # === INBOUND 1: VMESS (PUERTO 8080) ===
         echo '    {'
         echo "      \"port\": $PORT,"
         echo '      "listen": "0.0.0.0",'
@@ -2885,14 +2885,12 @@ generate_config() {
         echo '    },'
 
 
-        # === INBOUND 2: TU TPROXY ACTUAL (ej: dokodemo-door) ===
+        # === INBOUND 2: TPROXY (dokodemo-door) ===
         echo '    {'
         echo '      "port": 12345,'
         echo '      "listen": "127.0.0.1",'
         echo '      "protocol": "dokodemo-door",'
         echo '      "settings": {'
-        echo '        "address": "127.0.0.1",'
-        echo '        "port": 0,'
         echo '        "network": "tcp,udp",'
         echo '        "followRedirect": true'
         echo '      },'
@@ -2906,32 +2904,20 @@ generate_config() {
 
         echo '  ],'
 
-        # === OUTBOUNDS ===
         echo '  "outbounds": ['
-        echo '    { "protocol": "freedom", "tag": "direct" },'
-        echo '    { "protocol": "blackhole", "tag": "block" }'
+        echo '    { "protocol": "freedom", "tag": "direct" }'
         echo '  ],'
 
-        # === ROUTING ===
         echo '  "routing": {'
-        echo '    "domainStrategy": "AsIs",'
         echo '    "rules": ['
-        echo '      {'
-        echo '        "type": "field",'
-        echo '        "inboundTag": ["vmess-in"],'
-        echo '        "outboundTag": "direct"'
-        echo '      },'
-        echo '      {'
-        echo '        "type": "field",'
-        echo '        "inboundTag": ["tproxy-in"],'
-        echo '        "outboundTag": "direct"'
-        echo '      }'
+        echo '      { "type": "field", "inboundTag": ["vmess-in", "tproxy-in"], "outboundTag": "direct" }'
         echo '    ]'
         echo '  }'
 
         echo '}'
     } > "$CONFIG_FILE"
 }
+
 
 
 add_user() {
