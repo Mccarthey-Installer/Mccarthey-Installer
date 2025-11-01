@@ -2738,15 +2738,13 @@ EOF
     }
 
     
-         list_users() {  
+         
+        list_users() {  
     reset_terminal  
-    echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS + TIEMPO EN VIVO${NC} $SPARK"  
+    echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS (EN VIVO)${NC} $SPARK"  
     echo -e "${PURPLE}════════════════════════════════════${NC}"  
-
-    # === ARCHIVO TEMPORAL PARA ESTADO DE CONEXIONES ===
-    local STATE_FILE="/tmp/xray_live_status_$$.db"
-    local PID_FILE="/tmp/xray_monitor_$$.pid"
-    local LOG_FILE="$LOG_DIR/access.log"
+    active=0  
+    count=1  
 
     # === LIMPIEZA AUTOMÁTICA DE EXPIRADOS ===
     local temp_file=$(mktemp)
@@ -2763,61 +2761,86 @@ EOF
 
     mv "$temp_file" "$USERS_FILE"
 
-    # === SI NO HAY MONITOR, INICIARLO EN BACKGROUND ===
-    if [[ ! -f "$PID_FILE" ]] || ! kill -0 $(cat "$PID_FILE" 2>/dev/null) 2>/dev/null; then
-        nohup bash -c "
-            STATE_FILE='$STATE_FILE'
-            LOG_FILE='$LOG_FILE'
-            > \"\$STATE_FILE\"
-            tail -F \"\$LOG_FILE\" 2>/dev/null | grep --line-buffered -i 'accepted.*vmess' | while read -r line; do
-                if [[ \"\$line\" =~ vmess\ id:\\\"([^\\\"]+)\\\" ]]; then
-                    uuid=\"\${BASH_REMATCH[1]}\"
-                    now=\$(date +%s)
-                    echo \"\$uuid:\$now\" >> \"\$STATE_FILE\"
-                    # Limpiar líneas antiguas (más de 70 seg)
-                    awk -v now=\"\$now\" 'BEGIN{FS=\":\"} \$2 < now-70 {next} {print}' \"\$STATE_FILE\" > \"\${STATE_FILE}.tmp\" && mv \"\${STATE_FILE}.tmp\" \"\$STATE_FILE\"
-                fi
-            done
-        " > /dev/null 2>&1 &
-        echo $! > "$PID_FILE"
-        sleep 1
+    # === DETENER MONITOR ANTERIOR SI EXISTE ===
+    local monitor_pid=$(pgrep -f "v2ray_connection_monitor.sh" || echo "")
+    [[ -n "$monitor_pid" ]] && kill "$monitor_pid" 2>/dev/null
+
+    # === INICIAR MONITOR EN SEGUNDO PLANO CON NOHUP ===
+    cat > /tmp/v2ray_connection_monitor.sh <<'EOF'
+#!/bin/bash
+CONFIG_DIR="/usr/local/etc/xray"
+LOG_DIR="/var/log/xray"
+STATE_DIR="/tmp/v2ray_connections"
+USERS_FILE="$CONFIG_DIR/users.db"
+ACCESS_LOG="$LOG_DIR/access.log"
+
+mkdir -p "$STATE_DIR"
+
+while true; do
+    now=$(date +%s)
+    cutoff=$((now - 90))  # 90 segundos de inactividad = desconectado
+
+    # Resetear estados
+    > "$STATE_DIR/active_uuids"
+    > "$STATE_DIR/last_seen"
+    > "$STATE_DIR/start_time"
+    > "$STATE_DIR/device_count"
+    > "$STATE_DIR/last_ip"
+
+    # Procesar log
+    if [[ -f "$ACCESS_LOG" ]]; then
+        tail -n 1000 "$ACCESS_LOG" 2>/dev/null | grep -i "accepted.*vmess" | while read -r line; do
+            if [[ "$line" =~ vmess\ id:\"([^\"]+)\" ]]; then
+                uuid="${BASH_REMATCH[1]}"
+                timestamp_str=$(echo "$line" | awk '{print $1" "$2}')
+                log_time=$(date -d "$timestamp_str" +%s 2>/dev/null || continue)
+                [[ $log_time -lt $cutoff ]] && continue
+
+                ip=$(echo "$line" | grep -oP 'tcp:\K[\d.]+(?=:\d+)')
+                echo "$uuid" >> "$STATE_DIR/active_uuids"
+                echo "$log_time" > "$STATE_DIR/last_seen_$uuid"
+                echo "$ip" > "$STATE_DIR/last_ip_$uuid"
+
+                # Contar dispositivos por UUID
+                grep -c "$uuid" "$STATE_DIR/active_uuids" > "$STATE_DIR/device_count_$uuid" 2>/dev/null || echo "1" > "$STATE_DIR/device_count_$uuid"
+            fi
+        done
     fi
 
-    # === REGENERAR CONFIG ===
-    current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
-    current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
-    generate_config "$current_path" "$current_host"
-    if systemctl is-active xray &>/dev/null; then
-        $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
-    fi
+    # Actualizar tiempo conectado
+    find "$STATE_DIR" -name "last_seen_*" -exec sh -c '
+        uuid=$(basename "{}" | cut -d_ -f3-)
+        last_seen=$(cat "{}")
+        now=$(date +%s)
+        if [[ $last_seen -ge $((now - 90)) ]]; then
+            start_file="$STATE_DIR/start_time_$uuid"
+            if [[ ! -f "$start_file" ]]; then
+                echo "$last_seen" > "$start_file"
+            fi
+        else
+            rm -f "$STATE_DIR/start_time_$uuid"
+        fi
+    ' \;
 
-    # === MOSTRAR EN VIVO CON CRONÓMETRO ===
-    clear
-    local count=1
-    local active=0
+    sleep 3
+done
+EOF
 
-    # Trap para limpiar al salir
-    trap 'kill $(cat "$PID_FILE" 2>/dev/null) 2>/dev/null; rm -f "$STATE_FILE" "$PID_FILE"; return' INT TERM EXIT
+    chmod +x /tmp/v2ray_connection_monitor.sh
+    nohup /tmp/v2ray_connection_monitor.sh > /dev/null 2>&1 &
+
+    # === MOSTRAR EN VIVO (bucle infinito hasta salir con Enter) ===
+    echo -e "${ROCKET} ${YELLOW}Presiona ENTER para detener la vista en vivo...${NC}"
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+
+    trap 'echo -e "\n${CHECK} Vista en vivo detenida."; return' INT
 
     while true; do
         reset_terminal
-        echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS + TIEMPO CONECTADO${NC} $SPARK"
+        echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS (EN VIVO)${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
-        echo -e "${YELLOW}Presiona 'q' para salir${NC}"
-        echo
-
         count=1
         active=0
-        declare -A last_seen
-        declare -A connected_time
-
-        # Leer estado actual
-        [[ -f "$STATE_FILE" ]] && while IFS=: read -r uuid timestamp; do
-            [[ -z "$uuid" ]] && continue
-            last_seen["$uuid"]=$timestamp
-        done < "$STATE_FILE"
-
-        now=$(date +%s)
 
         while IFS=: read -r name uuid created expires delete_at; do  
             [[ $name == "#"* ]] && continue  
@@ -2826,52 +2849,68 @@ EOF
             days_left=$(days_left_natural "$expires")  
             active=1  
 
-            # Calcular tiempo conectado
-            if [[ -n "${last_seen[$uuid]}" ]]; then
-                connected_secs=$(( now - last_seen[$uuid] ))
-                hours=$(( connected_secs / 3600 ))
-                mins=$(( (connected_secs % 3600) / 60 ))
-                secs=$(( connected_secs % 60 ))
-                timer=$(printf "%02d:%02d:%02d" "$hours" "$mins" "$secs")
-                status="${GREEN}CONECTADO${NC} ${FIRE}"
-                timer_display="${CYAN}$timer${NC}"
-                devices="1+ dispositivo(s)"
+            # Estado en vivo
+            if [[ -f "$CONNECTION_STATE_DIR/last_seen_$uuid" ]]; then
+                last_seen=$(cat "$CONNECTION_STATE_DIR/last_seen_$uuid")
+                now=$(date +%s)
+                if [[ $((now - last_seen)) -le 90 ]]; then
+                    status="${GREEN}CONECTADO${NC} ${FIRE}"
+                    start_time=$(cat "$CONNECTION_STATE_DIR/start_time_$uuid" 2>/dev/null || echo "$last_seen")
+                    elapsed=$((now - start_time))
+                    hours=$((elapsed / 3600))
+                    mins=$(( (elapsed % 3600) / 60 ))
+                    secs=$((elapsed % 60))
+                    timer=$(printf "%02d:%02d:%02d" "$hours" "$mins" "$secs")
+                    devices=$(cat "$CONNECTION_STATE_DIR/device_count_$uuid" 2>/dev/null || echo "1")
+                    ip=$(cat "$CONNECTION_STATE_DIR/last_ip_$uuid" 2>/dev/null || echo "Desconocida")
+                else
+                    status="${RED}DESCONECTADO${NC}"
+                    timer="00:00:00"
+                    devices="0"
+                    ip="N/A"
+                fi
             else
-                timer="00:00:00"
                 status="${RED}DESCONECTADO${NC}"
-                timer_display="${GRAY}$timer${NC}"
-                devices="0 dispositivos"
+                timer="00:00:00"
+                devices="0"
+                ip="N/A"
             fi
 
-            echo -e " ${YELLOW}$count.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
-            echo -e "   ${CAL} ${WHITE}Días:${NC} ${GREEN}$days_left${NC} │ Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
-            echo -e "   ${KEY} ${WHITE}UUID:${NC} ${CYAN}$uuid${NC}"  
-            echo -e "   ${UP} ${WHITE}Estado:${NC} $status"  
-            echo -e "   ${ROCKET} ${WHITE}Tiempo:${NC} $timer_display"  
+            echo -e "👩‍💻 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+            echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
+            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
+            echo -e "   ${WHITE}Estado:${NC} $status"  
+            echo -e "   ${UP} ${WHITE}Tiempo:${NC} ${CYAN}$timer${NC}"  
             echo -e "   ${UP} ${WHITE}Dispositivos:${NC} ${CYAN}$devices${NC}"  
-            echo -e "   ${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
+            echo -e "   ${UP} ${WHITE}IP (última):${NC} ${GRAY}$ip${NC}"  
+            echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
             echo -e "${PURPLE}────────────────────────────────────${NC}"  
-            ((count++))
-        done < "$USERS_FILE"
 
-        # Mensajes finales
-        (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Eliminados $cleaned expirados.${NC}"
+            ((count++))  
+        done < "$USERS_FILE"  
+
         [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
-        echo -e "${GRAY}Actualizando cada segundo... (q = salir)${NC}"
+        (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Se eliminaron $cleaned usuario(s) expirado(s).${NC}"
 
-        # Leer tecla sin esperar Enter
-        read -t 1 -n 1 key 2>/dev/null || true
-        [[ "$key" == "q" || "$key" == "Q" ]] && break
+        # Actualizar config
+        current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
+        current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
+        generate_config "$current_path" "$current_host"
+        if systemctl is-active xray &>/dev/null; then
+            $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
+        fi
+
+        # Esperar input sin bloquear
+        read -t 3 -n 1 input 2>/dev/null
+        [[ "$input" == $'\n' || "$input" == "" ]] && break
     done
 
-    # === LIMPIAR AL SALIR ===
-    kill $(cat "$PID_FILE" 2>/dev/null) 2>/dev/null
-    rm -f "$STATE_FILE" "$PID_FILE"
-    trap - INT TERM EXIT
-    reset_terminal
+    # === DETENER MONITOR AL SALIR ===
+    kill $(pgrep -f "v2ray_connection_monitor.sh") 2>/dev/null || true
+    rm -f /tmp/v2ray_connection_monitor.sh
+
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
-}   
-    
+}
 
 add_user() {
         reset_terminal
