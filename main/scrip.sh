@@ -3092,90 +3092,90 @@ EOF
 
     # === MENÚ PRINCIPAL ===
     show_v2ray_menu() {  
-        reset_terminal  
-        while true; do  
-            reset_terminal  
+    reset_terminal  
+    while true; do  
+        # === NO reset_terminal AQUÍ ===
 
-            # === CONFIGURAR DIRECCIÓN DEL SERVIDOR SI NO EXISTE ===
-            if [ ! -f "$SERVER_ADDR_FILE" ]; then
-                echo -e "${YELLOW}No se ha configurado la dirección del servidor.${NC}"
-                read -p "Ingrese la dirección (IP o dominio): " server_addr
-                [[ -z "$server_addr" ]] && server_addr="IP_NO_DETECTADA"
-                echo "$server_addr" > "$SERVER_ADDR_FILE"
-            fi
-            SERVER_ADDR=$(cat "$SERVER_ADDR_FILE")
+        # === CONFIGURAR IP ===
+        if [ ! -f "$SERVER_ADDR_FILE" ]; then
+            echo -e "${YELLOW}No se ha configurado la dirección del servidor.${NC}"
+            read -p "Ingrese la dirección (IP o dominio): " server_addr
+            [[ -z "$server_addr" ]] && server_addr="IP_NO_DETECTADA"
+            echo "$server_addr" > "$SERVER_ADDR_FILE"
+        fi
+        SERVER_ADDR=$(cat "$SERVER_ADDR_FILE")
 
-            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "No configurado")
-            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "Ninguno")
+        current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "No configurado")
+        current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "Ninguno")
 
-            # === LIMPIEZA AUTOMÁTICA (1 VEZ) ===
-            clean_expired_users
+        # === LIMPIEZA AUTOMÁTICA ===
+        clean_expired_users
 
-            # === USUARIOS QUE EXPIRAN HOY ===
-            expiring_today=""
-            while IFS=: read -r name uuid created expires delete_at; do
-                [[ $name == "#"* ]] && continue
-                [ $(date +%s) -ge $delete_at ] && continue
-                local days_left=$(days_left_natural "$expires")
-                [[ "$days_left" -eq 0 ]] && expiring_today+="$name  0 días   "
-            done < "$USERS_FILE"
+        # === EXPIRAN HOY ===
+        expiring_today=""
+        while IFS=: read -r name uuid created expires delete_at; do
+            [[ $name == "#"* ]] && continue
+            [ $(date +%s) -ge $delete_at ] && continue
+            local days_left=$(days_left_natural "$expires")
+            [[ "$days_left" -eq 0 ]] && expiring_today+="$name  0 días   "
+        done < "$USERS_FILE"
 
-            echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"  
-            echo -e "${GRAY}════════════════════════════════════════════════${NC}"  
-            echo -e " ${UP} IP:     ${GREEN}$SERVER_ADDR${NC}"  
-            echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"  
-            echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"  
-            echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"  
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
+        # === MOSTRAR MENÚ ===
+        echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"  
+        echo -e "${GRAY}════════════════════════════════════════════════${NC}"  
+        echo -e " ${UP} IP:     ${GREEN}$SERVER_ADDR${NC}"  
+        echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"  
+        echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"  
+        echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"  
+        echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
 
-            if [[ -n "$expiring_today" ]]; then
-                echo -e "Warning: ${RED}USUARIOS QUE EXPIRAN HOY:${NC}"
-                echo -e "${YELLOW}$(echo "$expiring_today" | sed 's/   $//') ${NC}\n"
-            fi
+        if [[ -n "$expiring_today" ]]; then
+            echo -e "Warning: ${RED}USUARIOS QUE EXPIRAN HOY:${NC}"
+            echo -e "${YELLOW}$(echo "$expiring_today" | sed 's/   $//') ${NC}\n"
+        fi
 
-            echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"  
-            echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"  
-            echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"  
-            echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"  
-            echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"  
-            echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"  
-            echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"  
-            echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"  
-            echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"  
-            echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"  
-            echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"  
-            echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"  
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
-            read -p " ${ROCKET} Elige una opción: " opt  
+        echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"  
+        echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"  
+        echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"  
+        echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"  
+        echo -e " ${STAR} 5) ${BLUE}Listar usuarios${NC}"  
+        echo -e " ${STAR} 6) ${PURPLE}Exportar todos (vmess://)${NC}"  
+        echo -e " ${STAR} 7) ${YELLOW}Reiniciar Xray${NC}"  
+        echo -e " ${STAR} 8) ${RED}Desinstalar TODO${NC} ${TRASH}"  
+        echo -e " ${STAR} 9) ${GREEN}Enviar backup por Telegram${NC}"  
+        echo -e " ${STAR}10) ${BLUE}Restaurar desde backup local${NC}"  
+        echo -e " ${STAR}11) ${GREEN}Restaurar desde Telegram (File ID)${NC}"  
+        echo -e " ${STAR} 0) ${GRAY}Volver al menú principal${NC}"  
+        echo -e "${PURPLE}════════════════════════════════════════════════${NC}"  
+        read -p " ${ROCKET} Elige una opción: " opt  
 
-            case $opt in  
-                1) install_xray; read -p "Dirección (IP/dominio): " s; [[ -n "$s" ]] && echo "$s" > "$SERVER_ADDR_FILE"; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;  
-                2) read -p "Nueva Dirección (IP/dominio, dejar vacío para no cambiar): " s; [[ -n "$s" ]] && echo "$s" > "$SERVER_ADDR_FILE"; read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; read -p "Enter...${NC}" -r </dev/tty;;  
-                3) add_user;;  
-                4) remove_user_menu;;  
-                5) list_users;;  
-                6) export_all_vmess;;  
-                7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5;;  
-                8)   
-                    reset_terminal  
-                    echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"  
-                    systemctl stop xray 2>/dev/null  
-                    systemctl disable xray 2>/dev/null  
-                    rm -f "$SERVICE_FILE" "$XRAY_BIN"  
-                    rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"  
-                    echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"  
-                    sleep 2  
-                    return  
-                    ;;  
-                9) send_backup_telegram ;;  
-                10) restore_v2ray ;;  
-                11) restore_from_telegram ;;  
-                0) return ;;  
-                *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;  
-            esac  
-        done  
-    }
-
+        case $opt in  
+            1) install_xray; read -p "Dirección (IP/dominio): " s; [[ -n "$s" ]] && echo "$s" > "$SERVER_ADDR_FILE"; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray 2>/dev/null; reset_terminal; continue ;;  
+            2) read -p "Nueva Dirección (IP/dominio, dejar vacío para no cambiar): " s; [[ -n "$s" ]] && echo "$s" > "$SERVER_ADDR_FILE"; read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray 2>/dev/null; reset_terminal; continue ;;  
+            3) add_user; reset_terminal; continue ;;  
+            4) remove_user_menu; reset_terminal; continue ;;  
+            5) list_users; reset_terminal; continue ;;   # ← ¡CLAVE!
+            6) export_all_vmess; reset_terminal; continue ;;  
+            7) systemctl restart xray 2>/dev/null; echo -e "${CHECK} ${GREEN}Xray reiniciado.${NC}"; sleep 1.5; reset_terminal; continue ;;  
+            8)   
+                reset_terminal  
+                echo -e "${TRASH} ${RED}DESINSTALANDO TODO...${NC} $SPARK"  
+                systemctl stop xray 2>/dev/null  
+                systemctl disable xray 2>/dev/null  
+                rm -f "$SERVICE_FILE" "$XRAY_BIN"  
+                rm -rf "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"  
+                echo -e "${CHECK} ${RED}TODO BORRADO.${NC}"  
+                sleep 2  
+                return  
+                ;;  
+            9) send_backup_telegram; reset_terminal; continue ;;  
+            10) restore_v2ray; reset_terminal; continue ;;  
+            11) restore_from_telegram; reset_terminal; continue ;;  
+            0) return ;;  
+            *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5; reset_terminal; continue ;;  
+        esac  
+    done  
+}
     # === INICIO ===
     [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Ejecuta la opción 1 para instalar Xray.${NC}"
     show_v2ray_menu
