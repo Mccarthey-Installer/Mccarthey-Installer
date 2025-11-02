@@ -2482,6 +2482,8 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
+# ==== MENU ====
+if [[ -t 0 ]]; then
 while true; do
     clear
     barra_sistema
@@ -2503,13 +2505,10 @@ while true; do
     echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
-    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
-    read -p "$PROMPT" OPCION
+    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
+    read -p "$PROMPT" OPCION  
 
-    # === IGNORAR ENTER VACÍO ===
-    [[ -z "$OPCION" ]] && continue
-
-    case "$OPCION" in
+    case $OPCION in
         1) crear_usuario ;;
         2) ver_registros ;;
         3) eliminar_multiples_usuarios ;;
@@ -2526,7 +2525,7 @@ while true; do
         14) activar_desactivar_swap ;;
         0) 
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash
+            exec /bin/bash   # ✅ vuelve al bash normal
             ;;
         *) 
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
@@ -2534,3 +2533,4 @@ while true; do
             ;;
     esac
 done
+fi
