@@ -2482,59 +2482,69 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
+# ==== MENU ====
 if [[ -t 0 ]]; then
-while true; do
-    clear
-    barra_sistema
-    echo
-    echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
-    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
-    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
-    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
-    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
-    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
-    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
-    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
-    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
+    while true; do
+        clear
+        barra_sistema
+        echo
+        echo -e "${VIOLETA}======💫✨ PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
+        echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
+        echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
+        echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
+        echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
+        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
+        echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
+        echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
+        echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
+        echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
+        echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
-    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
-    read -p "$PROMPT" OPCION
+        # Bucle para leer entrada válida
+        while true; do
+            PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+            read -p "$PROMPT" OPCION
 
-    # Si se presiona Enter sin ingresar nada, solo vuelve a mostrar el menú
-    if [[ -z "$OPCION" ]]; then
-        continue
-    fi
+            # Eliminar espacios en blanco
+            OPCION=$(echo "$OPCION" | xargs)
 
-    case $OPCION in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_multiples_usuarios ;;
-        4) informacion_usuarios ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) activar_desactivar_limitador ;;
-        10) configurar_banner_ssh ;;
-        11) contador_online ;;
-        12) ssh_bot ;;
-        13) renovar_usuario ;;
-        14) activar_desactivar_swap ;;
-        0) 
-            echo -e "${AMARILLO_SUAVE}🚪 Saliendo...${NC}"
-            exec /bin/bash
-            ;;
-        *) 
-            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
-            ;;
-    esac
-done
+            # Si está vacío (solo Enter), ignorar y volver a pedir
+            [[ -z "$OPCION" ]] && continue
+
+            # Si es un número válido del 0 al 14, salir del bucle
+            if [[ "$OPCION" =~ ^[0-9]+$ ]] && (( OPCION >= 0 && OPCION <= 14 )); then
+                break
+            else
+                echo -e "${ROJO}❌ ¡Opción inválida! Debe ser un número del 0 al 14.${NC}"
+                read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para intentar de nuevo...${NC})"
+            fi
+        done
+
+        # Ahora sí procesamos la opción válida
+        case $OPCION in
+            1) crear_usuario ;;
+            2) ver_registros ;;
+            3) eliminar_multiples_usuarios ;;
+            4) informacion_usuarios ;;
+            5) verificar_online ;;
+            6) bloquear_desbloquear_usuario ;;
+            7) crear_multiples_usuarios ;;
+            8) mini_registro ;;
+            9) activar_desactivar_limitador ;;
+            10) configurar_banner_ssh ;;
+            11) contador_online ;;
+            12) ssh_bot ;;
+            13) renovar_usuario ;;
+            14) activar_desactivar_swap ;;
+            0) 
+                echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
+                exec /bin/bash
+                ;;
+        esac
+    done
 fi
