@@ -2482,7 +2482,7 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
-# ==== MENU ====
+# ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
     while true; do
         clear
@@ -2505,44 +2505,43 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
         echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
-        # Bucle para leer entrada válida
-        while true; do
-            PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
-            read -p "$PROMPT" OPCION
+        # === INPUT SEGURO: Ignora Enter vacío, solo acepta 0-14 ===
+        while :; do
+            printf "${ROSA}➡️ Selecciona una opción (0-14): ${NC}"
+            read -r OPCION
+            OPCION=$(echo "$OPCION" | tr -d '[:space:]')  # Elimina espacios y saltos
 
-            # Eliminar espacios en blanco
-            OPCION=$(echo "$OPCION" | xargs)
-
-            # Si está vacío (solo Enter), ignorar y volver a pedir
+            # Si está vacío → volver a pedir
             [[ -z "$OPCION" ]] && continue
 
-            # Si es un número válido del 0 al 14, salir del bucle
+            # Validar que sea número del 0 al 14
             if [[ "$OPCION" =~ ^[0-9]+$ ]] && (( OPCION >= 0 && OPCION <= 14 )); then
                 break
             else
-                echo -e "${ROJO}❌ ¡Opción inválida! Debe ser un número del 0 al 14.${NC}"
-                read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para intentar de nuevo...${NC})"
+                echo -e "${ROJO}❌ Opción inválida. Ingresa un número del 0 al 14.${NC}"
             fi
         done
 
-        # Ahora sí procesamos la opción válida
-        case $OPCION in
-            1) crear_usuario ;;
-            2) ver_registros ;;
-            3) eliminar_multiples_usuarios ;;
-            4) informacion_usuarios ;;
-            5) verificar_online ;;
-            6) bloquear_desbloquear_usuario ;;
-            7) crear_multiples_usuarios ;;
-            8) mini_registro ;;
-            9) activar_desactivar_limitador ;;
-            10) configurar_banner_ssh ;;
-            11) contador_online ;;
-            12) ssh_bot ;;
-            13) renovar_usuario ;;
-            14) activar_desactivar_swap ;;
-            0) 
-                echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
+        # === EJECUTAR OPCIÓN ===
+        case "$OPCION" in
+            1) crear_usuario; read -p "Presiona Enter para continuar..." ;;
+            2) ver_registros; read -p "Presiona Enter para continuar..." ;;
+            3) eliminar_multiples_usuarios; read -p "Presiona Enter para continuar..." ;;
+            4) informacion_usuarios; read -p "Presiona Enter para continuar..." ;;
+            5) verificar_online; read -p "Presiona Enter para continuar..." ;;
+            6) bloquear_desbloquear_usuario; read -p "Presiona Enter para continuar..." ;;
+            7) crear_multiples_usuarios; read -p "Presiona Enter para continuar..." ;;
+            8) mini_registro; read -p "Presiona Enter para continuar..." ;;
+            9) activar_desactivar_limitador; read -p "Presiona Enter para continuar..." ;;
+            10) configurar_banner_ssh; read -p "Presiona Enter para continuar..." ;;
+            11) contador_online; read -p "Presiona Enter para continuar..." ;;
+            12) ssh_bot; read -p "Presiona Enter para continuar..." ;;
+            13) renovar_usuario; read -p "Presiona Enter para continuar..." ;;
+            14) activar_desactivar_swap; read -p "Presiona Enter para continuar..." ;;
+            0)
+                clear
+                echo -e "${AMARILLO_SUAVE}🚪 Saliendo del panel...${NC}"
+                sleep 1
                 exec /bin/bash
                 ;;
         esac
