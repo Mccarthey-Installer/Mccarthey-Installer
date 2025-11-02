@@ -2482,30 +2482,37 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
-# ==== MENU FIJO SIN RECARGA ====
-clear
-barra_sistema    # Se imprime una sola vez al inicio
-echo
-echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
-echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
-echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
-echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
-echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
-echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
-echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
-echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
-echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
-echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
-echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
-echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
-echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
+# ==== MENU ====
+if [[ -t 0 ]]; then
 while true; do
+    clear
+    barra_sistema
+    echo
+    echo -e "${VIOLETA}======💫📶PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
+    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
+    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
+    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
+    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
+    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
+    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
+    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
+    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
+    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
+    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
+
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
-    read -p "$PROMPT" OPCION  
+    read -p "$PROMPT" OPCION
+
+    # Ignorar cuando solo se presione Enter (cadena vacía)
+    if [[ -z "$OPCION" ]]; then
+        continue  # vuelve al principio sin hacer nada ni mostrar mensaje
+    fi
 
     case $OPCION in
         1) crear_usuario ;;
@@ -2524,13 +2531,12 @@ while true; do
         14) activar_desactivar_swap ;;
         0) 
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash
-            ;;
-        "") 
-            # Enter vacío, no hace nada, solo repite el prompt
+            exec /bin/bash   # ✅ vuelve al bash normal
             ;;
         *) 
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
             ;;
     esac
 done
+fi
