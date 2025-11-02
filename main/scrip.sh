@@ -2582,7 +2582,52 @@ EOF
         systemctl enable xray &>/dev/null
     }
 
-    
+    generate_config() {
+        local path="$1"
+        local host="$2"
+        {
+            echo "{"
+            echo '  "log": {'
+            echo '    "loglevel": "warning",'
+            echo "    \"access\": \"$LOG_DIR/access.log\","
+            echo "    \"error\": \"$LOG_DIR/error.log\""
+            echo '  },'
+            echo '  "inbounds": ['
+            echo '    {'
+            echo "      \"port\": $PORT,"
+            echo '      "listen": "0.0.0.0",'
+            echo '      "protocol": "vmess",'
+            echo '      "settings": {'
+            echo '        "clients": ['
+            
+            first=true
+            while IFS=: read -r name uuid created expires delete_at; do
+                [[ $name == "#"* ]] && continue
+                [ $(( $(date +%s) )) -ge $delete_at ] && continue
+                if [ "$first" = false ]; then echo "        },"; fi
+                echo "          {"
+                echo "            \"id\": \"$uuid\","
+                echo "            \"level\": 8,"
+                echo "            \"alterId\": 0"
+                first=false
+            done < <(grep -v "^#" "$USERS_FILE")
+            
+            [ "$first" = false ] && echo "        }"
+            echo '        ]'
+            echo '      },'
+            echo '      "streamSettings": {'
+            echo '        "network": "ws",'
+            echo '        "wsSettings": {'
+            echo "          \"path\": \"$path\""
+            [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
+            echo '        }'
+            echo '      }'
+            echo '    }'
+            echo '  ],'
+            echo '  "outbounds": [{ "protocol": "freedom" }]'
+            echo '}'
+        } > "$CONFIG_FILE"
+    }
 
     
 
@@ -2692,154 +2737,12 @@ EOF
         read -p "Presiona Enter para continuar...${NC}" -r </dev/tty
     }
 
-    
-         
-    
-
-
-        generate_config() {
-    local path="$1"
-    local host="$2"
-
-    # === FORZAR DIRECTORIO Y ARCHIVOS DE LOG ===
-    mkdir -p "$LOG_DIR"
-    touch "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
-    chmod 644 "$LOG_DIR/access.log" "$LOG_DIR/error.log" 2>/dev/null || true
-
-    # === GENERAR CONFIGURACIÓN ===
-    {
-        echo "{"
-        echo '  "log": {'
-        echo '    "loglevel": "debug",'  # NECESARIO PARA VER UUID
-        echo "    \"access\": \"$LOG_DIR/access.log\","
-        echo "    \"error\": \"$LOG_DIR/error.log\""  # AQUÍ ESTÁ EL UUID
-        echo '  },'
-
-        echo '  "inbounds": ['
-
-
-        # === INBOUND 1: VMESS PARA CRONÓMETRO (PUERTO 8080) ===
-        echo '    {'
-        echo "      \"port\": $PORT,"
-        echo '      "listen": "0.0.0.0",'
-        echo '      "protocol": "vmess",'
-        echo '      "settings": {'
-        echo '        "clients": ['
-        
-        first=true
-        while IFS=: read -r name uuid created expires delete_at; do
-            [[ $name == "#"* ]] && continue
-            [ $(( $(date +%s) )) -ge $delete_at ] && continue
-            if [ "$first" = false ]; then echo "        },"; fi
-            echo "          {"
-            echo "            \"id\": \"$uuid\","
-            echo "            \"level\": 8,"
-            echo "            \"alterId\": 1,"           # FUERZA UUID EN LOGS
-            echo "            \"security\": \"aes-128-gcm\""  # EVITA "auto"
-            first=false
-        done < <(grep -v "^#" "$USERS_FILE")
-        
-        [ "$first" = false ] && echo "        }"
-        echo '        ]'
-        echo '      },'
-        echo '      "streamSettings": {'
-        echo '        "network": "ws",'
-        echo '        "wsSettings": {'
-        echo "          \"path\": \"$path\""
-        [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
-        echo '        }'
-        echo '      },'
-        echo '      "tag": "vmess-in"'
-        echo '    },'
-
-
-        # === INBOUND 2: TPROXY (dokodemo-door) ===
-        echo '    {'
-        echo '      "port": 12345,'
-        echo '      "listen": "127.0.0.1",'
-        echo '      "protocol": "dokodemo-door",'
-        echo '      "settings": {'
-        echo '        "network": "tcp,udp",'
-        echo '        "followRedirect": true'
-        echo '      },'
-        echo '      "sniffing": {'
-        echo '        "enabled": true,'
-        echo '        "destOverride": ["http", "tls"]'
-        echo '      },'
-        echo '      "tag": "tproxy-in"'
-        echo '    }'
-
-
-        echo '  ],'
-
-        echo '  "outbounds": ['
-        echo '    { "protocol": "freedom", "tag": "direct" }'
-        echo '  ],'
-
-        echo '  "routing": {'
-        echo '    "rules": ['
-        echo '      { "type": "field", "inboundTag": ["vmess-in", "tproxy-in"], "outboundTag": "direct" }'
-        echo '    ]'
-        echo '  }'
-
-        echo '}'
-    } > "$CONFIG_FILE"
-}
-
-
-list_users() {  
+    list_users() {  
     reset_terminal  
     echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"  
     echo -e "${PURPLE}════════════════════════════════════${NC}"  
     active=0  
     count=1  
-
-    local CONFIG_DIR="/usr/local/etc/xray"
-    local LOG_DIR="/var/log/xray"
-    local CONNECTION_STATE_FILE="/tmp/xray_connections.state"
-    local PID_FILE="/tmp/xray_monitor.pid"
-
-    # === INICIAR MONITOR EN BACKGROUND (SI NO ESTÁ CORRIENDO) ===
-    if [ ! -f "$PID_FILE" ] || ! kill -0 $(cat "$PID_FILE" 2>/dev/null) 2>/dev/null; then
-        nohup bash -c '
-            STATE_FILE="'"$CONNECTION_STATE_FILE"'"
-            LOG_FILE="'"$LOG_DIR/error.log"'"   # LEE error.log
-            > "$STATE_FILE"
-
-            while true; do
-                now=$(date +%s)
-                cutoff=$((now - 60))
-
-                declare -A last_seen
-                declare -A devices
-
-                if [ -f "$LOG_FILE" ]; then
-                    while read -r line; do
-                        # BUSCAR: "vmess: user UUID"
-                        if [[ "$line" =~ vmess.*user\ ([a-f0-9-]+) ]]; then
-                            uuid="${BASH_REMATCH[1]}"
-                            ts_str=$(echo "$line" | awk "{print \$1\" \"\$2}")
-                            log_time=$(date -d "$ts_str" +%s 2>/dev/null) || continue
-                            [[ $log_time -lt $cutoff ]] && continue
-                            if [[ -z "${last_seen[$uuid]}" || $log_time -gt ${last_seen[$uuid]} ]]; then
-                                last_seen[$uuid]=$log_time
-                            fi
-                            ((devices[$uuid]++))
-                        fi
-                    done < <(tail -n 500 "$LOG_FILE" 2>/dev/null | grep -i "vmess.*user")
-                fi
-
-                {
-                    for uuid in "${!last_seen[@]}"; do
-                        printf "%s|%d|%d\n" "$uuid" "${last_seen[$uuid]}" "${devices[$uuid]}"
-                    done
-                } > "$STATE_FILE.tmp"
-                mv "$STATE_FILE.tmp" "$STATE_FILE"
-                sleep 1
-            done
-        ' > /dev/null 2>&1 &
-        echo $! > "$PID_FILE"
-    fi
 
     # === LIMPIEZA AUTOMÁTICA DE EXPIRADOS ===
     local temp_file=$(mktemp)
@@ -2854,24 +2757,14 @@ list_users() {
         echo "$name:$uuid:$created:$expires:$delete_at" >> "$temp_file"
     done < "$USERS_FILE"
 
+    # Reemplazar archivo original
     if [ -f "$temp_file" ]; then
         mv "$temp_file" "$USERS_FILE"
     else
         : > "$USERS_FILE"
     fi
 
-    # === LEER ESTADO EN VIVO ===
-    declare -A conn_start
-    declare -A conn_devices
-    if [ -f "$CONNECTION_STATE_FILE" ]; then
-        while IFS='|' read -r uuid start_time devices; do
-            [[ -z "$uuid" ]] && continue
-            conn_start["$uuid"]=$start_time
-            conn_devices["$uuid"]=$devices
-        done < "$CONNECTION_STATE_FILE"
-    fi
-
-    # === MOSTRAR USUARIOS CON CRONÓMETRO ===
+    # === MOSTRAR USUARIOS ACTIVOS ===
     while IFS=: read -r name uuid created expires delete_at; do  
         [[ $name == "#"* ]] && continue  
         [ $(date +%s) -ge $delete_at ] && continue
@@ -2879,52 +2772,32 @@ list_users() {
         days_left=$(days_left_natural "$expires")  
         active=1  
 
-        now=$(date +%s)
-        if [[ -n "${conn_start[$uuid]}" ]]; then
-            elapsed=$((now - conn_start[$uuid]))
-            hours=$((elapsed / 3600))
-            mins=$(( (elapsed % 3600) / 60 ))
-            secs=$((elapsed % 60))
-            timer=$(printf "%02d:%02d:%02d" $hours $mins $secs)
-            status="${GREEN}CONECTADO${NC} ${FIRE}"
-            devices="${conn_devices[$uuid]} dispositivo(s)"
-        else
-            timer="00:00:00"
-            status="${RED}DESCONECTADO${NC}"
-            devices="0 dispositivos"
-        fi
-
-        echo -e "Usuario ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
+        echo -e "👩‍💻 ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"  
         echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
         echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
-        echo -e "   ${WHITE}Estado:${NC} $status"  
-        echo -e "   ${UP} ${WHITE}Tiempo:${NC} ${CYAN}$timer${NC}"  
-        echo -e "   ${UP} ${WHITE}Dispositivos:${NC} ${CYAN}$devices${NC}"  
         echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
         echo -e "${PURPLE}────────────────────────────────────${NC}"  
 
         ((count++))  
     done < "$USERS_FILE"  
 
-    # === REGENERAR CONFIG Y RECARGAR ===
+    # === REGENERAR CONFIG ===
     current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
     current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
     generate_config "$current_path" "$current_host"
 
+    # === RECARGAR XRAY SIN DESCONECTAR (SI HAY SERVICIO) ===
     if systemctl is-active xray &>/dev/null; then
         $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
     fi
 
-    # === MENSAJES FINALES ===
+    # === MENSAJES FINALES (UNA SOLA VEZ) ===
     (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Se eliminaron $cleaned usuario(s) expirado(s).${NC}"
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
-    echo -e "${GRAY}Cronómetro en vivo (se reinicia al reconectar)${NC}"
 
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
 }
-
-        
-
+    
 
 add_user() {
         reset_terminal
