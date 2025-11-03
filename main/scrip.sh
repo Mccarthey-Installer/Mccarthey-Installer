@@ -752,7 +752,11 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
     esac
 }                        
                                           
-function barra_sistema() {  
+
+
+    
+
+    function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
     AZUL='\033[94m'  
@@ -761,7 +765,7 @@ function barra_sistema() {
     AMARILLO='\033[93m'  
     VERDE='\033[92m'  
     NC='\033[0m'  
-    CIAN='\033[38;5;51m'  # Added CIAN to match verificar_online for consistency
+    CIAN='\033[38;5;51m'  
 
     # ================= Config persistente =================
     STATE_FILE="/etc/mi_script/contador_online.conf"
@@ -770,7 +774,7 @@ function barra_sistema() {
     TOTAL_CONEXIONES=0  
     TOTAL_USUARIOS=0  
     USUARIOS_EXPIRAN=()  
-    inactivos=0  # Initialize inactivos counter
+    inactivos=0  
 
     if [[ -f "$REGISTROS" ]]; then  
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
@@ -781,7 +785,6 @@ function barra_sistema() {
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then  
                     USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
                 fi  
-                # Calculate inactivos based on verificar_online logic
                 conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))  
                 bloqueo_file="/tmp/bloqueo_${usuario}.lock"  
                 if [[ $conexiones -eq 0 && ! -f "$bloqueo_file" ]]; then  
@@ -790,7 +793,7 @@ function barra_sistema() {
                     bloqueo_hasta=$(cat "$bloqueo_file")  
                     if [[ $(date +%s) -ge $bloqueo_hasta ]]; then  
                         rm -f "$bloqueo_file"  
-                        ((inactivos++))  # Consider unblocked but disconnected users as inactive
+                        ((inactivos++))  
                     fi  
                 fi  
             fi  
@@ -846,9 +849,27 @@ function barra_sistema() {
         DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  
     fi  
 
-    # ================= CPU =================  
-    CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')  
-    CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")  
+    # ================= CPU (Precisión exacta /proc/stat) =================  
+    get_cpu_usage() {
+        cpu_before=($(grep '^cpu ' /proc/stat))
+        total_before=0
+        for value in "${cpu_before[@]:1}"; do
+            total_before=$((total_before + value))
+        done
+        idle_before=${cpu_before[4]}
+        sleep 1
+        cpu_after=($(grep '^cpu ' /proc/stat))
+        total_after=0
+        for value in "${cpu_after[@]:1}"; do
+            total_after=$((total_after + value))
+        done
+        idle_after=${cpu_after[4]}
+        total_diff=$((total_after - total_before))
+        idle_diff=$((idle_after - idle_before))
+        awk "BEGIN {printf \"%.1f\", (1 - ($idle_diff / $total_diff)) * 100}"
+    }
+
+    CPU_PORC=$(get_cpu_usage)
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)  
     [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"  
 
@@ -877,10 +898,9 @@ function barra_sistema() {
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"  
     fi  
 
-# ================= Uptime =================    
-UPTIME=$(uptime -p | sed 's/up //')  # Obtiene el uptime en formato legible, ej: "6 hours, 13 minutes"
-UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con color y emoji para destacar
-
+    # ================= Uptime =================    
+    UPTIME=$(uptime -p | sed 's/up //')  
+    UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"
 
     # ================= Transferencia acumulada =================  
     TRANSFER_FILE="/tmp/vps_transfer_total"  
@@ -922,7 +942,7 @@ UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con c
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
     echo -e "${BLANCO} ${UPTIME_COLOR}${NC}"
-    echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"  # Updated line to match requested format
+    echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
@@ -930,11 +950,6 @@ UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con c
         echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
 }
-                                                
-                                            
-
-
-
         
 
     function contador_online() {
