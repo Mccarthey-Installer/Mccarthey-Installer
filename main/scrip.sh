@@ -849,29 +849,17 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
         DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  
     fi  
 
-    # ================= CPU (Precisión exacta /proc/stat) =================  
+# ================= CPU (Versión ligera /proc/stat instantánea) =================  
     get_cpu_usage() {
-        cpu_before=($(grep '^cpu ' /proc/stat))
-        total_before=0
-        for value in "${cpu_before[@]:1}"; do
-            total_before=$((total_before + value))
-        done
-        idle_before=${cpu_before[4]}
-        sleep 1
-        cpu_after=($(grep '^cpu ' /proc/stat))
-        total_after=0
-        for value in "${cpu_after[@]:1}"; do
-            total_after=$((total_after + value))
-        done
-        idle_after=${cpu_after[4]}
-        total_diff=$((total_after - total_before))
-        idle_diff=$((idle_after - idle_before))
-        awk "BEGIN {printf \"%.1f\", (1 - ($idle_diff / $total_diff)) * 100}"
+        local cpu idle total usage
+        # Lee la primera línea de /proc/stat (datos acumulados desde el arranque)
+        read -r _ user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
+        total=$((user + nice + system + idle + iowait + irq + softirq + steal))
+        usage=$((100 * (total - idle) / total))
+        echo "$usage"
     }
 
     CPU_PORC=$(get_cpu_usage)
-    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)  
-    [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"  
 
     # ================= IP y fecha =================  
     if command -v curl &>/dev/null; then  
