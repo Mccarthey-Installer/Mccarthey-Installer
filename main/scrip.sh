@@ -2513,7 +2513,7 @@ eliminar_swap() {
 
 mostrar_menu() {
     echo
-    echo -e "${VIOLETA}======💫PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🥳💫PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2541,55 +2541,86 @@ if [[ -t 0 ]]; then
     recargar_menu
 
     while true; do
-        # Línea limpia para entrada
         printf "${ROSA}➡️ Selecciona una opción: ${NC}" >&2
         OPCION=""
 
-        # Leer carácter por carácter sin avanzar línea
-        while IFS= read -r -n1 -s char; do
+        # Leer hasta 2 caracteres + Enter
+        while [[ ${#OPCION} -lt 2 ]]; do
+            if ! IFS= read -r -n1 -s char; then
+                # EOF o error
+                printf "\n"
+                exit 0
+            fi
+
             case "$char" in
                 $'\n'|$'\r')  # Enter
-                    [[ -z "$OPCION" ]] && break  # Enter vacío → salir del bucle interno
                     break
                     ;;
                 $'\177'|$'\b')  # Backspace
-                    [[ -n "$OPCION" ]] && OPCION="${OPCION%?}" && printf "\b \b" >&2
+                    if [[ -n "$OPCION" ]]; then
+                        OPCION="${OPCION%?}"
+                        printf "\b \b" >&2
+                    fi
                     ;;
-                *)  # Cualquier otro carácter
-                    [[ "$char" =~ [0-9] ]] && OPCION+="$char" && printf "%s" "$char" >&2
+                [0-9])
+                    # Solo permitir si es parte de opción válida (0-14)
+                    if [[ -z "$OPCION" && "$char" = "0" ]]; then
+                        # Permitir 0 solo como opción final
+                        OPCION="0"
+                        printf "0" >&2
+                        # Forzar Enter inmediato
+                        while IFS= read -r -n1 -s _; do
+                            [[ "$_" == $'\n' || "$_" == $'\r' ]] && break
+                        done
+                        break 2
+                    elif [[ ${#OPCION} -eq 0 && "$char" = [1] ]]; then
+                        OPCION+="$char"
+                        printf "%s" "$char" >&2
+                    elif [[ ${#OPCION} -eq 1 && "$OPCION" = "1" && "$char" =~ [0-4] ]]; then
+                        OPCION+="$char"
+                        printf "%s" "$char" >&2
+                        break
+                    elif [[ ${#OPCION} -eq 0 && "$char" =~ [2-9] ]]; then
+                        OPCION+="$char"
+                        printf "%s" "$char" >&2
+                        break
+                    fi
                     ;;
             esac
         done
 
-        # Si Enter vacío → limpiar y repetir
-        if [[ -z "$OPCION" ]]; then
-            printf "\r%*s\r" $(tput cols) >&2
-            continue
-        fi
+        # Si no se presionó Enter y no hay opción, repetir
+        [[ -z "$OPCION" ]] && printf "\r%*s\r" $(tput cols) >&2 && continue
 
         # Procesar opción
         case "$OPCION" in
-            1) crear_usuario ; recargar_menu ;;
-            2) ver_registros ; recargar_menu ;;
-            3) eliminar_multiples_usuarios ; recargar_menu ;;
-            4) informacion_usuarios ; recargar_menu ;;
-            5) verificar_online ; recargar_menu ;;
-            6) bloquear_desbloquear_usuario ; recargar_menu ;;
-            7) crear_multiples_usuarios ; recargar_menu ;;
-            8) mini_registro ; recargar_menu ;;
-            9) activar_desactivar_limitador ; recargar_menu ;;
-            10) configurar_banner_ssh ; recargar_menu ;;
-            11) contador_online ; recargar_menu ;;
-            12) ssh_bot ; recargar_menu ;;
-            13) renovar_usuario ; recargar_menu ;;
-            14) activar_desactivar_swap ; recargar_menu ;;
+            1|2|3|4|5|6|7|8|9|10|11|12|13|14)
+                clear
+                case "$OPCION" in
+                    1) crear_usuario ;;
+                    2) ver_registros ;;
+                    3) eliminar_multiples_usuarios ;;
+                    4) informacion_usuarios ;;
+                    5) verificar_online ;;
+                    6) bloquear_desbloquear_usuario ;;
+                    7) crear_multiples_usuarios ;;
+                    8) mini_registro ;;
+                    9) activar_desactivar_limitador ;;
+                    10) configurar_banner_ssh ;;
+                    11) contador_online ;;
+                    12) ssh_bot ;;
+                    13) renovar_usuario ;;
+                    14) activar_desactivar_swap ;;
+                esac
+                recargar_menu
+                ;;
             0)
                 clear
-                echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
+                echo -e "${AMARILLO_SUAVE}Saliendo al shell...${NC}"
                 exec /bin/bash
                 ;;
             *)
-                printf "\n${ROJO}❌ ¡Opción inválida!${NC}\n"
+                printf "\n${ROJO}Opción inválida!${NC}\n"
                 read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
                 recargar_menu
                 ;;
