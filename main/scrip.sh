@@ -2513,7 +2513,7 @@ eliminar_swap() {
 
 mostrar_menu() {
     echo
-    echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2541,17 +2541,34 @@ if [[ -t 0 ]]; then
     recargar_menu
 
     while true; do
-        # Prompt en la misma línea, con \r para sobrescribir
+        # Línea limpia para entrada
         printf "${ROSA}➡️ Selecciona una opción: ${NC}" >&2
-        read -r OPCION
+        OPCION=""
 
-        # Si solo Enter → limpiar línea y repetir
+        # Leer carácter por carácter sin avanzar línea
+        while IFS= read -r -n1 -s char; do
+            case "$char" in
+                $'\n'|$'\r')  # Enter
+                    [[ -z "$OPCION" ]] && break  # Enter vacío → salir del bucle interno
+                    break
+                    ;;
+                $'\177'|$'\b')  # Backspace
+                    [[ -n "$OPCION" ]] && OPCION="${OPCION%?}" && printf "\b \b" >&2
+                    ;;
+                *)  # Cualquier otro carácter
+                    [[ "$char" =~ [0-9] ]] && OPCION+="$char" && printf "%s" "$char" >&2
+                    ;;
+            esac
+        done
+
+        # Si Enter vacío → limpiar y repetir
         if [[ -z "$OPCION" ]]; then
-            printf "\r%*s\r" $(tput cols)  # Borra la línea actual
+            printf "\r%*s\r" $(tput cols) >&2
             continue
         fi
 
-        case $OPCION in
+        # Procesar opción
+        case "$OPCION" in
             1) crear_usuario ; recargar_menu ;;
             2) ver_registros ; recargar_menu ;;
             3) eliminar_multiples_usuarios ; recargar_menu ;;
@@ -2572,8 +2589,7 @@ if [[ -t 0 ]]; then
                 exec /bin/bash
                 ;;
             *)
-                # Error: mostrar mensaje y esperar
-                printf "\r${ROJO}❌ ¡Opción inválida!${NC}                         \n"
+                printf "\n${ROJO}❌ ¡Opción inválida!${NC}\n"
                 read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
                 recargar_menu
                 ;;
