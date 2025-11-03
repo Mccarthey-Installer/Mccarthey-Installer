@@ -2513,7 +2513,7 @@ eliminar_swap() {
 
 mostrar_menu() {
     echo
-    echo -e "${VIOLETA}======🥳💫PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2536,7 +2536,6 @@ recargar_menu() {
     barra_sistema
     mostrar_menu
 }
-
 if [[ -t 0 ]]; then
     recargar_menu
 
@@ -2544,8 +2543,8 @@ if [[ -t 0 ]]; then
         printf "${ROSA}Selecciona una opción: ${NC}" >&2
         OPCION=""
 
-        # Leer hasta Enter o 2 caracteres
-        while true; do
+        # Leer hasta 2 caracteres
+        while [[ ${#OPCION} -lt 2 ]]; do
             if ! IFS= read -r -n1 -s char; then
                 printf "\n"
                 exit 0
@@ -2562,33 +2561,30 @@ if [[ -t 0 ]]; then
                     fi
                     ;;
                 [0-9])
-                    # Permitir solo hasta 2 dígitos
-                    if [[ ${#OPCION} -lt 2 ]]; then
-                        # Validar que sea opción posible
-                        if [[ -z "$OPCION" ]]; then
-                            [[ "$char" = [0-9] ]] && OPCION+="$char" && printf "%s" "$char" >&2
-                        elif [[ "$OPCION" = "1" && "$char" =~ [0-4] ]]; then
+                    # Validar opciones permitidas
+                    if [[ -z "$OPCION" ]]; then
+                        if [[ "$char" = "0" ]]; then
+                            OPCION="0"
+                            printf "0" >&2
+                        elif [[ "$char" =~ [1-9] ]]; then
                             OPCION+="$char"
                             printf "%s" "$char" >&2
-                        elif [[ "$OPCION" =~ ^[2-9]$ ]]; then
-                            # Ya es opción de 1 dígito válida
-                            :
-                        else
-                            # Bloquear más dígitos
-                            :
                         fi
+                    elif [[ ${#OPCION} -eq 1 && "$OPCION" = "1" && "$char" =~ [0-4] ]]; then
+                        OPCION+="$char"
+                        printf "%s" "$char" >&2
+                        break
+                    elif [[ ${#OPCION} -eq 1 && "$OPCION" =~ [2-9] ]]; then
+                        break  # Ya es válida (2-9)
                     fi
                     ;;
             esac
         done
 
-        # Si Enter vacío → limpiar línea
-        if [[ -z "$OPCION" ]]; then
-            printf "\r%*s\r" $(tput cols) >&2
-            continue
-        fi
+        # Si Enter vacío
+        [[ -z "$OPCION" ]] && printf "\r%*s\r" $(tput cols) >&2 && continue
 
-        # Validar opción
+        # Procesar opción
         case "$OPCION" in
             0)
                 clear
@@ -2596,7 +2592,6 @@ if [[ -t 0 ]]; then
                 exec /bin/bash
                 ;;
             1|2|3|4|5|6|7|8|9|10|11|12|13|14)
-                # Ejecutar función
                 case "$OPCION" in
                     1) crear_usuario ;;
                     2) ver_registros ;;
@@ -2613,10 +2608,10 @@ if [[ -t 0 ]]; then
                     13) renovar_usuario ;;
                     14) activar_desactivar_swap ;;
                 esac
-                recargar_menu
+                recargar_menu  # <-- Aquí se recarga
                 ;;
             *)
-                printf "\n${ROJO}Opción inválida: $OPCION${NC}\n"
+                printf "\n${ROJO}Opción inválida!${NC}\n"
                 read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
                 recargar_menu
                 ;;
