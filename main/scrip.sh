@@ -2538,17 +2538,18 @@ recargar_menu() {
 }
 
 if [[ -t 0 ]]; then
-    # Mostrar menú una sola vez al inicio
-    clear
-    barra_sistema
-    mostrar_menu
+    recargar_menu
 
     while true; do
-        PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
-        read -p "$PROMPT" OPCION  
+        # Prompt en la misma línea, con \r para sobrescribir
+        printf "${ROSA}➡️ Selecciona una opción: ${NC}" >&2
+        read -r OPCION
 
-        # Si la entrada está vacía (solo Enter), NO recargar
-        [[ -z "$OPCION" ]] && continue
+        # Si solo Enter → limpiar línea y repetir
+        if [[ -z "$OPCION" ]]; then
+            printf "\r%*s\r" $(tput cols)  # Borra la línea actual
+            continue
+        fi
 
         case $OPCION in
             1) crear_usuario ; recargar_menu ;;
@@ -2565,12 +2566,14 @@ if [[ -t 0 ]]; then
             12) ssh_bot ; recargar_menu ;;
             13) renovar_usuario ; recargar_menu ;;
             14) activar_desactivar_swap ; recargar_menu ;;
-            0) 
+            0)
+                clear
                 echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
                 exec /bin/bash
                 ;;
-            *) 
-                echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            *)
+                # Error: mostrar mensaje y esperar
+                printf "\r${ROJO}❌ ¡Opción inválida!${NC}                         \n"
                 read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
                 recargar_menu
                 ;;
