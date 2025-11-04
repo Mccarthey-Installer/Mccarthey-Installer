@@ -2536,90 +2536,92 @@ recargar_menu() {
     barra_sistema
     mostrar_menu
 }
+
 if [[ -t 0 ]]; then
     recargar_menu
 
     while true; do  
         printf "${ROSA}➡️ Selecciona una opción: ${NC}" >&2  
-        OPCION=""  
+        OPCION=""
 
-        # Leer hasta 2 caracteres + Enter  
-        while [[ ${#OPCION} -lt 2 ]]; do  
-            if ! IFS=read -r -n1 -s char; then  
-                printf "
-"  
-                exit 0  
-            fi  
-
-            case "$char" in  
-                $'
-'|$'
-')  
-                    break  
-                    ;;  
-                $''|$'\b')  
-                    if [[ -n "$OPCION" ]]; then  
-                        OPCION="${OPCION%?}"  
-                        printf "\b \b" >&2  
-                    fi  
-                    ;;  
-                [0-9])  
-                    if [[ ${#OPCION} -eq 0 ]]; then
-                        if [[ "$char" =~ [0-9] ]]; then
-                            OPCION+="$char"
-                            printf "%s" "$char" >&2
-                            # Si no es '1', terminar entrada (solo 1 dígito)
-                            if [[ "$char" != "1" ]]; then
-                                break
-                            fi
-                        fi
-                    elif [[ ${#OPCION} -eq 1 && "$OPCION" == "1" && "$char" =~ [0-4] ]]; then
-                        OPCION+="$char"
-                        printf "%s" "$char" >&2
-                        break
+        # Leer hasta Enter o 2 caracteres
+        while IFS= read -r -n1 -s char; do
+            case "$char" in
+                $'\n'|$'\r')  # Enter
+                    [[ -n "$OPCION" ]] && break 2  # Salir si ya hay algo
+                    ;;
+                $'\177'|$'\b')  # Backspace
+                    if [[ -n "$OPCION" ]]; then
+                        OPCION="${OPCION%?}"
+                        printf "\b \b" >&2
                     fi
-                    ;;  
-            esac  
-        done  
+                    ;;
+                [0-9])
+                    # Permitir solo si forma parte de 0-14
+                    if [[ -z "$OPCION" ]]; then
+                        if [[ "$char" = "0" ]]; then
+                            OPCION="0"
+                            printf "0" >&2
+                            break 2  # 0 es opción completa
+                        elif [[ "$char" = "1" ]]; then
+                            OPCION="1"
+                            printf "1" >&2
+                            # Seguir leyendo (puede ser 10-14)
+                        else
+                            OPCION="$char"
+                            printf "%s" "$char" >&2
+                            break 2  # 2-9 son opciones de 1 dígito
+                        fi
+                    elif [[ "$OPCION" = "1" && "$char" =~ [0-4] ]]; then
+                        OPCION+=" $char"
+                        printf "%s" "$char" >&2
+                        break 2  # 10-14 completados
+                    else
+                        # Invalid second digit for 1X
+                        printf "\a" >&2  # Beep
+                    fi
+                    ;;
+                *)
+                    printf "\a" >&2  # Beep en carácter inválido
+                    ;;
+            esac
+        done
 
-        [[ -z "$OPCION" ]] && printf "
-%*s
-" $(tput cols) >&2 && continue  
+        # Limpiar línea si no hay opción
+        [[ -z "$OPCION" ]] && printf "\r%*s\r" $(tput cols) >&2 && continue
 
-        # Procesar opción  
-        case "$OPCION" in  
-            1|2|3|4|5|6|7|8|9|10|11|12|13|14)  
-                clear  
-                case "$OPCION" in  
-                    1) crear_usuario ;;  
-                    2) ver_registros ;;  
-                    3) eliminar_multiples_usuarios ;;  
-                    4) informacion_usuarios ;;  
-                    5) verificar_online ;;  
-                    6) bloquear_desbloquear_usuario ;;  
-                    7) crear_multiples_usuarios ;;  
-                    8) mini_registro ;;  
-                    9) activar_desactivar_limitador ;;  
-                    10) configurar_banner_ssh ;;  
-                    11) contador_online ;;  
-                    12) ssh_bot ;;  
-                    13) renovar_usuario ;;  
-                    14) activar_desactivar_swap ;;  
-                esac  
-                recargar_menu  
-                ;;  
-            0)  
-                clear  
-                echo -e "${AMARILLO_SUAVE}Saliendo al shell...${NC}"  
-                exec /bin/bash  
-                ;;  
-            *)  
-                printf "
-${ROJO}Opción inválida!${NC}
-"  
-                read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"  
-                recargar_menu  
-                ;;  
-        esac  
+        # Procesar opción
+        case "$OPCION" in
+            0)
+                clear
+                echo -e "${AMARILLO_SUAVE}Saliendo al shell...${NC}"
+                exec /bin/bash
+                ;;
+            1|2|3|4|5|6|7|8|9|10|11|12|13|14)
+                clear
+                case "$OPCION" in
+                    1) crear_usuario ;;
+                    2) ver_registros ;;
+                    3) eliminar_multiples_usuarios ;;
+                    4) informacion_usuarios ;;
+                    5) verificar_online ;;
+                    6) bloquear_desbloquear_usuario ;;
+                    7) crear_multiples_usuarios ;;
+                    8) mini_registro ;;
+                    9) activar_desactivar_limitador ;;
+                    10) configurar_banner_ssh ;;
+                    11) contador_online ;;
+                    12) ssh_bot ;;
+                    13) renovar_usuario ;;
+                    14) activar_desactivar_swap ;;
+                esac
+                recargar_menu
+                ;;
+            *)
+                printf "\n${ROJO}Opción inválida!${NC}\n" >&2
+                read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+                recargar_menu
+                ;;
+        esac
     done
 fi
