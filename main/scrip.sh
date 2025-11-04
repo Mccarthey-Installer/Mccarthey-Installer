@@ -2482,9 +2482,10 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
- # ==== MENU ====
+# ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
+    # ✅ PRIMERO mostramos el menú
     clear
     barra_sistema
     echo
@@ -2505,11 +2506,17 @@ while true; do
     echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
-    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
-    read -p "$PROMPT" OPCION  
+    # ✅ LOOP INTERNO: solo lee input hasta que sea válido
+    while true; do
+        PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
+        read -p "$PROMPT" OPCION  
 
-    # ✅ Si presionan solo Enter, ignorar y continuar el loop
-    [[ -z "$OPCION" ]] && continue
+        # Si está vacío, volver a pedir sin hacer nada
+        [[ -z "$OPCION" ]] && continue
+
+        # Si tiene contenido, salir del loop de lectura
+        break
+    done
 
     case $OPCION in
         1) crear_usuario ;;
