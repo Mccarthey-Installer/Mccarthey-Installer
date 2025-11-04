@@ -2515,7 +2515,7 @@ if [[ -t 0 ]]; then
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======💫 PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======🐾🐿 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1.  Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2.  Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3.  Eliminar usuario${NC}"
@@ -2539,8 +2539,8 @@ if [[ -t 0 ]]; then
         read -n1 -s DIGITO1
         echo -n "$DIGITO1"
 
-        # Esperar 0.3s para detectar posible segundo dígito
-        if read -t 0.3 -n1 -s DIGITO2; then
+        # Esperar 2 segundos para detectar posible segundo dígito
+        if read -t 2 -n1 -s DIGITO2; then
             echo -n "$DIGITO2"
             OPCION="${DIGITO1}${DIGITO2}"
         else
