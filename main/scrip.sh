@@ -2529,41 +2529,33 @@ if [[ -t 0 ]]; then
         echo -e "${AMARILLO_SUAVE}12. SSH BOT${NC}"
         echo -e "${AMARILLO_SUAVE}13. Renovar usuario${NC}"
         echo -e "${AMARILLO_SUAVE}14. Activar/Desactivar Swap${NC}"
-        # ... puedes agregar hasta 50 aquí
-        echo -e "${AMARILLO_SUAVE}50. Opción de ejemplo 50${NC}"
         echo -e "${AMARILLO_SUAVE}0.  Salir${NC}"
 
-        # === LECTURA DINÁMICA DE HASTA 3 DÍGITOS SIN ENTER ===
+        # === LECTURA INTELIGENTE DE 1 O 2 DÍGITOS SIN ENTER ===
         stty -echo
         echo -en "${ROSA}Selecciona una opción: ${NC}"
         
-        OPCION=""
-        TIMEOUT=0.4  # Tiempo para decidir si hay más dígitos
+        # Leer primer dígito
+        read -n1 -s DIGITO1
+        echo -n "$DIGITO1"  # Mostrar lo que se escribe
 
-        # Leer hasta 3 dígitos con timeout
-        for i in {1..3}; do
-            if read -t "$TIMEOUT" -n1 -s DIGITO; then
-                echo -n "$DIGITO"
-                OPCION+="$DIGITO"
+        # Si el primer dígito es 1, esperar posible segundo dígito (10-14)
+        if [[ "$DIGITO1" == "1" ]]; then
+            # Mirar si hay entrada disponible en 0.3 segundos
+            if read -t 0.3 -n1 -s DIGITO2; then
+                echo -n "$DIGITO2"
+                OPCION="${DIGITO1}${DIGITO2}"
             else
-                break  # No hay más entrada → termina
+                OPCION="$DIGITO1"
             fi
-        done
-
-        # Si no se ingresó nada
-        [[ -z "$OPCION" ]] && OPCION="0"
-
-        stty echo
-        echo
-
-        # === VALIDAR RANGO (0 a 50) ===
-        if ! [[ "$OPCION" =~ ^[0-9]+$ ]] || (( OPCION < 0 || OPCION > 50 )); then
-            echo -e "${ROJO}Opción inválida! Usa 0-50${NC}"
-            sleep 1
-            continue
+        else
+            OPCION="$DIGITO1"
         fi
 
-        # === EJECUTAR OPCIÓN ===
+        stty echo
+        echo  # Salto de línea
+
+        # === VALIDAR OPCIÓN ===
         case $OPCION in
             1) crear_usuario ;;
             2) ver_registros ;;
@@ -2572,21 +2564,19 @@ if [[ -t 0 ]]; then
             5) verificar_online ;;
             6) bloquear_desbloquear_usuario ;;
             7) crear_multiples_usuarios ;;
-            8) mini_registro ;;
+             8) mini_registro ;;
             9) activar_desactivar_limitador ;;
             10) configurar_banner_ssh ;;
             11) contador_online ;;
             12) ssh_bot ;;
             13) renovar_usuario ;;
             14) activar_desactivar_swap ;;
-            # ... agrega más hasta 50
-            50) echo "Ejecutando opción 50..." ;;
             0) 
                 echo -e "${AMARILLO_SUAVE}Saliendo al shell...${NC}"
                 exec /bin/bash
                 ;;
-            *) 
-                echo -e "${ROJO}Función no implementada aún: $OPCION${NC}"
+            *)
+                echo -e "${ROJO}¡Opción inválida!${NC}"
                 sleep 1
                 ;;
         esac
