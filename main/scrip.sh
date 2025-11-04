@@ -2509,36 +2509,61 @@ eliminar_swap() {
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
 }
-
 if [[ -t 0 ]]; then
     while true; do
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
-        echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
-        echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"
-        echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"
-        echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"
-        echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
-        echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
-        echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-        echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
-        echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
-        echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
-        echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
-        echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
+        echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${AMARILLO_SUAVE}1.  Crear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}2.  Ver registros${NC}"
+        echo -e "${AMARILLO_SUAVE}3.  Eliminar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}4.  Información${NC}"
+        echo -e "${AMARILLO_SUAVE}5.  Verificar usuarios online${NC}"
+        echo -e "${AMARILLO_SUAVE}6.  Bloquear/Desbloquear usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}7.  Crear múltiples usuarios${NC}"
+        echo -e "${AMARILLO_SUAVE}8.  Mini registro${NC}"
+        echo -e "${AMARILLO_SUAVE}9.  Activar/Desactivar limitador${NC}"
+        echo -e "${AMARILLO_SUAVE}10. Configurar banner SSH${NC}"
+        echo -e "${AMARILLO_SUAVE}11. Activar/Desactivar contador online${NC}"
+        echo -e "${AMARILLO_SUAVE}12. SSH BOT${NC}"
+        echo -e "${AMARILLO_SUAVE}13. Renovar usuario${NC}"
+        echo -e "${AMARILLO_SUAVE}14. Activar/Desactivar Swap${NC}"
+        # ... puedes agregar hasta 50 aquí
+        echo -e "${AMARILLO_SUAVE}50. Opción de ejemplo 50${NC}"
+        echo -e "${AMARILLO_SUAVE}0.  Salir${NC}"
 
-        # Desactivar eco y leer solo 1 carácter sin Enter
+        # === LECTURA DINÁMICA DE HASTA 3 DÍGITOS SIN ENTER ===
         stty -echo
-        echo -en "${ROSA}➡️ Selecciona una opción: ${NC}"
-        read -n1 -s OPCION
-        stty echo
-        echo "$OPCION"  # Mostrar la tecla presionada (opcional, puedes quitarlo)
+        echo -en "${ROSA}Selecciona una opción: ${NC}"
+        
+        OPCION=""
+        TIMEOUT=0.4  # Tiempo para decidir si hay más dígitos
 
+        # Leer hasta 3 dígitos con timeout
+        for i in {1..3}; do
+            if read -t "$TIMEOUT" -n1 -s DIGITO; then
+                echo -n "$DIGITO"
+                OPCION+="$DIGITO"
+            else
+                break  # No hay más entrada → termina
+            fi
+        done
+
+        # Si no se ingresó nada
+        [[ -z "$OPCION" ]] && OPCION="0"
+
+        stty echo
+        echo
+
+        # === VALIDAR RANGO (0 a 50) ===
+        if ! [[ "$OPCION" =~ ^[0-9]+$ ]] || (( OPCION < 0 || OPCION > 50 )); then
+            echo -e "${ROJO}Opción inválida! Usa 0-50${NC}"
+            sleep 1
+            continue
+        fi
+
+        # === EJECUTAR OPCIÓN ===
         case $OPCION in
             1) crear_usuario ;;
             2) ver_registros ;;
@@ -2554,15 +2579,16 @@ if [[ -t 0 ]]; then
             12) ssh_bot ;;
             13) renovar_usuario ;;
             14) activar_desactivar_swap ;;
+            # ... agrega más hasta 50
+            50) echo "Ejecutando opción 50..." ;;
             0) 
-                echo -e "\n${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
+                echo -e "${AMARILLO_SUAVE}Saliendo al shell...${NC}"
                 exec /bin/bash
                 ;;
-            *)
-                echo -e "\n${ROJO}❌ ¡Opción inválida!${NC}"
+            *) 
+                echo -e "${ROJO}Función no implementada aún: $OPCION${NC}"
                 sleep 1
                 ;;
         esac
     done
 fi
-                    
