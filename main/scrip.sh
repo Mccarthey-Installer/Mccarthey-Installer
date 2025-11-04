@@ -2509,12 +2509,13 @@ eliminar_swap() {
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
 }
+
 if [[ -t 0 ]]; then
     while true; do
         clear
         barra_sistema
         echo
-        echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
+        echo -e "${VIOLETA}======💫 PANEL DE USUARIOS VPN/SSH ======${NC}"
         echo -e "${AMARILLO_SUAVE}1.  Crear usuario${NC}"
         echo -e "${AMARILLO_SUAVE}2.  Ver registros${NC}"
         echo -e "${AMARILLO_SUAVE}3.  Eliminar usuario${NC}"
@@ -2534,38 +2535,32 @@ if [[ -t 0 ]]; then
         # === LECTURA INTELIGENTE DE 1 O 2 DÍGITOS SIN ENTER ===
         stty -echo
         echo -en "${ROSA}Selecciona una opción: ${NC}"
-        
-        # Leer primer dígito
-        read -n1 -s DIGITO1
-        echo -n "$DIGITO1"  # Mostrar lo que se escribe
 
-        # Si el primer dígito es 1, esperar posible segundo dígito (10-14)
-        if [[ "$DIGITO1" == "1" ]]; then
-            # Mirar si hay entrada disponible en 0.3 segundos
-            if read -t 0.3 -n1 -s DIGITO2; then
-                echo -n "$DIGITO2"
-                OPCION="${DIGITO1}${DIGITO2}"
-            else
-                OPCION="$DIGITO1"
-            fi
+        read -n1 -s DIGITO1
+        echo -n "$DIGITO1"
+
+        # Esperar 0.3s para detectar posible segundo dígito
+        if read -t 0.3 -n1 -s DIGITO2; then
+            echo -n "$DIGITO2"
+            OPCION="${DIGITO1}${DIGITO2}"
         else
             OPCION="$DIGITO1"
         fi
 
         stty echo
-        echo  # Salto de línea
+        echo  # salto de línea
 
         # === VALIDAR OPCIÓN ===
         case $OPCION in
-            1) crear_usuario ;;
-            2) ver_registros ;;
-            3) eliminar_multiples_usuarios ;;
-            4) informacion_usuarios ;;
-            5) verificar_online ;;
-            6) bloquear_desbloquear_usuario ;;
-            7) crear_multiples_usuarios ;;
-             8) mini_registro ;;
-            9) activar_desactivar_limitador ;;
+            1)  crear_usuario ;;
+            2)  ver_registros ;;
+            3)  eliminar_multiples_usuarios ;;
+            4)  informacion_usuarios ;;
+            5)  verificar_online ;;
+            6)  bloquear_desbloquear_usuario ;;
+            7)  crear_multiples_usuarios ;;
+            8)  mini_registro ;;
+            9)  activar_desactivar_limitador ;;
             10) configurar_banner_ssh ;;
             11) contador_online ;;
             12) ssh_bot ;;
