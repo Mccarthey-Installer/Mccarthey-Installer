@@ -2485,11 +2485,10 @@ eliminar_swap() {
 # ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
-    # ✅ PRIMERO mostramos el menú
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳⚠️PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2506,16 +2505,13 @@ while true; do
     echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
-    # ✅ LOOP INTERNO: solo lee input hasta que sea válido
+    # ✅ Loop que solo lee hasta obtener algo no vacío
     while true; do
         PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
         read -p "$PROMPT" OPCION  
-
-        # Si está vacío, volver a pedir sin hacer nada
-        [[ -z "$OPCION" ]] && continue
-
-        # Si tiene contenido, salir del loop de lectura
-        break
+        
+        # Solo salir si hay contenido
+        [[ -n "$OPCION" ]] && break
     done
 
     case $OPCION in
