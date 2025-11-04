@@ -2492,7 +2492,7 @@ eliminar_swap() {
 if [[ -t 0 ]]; then
 while true; do
     clear
-    barra_sistema
+    
     echo
     echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
