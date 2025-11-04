@@ -2482,12 +2482,12 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
-# === DIBUJAR MENÚ UNA SOLA VEZ ===
+ === FUNCION: REDIBUJAR MENÚ ===
 redraw_menu() {
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫✨ PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2498,26 +2498,25 @@ redraw_menu() {
     echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"
     echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"
     echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"
+    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desbloquear contador online${NC}"
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
     echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
-    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desbloquear Swap${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 }
 
-# Dibuja el menú solo una vez
+# === DIBUJAR MENÚ INICIAL ===
 redraw_menu
 
-# === BUCLE DE ENTRADA ===
+# === BUCLE PRINCIPAL DE ENTRADA ===
 while true; do
-    # Prompt sin limpiar nada
-    printf "\r${ROSA}➡️ Selecciona una opción: ${NC}"
-    read -r OPCION
+    # Prompt limpio, no usa printf con \r para evitar duplicación de línea
+    read -p "➡️ Selecciona una opción: " OPCION
 
-    # Si solo presiona Enter → hacer nada, quedarse esperando
+    # Si solo presiona Enter → NO hace nada
     [[ -z "$OPCION" ]] && continue
 
-    # Procesar solo si escribió algo
+    # Procesar la opción
     case "$OPCION" in
         1) crear_usuario ; redraw_menu ;;
         2) ver_registros ; redraw_menu ;;
