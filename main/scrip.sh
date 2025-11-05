@@ -2574,74 +2574,64 @@ EOF
     }
 
     generate_config() {
-        local path="$1"
-        local host="$2"
-        {
-            echo "{"
-            echo '  "log": {'
-            echo '    "loglevel": "debug",'
-            echo '    "access": "/var/log/xray/access.log",'
-            echo '    "error": "/var/log/xray/error.log",'
-            echo '    "logformat": "json"'
-            echo '  },'
-            echo '  "api": {'
-            echo '    "tag": "api",'
-            echo '    "services": ["StatsService"]'
-            echo '  },'
-            echo '  "stats": {},'
-            echo '  "inbounds": ['
-            echo '    {'
-            echo "      \"port\": $API_PORT,"
-            echo '      "listen": "127.0.0.1",'
-            echo '      "protocol": "dokodemo-door",'
-            echo '      "settings": { "address": "127.0.0.1" },'
-            echo '      "tag": "api"'
-            echo '    },'
-            echo '    {'
-            echo "      \"port\": $PORT,"
-            echo '      "listen": "0.0.0.0",'
-            echo '      "protocol": "vmess",'
-            echo '      "settings": {'
-            echo '        "clients": ['
-            
-            first=true
-            while IFS=: read -r name uuid created expires delete_at; do
-                [[ $name == "#"* ]] && continue
-                [ $(( $(date +%s) )) -ge $delete_at ] && continue
-                if [ "$first" = false ]; then echo "        },"; fi
-                echo "          {"
-                echo "            \"id\": \"$uuid\","
-                echo "            \"level\": 8,"
-                echo "            \"alterId\": 0,"
-                echo "            \"email\": \"$name\""
-                first=false
-            done < <(grep -v "^#" "$USERS_FILE")
-            
-            [ "$first" = false ] && echo "        }"
-            echo '        ]'
-            echo '      },'
-            echo '      "streamSettings": {'
-            echo '        "network": "ws",'
-            echo '        "wsSettings": {'
-            echo "          \"path\": \"$path\""
-            [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
-            echo '        }'
-            echo '      }'
-            echo '    }'
-            echo '  ],'
-            echo '  "outbounds": ['
-            echo '    { "protocol": "freedom", "tag": "direct" },'
-            echo '    { "protocol": "blackhole", "tag": "blocked" }'
-            echo '  ],'
-            echo '  "routing": {'
-            echo '    "domainStrategy": "AsIs",'
-            echo '    "rules": ['
-            echo '      { "type": "field", "inboundTag": ["api"], "outboundTag": "api" }'
-            echo '    ]'
-            echo '  }'
-            echo '}'
-        } > "$CONFIG_FILE"
-    }
+    local path="$1"
+    local host="$2"
+    {
+        echo "{"
+        echo '  "log": {'
+        echo '    "loglevel": "info",'
+        echo '    "access": "/var/log/xray/access.log",'
+        echo '    "error": "/var/log/xray/error.log"'
+        echo '  },'
+        echo '  "stats": {},'
+        echo '  "policy": {'
+        echo '    "levels": {'
+        echo '      "0": {'
+        echo '        "statsUserUplink": true,'
+        echo '        "statsUserDownlink": true'
+        echo '      }'
+        echo '    }'
+        echo '  },'
+        echo '  "inbounds": ['
+        echo '    {'
+        echo "      \"port\": $PORT,"
+        echo '      "listen": "0.0.0.0",'
+        echo '      "protocol": "vmess",'
+        echo '      "settings": {'
+        echo '        "clients": ['
+        
+        first=true
+        while IFS=: read -r name uuid created expires delete_at; do
+            [[ $name == "#"* ]] && continue
+            [ $(( $(date +%s) )) -ge $delete_at ] && continue
+            if [ "$first" = false ]; then echo "        },"; fi
+            echo "          {"
+            echo "            \"id\": \"$uuid\","
+            echo "            \"level\": 0,"
+            echo "            \"alterId\": 0,"
+            echo "            \"email\": \"$name\""
+            first=false
+        done < <(grep -v "^#" "$USERS_FILE")
+        
+        [ "$first" = false ] && echo "        }"
+        echo '        ]'
+        echo '      },'
+        echo '      "streamSettings": {'
+        echo '        "network": "ws",'
+        echo '        "wsSettings": {'
+        echo "          \"path\": \"$path\""
+        [ -n "$host" ] && echo "          ,\"headers\": { \"Host\": \"$host\" }"
+        echo '        }'
+        echo '      }'
+        echo '    }'
+        echo '  ],'
+        echo '  "outbounds": ['
+        echo '    { "protocol": "freedom", "tag": "direct" },'
+        echo '    { "protocol": "blackhole", "tag": "blocked" }'
+        echo '  ]'
+        echo '}'
+    } > "$CONFIG_FILE"
+}
 
     # === VER USUARIOS ONLINE CON TIEMPO ===
     
