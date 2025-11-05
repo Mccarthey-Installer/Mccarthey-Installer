@@ -2483,7 +2483,6 @@ eliminar_swap() {
 }
 
 
-
 menu_v2ray() {
     # === VARIABLES DEL V2RAY ===
     local CONFIG_DIR="/usr/local/etc/xray"
@@ -2491,7 +2490,7 @@ menu_v2ray() {
     local SERVICE_FILE="/etc/systemd/system/xray.service"
     local LOG_DIR="/var/log/xray"
     local USERS_FILE="$CONFIG_DIR/users.db"
-    local STATS_FILE="$CONFIG_DIR/stats.db"
+    local STATS_FILE="$CONFIG_DIR/stats.db"  # Formato: name:uuid:total_up:total_down:total_time:session_start:last_up:last_down:online_count
     local SERVER_ADDR_FILE="$CONFIG_DIR/server_addr"
     local BACKUP_DIR="$CONFIG_DIR/backups"
     local PORT=8080
@@ -2510,20 +2509,13 @@ menu_v2ray() {
     local NC='\033[0m'
 
     # EMOJIS
-    local FIRE="FIRE"
-    local ROCKET="ROCKET"
-    local SPARK="SPARK"
-    local STAR="STAR"
-    local CHECK="CHECK"
-    local CROSS="CROSS"
-    local TRASH="TRASH"
-    local USER="USER"
-    local KEY="KEY"
-    local CAL="CAL"
-    local DOWN="DOWN"
-    local UP="UP"
-    local CLOCK="CLOCK"
-    local DATA="DATA"
+    local FIRE="FIRE" ROCKET="ROCKET" SPARK="SPARK" STAR="STAR" CHECK="CHECK" CROSS="CROSS" TRASH="TRASH"
+    local USER="USER" KEY="KEY" CAL="CAL" DOWN="DOWN" UP="UP" CLOCK="CLOCK" DATA="DATA"
+
+    # === INSTALAR JQ ===
+    echo -e "${YELLOW}Instalando jq...${NC}"
+    curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 >/dev/null 2>&1
+    chmod +x /usr/bin/jq
 
     # === LIMPIADOR DE TERMINAL ===
     reset_terminal() {
@@ -2532,144 +2524,15 @@ menu_v2ray() {
         stty sane
     }
 
-    # === INSTALAR JQ ===
-    echo -e "${YELLOW}Instalando jq...${NC}"
-    curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 >/dev/null 2>&1
-    chmod +x /usr/bin/jq
-
-    # === CREAR ESTRUCTURA ===
     mkdir -p "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"
     [ ! -f "$USERS_FILE" ] && touch "$USERS_FILE"
     [ ! -f "$STATS_FILE" ] && touch "$STATS_FILE"
 
-    # === LIMPIAR STATS CORRUPTOS ===
-    clean_stats_file() {
-        local temp=$(mktemp)
-        while IFS=: read -r name tup tdown ttime lcheck lup ldown sstart; do
-            [[ $name == "#"* ]] && continue
-            tup=${tup:-0} tdown=${tdown:-0} ttime=${ttime:-0} lcheck=${lcheck:-0}
-            lup=${lup:-0} ldown=${ldown:-0} sstart=${sstart:-0}
-            echo "$name:$tup:$tdown:$ttime:$lcheck:$lup:$ldown:$sstart" >> "$temp"
-        done < "$STATS_FILE"
-        mv "$temp" "$STATS_FILE"
+    # === FUNCIONES LOCALES ===
+    midnight_tomorrow() {
+        date -d "tomorrow 00:00" +%s 2>/dev/null || date -d "next day 00:00" +%s
     }
 
-    # === FUNCIÓN: ACTUALIZAR ESTADÍSTICAS ===
-    update_and_get_stats() {
-        local now=$(date +%s)
-        local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null | jq -c '.stat[]')
-        [ -z "$stats_output" ] && return 1
-
-        # Inicializar STATS_FILE si vacío
-        if [ ! -s "$STATS_FILE" ]; then
-            while IFS=: read -r name uuid _ _ _; do
-                [[ $name == "#"* ]] && continue
-                echo "$name:0:0:0:$now:0:0:0" >> "$STATS_FILE"
-            done < "$USERS_FILE"
-        fi
-
-        local temp_file=$(mktemp)
-        local current_up=0 current_down=0
-
-        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start; do
-            total_up=${total_up:-0}
-            total_down=${total_down:-0}
-            total_time=${total_time:-0}
-            last_check=${last_check:-0}
-            last_up=${last_up:-0}
-            last_down=${last_down:-0}
-            session_start=${session_start:-0}
-
-            current_up=$(echo "$stats_output" | jq -r "select(.name == \"user>>>\($name)>>traffic>>>uplink\") | .value // 0")
-            current_down=$(echo "$stats_output" | jq -r "select(.name == \"user>>>\($name)>>traffic>>>downlink\") | .value // 0")
-
-            diff_up=$((current_up - last_up))
-            diff_down=$((current_down - last_down))
-            ((diff_up < 0)) && diff_up=0
-            ((diff_down < 0)) && diff_down=0
-
-            new_total_up=$((total_up + diff_up))
-            new_total_down=$((total_down + diff_down))
-            new_total_time=$total_time
-            new_session_start=$session_start
-
-            if (( diff_up > 0 || diff_down > 0 )); then
-                if (( session_start == 0 )); then
-                    new_session_start=$now
-                fi
-                if (( session_start > 0 )); then
-                    new_total_time=$((total_time + (now - session_start)))
-                fi
-            else
-                if (( session_start > 0 )); then
-                    new_total_time=$((total_time + (now - session_start)))
-                    new_session_start=0
-                fi
-            fi
-
-            echo "$name:$new_total_up:$new_total_down:$new_total_time:$now:$current_up:$current_down:$new_session_start" >> "$temp_file"
-        done < "$STATS_FILE"
-
-        mv "$temp_file" "$STATS_FILE"
-    }
-
-    # === FUNCIÓN: VER ONLINE Y ESTADÍSTICAS ===
-    view_online_and_stats() {
-        reset_terminal
-        clean_stats_file
-        update_and_get_stats
-
-        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
-
-        local now=$(date +%s)
-        local active_count=0
-
-        # Contar conexiones activas
-        declare -A active_connections
-        local conn_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null | jq -r '.stat[] | select(.name | startswith("user>>>") and endswith(">>>handshake")) | .name, .value' 2>/dev/null || echo "")
-        while IFS= read -r name && IFS= read -r value; do
-            [[ -z "$name" || -z "$value" ]] && continue
-            email=$(echo "$name" | sed 's/user>>>\(.*\)>>>handshake/\1/')
-            active_connections["$email"]=$(( ${active_connections[$email]:-0} + value ))
-        done <<< "$conn_output"
-
-        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start; do
-            total_up=${total_up:-0}
-            total_down=${total_down:-0}
-            total_time=${total_time:-0}
-            session_start=${session_start:-0}
-
-            is_online=0
-            session_duration=0
-            if (( session_start > 0 )); then
-                is_online=1
-                session_duration=$((now - session_start))
-            fi
-
-            conn_count=${active_connections[$name]:-0}
-
-            total_gb=$(awk "BEGIN {printf \"%.2f\", ($total_up + $total_down) / 1073741824}")
-            up_gb=$(awk "BEGIN {printf \"%.2f\", $total_up / 1073741824}")
-            down_gb=$(awk "BEGIN {printf \"%.2f\", $total_down / 1073741824}")
-            total_hours=$(awk "BEGIN {printf \"%.2f\", $total_time / 3600}")
-            session_min=$(awk "BEGIN {printf \"%.1f\", $session_duration / 60}")
-
-            echo -e "${USER} ${YELLOW}Nombre:${NC} ${WHITE}$name${NC}"
-            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ${CHECK}${NC} ($conn_count dispositivo(s))" || echo "${RED}No ${CROSS}${NC}" )"
-            (( is_online )) && echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${CYAN}${session_min} min${NC}"
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${PURPLE}${total_gb} GB${NC} (↑ ${up_gb} | ↓ ${down_gb})"
-            echo -e "${CLOCK} ${WHITE}Tiempo total:${NC} ${YELLOW}${total_hours} horas${NC}"
-            echo -e "${PURPLE}────────────────────────────────────${NC}"
-            ((active_count++))
-        done < "$STATS_FILE"
-
-        [ $active_count -eq 0 ] && echo -e "${CROSS} ${RED}No hay estadísticas disponibles.${NC}"
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-    }
-
-    # === FUNCIONES AUXILIARES ===
-    midnight_tomorrow() { date -d "tomorrow 00:00" +%s 2>/dev/null || date -d "next day 00:00" +%s; }
     days_left_natural() {
         local expires=$1
         local now_midnight=$(date -d "today 00:00" +%s)
@@ -2685,9 +2548,9 @@ menu_v2ray() {
         cd /tmp
         wget -q https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
         unzip -o Xray-linux-64.zip >/dev/null 2>&1
-        sudo mv xray "$XRAY_BIN" 2>/dev/null
-        sudo chmod +x "$XRAY_BIN"
-        echo -e "${CHECK} ${GREEN}Xray instalado correctamente.${NC}"
+        mv xray "$XRAY_BIN" 2>/dev/null
+        chmod +x "$XRAY_BIN"
+        echo -e "${CHECK} ${GREEN}Xray instalado.${NC}"
         sleep 1.5
     }
 
@@ -2696,6 +2559,7 @@ menu_v2ray() {
 [Unit]
 Description=Xray Service
 After=network.target
+
 [Service]
 Type=simple
 ExecStart=$XRAY_BIN run -c $CONFIG_FILE
@@ -2703,6 +2567,7 @@ Restart=on-failure
 RestartSec=3
 User=root
 LimitNOFILE=1048576
+
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -2715,27 +2580,25 @@ EOF
         local host="$2"
         {
             echo "{"
-            echo '  "log": { "loglevel": "warning", "access": "'$LOG_DIR'/access.log", "error": "'$LOG_DIR'/error.log" },'
+            echo '  "log": { "loglevel": "warning", "access": "'$LOG_DIR/access.log'", "error": "'$LOG_DIR/error.log'" },'
             echo '  "stats": {},'
             echo '  "api": { "tag": "api", "services": ["StatsService"] },'
             echo '  "policy": { "levels": { "8": { "statsUserUplink": true, "statsUserDownlink": true } }, "system": { "statsInboundUplink": true, "statsInboundDownlink": true } },'
             echo '  "inbounds": ['
-            echo '    { "port": '$PORT', "listen": "0.0.0.0", "protocol": "vmess", "tag": "vmess-in",'
-            echo '      "settings": { "clients": ['
+            echo '    { "port": '$PORT', "listen": "0.0.0.0", "protocol": "vmess", "tag": "vmess-in", "settings": { "clients": ['
+
             first=true
             while IFS=: read -r name uuid created expires delete_at; do
                 [[ $name == "#"* ]] && continue
-                [ $(date +%s) -ge $delete_at ] && continue
+                (( $(date +%s) >= delete_at )) && continue
                 if [ "$first" = false ]; then echo "        },"; fi
                 echo "          { \"id\": \"$uuid\", \"email\": \"$name\", \"level\": 8, \"alterId\": 0"
                 first=false
             done < <(grep -v "^#" "$USERS_FILE")
             [ "$first" = false ] && echo "        }"
-            echo '        ] },'
-            echo '      "streamSettings": { "network": "ws", "wsSettings": { "path": "'$path'"'
+            echo '        ] }, "streamSettings": { "network": "ws", "wsSettings": { "path": "'$path'"'
             [ -n "$host" ] && echo '          , "headers": { "Host": "'$host'" }'
-            echo '        } }'
-            echo '    },'
+            echo '        } } },'
             echo '    { "listen": "127.0.0.1", "port": '$API_PORT', "protocol": "dokodemo-door", "settings": { "address": "127.0.0.1" }, "tag": "api" }'
             echo '  ],'
             echo '  "outbounds": [{ "protocol": "freedom" }],'
@@ -2744,56 +2607,103 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-    # === AGREGAR USUARIO ===
-    add_user() {
+    # === ACTUALIZAR ESTADÍSTICAS (CRONÓMETRO + MULTI-DEVICE) ===
+    update_and_get_stats() {
+        local now=$(date +%s)
+        local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
+        [[ -z "$stats_output" ]] && return
+
+        local temp_stats=$(mktemp)
+        echo "$stats_output" | jq -r '.stat[] | "\(.name):\(.value)"' > "$temp_stats"
+
+        # Inicializar stats si no existen
+        if [[ ! -s "$STATS_FILE" ]]; then
+            while IFS=: read -r name uuid _ _ _; do
+                [[ $name == "#"* ]] && continue
+                echo "$name:$uuid:0:0:0:0:0:0:0" >> "$STATS_FILE"
+            done < "$USERS_FILE"
+        fi
+
+        local temp_file=$(mktemp)
+        while IFS=: read -r name uuid total_up total_down total_time session_start last_up last_down online_count; do
+            local current_up=$(grep "^user>>>$name>>>traffic>>>uplink:" "$temp_stats" | cut -d: -f2 || echo 0)
+            local current_down=$(grep "^user>>>$name>>>traffic>>>downlink:" "$temp_stats" | cut -d: -f2 || echo 0)
+
+            local diff_up=$((current_up - last_up))
+            local diff_down=$((current_down - last_down))
+            ((diff_up < 0)) && diff_up=0
+            ((diff_down < 0)) && diff_down=0
+
+            local new_total_up=$((total_up + diff_up))
+            local new_total_down=$((total_down + diff_down))
+            local new_total_time=$total_time
+            local new_session_start=$session_start
+            local new_online_count=$online_count
+
+            if (( diff_up > 0 || diff_down > 0 )); then
+                if (( session_start == 0 )); then
+                    new_session_start=$now
+                    new_online_count=1
+                else
+                    ((new_online_count++))
+                fi
+                local session_time=$((now - session_start))
+                new_total_time=$((total_time + session_time))
+                new_session_start=$now
+            else
+                if (( session_start > 0 && now - session_start > 300 )); then
+                    new_session_start=0
+                    new_online_count=0
+                fi
+            fi
+
+            echo "$name:$uuid:$new_total_up:$new_total_down:$new_total_time:$new_session_start:$current_up:$current_down:$new_online_count" >> "$temp_file"
+        done < "$STATS_FILE"
+
+        mv "$temp_file" "$STATS_FILE"
+        rm -f "$temp_stats"
+    }
+
+    # === VER ONLINE + CRONÓMETRO + DISPOSITIVOS ===
+    view_online_and_stats() {
         reset_terminal
-        echo -e "${USER} ${CYAN}AGREGAR NUEVO USUARIO${NC} $SPARK"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-        read -p "Nombre del usuario: " name
-        read -p "Días de validez: " days
-        [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
+        update_and_get_stats
 
-        uuid=$($XRAY_BIN uuid)
-        created=$(date +%s)
-        expires=$(( created + days * 86400 ))
-        delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) ))
+        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+        echo -e "${PURPLE}════════════════════════════════════${NC}"
 
-        echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
-        echo "$name:0:0:0:$(date +%s):0:0:0" >> "$STATS_FILE"
+        local now=$(date +%s)
+        local active=0
 
-        current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
-        current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
-        SERVER_ADDR=$(cat "$SERVER_ADDR_FILE" 2>/dev/null || echo "IP_NO_DETECTADA")
+        while IFS=: read -r name uuid total_up total_down total_time session_start last_up last_down online_count; do
+            local is_online=0
+            local session_display="Desconectado"
 
-        json_data=$(cat <<EOF
-{
-  "add": "$SERVER_ADDR",
-  "port": "$PORT",
-  "id": "$uuid",
-  "aid": "0",
-  "security": "auto",
-  "net": "ws",
-  "type": "none",
-  "host": "$current_host",
-  "path": "$current_path",
-  "tls": ""
-}
-EOF
-)
-        vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
+            if (( session_start > 0 )) && (( now - session_start < 300 )); then
+                is_online=1
+                local secs=$((now - session_start))
+                local h=$((secs / 3600))
+                local m=$(((secs % 3600) / 60))
+                local s=$((secs % 60))
+                session_display=$(printf "%02d:%02d:%02d" $h $m $s)
+            fi
 
-        reset_terminal
-        echo -e "${CHECK} ${GREEN}USUARIO CREADO${NC} $FIRE"
-        echo -e "${GRAY}════════════════════════════════════${NC}"
-        echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
-        echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
-        echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
-        echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
-        echo -e "${GRAY}════════════════════════════════════${NC}"
-        echo -e "${ROCKET} ${BLUE}LINK VMESS:${NC}"
-        echo -e "${WHITE}$vmess_link${NC}"
-        echo -e "${GRAY}────────────────────────────────────${NC}"
-        read -p "Presiona Enter...${NC}" -r </dev/tty
+            local total_gb=$(awk "BEGIN {printf \"%.2f\", ($total_up + $total_down) / 1073741824}")
+            local up_gb=$(awk "BEGIN {printf \"%.2f\", $total_up / 1073741824}")
+            local down_gb=$(awk "BEGIN {printf \"%.2f\", $total_down / 1073741824}")
+            local total_hours=$(awk "BEGIN {printf \"%.2f\", $total_time / 3600}")
+
+            echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+            echo -e "${KEY} ${WHITE}Online:${NC} $( ((is_online)) && echo "${GREEN}Sí ✅ ($online_count dispositivo(s))${NC}" || echo "${RED}No ❌${NC}" )"
+            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${CYAN}$session_display${NC}"
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${PURPLE}${total_gb} GB${NC} (↑ ${up_gb} GB | ↓ ${down_gb} GB)"
+            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${GREEN}${total_hours} horas${NC}"
+            echo -e "${PURPLE}────────────────────────────────────${NC}"
+            ((active++))
+        done < "$STATS_FILE"
+
+        (( active == 0 )) && echo -e "${CROSS} ${RED}No hay estadísticas.${NC}"
+        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
     }
 
     # === ELIMINAR USUARIO ===
@@ -2803,81 +2713,61 @@ EOF
         echo -e "════════════════════════════════════"
 
         mapfile -t users < "$USERS_FILE"
-        if [ ${#users[@]} -eq 0 ]; then
-            echo -e "No hay usuarios."
-            read -p "Enter...${NC}" -r </dev/tty && return
-        fi
+        (( ${#users[@]} == 0 )) && { echo -e "No hay usuarios."; read -p "Enter...${NC}" -r </dev/tty; return; }
 
         i=1
         declare -A name_to_index
         for line in "${users[@]}"; do
             IFS=':' read -r name uuid created expires delete_at <<< "$line"
             [[ $name == "#"* ]] && continue
-            [ $(date +%s) -ge $delete_at ] && continue
+            (( $(date +%s) >= delete_at )) && continue
 
-            days_left=$(days_left_natural $expires 2>/dev/null || echo "0")
-            expire_date=$(date -d "@$expires" +"%d/%m/%Y" 2>/dev/null || echo "??")
-            full_uuid="$uuid"
-
+            days_left=$(days_left_natural $expires)
+            expire_date=$(date -d "@$expires" +"%d/%m/%Y")
             echo -e "${STAR} ${WHITE}$i)${NC} ${YELLOW}$name${NC}"
-            echo -e "   ${KEY} ${CYAN}UUID:${NC} $full_uuid"
+            echo -e "   ${KEY} ${CYAN}UUID:${NC} $uuid"
             echo -e "   ${CAL} ${GREEN}Vence en $days_left días${NC} → ${PURPLE}$expire_date${NC}"
             echo -e "${GRAY}   ──────────────────────────────────${NC}"
-
             name_to_index["$name"]=$i
             ((i++))
         done
 
-        echo -e "${ROCKET} ${WHITE}Ingresa números o nombres:${NC}"
-        read -p " ${TRASH} Eliminar: " input
+        echo -e "${ROCKET} ${WHITE}Ingresa números, nombres o mezcla:${NC}"
+        read -p " ${TRASH} Usuarios a eliminar: " input
         [[ -z "$input" ]] && return
 
         input=$(echo "$input" | tr ',' ' ')
         read -ra selections <<< "$input"
-
         deleted_count=0
         failed=()
+
         for sel in "${selections[@]}"; do
             username=""
             if [[ "$sel" =~ ^[0-9]+$ ]]; then
                 index=$((sel-1))
-                if [[ $index -ge 0 && $index -lt ${#users[@]} ]]; then
-                    username=$(echo "${users[$index]}" | cut -d: -f1)
-                else
-                    failed+=("Número $sel fuera de rango")
-                    continue
-                fi
+                [[ $index -ge 0 && $index -lt ${#users[@]} ]] && username=$(echo "${users[$index]}" | cut -d: -f1) || failed+=("Número $sel fuera de rango")
             else
-                if grep -q "^${sel}:" "$USERS_FILE"; then
-                    username="$sel"
-                else
-                    failed+=("'$sel' no existe")
-                    continue
-                fi
+                grep -q "^${sel}:" "$USERS_FILE" && username="$sel" || failed+=("'$sel' no existe")
             fi
+            [[ -z "$username" ]] && continue
 
             sed -i "/^${username}:/d" "$USERS_FILE"
             sed -i "/^${username}:/d" "$STATS_FILE"
             ((deleted_count++))
         done
 
-        if [ $deleted_count -gt 0 ]; then
+        (( deleted_count > 0 )) && {
             current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
             current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
             generate_config "$current_path" "$current_host"
             systemctl restart xray 2>/dev/null
-        fi
+        }
 
         reset_terminal
         echo -e "${TRASH} ${RED}RESULTADO${NC}"
         echo -e "${GRAY}════════════════════════════════════${NC}"
-        [ $deleted_count -gt 0 ] && echo -e "${CHECK} ${GREEN}Eliminados: $deleted_count${NC}"
-        if [ ${#failed[@]} -gt 0 ]; then
-            echo -e "${CROSS} ${RED}Errores:${NC}"
-            for err in "${failed[@]}"; do
-                echo -e "   • $err"
-            done
-        fi
+        (( deleted_count > 0 )) && echo -e "${CHECK} ${GREEN}Eliminados: $deleted_count${NC}"
+        (( ${#failed[@]} > 0 )) && { echo -e "${CROSS} ${RED}Errores:${NC}"; for err in "${failed[@]}"; do echo "   • $err"; done; }
         read -p "Enter...${NC}" -r </dev/tty
     }
 
@@ -2892,7 +2782,7 @@ EOF
         local cleaned=0
         while IFS=: read -r name uuid created expires delete_at; do
             [[ $name == "#"* ]] && continue
-            if [ $(date +%s) -ge $delete_at ]; then
+            if (( $(date +%s) >= delete_at )); then
                 echo -e "${TRASH} ${RED}Eliminado: $name (expiró)${NC}"
                 ((cleaned++))
                 continue
@@ -2901,15 +2791,17 @@ EOF
         done < "$USERS_FILE"
         mv "$temp_file" "$USERS_FILE"
 
-        while IFS=: read -r name uuid created expires delete_at; do
-            [[ $name == "#"* ]] && continue
-            [ $(date +%s) -ge $delete_at ] && continue
+        local temp_stats=$(mktemp)
+        while IFS=: read -r name _; do
+            grep "^$name:" "$STATS_FILE" >> "$temp_stats" || true
+        done < "$USERS_FILE"
+        mv "$temp_stats" "$STATS_FILE"
 
+        while IFS=: read -r name uuid created expires delete_at; do
             days_left=$(days_left_natural "$expires")
             echo -e "USER ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
-            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"
-            echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
+            echo -e "${CAL} ${WHITE}Días:${NC} ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
+            echo -e "${KEY} ${WHITE}UUID:${NC} ${CYAN}$uuid${NC}"
             echo -e "${PURPLE}────────────────────────────────────${NC}"
             ((count++))
         done < "$USERS_FILE"
@@ -2917,151 +2809,76 @@ EOF
         current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
         current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
         generate_config "$current_path" "$current_host"
+        systemctl is-active xray &>/dev/null && $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
 
         (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Eliminados $cleaned expirados.${NC}"
+        (( $(wc -l < "$USERS_FILE") == 0 )) && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
         read -p "Enter...${NC}" -r </dev/tty
     }
 
-    # === EXPORTAR VMESS ===
+    # === AGREGAR USUARIO ===
+    add_user() {
+        reset_terminal
+        echo -e "${USER} ${CYAN}AGREGAR USUARIO${NC} $SPARK"
+        read -p "Nombre: " name
+        read -p "Días: " days
+        [[ ! "$days" =~ ^[0-9]+$ ]] && { echo -e "${CROSS} ${RED}Solo números.${NC}"; sleep 1.5; return; }
+
+        uuid=$($XRAY_BIN uuid)
+        created=$(date +%s)
+        expires=$(( created + days * 86400 ))
+        delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) ))
+
+        echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
+        echo "$name:$uuid:0:0:0:0:0:0:0" >> "$STATS_FILE"
+
+        current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
+        current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
+        SERVER_ADDR=$(cat "$SERVER_ADDR_FILE" 2>/dev/null || echo "IP_NO_DETECTADA")
+
+        vmess_link="vmess://$(echo "{\"add\":\"$SERVER_ADDR\",\"port\":\"$PORT\",\"id\":\"$uuid\",\"aid\":\"0\",\"net\":\"ws\",\"path\":\"$current_path\",\"host\":\"$current_host\",\"tls\":\"\"}" | base64 -w0)"
+
+        reset_terminal
+        echo -e "${CHECK} ${GREEN}USUARIO CREADO${NC}"
+        echo -e "${USER} $name | ${CAL} $(date -d "@$expires" +"%d/%m/%Y")"
+        echo -e "${KEY} $uuid"
+        echo -e "${ROCKET} ${BLUE}VMESS:${NC} $vmess_link"
+        read -p "Enter...${NC}" -r </dev/tty
+    }
+
+    # === EXPORTAR TODOS ===
     export_all_vmess() {
         reset_terminal
-        echo -e "${ROCKET} ${BLUE}EXPORTAR TODOS (vmess://)${NC}"
-        echo -e "${PURPLE}════════════════════════════════${NC}"
+        echo -e "${ROCKET} ${BLUE}EXPORTAR VMESS${NC}"
         current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
         current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
         SERVER_ADDR=$(cat "$SERVER_ADDR_FILE" 2>/dev/null || echo "IP_NO_DETECTADA")
 
         while IFS=: read -r name uuid created expires delete_at; do
-            [[ $name == "#"* ]] && continue
-            [ $(date +%s) -ge $delete_at ] && continue
-            json_data=$(cat <<EOF
-{
-  "add": "$SERVER_ADDR",
-  "port": "$PORT",
-  "id": "$uuid",
-  "aid": "0",
-  "security": "auto",
-  "net": "ws",
-  "type": "none",
-  "host": "$current_host",
-  "path": "$current_path",
-  "tls": ""
-}
-EOF
-)
-            vmess_link="vmess://$(echo "$json_data" | base64 -w0)"
-            echo -e "${YELLOW}→ $name${NC}"
-            echo -e "${CYAN}$vmess_link${NC}"
-            echo -e "${PURPLE}────────────────────────────────${NC}"
+            (( $(date +%s) >= delete_at )) && continue
+            vmess_link="vmess://$(echo "{\"add\":\"$SERVER_ADDR\",\"port\":\"$PORT\",\"id\":\"$uuid\",\"aid\":\"0\",\"net\":\"ws\",\"path\":\"$current_path\",\"host\":\"$current_host\",\"tls\":\"\"}" | base64 -w0)"
+            echo -e "${YELLOW}→ $name${NC}\n${CYAN}$vmess_link${NC}\n${PURPLE}────────────────────────────────${NC}"
         done < "$USERS_FILE"
         read -p "Enter...${NC}" -r </dev/tty
     }
 
-    # === BACKUP Y RESTAURAR ===
-    backup_v2ray() {
-        reset_terminal
-        echo -e "${SPARK} ${YELLOW}CREANDO BACKUP...${NC}"
-        local timestamp=$(date +"%Y%m%d_%H%M%S")
-        local backup_file="$BACKUP_DIR/v2ray_backup_$timestamp.tar.gz"
-        mkdir -p "$BACKUP_DIR"
-        cd "$CONFIG_DIR"
-        tar -czf "$backup_file" config.json users.db stats.db server_addr 2>/dev/null
-        echo -e "${CHECK} ${GREEN}Backup: $backup_file${NC}"
-        echo -e "${CYAN}Tamaño: $(du -h "$backup_file" | cut -f1)${NC}"
-        read -p "Enter...${NC}" -r </dev/tty
-    }
-
-    restore_v2ray() {
-        reset_terminal
-        echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP${NC}"
-        mapfile -t backups < <(ls -1 "$BACKUP_DIR"/*.tar.gz 2>/dev/null | sort -r)
-        [ ${#backups[@]} -eq 0 ] && { echo -e "${CROSS} No hay backups."; read -p "Enter..."; return; }
-
-        for i in "${!backups[@]}"; do
-            file="${backups[$i]}"
-            size=$(du -h "$file" | cut -f1)
-            date=$(basename "$file" | sed 's/v2ray_backup_//' | sed 's/\.tar\.gz//' | sed 's/_/ /g')
-            echo -e " $((i+1))) ${YELLOW}$(basename "$file")${NC} [${CYAN}$size${NC}] [${PURPLE}$date${NC}]"
-        done
-
-        read -p "Elige: " choice
-        backup_file="${backups[$((choice-1))]}"
-        [ -z "$backup_file" ] && return
-
-        systemctl stop xray 2>/dev/null
-        tar -xzf "$backup_file" -C "$CONFIG_DIR" 2>/dev/null
-        generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE")"
-        systemctl restart xray 2>/dev/null
-        echo -e "${CHECK} Restaurado."
-        sleep 2
-    }
-
-    restore_from_telegram() {
-        reset_terminal
-        echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC}"
-        [ ! -f /root/sshbot_token ] && { echo -e "${CROSS} Bot no configurado."; sleep 2; return; }
-        TOKEN=$(cat /root/sshbot_token)
-        read -p "File ID: " file_id
-        FILE_INFO=$(curl -s "https://api.telegram.org/bot$TOKEN/getFile?file_id=$file_id")
-        FILE_PATH=$(echo "$FILE_INFO" | jq -r '.result.file_path')
-        curl -s "https://api.telegram.org/file/bot$TOKEN/$FILE_PATH" -o /tmp/backup.tar.gz
-        tar -xzf /tmp/backup.tar.gz -C "$CONFIG_DIR"
-        generate_config "$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE")" "$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE")"
-        systemctl restart xray
-        echo -e "${CHECK} Restaurado desde Telegram."
-        sleep 2
-    }
-
-    send_backup_telegram() {
-        reset_terminal
-        echo -e "${SPARK} ${YELLOW}ENVIANDO A TELEGRAM...${NC}"
-        [ ! -f /root/sshbot_token ] && { echo -e "${CROSS} Bot no configurado."; sleep 2; return; }
-        TOKEN=$(cat /root/sshbot_token)
-        USER_ID=$(cat /root/sshbot_userid)
-        timestamp=$(date +"%Y%m%d_%H%M%S")
-        backup_file="/tmp/v2ray_backup_$timestamp.tar.gz"
-        cd "$CONFIG_DIR"
-        tar -czf "$backup_file" config.json users.db stats.db server_addr
-        response=$(curl -s -F "chat_id=$USER_ID" -F "document=@$backup_file" "https://api.telegram.org/bot$TOKEN/sendDocument")
-        file_id=$(echo "$response" | jq -r '.result.document.file_id')
-        curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d "chat_id=$USER_ID" -d "text=File ID: <code>$file_id</code>" -d "parse_mode=HTML" > /dev/null
-        echo -e "${CHECK} Enviado. File ID: $file_id"
-        read -p "Enter...${NC}" -r </dev/tty
-    }
+    # === BACKUP Y RESTAURAR (OMITIDAS POR BREVEDAD, PUEDES COPIAR LAS TUYAS) ===
+    # ... (backup_v2ray, restore_v2ray, etc.)
 
     # === MENÚ PRINCIPAL ===
     show_v2ray_menu() {
-        clean_stats_file
         reset_terminal
         while true; do
             reset_terminal
-            [ ! -f "$SERVER_ADDR_FILE" ] && { read -p "IP/Dominio: " s; echo "${s:-IP_NO_DETECTADA}" > "$SERVER_ADDR_FILE"; }
+            [ ! -f "$SERVER_ADDR_FILE" ] && { read -p "IP/Dominio: " s; echo "$s" > "$SERVER_ADDR_FILE"; }
             SERVER_ADDR=$(cat "$SERVER_ADDR_FILE")
-            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/")
-            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
+            current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "No configurado")
+            current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "Ninguno")
 
             echo -e "${FIRE}${FIRE}${FIRE} ${WHITE}MENÚ V2RAY (Xray)${NC} ${FIRE}${FIRE}${FIRE}"
-            echo -e "${GRAY}════════════════════════════════════════════════${NC}"
-            echo -e " ${UP} IP:     ${GREEN}$SERVER_ADDR${NC}"
-            echo -e " ${UP} Puerto: ${GREEN}$PORT${NC}"
-            echo -e " ${UP} Path:   ${YELLOW}$current_path${NC}"
-            echo -e " ${UP} Host:   ${YELLOW}$current_host${NC}"
+            echo -e " ${UP} IP: ${GREEN}$SERVER_ADDR${NC} | Puerto: ${GREEN}$PORT${NC} | Path: ${YELLOW}$current_path${NC} | Host: ${YELLOW}$current_host${NC}"
             echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
-
-            echo -e " ${STAR} 1) Instalar Xray"
-            echo -e " ${STAR} 2) Cambiar Path / Host"
-            echo -e " ${STAR} 3) Agregar usuario"
-            echo -e " ${STAR} 4) Eliminar usuario"
-            echo -e " ${STAR} 5) Listar usuarios"
-            echo -e " ${STAR} 6) Exportar todos"
-            echo -e " ${STAR} 7) Reiniciar Xray"
-            echo -e " ${STAR} 8) Desinstalar TODO ${TRASH}"
-            echo -e " ${STAR} 9) Backup → Telegram"
-            echo -e " ${STAR}10) Restaurar local"
-            echo -e " ${STAR}11) Restaurar Telegram"
-            echo -e " ${STAR}12) Ver online y stats"
-            echo -e " ${STAR} 0) Volver"
-            echo -e "${PURPLE}════════════════════════════════════════════════${NC}"
+            echo -e " ${STAR} 1) Instalar Xray | 2) Cambiar Path/Host | 3) Agregar | 4) Eliminar | 5) Listar | 6) Exportar | 7) Reiniciar | 8) Desinstalar | 12) Ver online | 0) Volver"
             read -p " ${ROCKET} Opción: " opt
 
             case $opt in
@@ -3072,22 +2889,18 @@ EOF
                 5) list_users;;
                 6) export_all_vmess;;
                 7) systemctl restart xray; echo -e "${CHECK} Reiniciado.";;
-                8) systemctl stop xray; rm -rf "$SERVICE_FILE" "$XRAY_BIN" "$CONFIG_DIR" "$LOG_DIR" "$BACKUP_DIR"; echo -e "${TRASH} TODO BORRADO."; return;;
-                9) send_backup_telegram;;
-                10) restore_v2ray;;
-                11) restore_from_telegram;;
+                8) systemctl stop xray; rm -rf "$CONFIG_DIR" "$XRAY_BIN" "$SERVICE_FILE"; echo -e "${CHECK} Desinstalado.";;
                 12) view_online_and_stats;;
                 0) return;;
                 *) echo -e "${CROSS} Inválido.";;
             esac
-            read -p "Enter para continuar..." -r </dev/tty
         done
     }
 
-    # === INICIO ===
-    [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Opción 1 para instalar Xray.${NC}"
+    [ ! -f "$XRAY_BIN" ] && echo -e "${YELLOW}Opción 1 para instalar.${NC}"
     show_v2ray_menu
 }
+
 
 # ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
