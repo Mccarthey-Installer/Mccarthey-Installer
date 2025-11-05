@@ -3124,82 +3124,100 @@ EOF
     }
 
     show_online_users() {
-        reset_terminal
-        echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (en tiempo real)${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
+    reset_terminal
+    echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (en tiempo real)${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
 
-        if ! systemctl is-active xray &>/dev/null; then
-            echo -e "${CROSS} ${RED}Xray no está corriendo.${NC}"
-            read -p "Enter...${NC}" -r </dev/tty
-            return
-        fi
+    if ! systemctl is-active xray &>/dev/null; then
+        echo -e "${CROSS} ${RED}Xray no está corriendo.${NC}"
+        read -p "Enter...${NC}" -r </dev/tty
+        return
+    fi
 
-        local api_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
+    # === INTENTO 1: API de estadísticas ===
+    local api_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
+    local online_count=0
+    declare -A user_data
 
-        if [[ -z "$api_output" || "$api_output" == *"error"* ]]; then
-            echo -e "${CROSS} ${RED}No se pudo conectar a la API de Xray.${NC}"
-            echo -e "${YELLOW}Reinicia Xray con la nueva configuración.${NC}"
-            read -p "Enter...${NC}" -r </dev/tty
-            return
-        fi
-
-        local online_count=0
-        declare -A user_data
-
-        echo "$api_output" | jq -r '.stat[] | select(.name | startswith("user>>>") and endswith(">>>uplink")) | .name' | while read stat_name; do
+    if [[ -n "$api_output" && "$api_output" != *"error"* ]] && echo "$api_output" | jq -e '.stat' >/dev/null 2>&1; then
+        echo "$api_output" | jq -r '.stat[] | select(.name | startswith("user>>>") and (endswith(">>>uplink") or endswith(">>>downlink") or endswith(">>>ip"))) | .name' | while read stat_name; do
+            [[ -z "$stat_name" ]] && continue
             email=$(echo "$stat_name" | sed 's/user>>>\([^>]*\)>>>.*$/\1/')
-            uplink=$(echo "$api_output" | jq -r --arg e "$email" '.stat[] | select(.name == "user>>>\($e)>>>uplink") | .value')
-            downlink=$(echo "$api_output" | jq -r --arg e "$email" '.stat[] | select(.name == "user>>>\($e)>>>downlink") | .value')
-            [[ "$uplink" -eq 0 && "$downlink" -eq 0 ]] && continue
-
+            uplink=$(echo "$api_output" | jq -r --arg e "$email" '.stat[] | select(.name == "user>>>\($e)>>>uplink") | .value // 0')
+            downlink=$(echo "$api_output" | jq -r --arg e "$email" '.stat[] | select(.name == "user>>>\($e)>>>downlink") | .value // 0')
             ip=$(echo "$api_output" | jq -r --arg e "$email" '.stat[] | select(.name == "user>>>\($e)>>>ip") | .value // "desconocido"')
-            total_traffic=$((uplink + downlink))
-            traffic_mb=$(awk "BEGIN {printf \"%.2f\", $total_traffic/1048576}")
 
-            first_line=$(grep "$email" "$LOG_DIR/access.log" | head -1)
-            if [[ -n "$first_line" ]]; then
-                log_time=$(echo "$first_line" | awk '{print $1" "$2}' | tr -d '[]')
-                connect_time=$(date -d "$log_time" +%s 2>/dev/null || date +%s)
-            else
-                connect_time=$(date +%s)
+            total_traffic=$((uplink + downlink))
+            if (( total_traffic > 0 )); then
+                traffic_mb=$(awk "BEGIN {printf \"%.2f\", $total_traffic/1048576}")
+                user_data["$email"]+="API|$ip|$traffic_mb|"
+                ((online_count++))
             fi
-            now=$(date +%s)
-            elapsed=$((now - connect_time))
+        done
+    fi
+
+    # === INTENTO 2: LOG DE ACCESO (respaldo si API falla o no hay tráfico) ===
+    if [ $online_count -eq 0 ] && [ -f "$LOG_DIR/access.log" ]; then
+        echo -e "${YELLOW}Buscando conexiones recientes en el log...${NC}"
+        local now=$(date +%s)
+        local cutoff=$((now - 300))  # últimos 5 minutos
+
+        grep -E "accepted|connected" "$LOG_DIR/access.log" | tail -20 | while IFS= read -r line; do
+            log_time_str=$(echo "$line" | awk '{print $1" "$2}' | tr -d '[]')
+            log_time=$(date -d "$log_time_str" +%s 2>/dev/null || continue)
+            [[ $log_time -lt $cutoff ]] && continue
+
+            if [[ "$line" == *"email:"* ]]; then
+                email=$(echo "$line" | grep -oP 'email: \K[^ ]+')
+            elif [[ "$line" == *"id:"* ]]; then
+                uuid=$(echo "$line" | grep -oP 'id: \K[^ ]+')
+                email=$(grep ":$uuid:" "$USERS_FILE" | cut -d: -f1 2>/dev/null || echo "uuid:$uuid")
+            else
+                continue
+            fi
+
+            ip=$(echo "$line" | grep -oP '\[\K[0-9.]+' | head -1)
+
+            elapsed=$((now - log_time))
             if (( elapsed < 60 )); then
                 time_str="${elapsed}s"
             elif (( elapsed < 3600 )); then
                 time_str="$((elapsed/60))m"
             else
-                hours=$((elapsed/3600))
-                mins=$(((elapsed%3600)/60))
+                hours=$((elapsed/3600)); mins=$(((elapsed%3600)/60))
                 time_str="${hours}h ${mins}m"
             fi
 
-            user_data["$email"]="$ip|$traffic_mb|$time_str"
-            ((online_count++))
+            if [[ -z "${user_data[$email]}" ]]; then
+                user_data["$email"]="LOG|$ip|0.00|$time_str"
+                ((online_count++))
+            fi
         done
+    fi
 
-        if [ $online_count -eq 0 ]; then
-            echo -e "${GRAY}No hay usuarios conectados en este momento.${NC}"
-        else
-            echo -e "${GREEN}Usuarios conectados: $online_count${NC}"
-            echo -e "${GRAY}────────────────────────────────────${NC}"
-            for email in "${!user_data[@]}"; do
-                IFS='|' read ip traffic time_str <<< "${user_data[$email]}"
-                name=$(grep ":$email:" "$USERS_FILE" | cut -d: -f1 2>/dev/null || echo "$email")
-                uuid=$(grep ":$email:" "$USERS_FILE" | cut -d: -f2 2>/dev/null || echo "UUID desconocido")
+    # === MOSTRAR RESULTADOS ===
+    if [ $online_count -eq 0 ]; then
+        echo -e "${GRAY}No hay usuarios conectados en este momento.${NC}"
+        echo -e "${YELLOW}Consejo: Conéctate con un cliente (HTTP Custom, v2rayNG, etc.)${NC}"
+    else
+        echo -e "${GREEN}Usuarios conectados: $online_count${NC}"
+        echo -e "${GRAY}────────────────────────────────────${NC}"
+        for email in "${!user_data[@]}"; do
+            IFS='|' read source ip traffic time_str <<< "${user_data[$email]}"
+            name=$(grep ":$email:" "$USERS_FILE" | cut -d: -f1 2>/dev/null || echo "$email")
+            uuid=$(grep ":$email:" "$USERS_FILE" | cut -d: -f2 2>/dev/null || echo "UUID no encontrado")
 
-                echo -e "${STAR} ${YELLOW}$name${NC}"
-                echo -e "   ${KEY} UUID: ${CYAN}$uuid${NC}"
-                echo -e "   ${UP} IP:   ${WHITE}$ip${NC}"
-                echo -e "   ${DOWN} Tráfico: ${PURPLE}${traffic} MB${NC}"
-                echo -e "   ${CLOCK} Tiempo: ${GREEN}${time_str}${NC}"
-                echo -e "${GRAY}   ──────────────────────────────${NC}"
-            done
-        fi
+            echo -e "${STAR} ${YELLOW}$name${NC} ${source:+[${CYAN}$source${NC}]}"
+            echo -e "   ${KEY} UUID: ${CYAN}$uuid${NC}"
+            echo -e "   ${UP} IP:   ${WHITE}$ip${NC}"
+            echo -e "   ${DOWN} Tráfico: ${PURPLE}${traffic} MB${NC}"
+            echo -e "   ${CLOCK} Tiempo: ${GREEN}${time_str}${NC}"
+            echo -e "${GRAY}   ──────────────────────────────${NC}"
+        done
+    fi
 
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-    }
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+}
 
     show_v2ray_menu() {  
         reset_terminal  
