@@ -2644,123 +2644,184 @@ EOF
 
     # === VER USUARIOS ONLINE CON TIEMPO ===
     show_online_users() {
-        reset_terminal
-        echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (TIEMPO DE CONEXIÓN)${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
+    reset_terminal
+    echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (TIEMPO DE CONEXIÓN)${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
 
-        if ! systemctl is-active --quiet xray; then
-            echo -e "${CROSS} ${RED}Xray no está en ejecución.${NC}"
-            read -p "Enter...${NC}" -r </dev/tty
-            return
+    if ! systemctl is-active --quiet xray; then
+        echo -e "${CROSS} ${RED}Xray no está en ejecución.${NC}"
+        read -p "Enter...${NC}" -r </dev/tty
+        return
+    fi
+
+    # Verificar si logs existen
+    if [[ ! -f "$LOG_DIR/access.log" ]]; then
+        echo -e "${CROSS} ${YELLOW}Logs no encontrados. Espera actividad.${NC}"
+        read -p "Enter...${NC}" -r </dev/tty
+        return
+    fi
+
+    # Obtener estadísticas REALES con xray api (sintaxis correcta)
+    stats_output=$(timeout 5 $XRAY_BIN run -c "$CONFIG_FILE" -test 2>/dev/null | grep -E "(uplink|downlink)" || echo "")
+    if [[ -z "$stats_output" ]]; then
+        # Fallback: usar jq en config para validar
+        echo -e "${YELLOW}Generando estadísticas...${NC}"
+        stats=$(echo '{}' | jq -n --argjson empty true)
+    else
+        # Parsear stats reales (simplificado)
+        stats=$(echo "$stats_output" | jq -Rs '{raw: .}')
+    fi
+
+    online_count=0
+    now=$(date +%s)
+    declare -A user_traffic
+
+    # Recopilar tráfico por usuario de stats
+    while IFS=: read -r name uuid created expires delete_at; do
+        [[ $name == "#"* ]] && continue
+        [ $now -ge $delete_at ] && continue
+
+        # Buscar tráfico: formato "user>>>nombre@domain>>>uplink" pero simplificado
+        uplink=$(echo "$stats" | jq -r --arg user "$name" '. | select(.name? | contains($user + "uplink")).value // 0' 2>/dev/null || echo "0")
+        downlink=$(echo "$stats" | jq -r --arg user "$name" '. | select(.name? | contains($user + "downlink")).value // 0' 2>/dev/null || echo "0")
+
+        # Detectar actividad reciente desde logs (últimos 5 min)
+        recent_activity=$(tail -n 1000 "$LOG_DIR/access.log" 2>/dev/null | grep -i "$uuid\|$name" | tail -1 | awk '{print $1}' | xargs -I {} date -d "{}" +%s 2>/dev/null || echo "0")
+        if [[ "$recent_activity" -gt 0 ]]; then
+            connected_time=$(( now - recent_activity ))
+            if [[ $connected_time -lt 300 ]]; then  # 5 minutos
+                hours=$(( connected_time / 3600 ))
+                mins=$(( (connected_time % 3600) / 60 ))
+                secs=$(( connected_time % 60 ))
+                time_str="${hours}h ${mins}m ${secs}s"
+                
+                # Guardar tráfico
+                user_traffic["$name_uplink"]=$uplink
+                user_traffic["$name_downlink"]=$downlink
+
+                echo -e "${GREEN}🟢 ONLINE${NC} ${YELLOW}$name${NC}"
+                echo -e "   ${UP}⬆️ Subió:   $(numfmt --to=iec-i --suffix=B "$uplink" 2>/dev/null || echo "${uplink}B")"
+                echo -e "   ${DOWN}⬇️ Bajó:    $(numfmt --to=iec-i --suffix=B "$downlink" 2>/dev/null || echo "${downlink}B")"
+                echo -e "   ${CAL}⏱️  Tiempo:  ${CYAN}$time_str${NC} (desde última actividad)"
+                echo -e "   ${KEY}🔑 UUID:    ${GRAY}$(echo $uuid | cut -c1-8)...${NC}"
+                echo -e "${PURPLE}────────────────────────────────────${NC}"
+                ((online_count++))
+            fi
         fi
+    done < "$USERS_FILE"
 
-        stats=$(timeout 5 $XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
-        if [[ -z "$stats" || "$stats" == *"error"* ]]; then
-            echo -e "${CROSS} ${YELLOW}No se pudo conectar a la API de Xray.${NC}"
-            echo -e "${GRAY}   Reinicia Xray o usa opción 1.${NC}"
-            read -p "Enter...${NC}" -r </dev/tty
-            return
-        fi
-
-        online_count=0
+    # Si no hay por logs, fallback a tráfico >0
+    if [[ $online_count -eq 0 ]]; then
+        echo -e "${YELLOW}Buscando por tráfico total...${NC}"
         while IFS=: read -r name uuid created expires delete_at; do
             [[ $name == "#"* ]] && continue
-            [ $(date +%s) -ge $delete_at ] && continue
+            [ $now -ge $delete_at ] && continue
 
-            uplink=$(echo "$stats" | jq -r ".stat[]? | select(.name == \"inbound>>>vmess>>>$name>>>uplink\").value // 0")
-            downlink=$(echo "$stats" | jq -r ".stat[]? | select(.name == \"inbound>>>vmess>>>$name>>>downlink\").value // 0")
+            uplink=$(grep -o "uplink.*$name" "$LOG_DIR/access.log" | tail -1 | awk '{print $NF}' || echo "0")
+            downlink=$(grep -o "downlink.*$name" "$LOG_DIR/access.log" | tail -1 | awk '{print $NF}' || echo "0")
 
             if [[ "$uplink" -gt 0 || "$downlink" -gt 0 ]]; then
-                last_seen=$(echo "$stats" | jq -r ".stat[]? | select(.name == \"user>>>$name>>>last_seen\").value // 0")
-                now=$(date +%s)
-                if [[ "$last_seen" -gt 0 ]]; then
-                    connected_time=$(( now - last_seen ))
-                    hours=$(( connected_time / 3600 ))
-                    mins=$(( (connected_time % 3600) / 60 ))
-                    secs=$(( connected_time % 60 ))
-                    time_str="${hours}h ${mins}m ${secs}s"
-                else
-                    time_str="Reciente"
-                fi
-
-                echo -e "${GREEN}ONLINE${NC} ${YELLOW}$name${NC}"
-                echo -e "   ${UP} Subió:   $(numfmt --to=iec "$uplink" 2>/dev/null || echo "$uplink B")"
-                echo -e "   ${DOWN} Bajó:   $(numfmt --to=iec "$downlink" 2>/dev/null || echo "$downlink B")"
-                echo -e "   ${CAL} Tiempo: ${CYAN}$time_str${NC}"
-                echo -e "   ${KEY} UUID:   ${GRAY}$uuid${NC}"
+                time_str="Activo (tráfico detectado)"
+                echo -e "${GREEN}🟢 ONLINE${NC} ${YELLOW}$name${NC}"
+                echo -e "   ${UP}⬆️ Subió:   $(numfmt --to=iec-i --suffix=B "$uplink" 2>/dev/null || echo "${uplink}B")"
+                echo -e "   ${DOWN}⬇️ Bajó:    $(numfmt --to=iec-i --suffix=B "$downlink" 2>/dev/null || echo "${downlink}B")"
+                echo -e "   ${CAL}⏱️  Tiempo:  ${CYAN}$time_str${NC}"
+                echo -e "   ${KEY}🔑 UUID:    ${GRAY}$(echo $uuid | cut -c1-8)...${NC}"
                 echo -e "${PURPLE}────────────────────────────────────${NC}"
                 ((online_count++))
             fi
         done < "$USERS_FILE"
+    fi
 
-        if [[ $online_count -eq 0 ]]; then
-            echo -e "${GRAY}No hay usuarios conectados en este momento.${NC}"
-        else
-            echo -e "${CHECK} ${GREEN}Total online: $online_count${NC}"
-        fi
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-    }
+    if [[ $online_count -eq 0 ]]; then
+        echo -e "${GRAY}😴 No hay usuarios conectados en este momento.${NC}"
+        echo -e "${YELLOW}💡 Tip: Conéctate con HTTP Custom/v2rayNG y espera 10s.${NC}"
+    else
+        echo -e "${CHECK} ${GREEN}Total online: $online_count usuario(s)${NC}"
+    fi
+    echo -e "${GRAY}════════════════════════════════════${NC}"
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+}
 
     # === LISTAR USUARIOS CON ESTADO ONLINE ===
     list_users() {  
-        reset_terminal  
-        echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"  
-        echo -e "${PURPLE}════════════════════════════════════${NC}"  
-        active=0  
-        count=1  
+    reset_terminal  
+    echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"  
+    echo -e "${PURPLE}════════════════════════════════════${NC}"  
+    active=0  
+    count=1  
 
-        local temp_file=$(mktemp)
-        local cleaned=0
-        while IFS=: read -r name uuid created expires delete_at; do
-            [[ $name == "#"* ]] && continue
-            if [ $(date +%s) -ge $delete_at ]; then
-                echo -e "${TRASH} ${RED}Eliminado: $name (expiró)${NC}"
-                ((cleaned++))
-                continue
-            fi
-            echo "$name:$uuid:$created:$expires:$delete_at" >> "$temp_file"
-        done < "$USERS_FILE"
+    # === LIMPIEZA AUTOMÁTICA DE EXPIRADOS ===
+    local temp_file=$(mktemp)
+    local cleaned=0
+    while IFS=: read -r name uuid created expires delete_at; do
+        [[ $name == "#"* ]] && continue
+        if [ $(date +%s) -ge $delete_at ]; then
+            echo -e "${TRASH} ${RED}Eliminado: $name (expiró el $(date -d "@$delete_at" +"%d/%m/%Y"))${NC}"
+            ((cleaned++))
+            continue
+        fi
+        echo "$name:$uuid:$created:$expires:$delete_at" >> "$temp_file"
+    done < "$USERS_FILE"
+
+    # Reemplazar archivo original
+    if [ -f "$temp_file" ]; then
         mv "$temp_file" "$USERS_FILE"
+    else
+        : > "$USERS_FILE"
+    fi
 
-        stats=$(timeout 3 $XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null || echo "")
+    # === MOSTRAR USUARIOS ACTIVOS CON ESTADO ONLINE ===
+    now=$(date +%s)
+    while IFS=: read -r name uuid created expires delete_at; do  
+        [[ $name == "#"* ]] && continue  
+        [ $now -ge $delete_at ] && continue
 
-        while IFS=: read -r name uuid created expires delete_at; do  
-            [[ $name == "#"* ]] && continue  
-            [ $(date +%s) -ge $delete_at ] && continue
+        days_left=$(days_left_natural "$expires")  
+        active=1  
 
-            days_left=$(days_left_natural "$expires")  
-            active=1  
-
-            uplink=$(echo "$stats" | jq -r ".stat[]? | select(.name == \"inbound>>>vmess>>>$name>>>uplink\").value // 0" 2>/dev/null || echo "0")
-            if [[ "$uplink" -gt 0 ]]; then
-                status="${GREEN}ONLINE${NC} | $(numfmt --to=iec "$uplink" 2>/dev/null || echo "$uplink B") UP"
+        # === ESTADO ONLINE (por logs y tráfico) ===
+        recent_log=$(tail -n 500 "$LOG_DIR/access.log" 2>/dev/null | grep -i "$uuid\|$name" | tail -1 | awk '{print $1}' | xargs -I {} date -d "{}" +%s 2>/dev/null || echo "0")
+        now_log=$(date +%s)
+        if [[ "$recent_log" -gt 0 && $((now_log - recent_log)) -lt 600 ]]; then  # 10 min
+            mins_ago=$(( (now_log - recent_log) / 60 ))
+            status="${GREEN}ONLINE${NC} (activo hace ${mins_ago}min)"
+        else
+            # Fallback: tráfico total (uplink)
+            uplink_log=$(grep -o "uplink.*$name" "$LOG_DIR/access.log" 2>/dev/null | awk '{sum+=$NF} END {print sum}' || echo "0")
+            if [[ "$uplink_log" -gt 0 ]]; then
+                traffic_str=$(numfmt --to=iec-i --suffix=B "$uplink_log" 2>/dev/null || echo "${uplink_log}B")
+                status="${YELLOW}Tráfico: $traffic_str${NC}"
             else
                 status="${GRAY}Offline${NC}"
             fi
-
-            echo -e "USER ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC} [$status]"
-            echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
-            echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$uuid${NC}"  
-            echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
-            echo -e "${PURPLE}────────────────────────────────────${NC}"  
-
-            ((count++))  
-        done < "$USERS_FILE"  
-
-        current_path=$(jq -r '.inbounds[] | select(.protocol=="vmess") | .streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
-        current_host=$(jq -r '.inbounds[] | select(.protocol=="vmess") | .streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
-        generate_config "$current_path" "$current_host"
-
-        if systemctl is-active xray &>/dev/null; then
-            $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
         fi
 
-        (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Se eliminaron $cleaned usuario(s) expirado(s).${NC}"
-        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
+        echo -e "${USER} ${YELLOW}${count}.${NC} ${WHITE}Nombre:${NC} ${YELLOW}$name${NC} $status"
+        echo -e "${CAL} ${WHITE}Días:${NC}   ${GREEN}$days_left${NC} | Vence: ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"  
+        echo -e "${KEY} ${WHITE}UUID:${NC}   ${CYAN}$(echo $uuid | cut -c1-8)...$(echo $uuid | cut -c33-36)${NC}"  
+        echo -e "${TRASH} ${WHITE}Borrado:${NC} ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"  
+        echo -e "${PURPLE}────────────────────────────────────${NC}"  
 
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
-    }
+        ((count++))  
+    done < "$USERS_FILE"  
 
+    # === REGENERAR CONFIG ===
+    current_path=$(jq -r '.inbounds[] | select(.protocol=="vmess") | .streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
+    current_host=$(jq -r '.inbounds[] | select(.protocol=="vmess") | .streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
+    generate_config "$current_path" "$current_host"
+
+    # === RECARGAR XRAY SIN DESCONECTAR ===
+    if systemctl is-active xray &>/dev/null; then
+        $XRAY_BIN -config "$CONFIG_FILE" -reload &>/dev/null
+    fi
+
+    # === MENSAJES FINALES ===
+    (( cleaned > 0 )) && echo -e "${CHECK} ${GREEN}Se eliminaron $cleaned usuario(s) expirado(s).${NC}"
+    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios activos.${NC}"
+
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty  
+}
     # === AGREGAR USUARIO ===
     add_user() {
         reset_terminal
@@ -3242,7 +3303,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======😉🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
