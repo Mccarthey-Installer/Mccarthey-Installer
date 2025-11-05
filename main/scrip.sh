@@ -2642,7 +2642,7 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-    # === VER USUARIOS ONLINE CON TIEMPO DE CONEXIÓN ===
+    # === VER USUARIOS ONLINE CON TIEMPO ===
     show_online_users() {
         reset_terminal
         echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (TIEMPO DE CONEXIÓN)${NC} $SPARK"
@@ -2657,7 +2657,7 @@ EOF
         stats=$(timeout 5 $XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
         if [[ -z "$stats" || "$stats" == *"error"* ]]; then
             echo -e "${CROSS} ${YELLOW}No se pudo conectar a la API de Xray.${NC}"
-            echo -e "${GRAY}   Reinicia Xray o verifica config.${NC}"
+            echo -e "${GRAY}   Reinicia Xray o usa opción 1.${NC}"
             read -p "Enter...${NC}" -r </dev/tty
             return
         fi
@@ -2701,7 +2701,7 @@ EOF
         read -p "Presiona Enter para volver...${NC}" -r </dev/tty
     }
 
-    # === LISTAR USUARIOS (CON ESTADO ONLINE) ===
+    # === LISTAR USUARIOS CON ESTADO ONLINE ===
     list_users() {  
         reset_terminal  
         echo -e "${STAR} ${BLUE}USUARIOS ACTIVOS${NC} $SPARK"  
@@ -2802,7 +2802,7 @@ EOF
         reset_terminal
         echo -e "${CHECK} ${GREEN}USUARIO CREADO CON ÉXITO${NC} $FIRE"
         echo -e "${GRAY}════════════════════════════════════${NC}"
-        echo -e "${ "${USER} Nombre:   ${YELLOW}$name${NC}"
+        echo -e "${USER} Nombre:   ${YELLOW}$name${NC}"
         echo -e "${CAL} Vence:    ${PURPLE}$(date -d "@$expires" +"%d/%m/%Y")${NC}"
         echo -e "${KEY} UUID:     ${CYAN}$uuid${NC}"
         echo -e "${TRASH} Borrado:  ${RED}$(date -d "@$delete_at" +"%d/%m/%Y")${NC}"
@@ -2811,9 +2811,6 @@ EOF
         echo -e "${WHITE}$vmess_link${NC}"
         echo -e "${GRAY}────────────────────────────────────${NC}"
         read -p "Presiona Enter para continuar...${NC}" -r </dev/tty
-
-        generate_config "$current_path" "$current_host"
-        systemctl restart xray 2>/dev/null
     }
 
     # === ELIMINAR USUARIO ===
@@ -2827,9 +2824,6 @@ EOF
             echo -e "No hay usuarios registrados."
             read -p "Enter...${NC}" -r </dev/tty && return
         fi
-
-        local TRASH="TRASH" STAR="STAR" KEY="KEY" CAL="CAL" ROCKET="ROCKET" CHECK="CHECK" CROSS="CROSS"
-        local GRAY='\033[0;90m' RED='\033[1;91m' GREEN='\033[1;92m' YELLOW='\033[1;93m' CYAN='\033[1;96m' PURPLE='\033[1;95m' WHITE='\033[1;97m' NC='\033[0m'
 
         i=1
         declare -A name_to_index
@@ -2946,7 +2940,7 @@ EOF
         read -p "Presiona Enter para volver...${NC}" -r </dev/tty
     }
 
-    # === BACKUP Y RESTAURAR ===
+    # === BACKUP LOCAL ===
     backup_v2ray() {
         reset_terminal
         echo -e "${SPARK} ${YELLOW}HACIENDO BACKUP COMPLETO...${NC} $SPARK"
@@ -2970,6 +2964,7 @@ EOF
         fi
     }
 
+    # === RESTAURAR LOCAL ===
     restore_v2ray() {
         reset_terminal
         echo -e "${ROCKET} ${BLUE}RESTAURAR BACKUP${NC} $SPARK"
@@ -3028,6 +3023,7 @@ EOF
         sleep 3
     }
 
+    # === RESTAURAR DESDE TELEGRAM ===
     restore_from_telegram() {
         reset_terminal
         echo -e "${ROCKET} ${BLUE}RESTAURAR DESDE TELEGRAM${NC} $SPARK"
@@ -3103,6 +3099,7 @@ EOF
         sleep 3
     }
 
+    # === ENVIAR BACKUP A TELEGRAM ===
     send_backup_telegram() {
         reset_terminal
         echo -e "${SPARK} ${YELLOW}ENVIANDO BACKUP POR TELEGRAM...${NC} $SPARK"
@@ -3195,13 +3192,14 @@ EOF
                 [ $(date +%s) -ge $delete_at ] && continue
                 [[ $(days_left_natural "$expires") -eq 0 ]] && expiring_today+="$name  "
             done < "$USERS_FILE"
-            [[ -n "$expiring_today" ]] && echo -e "ALERT ${RED}EXPIRAN HOY:${NC} ${YELLOW}$expiring_today${NC}\n"
+            [[ -n "$expiring_today" ]] && echo -e "ALERT ${RED}EXPIRAN HOY:${NC} ${YELLOW}$expiring_today${NC}"
 
+            echo
             echo -e " ${STAR} 1) ${CYAN}Instalar Xray desde cero${NC}"  
             echo -e " ${STAR} 2) ${CYAN}Cambiar Path / Host${NC}"  
             echo -e " ${STAR} 3) ${GREEN}Agregar usuario${NC}"  
             echo -e " ${STAR} 4) ${RED}Eliminar usuario${NC}"  
-            echo -e " ${STAR} 5) ${GREEN}Ver usuarios ONLINE (tiempo)${NC}"
+            echo -e " ${STAR} 5) ${GREEN}Ver usuarios ONLINE (tiempo)${NC}"  
             echo -e " ${STAR} 6) ${BLUE}Listar usuarios${NC}"  
             echo -e " ${STAR} 7) ${PURPLE}Exportar todos (vmess://)${NC}"  
             echo -e " ${STAR} 8) ${YELLOW}Reiniciar Xray${NC}"  
@@ -3216,7 +3214,7 @@ EOF
             case $opt in  
                 1) install_xray; read -p "Dirección: " s; [[ -n "$s" ]] && echo "$s" > "$SERVER_ADDR_FILE"; read -p "Path: " p; read -p "Host: " h; generate_config "$p" "$h"; create_service; systemctl restart xray; read -p "Enter...${NC}" -r </dev/tty;;  
                 2) read -p "Nueva IP (vacío=no cambiar): " s; [[ -n "$s" ]] && echo "$s" > "$SERVER_ADDR_FILE"; read -p "Nuevo Path: " p; read -p "Nuevo Host: " h; generate_config "$p" "$h"; systemctl restart xray; read -p "Enter...${NC}" -r </dev/tty;;  
-                3) add_user;;  
+                3) add_user; current_path=$(jq -r '.inbounds[] | select(.protocol=="vmess") | .streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams"); current_host=$(jq -r '.inbounds[] | select(.protocol=="vmess") | .streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo ""); generate_config "$current_path" "$current_host"; systemctl restart xray;;  
                 4) remove_user_menu;;  
                 5) show_online_users;;  
                 6) list_users;;  
@@ -3244,7 +3242,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======😉🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
