@@ -865,8 +865,7 @@ function barra_sistema() {
     fi
     echo "$total $idle" > "$CPU_STAT_FILE"
 
-    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.0f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
-
+    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
     # ================= IP y fecha =================  
     if command -v curl &>/dev/null; then  
         IP_PUBLICA=$(curl -s ifconfig.me)  
