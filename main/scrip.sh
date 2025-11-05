@@ -2483,6 +2483,7 @@ eliminar_swap() {
 }
 
 
+
 menu_v2ray() {
     # === VARIABLES DEL V2RAY ===
     local CONFIG_DIR="/usr/local/etc/xray"
@@ -2716,15 +2717,15 @@ EOF
         if [[ ! -s "$STATS_FILE" ]]; then
             while IFS=: read -r name uuid _ _ _ _; do  # Ignorar extras
                 [[ $name == "#"* ]] && continue
-                echo "$name:0:0:0:$now:0:0:$now:$now:0:0" >> "$STATS_FILE"  # name:total_up:total_down:total_time:last_check:last_up:last_down:session_start:last_activity:session_up:session_down
+                echo "$name:0:0:0:$now:0:0:0:0:0:0" >> "$STATS_FILE"  # name:total_up:total_down:total_time:last_check:last_up:last_down:session_start:last_activity:session_up:session_down
             done < "$USERS_FILE"
         fi
 
         # Actualizar stats acumuladas
         local temp_file=$(mktemp)
-        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down _; do
-            local current_up=$(jq ".\"user>>>$name>>>uplink\" // 0" "$temp_stats")
-            local current_down=$(jq ".\"user>>>$name>>>downlink\" // 0" "$temp_stats")
+        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+            local current_up=$(jq ".\"user>>>$name>>>traffic>>>uplink\" // 0" "$temp_stats")
+            local current_down=$(jq ".\"user>>>$name>>>traffic>>>downlink\" // 0" "$temp_stats")
 
             local diff_up=$((current_up - last_up))
             local diff_down=$((current_down - last_down))
@@ -2736,22 +2737,30 @@ EOF
             local new_session_up=$session_up
             local new_session_down=$session_down
             local new_session_start=$session_start
+            local new_last_activity=$last_activity
             local time_since_last_check=$((now - last_check))
             local new_total_time=$total_time
 
             if (( diff_up > 0 || diff_down > 0 )); then
-                if (( now - last_activity > 300 )); then  # Nueva sesión si inactivo >5min
+                if (( last_activity == 0 )); then  # Primera conexión ever
                     new_session_start=$now
-                    new_session_up=0
-                    new_session_down=0
+                    new_session_up=$diff_up
+                    new_session_down=$diff_down
+                    new_last_activity=$now
+                else
+                    if (( now - last_activity > 300 )); then  # Nueva sesión después de inactividad
+                        new_session_start=$now
+                        new_session_up=0
+                        new_session_down=0
+                    fi
+                    new_session_up=$((new_session_up + diff_up))
+                    new_session_down=$((new_session_down + diff_down))
+                    new_last_activity=$now
                 fi
-                new_total_time=$((total_time + time_since_last_check / 60))  # Minutos
-                new_session_up=$((new_session_up + diff_up))
-                new_session_down=$((new_session_down + diff_down))
-                last_activity=$now
+                new_total_time=$((total_time + time_since_last_check / 60))  # Agregar tiempo en minutos
             fi
 
-            echo "$name:$new_total_up:$new_total_down:$new_total_time:$now:$current_up:$current_down:$new_session_start:$last_activity:$new_session_up:$new_session_down" >> "$temp_file"
+            echo "$name:$new_total_up:$new_total_down:$new_total_time:$now:$current_up:$current_down:$new_session_start:$new_last_activity:$new_session_up:$new_session_down" >> "$temp_file"
         done < "$STATS_FILE"
 
         mv "$temp_file" "$STATS_FILE"
@@ -2760,87 +2769,47 @@ EOF
 
     # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
     view_online_and_stats() {
-    reset_terminal
-    update_and_get_stats  # Actualiza stats
+        reset_terminal
+        update_and_get_stats  # Actualizar antes de mostrar
 
-    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-    echo -e "${PURPLE}════════════════════════════════════${NC}"
-    local active=0
-    local now=$(date +%s)
+        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+        echo -e "${PURPLE}════════════════════════════════════${NC}"
+        local active=0
+        local now=$(date +%s)
 
-    # === FUNCIÓN AUXILIAR: Formatear tiempo HH:MM:SS ===
-    format_time() {
-        local sec=$1
-        printf "%02d:%02d:%02d" $((sec/3600)) $(( (sec%3600)/60 )) $((sec%60))
+        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+            local is_online=0
+            local devices=0
+            local session_time_str="00:00:00"
+            if (( now - last_activity < 300 && last_activity > 0 )); then
+                is_online=1
+                devices=$(get_devices "$name")
+                local session_time_sec=$((now - session_start))
+                session_time_str=$(format_time $session_time_sec)
+            fi
+
+            local total_transfer=$((total_up + total_down))
+            local total_transfer_gb=$(awk "BEGIN {printf \"%.2f\", $total_transfer / 1073741824}")
+            local up_gb=$(awk "BEGIN {printf \"%.2f\", $total_up / 1073741824}")
+            local down_gb=$(awk "BEGIN {printf \"%.2f\", $total_down / 1073741824}")
+            local total_time_hours=$(awk "BEGIN {printf \"%.2f\", $total_time / 60}")
+
+            echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
+            if [ $is_online -eq 1 ]; then
+                echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+            fi
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_gb} GB (↑ $up_gb GB | ↓ $down_gb GB)${NC}"
+            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_hours} horas${NC}"
+            echo -e "${PURPLE}────────────────────────────────────${NC}"
+            ((active++))
+        done < "$STATS_FILE"
+
+        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+
+        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
     }
 
-    # === FUNCIÓN AUXILIAR: Contar dispositivos conectados por email (UUID) ===
-    get_active_devices() {
-        local email="$1"
-        local count=0
-        if [[ -f "$LOG_DIR/access.log" ]]; then
-            count=$(awk -v email="$email" -v cutoff=$((now - 300)) '
-                /accepted.*email: / && $NF == email ")" {
-                    "date -d \"" $1 " " $2 "\" +%s" | getline ts
-                    if (ts >= cutoff) {
-                        split($(NF-2), ip_port, ":")
-                        ips[ip_port[1]] = 1
-                    }
-                }
-                END { print length(ips) }
-            ' "$LOG_DIR/access.log")
-        fi
-        echo ${count:-0}
-    }
-
-    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down _; do
-        local is_online=0
-        local devices=0
-        local session_time_str="00:00:00"
-        local session_time_sec=0
-
-        # --- Determinar si está online (tráfico reciente) ---
-        if (( now - last_activity < 300 )); then
-            is_online=1
-            devices=$(get_active_devices "$name")
-            session_time_sec=$((now - session_start))
-            session_time_str=$(format_time $session_time_sec)
-        fi
-
-        # --- Calcular transferencia total y por sesión ---
-        local total_transfer=$((total_up + total_down))
-        local total_transfer_gb=$(awk "BEGIN {printf \"%.2f\", $total_transfer / 1073741824}")
-        local up_gb=$(awk "BEGIN {printf \"%.2f\", $total_up / 1073741824}")
-        local down_gb=$(awk "BEGIN {printf \"%.2f\", $total_down / 1073741824}")
-
-        local session_transfer=$((session_up + session_down))
-        local session_transfer_gb=$(awk "BEGIN {printf \"%.2f\", $session_transfer / 1073741824}")
-        local session_up_gb=$(awk "BEGIN {printf \"%.2f\", $session_up / 1073741824}")
-        local session_down_gb=$(awk "BEGIN {printf \"%.2f\", $session_down / 1073741824}")
-
-        local total_time_hours=$(awk "BEGIN {printf \"%.2f\", $total_time / 60}")
-
-        # --- MOSTRAR USUARIO ---
-        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-        
-        if [ $is_online -eq 1 ]; then
-            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ${CHECK} ($devices dispositivos)${NC}"
-            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${CYAN}$session_time_str${NC}"
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${session_transfer_gb} GB (↑ ${session_up_gb} GB | ↓ ${session_down_gb} GB)${NC}"
-        else
-            echo -e "${KEY} ${WHITE}Online:${NC} ${RED}No ${CROSS}${NC}"
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${total_transfer_gb} GB (↑ ${up_gb} GB | ↓ ${down_gb} GB)${NC}"
-        fi
-        
-        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_hours} horas${NC}"
-        echo -e "${PURPLE}────────────────────────────────────${NC}"
-        ((active++))
-    done < "$STATS_FILE"
-
-    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-
-    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-}
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
@@ -3031,8 +3000,8 @@ add_user() {
         delete_at=$(( $(date -d "$(date -d "@$expires" +%Y-%m-%d) + 1 day" +%s) ))
 
         echo "$name:$uuid:$created:$expires:$delete_at" >> "$USERS_FILE"
-        local now=$created
-        echo "$name:0:0:0:$now:0:0:$now:$now:0:0" >> "$STATS_FILE"  # Inicializar stats
+        local now=$(date +%s)
+        echo "$name:0:0:0:$now:0:0:0:0:0:0" >> "$STATS_FILE"  # Inicializar stats con session_start y last_activity en 0
 
         current_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$CONFIG_FILE" 2>/dev/null || echo "/pams")
         current_host=$(jq -r '.inbounds[0].streamSettings.wsSettings.headers.Host' "$CONFIG_FILE" 2>/dev/null || echo "")
@@ -3427,7 +3396,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
