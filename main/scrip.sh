@@ -2645,9 +2645,11 @@ EOF
 
     # === VER USUARIOS ONLINE CON TIEMPO ===
     
-                show_online_users() {
+                
+
+    show_online_users() {
     reset_terminal
-    echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (TIEMPO DE CONEXIÓN)${NC} $SPARK"
+    echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (TIEMPO + TRÁFICO REAL)${NC} $SPARK"
     echo -e "${PURPLE}════════════════════════════════════${NC}"
 
     if ! systemctl is-active --quiet xray; then
@@ -2658,7 +2660,7 @@ EOF
 
     LOG_FILE="$LOG_DIR/access.log"
     if [[ ! -f "$LOG_FILE" ]] || [[ ! -s "$LOG_FILE" ]]; then
-        echo -e "${CROSS} ${YELLOW}No hay logs. Espera una conexión...${NC}"
+        echo -e "${CROSS} ${YELLOW}No hay logs. Conéctate y espera...${NC}"
         read -p "Enter...${NC}" -r </dev/tty
         return
     fi
@@ -2669,36 +2671,44 @@ EOF
     declare -A total_up
     declare -A total_down
 
-    # Leer logs en reversa (más rápido)
+    # Leer últimas 2000 líneas en reversa (rápido)
     while IFS= read -r line; do
-        # Buscar UUID o nombre
-        for user_line in $(grep -v "^#" "$USERS_FILE"); do
-            IFS=: read -r name uuid created expires delete_at <<< "$user_line"
+        # Solo procesar líneas con "user[" o UUID
+        if ! echo "$line" | grep -q "user\[.*\]\|uplink\|downlink"; then
+            continue
+        fi
+
+        # Extraer timestamp
+        timestamp=$(echo "$line" | grep -oE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | head -1)
+        if [[ -z "$timestamp" ]]; then
+            continue
+        fi
+        ts_sec=$(date -d "$timestamp" +%s 2>/dev/null)
+        [[ $ts_sec -eq 0 ]] && continue
+
+        # Buscar todos los usuarios en esta línea
+        while IFS=: read -r name uuid created expires delete_at; do
+            [[ $name == "#"* ]] && continue
             [ $now -ge $delete_at ] && continue
 
+            # Si la línea contiene el UUID o nombre
             if echo "$line" | grep -q "$uuid\|$name"; then
-                # Extraer timestamp (asumiendo formato JSON o estándar)
-                timestamp=$(echo "$line" | grep -oE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | head -1)
-                if [[ -z "$timestamp" ]]; then
-                    timestamp=$(echo "$line" | awk '{print $1" "$2}' | grep -E '^[0-9]+/[0-9]+/[0-9]+')
-                fi
-                if [[ -n "$timestamp" ]]; then
-                    ts_sec=$(date -d "$timestamp" +%s 2>/dev/null || echo 0)
-                    if [[ $ts_sec -gt ${last_seen[$name]:-0} ]]; then
-                        last_seen[$name]=$ts_sec
-                    fi
+                # Actualizar última actividad
+                if [[ $ts_sec -gt ${last_seen[$name]:-0} ]]; then
+                    last_seen[$name]=$ts_sec
                 fi
 
-                # Extraer tráfico si aparece
-                up=$(echo "$line" | grep -oE 'uplink[^0-9]*([0-9]+)' | tail -1 | awk '{print $1}')
-                down=$(echo "$line" | grep -oE 'downlink[^0-9]*([0-9]+)' | tail -1 | awk '{print $1}')
-                [[ -n "$up" ]] && total_up[$name]=$(( ${total_up[$name]:-0} + up ))
-                [[ -n "$down" ]] && total_down[$name]=$(( ${total_down[$name]:-0} + down ))
+                # Extraer uplink/downlink de esta línea
+                up_match=$(echo "$line" | grep -o "uplink[^0-9]*[0-9]\+" | grep -o "[0-9]\+")
+                down_match=$(echo "$line" | grep -o "downlink[^0-9]*[0-9]\+" | grep -o "[0-9]\+")
+
+                [[ -n "$up_match" ]] && total_up[$name]=$(( ${total_up[$name]:-0} + up_match ))
+                [[ -n "$down_match" ]] && total_down[$name]=$(( ${total_down[$name]:-0} + down_match ))
             fi
-        done
-    done < <(tac "$LOG_FILE" 2>/dev/null | head -1000)
+        done < "$USERS_FILE"
+    done < <(tac "$LOG_FILE" | head -2000)
 
-    # Mostrar usuarios online
+    # === MOSTRAR SOLO USUARIOS CON ACTIVIDAD RECIENTE (2 MIN) ===
     while IFS=: read -r name uuid created expires delete_at; do
         [[ $name == "#"* ]] && continue
         [ $now -ge $delete_at ] && continue
@@ -2706,7 +2716,8 @@ EOF
         last_ts=${last_seen[$name]:-0}
         connected_time=$(( now - last_ts ))
 
-        if [[ $last_ts -gt 0 && $connected_time -lt 900 ]]; then  # 15 min
+        # SOLO SI HAY ACTIVIDAD EN LOS ÚLTIMOS 120 SEGUNDOS
+        if [[ $last_ts -gt 0 && $connected_time -le 120 ]]; then
             hours=$(( connected_time / 3600 ))
             mins=$(( (connected_time % 3600) / 60 ))
             secs=$(( connected_time % 60 ))
@@ -2714,20 +2725,22 @@ EOF
 
             up=${total_up[$name]:-0}
             down=${total_down[$name]:-0}
+            total=$(( up + down ))
 
             echo -e "${GREEN}ONLINE${NC} ${YELLOW}$name${NC}"
             echo -e "   ${UP} Subió:   $(numfmt --to=iec-i --suffix=B "$up" 2>/dev/null || echo "${up}B")"
             echo -e "   ${DOWN} Bajó:    $(numfmt --to=iec-i --suffix=B "$down" 2>/dev/null || echo "${down}B")"
             echo -e "   ${CAL} Tiempo:  ${CYAN}$time_str${NC}"
             echo -e "   ${KEY} UUID:    ${GRAY}$(echo $uuid | cut -c1-8)...${NC}"
+            echo -e "   ${SPARK} Total:   ${WHITE}$(numfmt --to=iec-i --suffix=B "$total" 2>/dev/null || echo "${total}B")${NC}"
             echo -e "${PURPLE}────────────────────────────────────${NC}"
             ((online_count++))
         fi
     done < "$USERS_FILE"
 
     if [[ $online_count -eq 0 ]]; then
-        echo -e "${GRAY}No hay actividad reciente (últimos 15 min).${NC}"
-        echo -e "${YELLOW}Tip: Conéctate y espera 30 segundos.${NC}"
+        echo -e "${GRAY}No hay usuarios activos (últimos 2 min).${NC}"
+        echo -e "${YELLOW}Conéctate y espera 30 segundos.${NC}"
     else
         echo -e "${CHECK} ${GREEN}Total online: $online_count${NC}"
     fi
