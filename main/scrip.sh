@@ -2760,49 +2760,87 @@ EOF
 
     # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
     view_online_and_stats() {
-        reset_terminal
-        update_and_get_stats  # Actualizar antes de mostrar
+    reset_terminal
+    update_and_get_stats  # Actualiza stats
 
-        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
-        local active=0
-        local now=$(date +%s)
+    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
+    local active=0
+    local now=$(date +%s)
 
-        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down _; do
-            local is_online=0
-            local devices=0
-            local session_time_str="00:00:00"
-            if (( now - last_activity < 300 )); then  # Online si actividad reciente <5min
-                is_online=1
-                devices=$(get_devices "$name")
-                local session_time_sec=$((now - session_start))
-                session_time_str=$(format_time $session_time_sec)
-            fi
-
-            local total_transfer=$((total_up + total_down))
-            local total_transfer_gb=$(awk "BEGIN {printf \"%.2f\", $total_transfer / 1073741824}")
-            local up_gb=$(awk "BEGIN {printf \"%.2f\", $total_up / 1073741824}")
-            local down_gb=$(awk "BEGIN {printf \"%.2f\", $total_down / 1073741824}")
-            local total_time_hours=$(awk "BEGIN {printf \"%.2f\", $total_time / 60}")
-
-            echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            if [ $is_online -eq 1 ]; then
-                echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ✅ ($devices dispositivos)${NC}"
-                echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-            else
-                echo -e "${KEY} ${WHITE}Online:${NC} ${RED}No ❌${NC}"
-            fi
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_gb} GB (↑ $up_gb GB | ↓ $down_gb GB)${NC}"
-            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_hours} horas${NC}"
-            echo -e "${PURPLE}────────────────────────────────────${NC}"
-            ((active++))
-        done < "$STATS_FILE"
-
-        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+    # === FUNCIÓN AUXILIAR: Formatear tiempo HH:MM:SS ===
+    format_time() {
+        local sec=$1
+        printf "%02d:%02d:%02d" $((sec/3600)) $(( (sec%3600)/60 )) $((sec%60))
     }
 
+    # === FUNCIÓN AUXILIAR: Contar dispositivos conectados por email (UUID) ===
+    get_active_devices() {
+        local email="$1"
+        local count=0
+        if [[ -f "$LOG_DIR/access.log" ]]; then
+            count=$(awk -v email="$email" -v cutoff=$((now - 300)) '
+                /accepted.*email: / && $NF == email ")" {
+                    "date -d \"" $1 " " $2 "\" +%s" | getline ts
+                    if (ts >= cutoff) {
+                        split($(NF-2), ip_port, ":")
+                        ips[ip_port[1]] = 1
+                    }
+                }
+                END { print length(ips) }
+            ' "$LOG_DIR/access.log")
+        fi
+        echo ${count:-0}
+    }
+
+    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down _; do
+        local is_online=0
+        local devices=0
+        local session_time_str="00:00:00"
+        local session_time_sec=0
+
+        # --- Determinar si está online (tráfico reciente) ---
+        if (( now - last_activity < 300 )); then
+            is_online=1
+            devices=$(get_active_devices "$name")
+            session_time_sec=$((now - session_start))
+            session_time_str=$(format_time $session_time_sec)
+        fi
+
+        # --- Calcular transferencia total y por sesión ---
+        local total_transfer=$((total_up + total_down))
+        local total_transfer_gb=$(awk "BEGIN {printf \"%.2f\", $total_transfer / 1073741824}")
+        local up_gb=$(awk "BEGIN {printf \"%.2f\", $total_up / 1073741824}")
+        local down_gb=$(awk "BEGIN {printf \"%.2f\", $total_down / 1073741824}")
+
+        local session_transfer=$((session_up + session_down))
+        local session_transfer_gb=$(awk "BEGIN {printf \"%.2f\", $session_transfer / 1073741824}")
+        local session_up_gb=$(awk "BEGIN {printf \"%.2f\", $session_up / 1073741824}")
+        local session_down_gb=$(awk "BEGIN {printf \"%.2f\", $session_down / 1073741824}")
+
+        local total_time_hours=$(awk "BEGIN {printf \"%.2f\", $total_time / 60}")
+
+        # --- MOSTRAR USUARIO ---
+        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+        
+        if [ $is_online -eq 1 ]; then
+            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ${CHECK} ($devices dispositivos)${NC}"
+            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${CYAN}$session_time_str${NC}"
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${session_transfer_gb} GB (↑ ${session_up_gb} GB | ↓ ${session_down_gb} GB)${NC}"
+        else
+            echo -e "${KEY} ${WHITE}Online:${NC} ${RED}No ${CROSS}${NC}"
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${total_transfer_gb} GB (↑ ${up_gb} GB | ↓ ${down_gb} GB)${NC}"
+        fi
+        
+        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_hours} horas${NC}"
+        echo -e "${PURPLE}────────────────────────────────────${NC}"
+        ((active++))
+    done < "$STATS_FILE"
+
+    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+}
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
