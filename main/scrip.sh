@@ -2579,9 +2579,10 @@ EOF
         {
             echo "{"
             echo '  "log": {'
-            echo '    "loglevel": "warning",'
-            echo "    \"access\": \"$LOG_DIR/access.log\","
-            echo "    \"error\": \"$LOG_DIR/error.log\""
+            echo '    "loglevel": "debug",'
+            echo '    "access": "/var/log/xray/access.log",'
+            echo '    "error": "/var/log/xray/error.log",'
+            echo '    "logformat": "json"'
             echo '  },'
             echo '  "api": {'
             echo '    "tag": "api",'
@@ -2643,7 +2644,8 @@ EOF
     }
 
     # === VER USUARIOS ONLINE CON TIEMPO ===
-    show_online_users() {
+    
+                show_online_users() {
     reset_terminal
     echo -e "${ROCKET} ${BLUE}USUARIOS ONLINE (TIEMPO DE CONEXIÓN)${NC} $SPARK"
     echo -e "${PURPLE}════════════════════════════════════${NC}"
@@ -2654,90 +2656,80 @@ EOF
         return
     fi
 
-    # Verificar si logs existen
-    if [[ ! -f "$LOG_DIR/access.log" ]]; then
-        echo -e "${CROSS} ${YELLOW}Logs no encontrados. Espera actividad.${NC}"
+    LOG_FILE="$LOG_DIR/access.log"
+    if [[ ! -f "$LOG_FILE" ]] || [[ ! -s "$LOG_FILE" ]]; then
+        echo -e "${CROSS} ${YELLOW}No hay logs. Espera una conexión...${NC}"
         read -p "Enter...${NC}" -r </dev/tty
         return
     fi
 
-    # Obtener estadísticas REALES con xray api (sintaxis correcta)
-    stats_output=$(timeout 5 $XRAY_BIN run -c "$CONFIG_FILE" -test 2>/dev/null | grep -E "(uplink|downlink)" || echo "")
-    if [[ -z "$stats_output" ]]; then
-        # Fallback: usar jq en config para validar
-        echo -e "${YELLOW}Generando estadísticas...${NC}"
-        stats=$(echo '{}' | jq -n --argjson empty true)
-    else
-        # Parsear stats reales (simplificado)
-        stats=$(echo "$stats_output" | jq -Rs '{raw: .}')
-    fi
-
     online_count=0
     now=$(date +%s)
-    declare -A user_traffic
+    declare -A last_seen
+    declare -A total_up
+    declare -A total_down
 
-    # Recopilar tráfico por usuario de stats
+    # Leer logs en reversa (más rápido)
+    while IFS= read -r line; do
+        # Buscar UUID o nombre
+        for user_line in $(grep -v "^#" "$USERS_FILE"); do
+            IFS=: read -r name uuid created expires delete_at <<< "$user_line"
+            [ $now -ge $delete_at ] && continue
+
+            if echo "$line" | grep -q "$uuid\|$name"; then
+                # Extraer timestamp (asumiendo formato JSON o estándar)
+                timestamp=$(echo "$line" | grep -oE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | head -1)
+                if [[ -z "$timestamp" ]]; then
+                    timestamp=$(echo "$line" | awk '{print $1" "$2}' | grep -E '^[0-9]+/[0-9]+/[0-9]+')
+                fi
+                if [[ -n "$timestamp" ]]; then
+                    ts_sec=$(date -d "$timestamp" +%s 2>/dev/null || echo 0)
+                    if [[ $ts_sec -gt ${last_seen[$name]:-0} ]]; then
+                        last_seen[$name]=$ts_sec
+                    fi
+                fi
+
+                # Extraer tráfico si aparece
+                up=$(echo "$line" | grep -oE 'uplink[^0-9]*([0-9]+)' | tail -1 | awk '{print $1}')
+                down=$(echo "$line" | grep -oE 'downlink[^0-9]*([0-9]+)' | tail -1 | awk '{print $1}')
+                [[ -n "$up" ]] && total_up[$name]=$(( ${total_up[$name]:-0} + up ))
+                [[ -n "$down" ]] && total_down[$name]=$(( ${total_down[$name]:-0} + down ))
+            fi
+        done
+    done < <(tac "$LOG_FILE" 2>/dev/null | head -1000)
+
+    # Mostrar usuarios online
     while IFS=: read -r name uuid created expires delete_at; do
         [[ $name == "#"* ]] && continue
         [ $now -ge $delete_at ] && continue
 
-        # Buscar tráfico: formato "user>>>nombre@domain>>>uplink" pero simplificado
-        uplink=$(echo "$stats" | jq -r --arg user "$name" '. | select(.name? | contains($user + "uplink")).value // 0' 2>/dev/null || echo "0")
-        downlink=$(echo "$stats" | jq -r --arg user "$name" '. | select(.name? | contains($user + "downlink")).value // 0' 2>/dev/null || echo "0")
+        last_ts=${last_seen[$name]:-0}
+        connected_time=$(( now - last_ts ))
 
-        # Detectar actividad reciente desde logs (últimos 5 min)
-        recent_activity=$(tail -n 1000 "$LOG_DIR/access.log" 2>/dev/null | grep -i "$uuid\|$name" | tail -1 | awk '{print $1}' | xargs -I {} date -d "{}" +%s 2>/dev/null || echo "0")
-        if [[ "$recent_activity" -gt 0 ]]; then
-            connected_time=$(( now - recent_activity ))
-            if [[ $connected_time -lt 300 ]]; then  # 5 minutos
-                hours=$(( connected_time / 3600 ))
-                mins=$(( (connected_time % 3600) / 60 ))
-                secs=$(( connected_time % 60 ))
-                time_str="${hours}h ${mins}m ${secs}s"
-                
-                # Guardar tráfico
-                user_traffic["$name_uplink"]=$uplink
-                user_traffic["$name_downlink"]=$downlink
+        if [[ $last_ts -gt 0 && $connected_time -lt 900 ]]; then  # 15 min
+            hours=$(( connected_time / 3600 ))
+            mins=$(( (connected_time % 3600) / 60 ))
+            secs=$(( connected_time % 60 ))
+            time_str="${hours}h ${mins}m ${secs}s"
 
-                echo -e "${GREEN}🟢 ONLINE${NC} ${YELLOW}$name${NC}"
-                echo -e "   ${UP}⬆️ Subió:   $(numfmt --to=iec-i --suffix=B "$uplink" 2>/dev/null || echo "${uplink}B")"
-                echo -e "   ${DOWN}⬇️ Bajó:    $(numfmt --to=iec-i --suffix=B "$downlink" 2>/dev/null || echo "${downlink}B")"
-                echo -e "   ${CAL}⏱️  Tiempo:  ${CYAN}$time_str${NC} (desde última actividad)"
-                echo -e "   ${KEY}🔑 UUID:    ${GRAY}$(echo $uuid | cut -c1-8)...${NC}"
-                echo -e "${PURPLE}────────────────────────────────────${NC}"
-                ((online_count++))
-            fi
+            up=${total_up[$name]:-0}
+            down=${total_down[$name]:-0}
+
+            echo -e "${GREEN}ONLINE${NC} ${YELLOW}$name${NC}"
+            echo -e "   ${UP} Subió:   $(numfmt --to=iec-i --suffix=B "$up" 2>/dev/null || echo "${up}B")"
+            echo -e "   ${DOWN} Bajó:    $(numfmt --to=iec-i --suffix=B "$down" 2>/dev/null || echo "${down}B")"
+            echo -e "   ${CAL} Tiempo:  ${CYAN}$time_str${NC}"
+            echo -e "   ${KEY} UUID:    ${GRAY}$(echo $uuid | cut -c1-8)...${NC}"
+            echo -e "${PURPLE}────────────────────────────────────${NC}"
+            ((online_count++))
         fi
     done < "$USERS_FILE"
 
-    # Si no hay por logs, fallback a tráfico >0
     if [[ $online_count -eq 0 ]]; then
-        echo -e "${YELLOW}Buscando por tráfico total...${NC}"
-        while IFS=: read -r name uuid created expires delete_at; do
-            [[ $name == "#"* ]] && continue
-            [ $now -ge $delete_at ] && continue
-
-            uplink=$(grep -o "uplink.*$name" "$LOG_DIR/access.log" | tail -1 | awk '{print $NF}' || echo "0")
-            downlink=$(grep -o "downlink.*$name" "$LOG_DIR/access.log" | tail -1 | awk '{print $NF}' || echo "0")
-
-            if [[ "$uplink" -gt 0 || "$downlink" -gt 0 ]]; then
-                time_str="Activo (tráfico detectado)"
-                echo -e "${GREEN}🟢 ONLINE${NC} ${YELLOW}$name${NC}"
-                echo -e "   ${UP}⬆️ Subió:   $(numfmt --to=iec-i --suffix=B "$uplink" 2>/dev/null || echo "${uplink}B")"
-                echo -e "   ${DOWN}⬇️ Bajó:    $(numfmt --to=iec-i --suffix=B "$downlink" 2>/dev/null || echo "${downlink}B")"
-                echo -e "   ${CAL}⏱️  Tiempo:  ${CYAN}$time_str${NC}"
-                echo -e "   ${KEY}🔑 UUID:    ${GRAY}$(echo $uuid | cut -c1-8)...${NC}"
-                echo -e "${PURPLE}────────────────────────────────────${NC}"
-                ((online_count++))
-            fi
-        done < "$USERS_FILE"
-    fi
-
-    if [[ $online_count -eq 0 ]]; then
-        echo -e "${GRAY}😴 No hay usuarios conectados en este momento.${NC}"
-        echo -e "${YELLOW}💡 Tip: Conéctate con HTTP Custom/v2rayNG y espera 10s.${NC}"
+        echo -e "${GRAY}No hay actividad reciente (últimos 15 min).${NC}"
+        echo -e "${YELLOW}Tip: Conéctate y espera 30 segundos.${NC}"
     else
-        echo -e "${CHECK} ${GREEN}Total online: $online_count usuario(s)${NC}"
+        echo -e "${CHECK} ${GREEN}Total online: $online_count${NC}"
     fi
     echo -e "${GRAY}════════════════════════════════════${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
