@@ -2649,7 +2649,7 @@ menu_v2ray() {
         if [ -f "$LOG_DIR/access.log" ]; then
             count=$(awk -v now="$now" -v email="$name" '
                 BEGIN { FS=" " }
-                $3 == "accepted" && /email: / && $NF == email ")" {
+                $3 == "accepted" && $(NF-1) == "email:" && $NF == email {
                     "date -d \"" $1 " " $2 "\" +%s" | getline ts
                     if (now - ts < 300) {
                         split($4, parts, ":")
@@ -2663,6 +2663,51 @@ menu_v2ray() {
             ' "$LOG_DIR/access.log")
         fi
         echo ${count:-0}
+    }
+
+    # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
+    view_online_and_stats() {
+        reset_terminal
+        update_and_get_stats  # Actualizar antes de mostrar
+
+        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+        echo -e "${PURPLE}════════════════════════════════════${NC}"
+        local active=0
+        local now=$(date +%s)
+
+        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+            local is_online=0
+            local devices=0
+            local session_time_str="00:00:00"
+            if (( now - last_activity < 300 && last_activity > 0 )); then  # Aumentado a 300s para detección de online
+                is_online=1
+                devices=$(get_devices "$name")
+                if [[ $devices -eq 0 ]]; then devices=1; fi  # Hack: al menos 1 si online pero parsing da 0
+                local session_time_sec=$((now - session_start))
+                session_time_str=$(format_time $session_time_sec)
+            fi
+
+            local total_transfer=$((total_up + total_down))
+            local total_transfer_str=$(format_bytes $total_transfer)
+            local up_str=$(format_bytes $total_up)
+            local down_str=$(format_bytes $total_down)
+            local total_time_sec=$((total_time * 60))  # total_time en minutos a segundos
+            local total_time_str=$(format_time $total_time_sec)
+
+            echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
+            if [ $is_online -eq 1 ]; then
+                echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+            fi
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str} (↑ $up_str | ↓ $down_str)${NC}"
+            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str}${NC}"
+            echo -e "${PURPLE}────────────────────────────────────${NC}"
+            ((active++))
+        done < "$STATS_FILE"
+
+        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+
+        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
     }
 
     install_xray() {
@@ -2785,50 +2830,7 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-    # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
-    view_online_and_stats() {
-        reset_terminal
-        update_and_get_stats  # Actualizar antes de mostrar
-
-        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
-        local active=0
-        local now=$(date +%s)
-
-        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
-            local is_online=0
-            local devices=0
-            local session_time_str="00:00:00"
-            if (( now - last_activity < 60 && last_activity > 0 )); then  # Reducido a 60s
-                is_online=1
-                devices=$(get_devices "$name")
-                if [[ $devices -eq 0 ]]; then devices=1; fi  # Hack: al menos 1 si online pero parsing da 0
-                local session_time_sec=$((now - session_start))
-                session_time_str=$(format_time $session_time_sec)
-            fi
-
-            local total_transfer=$((total_up + total_down))
-            local total_transfer_str=$(format_bytes $total_transfer)
-            local up_str=$(format_bytes $total_up)
-            local down_str=$(format_bytes $total_down)
-            local total_time_sec=$((total_time * 60))  # total_time en minutos a segundos
-            local total_time_str=$(format_time $total_time_sec)
-
-            echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
-            if [ $is_online -eq 1 ]; then
-                echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-            fi
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str} (↑ $up_str | ↓ $down_str)${NC}"
-            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str}${NC}"
-            echo -e "${PURPLE}────────────────────────────────────${NC}"
-            ((active++))
-        done < "$STATS_FILE"
-
-        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-    }
+    
 
     remove_user_menu() {
         reset_terminal
