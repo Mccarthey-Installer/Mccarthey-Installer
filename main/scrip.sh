@@ -2824,7 +2824,6 @@ view_online_and_stats() {
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
     local sessions_valid=0
 
-    # Validar si querySessions devolvió JSON válido con sesiones
     if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
         sessions_valid=1
     fi
@@ -2840,7 +2839,7 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # === PRIORIDAD 1: querySessions (mejor método) ===
+        # === PRIORIDAD: querySessions ===
         if [[ $sessions_valid -eq 1 ]]; then
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $devices -gt 0 ]]; then
@@ -2853,9 +2852,8 @@ view_online_and_stats() {
             fi
         fi
 
-        # === FALLBACK: usar last_activity si no hay querySessions o está vacío ===
+        # === FALLBACK: last_activity (si no hay querySessions) ===
         if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
-            # Si hubo tráfico reciente (últimos 2 min), considerarlo online (fallback)
             if (( now - last_activity < 120 )); then
                 is_online=1
                 devices=1
@@ -2868,11 +2866,9 @@ view_online_and_stats() {
             fi
         fi
 
-        # === TRANSFERENCIA (solo total) ===
+        # === TRANSFERENCIA Y TIEMPO TOTAL ===
         local total_transfer=$((total_up + total_down))
         local total_transfer_str=$(format_bytes $total_transfer)
-
-        # === TIEMPO TOTAL ===
         local total_time_sec=$((total_time * 60))
         local total_time_str=$(format_time $total_time_sec)
 
@@ -2880,7 +2876,9 @@ view_online_and_stats() {
         echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
         
         if [[ $is_online -eq 1 ]]; then
-            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices móvil$[ $devices -gt 1 ] && echo 'es' || echo '' )${NC}"
+            local device_word="móvil"
+            [[ $devices -gt 1 ]] && device_word="móviles"
+            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
             echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
         else
             if [[ -n "$last_conn_str" ]]; then
