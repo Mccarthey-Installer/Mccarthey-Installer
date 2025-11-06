@@ -2817,7 +2817,7 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (VERSIÓN FINAL) ===
+# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (VERSIÓN FINAL CORREGIDA) ===
 view_online_and_stats() {
     reset_terminal
     update_and_get_stats  # Actualiza stats antes de mostrar
@@ -2831,6 +2831,7 @@ view_online_and_stats() {
 
     local active=0
 
+    # Leer línea por línea del archivo de stats
     while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down last_disconnect; do
         local is_online=0
         local devices=0
@@ -2841,12 +2842,12 @@ view_online_and_stats() {
         [[ -z "$last_disconnect" || "$last_disconnect" == "0" ]] && last_disconnect=0
 
         # === DETECCIÓN DE CONEXIÓN CON querySessions ===
-        if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions[] | select(.user.email == "'"$name"'")' >/dev/null 2>&1; then
+        if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions?[]? | select(.user.email == "'"$name"'")' >/dev/null 2>&1; then
             is_online=1
-            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
+            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions?[]? | select(.user.email == $name)] | length')
 
             # Tiempo de sesión más antigua
-            local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
+            local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions?[]? | select(.user.email == $name) | .record.creationTime] | min // 0')
             if [[ $min_creation -gt 0 ]]; then
                 session_time_str=$(format_time $((now - min_creation)))
             fi
@@ -2884,8 +2885,9 @@ view_online_and_stats() {
         local total_time_str=$(format_time $total_time_sec)
 
         # === GUARDAR last_disconnect EN EL ARCHIVO (solo si cambió) ===
-        if (( last_disconnect > 0 )) && [[ "$last_disconnect" != "$(echo $line | cut -d: -f12)" ]]; then
-            sed -i "s|^$name:.*|&:$last_disconnect|" "$STATS_FILE" 2>/dev/null || true
+        # Eliminado uso de variable $line (no existe aquí)
+        if (( last_disconnect > 0 )); then
+            sed -i "s|^$name:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:.*|$name:$total_up:$total_down:$total_time:$last_check:$last_up:$last_down:$session_start:$last_activity:$session_up:$session_down:$last_disconnect|" "$STATS_FILE" 2>/dev/null || true
         fi
 
         # === MOSTRAR ===
@@ -2909,13 +2911,16 @@ view_online_and_stats() {
         fi
 
         echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str}${NC}"
-        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str${NC}"
+        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str}${NC}"
         echo -e "${PURPLE}────────────────────────────────────${NC}"
         ((active++))
     done < "$STATS_FILE"
 
+    # Si no hay usuarios
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+
+    # Evitar bloqueo si no hay TTY
+    [ -t 0 ] && read -p "Presiona Enter para volver...${NC}" -r
 }
 
     remove_user_menu() {
