@@ -2817,73 +2817,75 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (CON ÚLTIMA CONEXIÓN FORMATEADA) ===
-# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (CON ÚLTIMA CONEXIÓN) ===
-    view_online_and_stats() {
-        reset_terminal
-        update_and_get_stats  # Actualiza stats acumuladas
+view_online_and_stats() {
+    reset_terminal
+    update_and_get_stats  # Actualizar antes de mostrar
 
-        local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
-        local now=$(date +%s)
+    local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
 
-        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
+    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
+    local active=0
+    local now=$(date +%s)
 
-        local active=0
+    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+        local is_online=0
+        local devices=0
+        local session_time_str="00:00:00"
+        local last_conn_str=""
 
-        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
-            local is_online=0
-            local devices=0
-            local session_time_str="00:00:00"
-            local last_seen_str="Nunca"
-            local total_transfer_str="0 B"
-
-            # === OBTENER SESIONES ACTIVAS DEL USUARIO ===
-            local user_sessions=$(echo "$sessions_output" | jq --arg name "$name" '.sessions[] | select(.user.email == $name)')
-            devices=$(echo "$user_sessions" | jq -s 'length')
-
+        # === DETECTAR SI ESTÁ CONECTADO (querySessions) ===
+        if [[ -n "$sessions_output" ]]; then
+            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $devices -gt 0 ]]; then
                 is_online=1
-                # Tomar la sesión más antigua (conexión más larga)
-                local oldest_creation=$(echo "$user_sessions" | jq '.record.creationTime' | sort -n | head -1)
-                local session_sec=$(( now - oldest_creation ))
-                session_time_str=$(format_time $session_sec)
-            else
-                # === OFFLINE: MOSTRAR ÚLTIMA CONEXIÓN ===
-                if [[ $last_activity -gt 0 ]]; then
-                    last_seen_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || "??:??")
+                local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
+                local session_sec=0
+                if [[ $min_creation -gt 0 ]]; then
+                    session_sec=$((now - min_creation))
                 fi
+                session_time_str=$(format_time $session_sec)
             fi
+        fi
 
-            # === TRANSFERENCIA TOTAL ===
-            local total_transfer=$((total_up + total_down))
-            total_transfer_str=$(format_bytes $total_transfer)
+        # === SI NO ESTÁ ONLINE, usar last_activity del stats.db ===
+        if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
+            last_conn_str=$(date -d "@$last_activity" +"%I:%M %p" 2>/dev/null || echo "??:??")
+            last_conn_str="Última conexión: $last_conn_str"
+        fi
 
-            # === TIEMPO TOTAL CONECTADO ===
-            local total_time_sec=$((total_time * 60))
-            local total_time_str=$(format_time $total_time_sec)
+        # === TRANSFERENCIA TOTAL (sin ↑↓) ===
+        local total_transfer=$((total_up + total_down))
+        local total_transfer_str=$(format_bytes $total_transfer)
 
-            # === MOSTRAR INFO ===
-            echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            
-            if [ $is_online -eq 1 ]; then
-                local plural=$([ $devices -gt 1 ] && echo "s" || echo "")
-                echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}✅ $devices conectado$plural${NC}"
-                echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+        # === TIEMPO TOTAL CONECTADO ===
+        local total_time_sec=$((total_time * 60))
+        local total_time_str=$(format_time $total_time_sec)
+
+        # === MOSTRAR INFO ===
+        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+        
+        if [[ $is_online -eq 1 ]]; then
+            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}✅ ($devices conectado$[ $devices -gt 1 ] && echo 's' || echo '' )${NC}"
+            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+        else
+            if [[ -n "$last_conn_str" ]]; then
+                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}❌ $last_conn_str${NC}"
             else
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}❌ Offline${NC}"
-                echo -e "${CLOCK} ${WHITE}Última conexión:${NC} ${YELLOW}$last_seen_str${NC}"
+                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}❌ Nunca conectado${NC}"
             fi
+        fi
 
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
-            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
-            echo -e "${PURPLE}────────────────────────────────────${NC}"
-            ((active++))
-        done < "$STATS_FILE"
+        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
+        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
+        echo -e "${PURPLE}────────────────────────────────────${NC}"
+        ((active++))
+    done < "$STATS_FILE"
 
-        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-    }
+    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+}
 
     remove_user_menu() {
         reset_terminal
