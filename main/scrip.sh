@@ -2542,6 +2542,19 @@ format_time() {
     printf "%02d:%02d:%02d" $((sec/3600)) $(( (sec%3600)/60 )) $((sec%60))
 }
 
+format_bytes() {
+    local bytes=$1
+    if (( bytes < 1024 )); then
+        echo "$bytes B"
+    elif (( bytes < 1048576 )); then
+        awk "BEGIN {printf \"%.2f KB\", $bytes / 1024}"
+    elif (( bytes < 1073741824 )); then
+        awk "BEGIN {printf \"%.2f MB\", $bytes / 1048576}"
+    else
+        awk "BEGIN {printf \"%.2f GB\", $bytes / 1073741824}"
+    fi
+}
+
 # === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA CRON) ===
 update_and_get_stats() {
     local now=$(date +%s)
@@ -2636,14 +2649,17 @@ menu_v2ray() {
         if [ -f "$LOG_DIR/access.log" ]; then
             count=$(awk -v now="$now" -v email="$name" '
                 BEGIN { FS=" " }
-                /accepted/ && /email: / && $NF == email ")" {
+                $3 == "accepted" && /email: / && $NF == email ")" {
                     "date -d \"" $1 " " $2 "\" +%s" | getline ts
                     if (now - ts < 300) {
-                        split($(NF-2), ip_port, ":")
-                        ips[ip_port[1]] = 1
+                        split($4, parts, ":")
+                        if (length(parts) >= 3) {
+                            key = parts[2] ":" parts[3]
+                            keys[key] = 1
+                        }
                     }
                 }
-                END { print length(ips) }
+                END { print length(keys) }
             ' "$LOG_DIR/access.log")
         fi
         echo ${count:-0}
@@ -2792,18 +2808,19 @@ EOF
             fi
 
             local total_transfer=$((total_up + total_down))
-            local total_transfer_gb=$(awk "BEGIN {printf \"%.2f\", $total_transfer / 1073741824}")
-            local up_gb=$(awk "BEGIN {printf \"%.2f\", $total_up / 1073741824}")
-            local down_gb=$(awk "BEGIN {printf \"%.2f\", $total_down / 1073741824}")
-            local total_time_hours=$(awk "BEGIN {printf \"%.2f\", $total_time / 60}")
+            local total_transfer_str=$(format_bytes $total_transfer)
+            local up_str=$(format_bytes $total_up)
+            local down_str=$(format_bytes $total_down)
+            local total_time_sec=$((total_time * 60))  # total_time en minutos a segundos
+            local total_time_str=$(format_time $total_time_sec)
 
             echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
             echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
             if [ $is_online -eq 1 ]; then
                 echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
             fi
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_gb} GB (↑ $up_gb GB | ↓ $down_gb GB)${NC}"
-            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_hours} horas${NC}"
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str} (↑ $up_str | ↓ $down_str)${NC}"
+            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str}${NC}"
             echo -e "${PURPLE}────────────────────────────────────${NC}"
             ((active++))
         done < "$STATS_FILE"
