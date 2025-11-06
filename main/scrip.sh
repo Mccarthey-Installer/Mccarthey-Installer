@@ -2817,66 +2817,95 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-    # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
-    # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (MEJORADA) ===
-# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (CON ÚLTIMA DESCONEXIÓN) ===
+# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (VERSIÓN FINAL) ===
 view_online_and_stats() {
     reset_terminal
-    update_and_get_stats
+    update_and_get_stats  # Actualiza stats antes de mostrar
 
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
     local now=$(date +%s)
+    local now_12h=$(date -d "@$now" +"%l:%M%P" | sed 's/ //g')  # 9:10pm
 
     echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
     echo -e "${PURPLE}════════════════════════════════════${NC}"
 
     local active=0
 
-    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down last_disconnect; do
         local is_online=0
         local devices=0
         local session_time_str="00:00:00"
-        local last_seen_str=""
+        local last_disconnect_str="Nunca conectado"
 
-        # === DETECCIÓN DE CONEXIÓN ===
+        # === INICIALIZAR last_disconnect SI NO EXISTE ===
+        [[ -z "$last_disconnect" || "$last_disconnect" == "0" ]] && last_disconnect=0
+
+        # === DETECCIÓN DE CONEXIÓN CON querySessions ===
         if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions[] | select(.user.email == "'"$name"'")' >/dev/null 2>&1; then
             is_online=1
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
+
+            # Tiempo de sesión más antigua
             local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
             if [[ $min_creation -gt 0 ]]; then
                 session_time_str=$(format_time $((now - min_creation)))
             fi
-            # Si está conectado, last_activity se actualiza en update_and_get_stats
+
+            # Si estaba desconectado antes, actualizar última desconexión
+            if (( last_disconnect == 0 && last_activity > 0 )); then
+                # Primera conexión después de "nunca conectado"
+                :
+            fi
         else
-            # === USUARIO DESCONECTADO O NUNCA CONECTADO ===
-            if (( last_activity > 0 )); then
-                last_seen_str=$(format_last_seen $last_activity)
-            else
-                last_seen_str="Nunca conectado"
+            # === OFFLINE: actualizar última desconexión si hubo actividad reciente ===
+            if (( last_activity > 0 && now - last_activity < 60 )); then
+                # Acaba de desconectarse
+                last_disconnect=$last_activity
+                last_disconnect_str=$(date -d "@$last_disconnect" +"%l:%M%P" | sed 's/ //g')
+            elif (( last_disconnect > 0 )); then
+                # Ya tenía una desconexión registrada
+                last_disconnect_str=$(date -d "@$last_disconnect" +"%l:%M%P" | sed 's/ //g')
+            fi
+
+            # Fallback: si no hay sesiones pero hubo actividad reciente
+            if (( now - last_activity < 60 && last_activity > 0 )); then
+                is_online=1
+                devices=1
+                session_time_str=$(format_time $((now - session_start)))
             fi
         fi
 
-        # === TRANSFERENCIA TOTAL ===
+        # === TRANSFERENCIA TOTAL (solo total) ===
         local total_transfer=$((total_up + total_down))
         local total_transfer_str=$(format_bytes $total_transfer)
 
-        # === TIEMPO TOTAL ===
+        # Tiempo total conectado
         local total_time_sec=$((total_time * 60))
         local total_time_str=$(format_time $total_time_sec)
 
+        # === GUARDAR last_disconnect EN EL ARCHIVO (solo si cambió) ===
+        if (( last_disconnect > 0 )) && [[ "$last_disconnect" != "$(echo $line | cut -d: -f12)" ]]; then
+            sed -i "s|^$name:.*|&:$last_disconnect|" "$STATS_FILE" 2>/dev/null || true
+        fi
+
         # === MOSTRAR ===
         echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-
-        # Online o última vez
-        if [ $is_online -eq 1 ]; then
-            echo -e "${KEY} ${WHITE}Online:${NC} $( 
+        
+        # Online con plural
+        echo -e "${KEY} ${WHITE}Online:${NC} $( 
+            if [ $is_online -eq 1 ]; then 
                 echo -n "${GREEN}✅ $devices conectado"
                 [ $devices -gt 1 ] && echo -n "s"
                 echo -n "${NC}"
-            )"
+            else 
+                echo -n "${RED}❌${NC}"
+            fi 
+        )"
+
+        if [ $is_online -eq 1 ]; then
             echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
         else
-            echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}❌ $last_seen_str${NC}"
+            echo -e "${CLOCK} ${WHITE}Última vez:${NC} ${RED}$last_disconnect_str${NC}"
         fi
 
         echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str}${NC}"
