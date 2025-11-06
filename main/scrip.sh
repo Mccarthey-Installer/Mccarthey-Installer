@@ -2567,6 +2567,15 @@ update_and_get_stats() {
 
     # Obtener sesiones activas
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
+    declare -A active_users
+    if [[ -n "$sessions_output" ]]; then
+        echo "$sessions_output" | jq -c '.sessions[]' 2>/dev/null | while read -r session; do
+            local email=$(echo "$session" | jq -r '.user.email' 2>/dev/null)
+            if [[ -n "$email" ]]; then
+                ((active_users["$email"]++))
+            fi
+        done
+    fi
 
     # Crear temp file para stats actuales
     local temp_stats=$(mktemp)
@@ -2586,9 +2595,6 @@ update_and_get_stats() {
         local current_up=$(jq ".\"user>>>$name>>>traffic>>>uplink\" // 0" "$temp_stats")
         local current_down=$(jq ".\"user>>>$name>>>traffic>>>downlink\" // 0" "$temp_stats")
 
-        # Obtener número de conexiones activas para este usuario
-        local devices=$(echo "$sessions_output" | jq "[.sessions[] | select(.email == \"$name\")] | length" 2>/dev/null || echo 0)
-
         local diff_up=$((current_up - last_up))
         local diff_down=$((current_down - last_down))
         ((diff_up < 0)) && diff_up=0
@@ -2603,7 +2609,9 @@ update_and_get_stats() {
         local time_since_last_check=$((now - last_check))
         local new_total_time=$total_time
 
-        if (( diff_up > 0 || diff_down > 0 || devices > 0 )); then
+        local is_active=0
+        if (( diff_up > 0 || diff_down > 0 || ${active_users["$name"]:-0} > 0 )); then
+            is_active=1
             if (( last_activity == 0 )); then  # Primera conexión ever
                 new_session_start=$now
                 new_session_up=$diff_up
@@ -2651,12 +2659,56 @@ menu_v2ray() {
     # === FUNCIONES LOCALES ===
     get_devices() {
     local email="$1"
-    local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
-    if [[ -z "$sessions_output" ]]; then
-        echo 0
-        return
-    fi
-    local count=$(echo "$sessions_output" | jq "[.sessions[] | select(.email == \"$email\")] | length" 2>/dev/null || echo 0)
+    local now=$(date +%s)
+    local logfile="$LOG_DIR/access.log"
+    local count=0
+
+    # Si el archivo no existe o está vacío, devolver 0
+    [[ -f "$logfile" ]] || { echo 0; return; }
+
+    # Usamos un awk más inteligente:
+    # - Busca "accepted" y "email: $email" en cualquier posición
+    # - Extrae el timestamp de los dos primeros campos (fecha y hora)
+    # - Extrae IP:PORT del campo que contenga "tcp:" o "udp:"
+    # - Sólo cuenta conexiones únicas en los últimos 300 segundos (5 min)
+    count=$(
+        awk -v now="$now" -v email="email: $email" '
+        BEGIN { FS = " " }
+        {
+            # Reconstruir timestamp de $1 y $2 (ej: "2025-11-05" "09:45:23")
+            if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
+                cmd = "date -d \"" $1 " " $2 "\" +%s"
+                if ((cmd | getline ts) > 0) {
+                    close(cmd)
+                } else {
+                    next  # línea con fecha inválida
+                }
+            } else {
+                next
+            }
+
+            # Buscar "accepted" y el email en cualquier campo
+            accepted = 0
+            em = 0
+            conn = ""
+            for (i=3; i<=NF; i++) {
+                if ($i == "accepted") accepted = 1
+                if ($i == email) em = 1
+                if ($i ~ /^(tcp|udp):[^:]+:[0-9]+$/ || $i ~ /^[:.[:alnum:]]+:[0-9]+$/) {
+                    # Formatos posibles: tcp:1.2.3.4:5678  o directamente 1.2.3.4:5678
+                    gsub(/^(tcp|udp):/, "", $i)
+                    conn = $i
+                }
+            }
+
+            if (accepted && em && conn != "" && (now - ts) < 300) {
+                unique[conn] = 1
+            }
+        }
+        END { print length(unique) }
+        ' "$logfile"
+    )
+
     echo "${count:-0}"
 }
     install_xray() {
@@ -2784,19 +2836,29 @@ EOF
         reset_terminal
         update_and_get_stats  # Actualizar antes de mostrar
 
+        # Obtener sesiones activas frescas para el conteo
+        local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
+        declare -A user_devices
+        if [[ -n "$sessions_output" ]]; then
+            echo "$sessions_output" | jq -c '.sessions[]' 2>/dev/null | while read -r session; do
+                local email=$(echo "$session" | jq -r '.user.email' 2>/dev/null)
+                if [[ -n "$email" ]]; then
+                    ((user_devices["$email"]++))
+                fi
+            done
+        fi
+
         echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
         local active=0
         local now=$(date +%s)
 
         while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+            local devices=${user_devices["$name"]:-0}
             local is_online=0
-            local devices=0
             local session_time_str="00:00:00"
-            if (( now - last_activity < 60 && last_activity > 0 )); then  # Reducido a 60s
+            if (( devices > 0 )); then
                 is_online=1
-                devices=$(get_devices "$name")
-                if [[ $devices -eq 0 ]]; then devices=1; fi  # Hack temporal si API falla, pero idealmente no necesario
                 local session_time_sec=$((now - session_start))
                 session_time_str=$(format_time $session_time_sec)
             fi
@@ -2809,7 +2871,11 @@ EOF
             local total_time_str=$(format_time $total_time_sec)
 
             echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ $devices conectado$((devices > 1 ? "s" : ""))${NC}" || echo "${RED}❌${NC}" )"
+            local conectado_text="conectado"
+            if (( devices != 1 )); then
+                conectado_text="conectados"
+            fi
+            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ $devices $conectado_text${NC}" || echo "${RED}❌${NC}" )"
             if [ $is_online -eq 1 ]; then
                 echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
             fi
