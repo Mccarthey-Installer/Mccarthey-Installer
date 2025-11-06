@@ -2594,29 +2594,25 @@ update_and_get_stats() {
         local time_since_last_check=$((now - last_check))
         local new_total_time=$total_time
 
-        # Mantener sesión viva si hay tráfico O el último check fue hace menos de 30s
-        if (( diff_up > 0 || diff_down > 0 || now - last_check < 30 )); then
+        if (( diff_up > 0 || diff_down > 0 )); then
             if (( last_activity == 0 )); then
                 new_session_start=$now
+                new_session_up=$diff_up
+                new_session_down=$diff_down
                 new_last_activity=$now
             else
-                if (( now - last_activity > 300 )); then  # Nueva sesión solo si inactivo > 5 min
+                # NUEVA SESIÓN SOLO SI HUBO >5 MIN DE INACTIVIDAD
+                if (( now - last_activity > 300 )); then
                     new_session_start=$now
-                    new_session_up=0
-                    new_session_down=0
+                    new_session_up=$diff_up
+                    new_session_down=$diff_down
+                else
+                    new_session_up=$((new_session_up + diff_up))
+                    new_session_down=$((new_session_down + diff_down))
                 fi
                 new_last_activity=$now
             fi
-            new_session_up=$((new_session_up + diff_up))
-            new_session_down=$((new_session_down + diff_down))
             new_total_time=$((total_time + time_since_last_check / 60))
-        else
-            # Si no hay tráfico y pasó mucho tiempo → posible desconexión
-            if (( now - last_activity > 300 )); then
-                new_session_start=0
-                new_session_up=0
-                new_session_down=0
-            fi
         fi
 
         echo "$name:$new_total_up:$new_total_down:$new_total_time:$now:$current_up:$current_down:$new_session_start:$new_last_activity:$new_session_up:$new_session_down" >> "$temp_file"
@@ -2820,7 +2816,6 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-
 view_online_and_stats() {
     reset_terminal
     update_and_get_stats
@@ -2843,34 +2838,48 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # === PRIORIDAD: querySessions ===
+        # === PRIORIDAD 1: querySessions (tiempo real) ===
         if [[ $sessions_valid -eq 1 ]]; then
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $devices -gt 0 ]]; then
                 is_online=1
                 local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
                 if [[ $min_creation -gt 0 ]]; then
-                    local session_sec=$((now - min_creation))
+                    session_sec=$((now - min_creation))
                     session_time_str=$(format_time $session_sec)
                 fi
             fi
         fi
 
-        # === FALLBACK: last_activity (si no hay querySessions) ===
-        if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
-            if (( now - last_activity < 20 )); then
+        # === PRIORIDAD 2: session_start persistente + actividad reciente ===
+        if [[ $is_online -eq 0 && $session_start -gt 0 ]]; then
+            local time_since_start=$((now - session_start))
+            if (( time_since_start < 300 )) && (( now - last_activity < 120 )); then
                 is_online=1
-                devices=1
-                if [[ $session_start -gt 0 ]]; then
-                    local session_sec=$((now - session_start))
-                    [[ $session_sec -lt 0 ]] && session_sec=0
-                else
-                    session_sec=0
-                fi
+                devices=$(get_devices "$name")
+                [[ $devices -eq 0 ]] && devices=1
+                session_sec=$time_since_start
                 session_time_str=$(format_time $session_sec)
+            fi
+        fi
+
+        # === PRIORIDAD 3: solo get_devices (logs) como último recurso ===
+        if [[ $is_online -eq 0 ]]; then
+            devices=$(get_devices "$name")
+            if [[ $devices -gt 0 ]]; then
+                is_online=1
+                session_sec=$((now - session_start))
+                [[ $session_sec -lt 0 ]] && session_sec=0
+                session_time_str=$(format_time $session_sec)
+            fi
+        fi
+
+        # === SI NO ESTÁ ONLINE: mostrar última conexión ===
+        if [[ $is_online -eq 0 ]]; then
+            if [[ $last_activity -gt 0 ]]; then
+                last_conn_str="Última conexión: $(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")"
             else
-                last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
-                last_conn_str="Última conexión: $last_conn_str"
+                last_conn_str="Nunca conectado"
             fi
         fi
 
@@ -2888,19 +2897,11 @@ view_online_and_stats() {
             [[ $devices -gt 1 ]] && device_word="móviles"
             echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
             echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-            # Transferencia de sesión actual
-            local session_transfer=$((session_up + session_down))
-            local session_transfer_str=$(format_bytes $session_transfer)
-            echo -e "${DATA} ${WHITE}Transferencia sesión:${NC} ${CYAN}$session_transfer_str${NC}"
         else
-            if [[ -n "$last_conn_str" ]]; then
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
-            else
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No Nunca conectado${NC}"
-            fi
+            echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
         fi
 
-        echo -e "${DATA} ${WHITE}Transferencia total:${NC} ${CYAN}$total_transfer_str${NC}"
+        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
         echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
         echo -e "${PURPLE}────────────────────────────────────${NC}"
         ((active++))
@@ -2909,6 +2910,7 @@ view_online_and_stats() {
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
+
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
