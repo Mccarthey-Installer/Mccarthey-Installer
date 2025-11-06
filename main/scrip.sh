@@ -2557,70 +2557,140 @@ format_bytes() {
 }
 
 # === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA CRON) ===
-update_and_get_stats() {
+# === FUNCIÓN PARA CONTAR DISPOSITIVOS ÚNICOS DESDE access.log (FALLBACK) ===
+get_devices() {
+    local email="$1"
     local now=$(date +%s)
-    local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
-    if [[ -z "$stats_output" ]]; then
-        echo "Error: No se pudo obtener stats de Xray."
-        return
+    local logfile="$LOG_DIR/access.log"
+    local count=0
+
+    [[ ! -f "$logfile" ]] && { echo 0; return; }
+
+    count=$(
+        awk -v now="$now" -v email="email: $email" '
+        BEGIN { FS = " " }
+        {
+            if ($1 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ || $2 !~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) next
+            cmd = "date -d \"" $1 " " $2 "\" +%s"
+            if ((cmd | getline ts) <= 0) { close(cmd); next }
+            close(cmd)
+
+            accepted = 0; em = 0; conn = ""
+            for (i=3; i<=NF; i++) {
+                if ($i == "accepted") accepted = 1
+                if ($i == email) em = 1
+                if ($i ~ /^(tcp|udp):[^:]+:[0-9]+$/ || $i ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]+$/) {
+                    gsub(/^(tcp|udp):/, "", $i)
+                    conn = $i
+                }
+            }
+            if (accepted && em && conn != "" && (now - ts) < 300) {
+                unique[conn] = 1
+            }
+        }
+        END { print length(unique) }
+        ' "$logfile"
+    )
+
+    echo "${count:-0}"
+}
+
+
+# === FUNCIÓN PRINCIPAL: VER USUARIOS ONLINE Y ESTADÍSTICAS (CON FALLBACK) ===
+view_online_and_stats() {
+    reset_terminal
+    update_and_get_stats
+
+    local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
+    local sessions_valid=0
+
+    if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
+        sessions_valid=1
     fi
 
-    # Crear temp file para stats actuales
-    local temp_stats=$(mktemp)
-    echo "$stats_output" | jq '.stat[] | {(.name): .value}' | jq -s 'add' > "$temp_stats"
+    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
+    local active=0
+    local now=$(date +%s)
 
-    # Si stats.db no tiene entradas, inicializar con 0s
-    if [[ ! -s "$STATS_FILE" ]]; then
-        while IFS=: read -r name uuid _ _ _ _; do  # Ignorar extras
-            [[ $name == "#"* ]] && continue
-            echo "$name:0:0:0:$now:0:0:0:0:0:0" >> "$STATS_FILE"  # name:total_up:total_down:total_time:last_check:last_up:last_down:session_start:last_activity:session_up:session_down
-        done < "$USERS_FILE"
-    fi
-
-    # Actualizar stats acumuladas
-    local temp_file=$(mktemp)
     while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
-        local current_up=$(jq ".\"user>>>$name>>>traffic>>>uplink\" // 0" "$temp_stats")
-        local current_down=$(jq ".\"user>>>$name>>>traffic>>>downlink\" // 0" "$temp_stats")
+        local is_online=0
+        local devices=0
+        local session_time_str="00:00:00"
+        local last_conn_str=""
 
-        local diff_up=$((current_up - last_up))
-        local diff_down=$((current_down - last_down))
-        ((diff_up < 0)) && diff_up=0
-        ((diff_down < 0)) && diff_down=0
-
-        local new_total_up=$((total_up + diff_up))
-        local new_total_down=$((total_down + diff_down))
-        local new_session_up=$session_up
-        local new_session_down=$session_down
-        local new_session_start=$session_start
-        local new_last_activity=$last_activity
-        local time_since_last_check=$((now - last_check))
-        local new_total_time=$total_time
-
-        if (( diff_up > 0 || diff_down > 0 )); then
-            if (( last_activity == 0 )); then  # Primera conexión ever
-                new_session_start=$now
-                new_session_up=$diff_up
-                new_session_down=$diff_down
-                new_last_activity=$now
-            else
-                if (( now - last_activity > 60 )); then  # Nueva sesión después de inactividad (reducido a 60s)
-                    new_session_start=$now
-                    new_session_up=0
-                    new_session_down=0
+        # === PRIORIDAD 1: querySessions (API de Xray) ===
+        if [[ $sessions_valid -eq 1 ]]; then
+            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
+            if [[ $devices -gt 0 ]]; then
+                is_online=1
+                local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
+                if [[ $min_creation -gt 0 ]]; then
+                    session_sec=$((now - min_creation))
+                    session_time_str=$(format_time $session_sec)
                 fi
-                new_session_up=$((new_session_up + diff_up))
-                new_session_down=$((new_session_down + diff_down))
-                new_last_activity=$now
             fi
-            new_total_time=$((total_time + time_since_last_check / 60))  # Agregar tiempo en minutos
         fi
 
-        echo "$name:$new_total_up:$new_total_down:$new_total_time:$now:$current_up:$current_down:$new_session_start:$new_last_activity:$new_session_up:$new_session_down" >> "$temp_file"
+        # === FALLBACK: get_devices() desde access.log (si API falla o no detecta) ===
+        if [[ $is_online -eq 0 ]]; then
+            devices=$(get_devices "$name")
+            if [[ $devices -gt 0 ]]; then
+                is_online=1
+                session_time_str="??:??:??"
+                if [[ $last_activity -gt 0 ]]; then
+                    session_sec=$((now - last_activity))
+                    [[ $session_sec -gt 0 ]] && session_time_str=$(format_time $session_sec)
+                fi
+            fi
+        fi
+
+        # === FALLBACK FINAL: last_activity (si no hay nada) ===
+        if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
+            if (( now - last_activity < 20 )); then
+                is_online=1
+                devices=1
+                session_sec=$((now - session_start))
+                [[ $session_sec -lt 0 ]] && session_sec=0
+                session_time_str=$(format_time $session_sec)
+            else
+                last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
+                last_conn_str="Última conexión: $last_conn_str"
+            fi
+        fi
+
+        # === TRANSFERENCIA Y TIEMPO TOTAL ===
+        local total_transfer=$((total_up + total_down))
+        local total_transfer_str=$(format_bytes $total_transfer)
+        local total_time_sec=$((total_time * 60))
+        local total_time_str=$(format_time $total_time_sec)
+
+        # === MOSTRAR ===
+        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+        
+        if [[ $is_online -eq 1 ]]; then
+            local device_word="móvil"
+            [[ $devices -gt 1 ]] && device_word="móviles"
+            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
+            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
+            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
+        else
+            if [[ -n "$last_conn_str" ]]; then
+                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
+            else
+                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No Nunca conectado${NC}"
+            fi
+            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
+            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
+        fi
+
+        echo -e "${PURPLE}────────────────────────────────────${NC}"
+        ((active++))
     done < "$STATS_FILE"
 
-    mv "$temp_file" "$STATS_FILE"
-    rm "$temp_stats"
+    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
 
 menu_v2ray() {
@@ -2817,86 +2887,6 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-view_online_and_stats() {
-    reset_terminal
-    update_and_get_stats
-
-    local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
-    local sessions_valid=0
-
-    if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
-        sessions_valid=1
-    fi
-
-    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-    echo -e "${PURPLE}════════════════════════════════════${NC}"
-    local active=0
-    local now=$(date +%s)
-
-    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
-        local is_online=0
-        local devices=0
-        local session_time_str="00:00:00"
-        local last_conn_str=""
-
-        # === PRIORIDAD: querySessions ===
-        if [[ $sessions_valid -eq 1 ]]; then
-            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
-            if [[ $devices -gt 0 ]]; then
-                is_online=1
-                local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
-                if [[ $min_creation -gt 0 ]]; then
-                    session_sec=$((now - min_creation))
-                    session_time_str=$(format_time $session_sec)
-                fi
-            fi
-        fi
-
-        # === FALLBACK: last_activity (si no hay querySessions) ===
-        if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
-            if (( now - last_activity < 20 )); then
-                is_online=1
-                devices=1
-                session_sec=$((now - session_start))
-                [[ $session_sec -lt 0 ]] && session_sec=0
-                session_time_str=$(format_time $session_sec)
-            else
-                last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
-                last_conn_str="Última conexión: $last_conn_str"
-            fi
-        fi
-
-        # === TRANSFERENCIA Y TIEMPO TOTAL ===
-        local total_transfer=$((total_up + total_down))
-        local total_transfer_str=$(format_bytes $total_transfer)
-        local total_time_sec=$((total_time * 60))
-        local total_time_str=$(format_time $total_time_sec)
-
-        # === MOSTRAR ===
-        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-        
-        if [[ $is_online -eq 1 ]]; then
-            local device_word="móvil"
-            [[ $devices -gt 1 ]] && device_word="móviles"
-            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
-            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-        else
-            if [[ -n "$last_conn_str" ]]; then
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
-            else
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No Nunca conectado${NC}"
-            fi
-        fi
-
-        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
-        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
-        echo -e "${PURPLE}────────────────────────────────────${NC}"
-        ((active++))
-    done < "$STATS_FILE"
-
-    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-}
 
     remove_user_menu() {
         reset_terminal
