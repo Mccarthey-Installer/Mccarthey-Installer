@@ -2820,22 +2820,19 @@ EOF
             view_online_and_stats() {
     reset_terminal
 
-    # === CONFIGURAR CRON CADA MINUTO AUTOMÁTICAMENTE ===
+    # === CONFIGURAR CRON CADA MINUTO (UNA VEZ) ===
     local cron_job="* * * * * /bin/bash -c 'source /root/scrip.sh; update_and_get_stats'"
     local current_cron=$(crontab -l 2>/dev/null | grep -v "^#" | grep "update_and_get_stats" || true)
     if [[ "$current_cron" != "$cron_job" ]]; then
         (crontab -l 2>/dev/null | grep -v "update_and_get_stats"; echo "$cron_job") | crontab -
-        echo -e "${CHECK} ${GREEN}Cron actualizado: stats cada minuto.${NC}"
+        echo -e "${CHECK} ${GREEN}Cron configurado: stats cada minuto.${NC}"
     fi
 
     update_and_get_stats
 
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
     local sessions_valid=0
-
-    if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
-        sessions_valid=1
-    fi
+    [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1 && sessions_valid=1
 
     echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
     echo -e "${PURPLE}════════════════════════════════════${NC}"
@@ -2848,32 +2845,32 @@ EOF
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # === PRIORIDAD 1: querySessions (tiempo real) ===
+        # === ESTADO ACTUAL: querySessions (tiempo real) ===
         if [[ $sessions_valid -eq 1 ]]; then
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $devices -gt 0 ]]; then
                 is_online=1
                 local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
                 if [[ $min_creation -gt 0 ]]; then
-                    session_sec=$((now - min_creation))
+                    local session_sec=$((now - min_creation))
                     session_time_str=$(format_time $session_sec)
                 fi
             fi
         fi
 
-        # === PRIORIDAD 2: session_start persistente + actividad reciente ===
+        # === SI NO HAY CONEXIÓN ACTIVA: mostrar tiempo guardado (no continuar) ===
         if [[ $is_online -eq 0 && $session_start -gt 0 ]]; then
-            local time_since_start=$((now - session_start))
-            if (( time_since_start < 300 )) && (( now - last_activity < 120 )); then
-                is_online=1
-                devices=$(get_devices "$name")
-                [[ $devices -eq 0 ]] && devices=1
-                session_sec=$time_since_start
+            local session_sec=$((now - session_start))
+            # Solo mostrar si está "recién desconectado" (últimos 2 min)
+            if (( now - last_activity < 120 )); then
                 session_time_str=$(format_time $session_sec)
+            else
+                # Más de 2 min sin actividad → sesión cerrada
+                session_time_str="00:00:00"
             fi
         fi
 
-        # === PRIORIDAD 3: solo get_devices (logs) como último recurso ===
+        # === FALLBACK: logs (solo si no hay querySessions) ===
         if [[ $is_online -eq 0 ]]; then
             devices=$(get_devices "$name")
             if [[ $devices -gt 0 ]]; then
@@ -2884,7 +2881,7 @@ EOF
             fi
         fi
 
-        # === SI NO ESTÁ ONLINE: mostrar última conexión ===
+        # === OFFLINE: mostrar última conexión ===
         if [[ $is_online -eq 0 ]]; then
             if [[ $last_activity -gt 0 ]]; then
                 last_conn_str="Última conexión: $(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")"
@@ -2917,7 +2914,7 @@ EOF
         ((active++))
     done < "$STATS_FILE"
 
-    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+    [[ $active -eq 0 ]] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
     remove_user_menu() {
