@@ -2819,11 +2819,11 @@ EOF
 
     # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
     # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (MEJORADA) ===
+# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS (CON ÚLTIMA DESCONEXIÓN) ===
 view_online_and_stats() {
     reset_terminal
-    update_and_get_stats  # Actualiza stats antes de mostrar
+    update_and_get_stats
 
-    # Obtener sesiones activas directamente del API
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
     local now=$(date +%s)
 
@@ -2836,52 +2836,51 @@ view_online_and_stats() {
         local is_online=0
         local devices=0
         local session_time_str="00:00:00"
+        local last_seen_str=""
 
-        # === DETECCIÓN DE CONEXIÓN USANDO querySessions (PRIORITARIO) ===
+        # === DETECCIÓN DE CONEXIÓN ===
         if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions[] | select(.user.email == "'"$name"'")' >/dev/null 2>&1; then
             is_online=1
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
-            
-            # Tiempo de la sesión más antigua (primer dispositivo conectado)
             local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
             if [[ $min_creation -gt 0 ]]; then
                 session_time_str=$(format_time $((now - min_creation)))
             fi
+            # Si está conectado, last_activity se actualiza en update_and_get_stats
         else
-            # === Fallback: usar última actividad si no hay sesiones (por compatibilidad) ===
-            if (( now - last_activity < 60 && last_activity > 0 )); then
-                is_online=1
-                devices=1
-                session_time_str=$(format_time $((now - session_start)))
+            # === USUARIO DESCONECTADO O NUNCA CONECTADO ===
+            if (( last_activity > 0 )); then
+                last_seen_str=$(format_last_seen $last_activity)
+            else
+                last_seen_str="Nunca conectado"
             fi
         fi
 
-        # === TRANSFERENCIA TOTAL (sin ↑ ↓) ===
+        # === TRANSFERENCIA TOTAL ===
         local total_transfer=$((total_up + total_down))
         local total_transfer_str=$(format_bytes $total_transfer)
 
-        # Tiempo total conectado
+        # === TIEMPO TOTAL ===
         local total_time_sec=$((total_time * 60))
         local total_time_str=$(format_time $total_time_sec)
 
-        # === MOSTRAR INFO ===
+        # === MOSTRAR ===
         echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-        echo -e "${KEY} ${WHITE}Online:${NC} $( 
-    if [ $is_online -eq 1 ]; then 
-        echo -n "${GREEN}✅ $devices conectado"
-        [ $devices -gt 1 ] && echo -n "s"
-        echo -n "${NC}"
-    else 
-        echo -n "${RED}❌${NC}"
-    fi 
-)"
-        
+
+        # Online o última vez
         if [ $is_online -eq 1 ]; then
+            echo -e "${KEY} ${WHITE}Online:${NC} $( 
+                echo -n "${GREEN}✅ $devices conectado"
+                [ $devices -gt 1 ] && echo -n "s"
+                echo -n "${NC}"
+            )"
             echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+        else
+            echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}❌ $last_seen_str${NC}"
         fi
-        
+
         echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str}${NC}"
-        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str}${NC}"
+        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str${NC}"
         echo -e "${PURPLE}────────────────────────────────────${NC}"
         ((active++))
     done < "$STATS_FILE"
