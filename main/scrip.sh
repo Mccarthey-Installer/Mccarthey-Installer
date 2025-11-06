@@ -2483,7 +2483,6 @@ eliminar_swap() {
 }
 
 
-
 # === VARIABLES GLOBALES DEL V2RAY ===
 CONFIG_DIR="/usr/local/etc/xray"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -2524,7 +2523,7 @@ UP="⬆️"
 CLOCK="⏱️"  # Emoji para tiempo de conexión
 DATA="📊"   # Emoji para transferencia de datos
 
-# === FUNCIONES GLOBALES NECESARIAS PARA BACKGROUND ===
+# === FUNCIONES GLOBALES NECESARIAS PARA CRON ===
 midnight_tomorrow() {
     date -d "tomorrow 00:00" +%s 2>/dev/null || date -d "next day 00:00" +%s
 }
@@ -2556,7 +2555,7 @@ format_bytes() {
     fi
 }
 
-# === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA BACKGROUND) ===
+# === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA CRON) ===
 update_and_get_stats() {
     local now=$(date +%s)
     local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
@@ -2656,7 +2655,7 @@ menu_v2ray() {
     # - Busca "accepted" y "email: $email" en cualquier posición
     # - Extrae el timestamp de los dos primeros campos (fecha y hora)
     # - Extrae IP:PORT del campo que contenga "tcp:" o "udp:"
-    # - Sólo cuenta conexiones únicas en los últimos 600 segundos (10 min)
+    # - Sólo cuenta conexiones únicas en los últimos 300 segundos (5 min)
     count=$(
         awk -v now="$now" -v email="email: $email" '
         BEGIN { FS = " " }
@@ -2687,7 +2686,7 @@ menu_v2ray() {
                 }
             }
 
-            if (accepted && em && conn != "" && (now - ts) < 600) {
+            if (accepted && em && conn != "" && (now - ts) < 300) {
                 unique[conn] = 1
             }
         }
@@ -2708,14 +2707,8 @@ menu_v2ray() {
         echo -e "${CHECK} ${GREEN}Xray instalado correctamente.${NC}"
         sleep 1.5
 
-        # Iniciar actualizador en background con nohup
-        echo -e "${GREEN}Iniciando actualizador de stats en segundo plano...${NC}"
-        if ! ps aux | grep -v grep | grep "update_and_get_stats_loop" > /dev/null; then
-          nohup bash -c 'while true; do source /root/scrip.sh; update_and_get_stats; sleep 60; done' &> /dev/null &
-          echo -e "${CHECK} Actualizador iniciado con nohup.${NC}"
-        else
-          echo -e "${YELLOW}Actualizador ya corriendo.${NC}"
-        fi
+        # Configurar cron para update_stats cada minuto
+        (crontab -l 2>/dev/null; echo "* * * * * /bin/bash -c 'source /root/scrip.sh; update_and_get_stats'") | crontab -
     }
 
     create_service() {
@@ -2826,7 +2819,7 @@ EOF
     # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
     view_online_and_stats() {
         reset_terminal
-        update_and_get_stats  # Actualizar antes de mostrar (el background ya lo mantiene actualizado, pero por seguridad)
+        update_and_get_stats  # Actualizar antes de mostrar
 
         echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
@@ -2840,6 +2833,9 @@ EOF
             if (( now - last_activity < 60 && last_activity > 0 )); then  # Reducido a 60s
                 is_online=1
                 devices=$(get_devices "$name")
+                if [[ $devices -eq 0 ]]; then devices=1; fi  # Hack: al menos 1 si online pero parsing da 0
+                local session_time_sec=$((now - session_start))
+                session_time_str=$(format_time $session_time_sec)
             fi
 
             local total_transfer=$((total_up + total_down))
@@ -2852,8 +2848,6 @@ EOF
             echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
             echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
             if [ $is_online -eq 1 ]; then
-                local session_time_sec=$((now - session_start))
-                session_time_str=$(format_time $session_time_sec)
                 echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
             fi
             echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str} (↑ $up_str | ↓ $down_str)${NC}"
@@ -3446,8 +3440,6 @@ EOF
     show_v2ray_menu
 }
 
-# Llama al menú principal (agrega esto al final si es el script completo)
-menu_v2ray
 
 # ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
@@ -3455,7 +3447,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
