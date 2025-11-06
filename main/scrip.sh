@@ -2819,9 +2819,15 @@ EOF
 
 view_online_and_stats() {
     reset_terminal
-    update_and_get_stats  # Actualizar antes de mostrar
+    update_and_get_stats
 
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
+    local sessions_valid=0
+
+    # Validar si querySessions devolvió JSON válido con sesiones
+    if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
+        sessions_valid=1
+    fi
 
     echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
     echo -e "${PURPLE}════════════════════════════════════${NC}"
@@ -2834,45 +2840,53 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # === DETECTAR SI ESTÁ CONECTADO (querySessions) ===
-        if [[ -n "$sessions_output" ]]; then
+        # === PRIORIDAD 1: querySessions (mejor método) ===
+        if [[ $sessions_valid -eq 1 ]]; then
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $devices -gt 0 ]]; then
                 is_online=1
                 local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
-                local session_sec=0
                 if [[ $min_creation -gt 0 ]]; then
                     session_sec=$((now - min_creation))
+                    session_time_str=$(format_time $session_sec)
                 fi
-                session_time_str=$(format_time $session_sec)
             fi
         fi
 
-        # === SI NO ESTÁ ONLINE, usar last_activity del stats.db ===
+        # === FALLBACK: usar last_activity si no hay querySessions o está vacío ===
         if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
-            last_conn_str=$(date -d "@$last_activity" +"%I:%M %p" 2>/dev/null || echo "??:??")
-            last_conn_str="Última conexión: $last_conn_str"
+            # Si hubo tráfico reciente (últimos 2 min), considerarlo online (fallback)
+            if (( now - last_activity < 120 )); then
+                is_online=1
+                devices=1
+                session_sec=$((now - session_start))
+                [[ $session_sec -lt 0 ]] && session_sec=0
+                session_time_str=$(format_time $session_sec)
+            else
+                last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
+                last_conn_str="Última conexión: $last_conn_str"
+            fi
         fi
 
-        # === TRANSFERENCIA TOTAL (sin ↑↓) ===
+        # === TRANSFERENCIA (solo total) ===
         local total_transfer=$((total_up + total_down))
         local total_transfer_str=$(format_bytes $total_transfer)
 
-        # === TIEMPO TOTAL CONECTADO ===
+        # === TIEMPO TOTAL ===
         local total_time_sec=$((total_time * 60))
         local total_time_str=$(format_time $total_time_sec)
 
-        # === MOSTRAR INFO ===
+        # === MOSTRAR ===
         echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
         
         if [[ $is_online -eq 1 ]]; then
-            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}✅ ($devices conectado$[ $devices -gt 1 ] && echo 's' || echo '' )${NC}"
+            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices móvil$[ $devices -gt 1 ] && echo 'es' || echo '' )${NC}"
             echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
         else
             if [[ -n "$last_conn_str" ]]; then
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}❌ $last_conn_str${NC}"
+                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
             else
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}❌ Nunca conectado${NC}"
+                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No Nunca conectado${NC}"
             fi
         fi
 
@@ -2883,7 +2897,6 @@ view_online_and_stats() {
     done < "$STATS_FILE"
 
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
 
