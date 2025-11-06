@@ -2558,10 +2558,9 @@ format_bytes() {
 
 # === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA CRON) ===
 update_and_get_stats() {
-    local now=$(date +%s)
+    local now=$(date + 126)
     local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
     if [[ -z "$stats_output" ]]; then
-        echo "Error: No se pudo obtener stats de Xray."
         return
     fi
 
@@ -2594,24 +2593,27 @@ update_and_get_stats() {
         local time_since_last_check=$((now - last_check))
         local new_total_time=$total_time
 
-        if (( diff_up > 0 || diff_down > 0 )); then
-            if (( last_activity == 0 )); then
+        # === DETECCIÓN DE CONEXIÓN ACTIVA (querySessions) ===
+        local active_now=0
+        local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
+        if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
+            local count=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
+            [[ $count -gt 0 ]] && active_now=1
+        fi
+
+        if (( diff_up > 0 || diff_down > 0 || active_now == 1 )); then
+            # HAY ACTIVIDAD O CONEXIÓN ACTIVA
+            if (( session_start == 0 || (now - last_activity > 300) )); then
+                # NUEVA SESIÓN: >5 min sin actividad
                 new_session_start=$now
                 new_session_up=$diff_up
                 new_session_down=$diff_down
-                new_last_activity=$now
             else
-                # NUEVA SESIÓN SOLO SI HUBO >5 MIN DE INACTIVIDAD
-                if (( now - last_activity > 300 )); then
-                    new_session_start=$now
-                    new_session_up=$diff_up
-                    new_session_down=$diff_down
-                else
-                    new_session_up=$((new_session_up + diff_up))
-                    new_session_down=$((new_session_down + diff_down))
-                fi
-                new_last_activity=$now
+                # CONTINUAR SESIÓN
+                new_session_up=$((new_session_up + diff_up))
+                new_session_down=$((new_session_down + diff_down))
             fi
+            new_last_activity=$now
             new_total_time=$((total_time + time_since_last_check / 60))
         fi
 
@@ -2622,6 +2624,94 @@ update_and_get_stats() {
     rm "$temp_stats"
 }
 
+view_online_and_stats() {
+    reset_terminal
+
+    # === CONFIGURAR CRON CADA MINUTO ===
+    local cron_job="* * * * * /bin/bash -c 'source /root/scrip.sh; update_and_get_stats'"
+    local current_cron=$(crontab -l 2>/dev/null | grep -v "^#" | grep "update_and_get_stats" || true)
+    if [[ "$current_cron" != "$cron_job" ]]; then
+        (crontab -l 2>/dev/null | grep -v "update_and_get_stats"; echo "$cron_job") | crontab -
+        echo -e "${CHECK} ${GREEN}Cron configurado: stats cada minuto.${NC}"
+    fi
+
+    update_and_get_stats
+
+    local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
+    local sessions_valid=0
+    [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1 && sessions_valid=1
+
+    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
+    local active=0
+    local now=$(date +%s)
+
+    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+        local is_online=0
+        local devices=0
+        local session_time_str="00:00:00"
+        local last_conn_str=""
+
+        # === PRIORIDAD 1: querySessions (tiempo real) ===
+        if [[ $sessions_valid -eq 1 ]]; then
+            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
+            if [[ $devices -gt 0 ]]; then
+                is_online=1
+                local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
+                if [[ $min_creation -gt 0 ]]; then
+                    local session_sec=$((now - min_creation))
+                    session_time_str=$(format_time $session_sec)
+                fi
+            fi
+        fi
+
+        # === PRIORIDAD 2: fallback a logs si no hay querySessions ===
+        if [[ $is_online -eq 0 ]]; then
+            devices=$(get_devices "$name")
+            if [[ $devices -gt 0 ]]; then
+                is_online=1
+                local session_sec=$((now - session_start))
+                [[ $session_sec -lt 0 ]] && session_sec=0
+                session_time_str=$(format_time $session_sec)
+            fi
+        fi
+
+        # === OFFLINE: mostrar última conexión ===
+        if [[ $is_online -eq 0 ]]; then
+            if [[ $last_activity -gt 0 ]]; then
+                last_conn_str="Última conexión: $(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")"
+            else
+                last_conn_str="Nunca conectado"
+            fi
+        fi
+
+        # === TRANSFERENCIA Y TIEMPO TOTAL ===
+        local total_transfer=$((total_up + total_down))
+        local total_transfer_str=$(format_bytes $total_transfer)
+        local total_time_sec=$((total_time * 60))
+        local total_time_str=$(format_time $total_time_sec)
+
+        # === MOSTRAR ===
+        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+        
+        if [[ $is_online -eq 1 ]]; then
+            local device_word="móvil"
+            [[ $devices -gt 1 ]] && device_word="móviles"
+            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
+            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+        else
+            echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
+        fi
+
+        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
+        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
+        echo -e "${PURPLE}────────────────────────────────────${NC}"
+        ((active++))
+    done < "$STATS_FILE"
+
+    [[ $active -eq 0 ]] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+}
 menu_v2ray() {
     # === VARIABLES LOCALES (el resto ya global) ===
 
@@ -2817,106 +2907,7 @@ EOF
     }
 
 
-            view_online_and_stats() {
-    reset_terminal
-
-    # === CONFIGURAR CRON CADA MINUTO (UNA VEZ) ===
-    local cron_job="* * * * * /bin/bash -c 'source /root/scrip.sh; update_and_get_stats'"
-    local current_cron=$(crontab -l 2>/dev/null | grep -v "^#" | grep "update_and_get_stats" || true)
-    if [[ "$current_cron" != "$cron_job" ]]; then
-        (crontab -l 2>/dev/null | grep -v "update_and_get_stats"; echo "$cron_job") | crontab -
-        echo -e "${CHECK} ${GREEN}Cron configurado: stats cada minuto.${NC}"
-    fi
-
-    update_and_get_stats
-
-    local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
-    local sessions_valid=0
-    [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1 && sessions_valid=1
-
-    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-    echo -e "${PURPLE}════════════════════════════════════${NC}"
-    local active=0
-    local now=$(date +%s)
-
-    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
-        local is_online=0
-        local devices=0
-        local session_time_str="00:00:00"
-        local last_conn_str=""
-
-        # === ESTADO ACTUAL: querySessions (tiempo real) ===
-        if [[ $sessions_valid -eq 1 ]]; then
-            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
-            if [[ $devices -gt 0 ]]; then
-                is_online=1
-                local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
-                if [[ $min_creation -gt 0 ]]; then
-                    local session_sec=$((now - min_creation))
-                    session_time_str=$(format_time $session_sec)
-                fi
-            fi
-        fi
-
-        # === SI NO HAY CONEXIÓN ACTIVA: mostrar tiempo guardado (no continuar) ===
-        if [[ $is_online -eq 0 && $session_start -gt 0 ]]; then
-            local session_sec=$((now - session_start))
-            # Solo mostrar si está "recién desconectado" (últimos 2 min)
-            if (( now - last_activity < 120 )); then
-                session_time_str=$(format_time $session_sec)
-            else
-                # Más de 2 min sin actividad → sesión cerrada
-                session_time_str="00:00:00"
-            fi
-        fi
-
-        # === FALLBACK: logs (solo si no hay querySessions) ===
-        if [[ $is_online -eq 0 ]]; then
-            devices=$(get_devices "$name")
-            if [[ $devices -gt 0 ]]; then
-                is_online=1
-                session_sec=$((now - session_start))
-                [[ $session_sec -lt 0 ]] && session_sec=0
-                session_time_str=$(format_time $session_sec)
-            fi
-        fi
-
-        # === OFFLINE: mostrar última conexión ===
-        if [[ $is_online -eq 0 ]]; then
-            if [[ $last_activity -gt 0 ]]; then
-                last_conn_str="Última conexión: $(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")"
-            else
-                last_conn_str="Nunca conectado"
-            fi
-        fi
-
-        # === TRANSFERENCIA Y TIEMPO TOTAL ===
-        local total_transfer=$((total_up + total_down))
-        local total_transfer_str=$(format_bytes $total_transfer)
-        local total_time_sec=$((total_time * 60))
-        local total_time_str=$(format_time $total_time_sec)
-
-        # === MOSTRAR ===
-        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-        
-        if [[ $is_online -eq 1 ]]; then
-            local device_word="móvil"
-            [[ $devices -gt 1 ]] && device_word="móviles"
-            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
-            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-        else
-            echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
-        fi
-
-        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
-        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
-        echo -e "${PURPLE}────────────────────────────────────${NC}"
-        ((active++))
-    done < "$STATS_FILE"
-
-    [[ $active -eq 0 ]] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-}
+            
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
