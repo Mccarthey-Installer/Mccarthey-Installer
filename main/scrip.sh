@@ -2863,7 +2863,7 @@ EOF
             local total_time_str=$(format_time $total_time_sec)
 
             echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ (UUID conectado)${NC}" || echo "${RED}❌${NC}" )"
+            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ ($devices dispositivos)${NC}" || echo "${RED}❌${NC}" )"
             if [ $is_online -eq 1 ]; then
                 echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
             fi
@@ -3463,7 +3463,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
