@@ -2484,6 +2484,7 @@ eliminar_swap() {
 
 
 
+
 # === VARIABLES GLOBALES DEL V2RAY ===
 CONFIG_DIR="/usr/local/etc/xray"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -2647,18 +2648,13 @@ menu_v2ray() {
     local email="$1"
     local now=$(date +%s)
     local logfile="$LOG_DIR/access.log"
-    local count=0
 
-    # Si el archivo no existe o está vacío, devolver 0
-    [[ -f "$logfile" ]] || { echo 0; return; }
+    # Si el archivo no existe o está vacío, devolver 0 0
+    [[ -f "$logfile" ]] || { echo "0 0"; return; }
 
-    # Usamos un awk más inteligente:
-    # - Busca "accepted" y "email: $email" en cualquier posición
-    # - Extrae el timestamp de los dos primeros campos (fecha y hora)
-    # - Extrae IP:PORT del campo que contenga "tcp:" o "udp:"
-    # - Sólo cuenta conexiones únicas en los últimos 300 segundos (5 min)
-    count=$(
-        awk -v now="$now" -v email="email: $email" '
+    # Extraer todas las conexiones históricas para este email
+    local connections=$(
+        awk -v email="email: $email" '
         BEGIN { FS = " " }
         {
             # Reconstruir timestamp de $1 y $2 (ej: "2025-11-05" "09:45:23")
@@ -2687,15 +2683,34 @@ menu_v2ray() {
                 }
             }
 
-            if (accepted && em && conn != "" && (now - ts) < 300) {
-                unique[conn] = 1
+            if (accepted && em && conn != "") {
+                print conn " " ts
             }
         }
-        END { print length(unique) }
         ' "$logfile"
     )
 
-    echo "${count:-0}"
+    # Ahora, procesar cada conexión y verificar si está activa con ss
+    local count=0
+    local min_ts=$now
+    while IFS=' ' read -r conn ts; do
+        IFS=':' read -r ip port <<< "$conn"
+        # Verificar si la conexión está ESTABLISHED
+        if ss -tn | awk -v lport="$PORT" -v rip="$ip" -v rport="$port" \
+            '$1 == "ESTAB" && $4 ~ (":" lport "$") && $5 == (rip ":" rport) { exit 0 } END { exit 1 }'; then
+            ((count++))
+            if (( ts < min_ts )); then
+                min_ts=$ts
+            fi
+        fi
+    done <<< "$connections"
+
+    local session_sec=0
+    if (( count > 0 )); then
+        session_sec=$((now - min_ts))
+    fi
+
+    echo "$count $session_sec"
 }
     install_xray() {
         reset_terminal
@@ -2822,35 +2837,18 @@ EOF
         reset_terminal
         update_and_get_stats  # Actualizar antes de mostrar
 
-        # Obtener sesiones activas usando querySessions
-        local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
-        if [[ -z "$sessions_output" ]]; then
-            echo -e "${CROSS} ${RED}Error: No se pudo obtener sesiones activas de Xray.${NC}"
-            read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-            return
-        fi
-
-        # Parsear sesiones activas y contar por email (name)
-        declare -A active_counts
-        while read -r email; do
-            [[ -n "$email" ]] && ((active_counts["$email"]++))
-        done < <(echo "$sessions_output" | jq -r '.sessions[].client.email // empty' 2>/dev/null)
-
         echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
         local active=0
         local now=$(date +%s)
 
         while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+            read -r devices session_sec <<< $(get_devices "$name")
             local is_online=0
-            local devices=0
             local session_time_str="00:00:00"
-            if [[ -n "${active_counts[$name]}" ]]; then
+            if [[ $devices -gt 0 ]]; then
                 is_online=1
-                devices="${active_counts[$name]}"
-                if [[ $devices -eq 0 ]]; then devices=1; fi  # Asegurar al menos 1 si online
-                local session_time_sec=$((now - session_start))
-                session_time_str=$(format_time $session_time_sec)
+                session_time_str=$(format_time $session_sec)
             fi
 
             local total_transfer=$((total_up + total_down))
@@ -2858,8 +2856,13 @@ EOF
             local total_time_sec=$((total_time * 60))  # total_time en minutos a segundos
             local total_time_str=$(format_time $total_time_sec)
 
+            local conectado_str="conectado"
+            if [[ $devices -ne 1 ]]; then
+                conectado_str="conectados"
+            fi
+
             echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ $devices conectado(s)${NC}" || echo "${RED}❌${NC}" )"
+            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ $devices $conectado_str${NC}" || echo "${RED}❌${NC}" )"
             if [ $is_online -eq 1 ]; then
                 echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
             fi
@@ -3458,7 +3461,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
