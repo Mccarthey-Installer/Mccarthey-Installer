@@ -2854,7 +2854,7 @@ view_online_and_stats() {
 
         # === FALLBACK: last_activity (si no hay querySessions) ===
         if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
-            if (( now - last_activity < 120 )); then
+            if (( now - last_activity < 20 )); then
                 is_online=1
                 devices=1
                 session_sec=$((now - session_start))
