@@ -2642,73 +2642,149 @@ menu_v2ray() {
     [ ! -f "$STATS_FILE" ] && touch "$STATS_FILE"  # Crear stats.db si no existe
 
     # === FUNCIONES LOCALES ===
-    get_devices() {
-        local name=$1
-        local now=$(date +%s)
-        local count=0
-        if [ -f "$LOG_DIR/access.log" ]; then
-            count=$(awk -v now="$now" -v email="$name" '
-                BEGIN { FS=" " }
-                $3 == "accepted" && $(NF-1) == "email:" && $NF == email {
-                    "date -d \"" $1 " " $2 "\" +%s" | getline ts
-                    if (now - ts < 300) {
-                        split($4, parts, ":")
-                        if (length(parts) >= 3) {
-                            key = parts[2] ":" parts[3]
-                            keys[key] = 1
-                        }
+    # === FUNCIONES LOCALES ===
+get_devices() {
+    local name=$1
+    local now=$(date +%s)
+    local count=0
+    if [ -f "$LOG_DIR/access.log" ]; then
+        count=$(awk -v now="$now" -v email="$name" '
+            BEGIN { FS=" " }
+            $3 == "accepted" && /email: / && $NF == email {
+                "date -d \"" $1 " " $2 "\" +%s" | getline ts
+                if (now - ts < 300) {
+                    split($4, parts, ":")  # $4 debería ser como "tcp:IP:PORT" o similar
+                    if (length(parts) >= 3) {
+                        key = parts[2] ":" parts[3]  # IP:PORT como clave única para conexión
+                        keys[key] = 1
                     }
                 }
-                END { print length(keys) }
-            ' "$LOG_DIR/access.log")
+            }
+            END { print length(keys) }
+        ' "$LOG_DIR/access.log")
+    fi
+    echo ${count:-0}  # Eliminado el hack que forzaba a 1; ahora cuenta conexiones únicas reales en los últimos 5 min
+}
+
+# === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA CRON) ===
+update_and_get_stats() {
+    local now=$(date +%s)
+    local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
+    if [[ -z "$stats_output" ]]; then
+        echo "Error: No se pudo obtener stats de Xray."
+        return
+    fi
+
+    # Crear temp file para stats actuales
+    local temp_stats=$(mktemp)
+    echo "$stats_output" | jq '.stat[] | {(.name): .value}' | jq -s 'add' > "$temp_stats"
+
+    # Si stats.db no tiene entradas, inicializar con 0s
+    if [[ ! -s "$STATS_FILE" ]]; then
+        while IFS=: read -r name uuid _ _ _ _; do  # Ignorar extras
+            [[ $name == "#"* ]] && continue
+            echo "$name:0:0:0:$now:0:0:0:0:0:0" >> "$STATS_FILE"  # name:total_up:total_down:total_time:last_check:last_up:last_down:session_start:last_activity:session_up:session_down
+        done < "$USERS_FILE"
+    fi
+
+    # Actualizar stats acumuladas
+    local temp_file=$(mktemp)
+    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+        local current_up=$(jq ".\"user>>>$name>>>traffic>>>uplink\" // 0" "$temp_stats")
+        local current_down=$(jq ".\"user>>>$name>>>traffic>>>downlink\" // 0" "$temp_stats")
+
+        local diff_up=$((current_up - last_up))
+        local diff_down=$((current_down - last_down))
+        ((diff_up < 0)) && diff_up=0
+        ((diff_down < 0)) && diff_down=0
+
+        local new_total_up=$((total_up + diff_up))
+        local new_total_down=$((total_down + diff_down))
+        local new_session_up=$session_up
+        local new_session_down=$session_down
+        local new_session_start=$session_start
+        local new_last_activity=$last_activity
+        local time_since_last_check=$((now - last_check))
+        local new_total_time=$total_time
+
+        if (( diff_up > 0 || diff_down > 0 )); then
+            if (( last_activity == 0 )); then  # Primera conexión ever
+                new_session_start=$now
+                new_session_up=$diff_up
+                new_session_down=$diff_down
+                new_last_activity=$now
+            else
+                if (( now - last_activity > 300 )); then  # Aumentado a 5 min para detectar inactividad real y evitar resets frecuentes
+                    new_session_start=$now
+                    new_session_up=0
+                    new_session_down=0
+                fi
+                new_session_up=$((new_session_up + diff_up))
+                new_session_down=$((new_session_down + diff_down))
+                new_last_activity=$now
+            fi
+            new_total_time=$((total_time + time_since_last_check / 60))  # Agregar tiempo en minutos
+        else
+            if (( last_activity > 0 && now - last_activity <= 300 )); then
+                # Si no hay diff pero última actividad reciente, asumir aún conectado y agregar tiempo
+                new_total_time=$((total_time + time_since_last_check / 60))
+            fi
         fi
-        echo ${count:-0}
-    }
 
-    # === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
-    view_online_and_stats() {
-        reset_terminal
-        update_and_get_stats  # Actualizar antes de mostrar
+        echo "$name:$new_total_up:$new_total_down:$new_total_time:$now:$current_up:$current_down:$new_session_start:$new_last_activity:$new_session_up:$new_session_down" >> "$temp_file"
+    done < "$STATS_FILE"
 
-        echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-        echo -e "${PURPLE}════════════════════════════════════${NC}"
-        local active=0
-        local now=$(date +%s)
+    mv "$temp_file" "$STATS_FILE"
+    rm "$temp_stats"
+}
 
-        while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
-            local is_online=0
-            local devices=0
-            local session_time_str="00:00:00"
-            if (( now - last_activity < 300 && last_activity > 0 )); then  # Aumentado a 300s para detección de online
-                is_online=1
-                devices=$(get_devices "$name")
-                if [[ $devices -eq 0 ]]; then devices=1; fi  # Hack: al menos 1 si online pero parsing da 0
-                local session_time_sec=$((now - session_start))
-                session_time_str=$(format_time $session_time_sec)
-            fi
+# === FUNCIÓN PARA VER USUARIOS ONLINE Y STATS ===
+view_online_and_stats() {
+    reset_terminal
+    update_and_get_stats  # Actualizar antes de mostrar (el cron debería mantenerlo, pero esto asegura frescura)
 
-            local total_transfer=$((total_up + total_down))
-            local total_transfer_str=$(format_bytes $total_transfer)
-            local up_str=$(format_bytes $total_up)
-            local down_str=$(format_bytes $total_down)
-            local total_time_sec=$((total_time * 60))  # total_time en minutos a segundos
-            local total_time_str=$(format_time $total_time_sec)
+    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
+    echo -e "${PURPLE}════════════════════════════════════${NC}"
+    local active=0
+    local now=$(date +%s)
 
-            echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
-            if [ $is_online -eq 1 ]; then
-                echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-            fi
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str} (↑ $up_str | ↓ $down_str)${NC}"
-            echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str}${NC}"
-            echo -e "${PURPLE}────────────────────────────────────${NC}"
-            ((active++))
-        done < "$STATS_FILE"
+    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+        local is_online=0
+        local devices=0
+        local session_time_str="00:00:00"
+        if (( now - last_activity < 300 && last_activity > 0 )); then  # Aumentado a 5 min para online (coincide con inactividad)
+            is_online=1
+            devices=$(get_devices "$name")
+            ((devices == 0)) && devices=1  # Mantengo un mínimo de 1 si online pero log no detecta (por si hay delay en logs)
+        fi
 
-        [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+        local total_transfer=$((total_up + total_down))
+        local total_transfer_str=$(format_bytes $total_transfer)
+        local up_str=$(format_bytes $total_up)
+        local down_str=$(format_bytes $total_down)
+        local total_time_sec=$((total_time * 60))  # total_time en minutos a segundos
+        local total_time_str=$(format_time $total_time_sec)
 
-        read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-    }
+        if [ $is_online -eq 1 ]; then
+            local session_time_sec=$((now - session_start))
+            session_time_str=$(format_time $session_time_sec)
+        fi
+
+        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
+        echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
+        if [ $is_online -eq 1 ]; then
+            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
+        fi
+        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}${total_transfer_str} (↑ $up_str | ↓ $down_str)${NC}"
+        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}${total_time_str}${NC}"
+        echo -e "${PURPLE}────────────────────────────────────${NC}"
+        ((active++))
+    done < "$STATS_FILE"
+
+    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+
+    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
+}
 
     install_xray() {
         reset_terminal
@@ -3418,7 +3494,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
