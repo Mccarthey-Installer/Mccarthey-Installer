@@ -2866,7 +2866,15 @@ view_online_and_stats() {
 
         # === MOSTRAR INFO ===
         echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-        echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ $devices conectado$[ $devices -gt 1 ] && echo 's' || echo '' )${NC}" || echo "${RED}❌${NC}" )"
+        echo -e "${KEY} ${WHITE}Online:${NC} $( 
+    if [ $is_online -eq 1 ]; then 
+        echo -n "${GREEN}✅ $devices conectado"
+        [ $devices -gt 1 ] && echo -n "s"
+        echo -n "${NC}"
+    else 
+        echo -n "${RED}❌${NC}"
+    fi 
+)"
         
         if [ $is_online -eq 1 ]; then
             echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
