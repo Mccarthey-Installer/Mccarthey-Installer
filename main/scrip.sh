@@ -2483,6 +2483,7 @@ eliminar_swap() {
 }
 
 
+
 # === VARIABLES GLOBALES DEL V2RAY ===
 CONFIG_DIR="/usr/local/etc/xray"
 CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -2745,7 +2746,7 @@ EOF
             echo '  "stats": {},'  # Habilitar stats
             echo '  "api": {'
             echo '    "tag": "api",'
-            echo '    "services": ["StatsService"]'
+            echo '    "services": ["StatsService","HandlerService"]'
             echo '  },'
             echo '  "policy": {'
             echo '    "levels": {'
@@ -2821,6 +2822,8 @@ EOF
         reset_terminal
         update_and_get_stats  # Actualizar antes de mostrar
 
+        local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
+
         echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
         echo -e "${PURPLE}════════════════════════════════════${NC}"
         local active=0
@@ -2830,12 +2833,26 @@ EOF
             local is_online=0
             local devices=0
             local session_time_str="00:00:00"
-            if (( now - last_activity < 60 && last_activity > 0 )); then  # Reducido a 60s
-                is_online=1
-                devices=$(get_devices "$name")
-                if [[ $devices -eq 0 ]]; then devices=1; fi  # Hack: al menos 1 si online pero parsing da 0
-                local session_time_sec=$((now - session_start))
-                session_time_str=$(format_time $session_time_sec)
+            if [[ -n "$sessions_output" ]]; then
+                devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
+                if [[ $devices -gt 0 ]]; then
+                    is_online=1
+                    local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
+                    local session_sec=0
+                    if [[ $min_creation -gt 0 ]]; then
+                        session_sec=$((now - min_creation))
+                    fi
+                    session_time_str=$(format_time $session_sec)
+                fi
+            else
+                # Fallback al lógica original si querySessions falla
+                if (( now - last_activity < 60 && last_activity > 0 )); then
+                    is_online=1
+                    devices=$(get_devices "$name")
+                    if [[ $devices -eq 0 ]]; then devices=1; fi
+                    local session_time_sec=$((now - session_start))
+                    session_time_str=$(format_time $session_time_sec)
+                fi
             fi
 
             local total_transfer=$((total_up + total_down))
@@ -2846,7 +2863,7 @@ EOF
             local total_time_str=$(format_time $total_time_sec)
 
             echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}Sí ✅ ($devices dispositivos)${NC}" || echo "${RED}No ❌${NC}" )"
+            echo -e "${KEY} ${WHITE}Online:${NC} $( [ $is_online -eq 1 ] && echo "${GREEN}✅ (UUID conectado)${NC}" || echo "${RED}❌${NC}" )"
             if [ $is_online -eq 1 ]; then
                 echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
             fi
@@ -3440,14 +3457,13 @@ EOF
     show_v2ray_menu
 }
 
-
 # ==== MENU PRINCIPAL ====
 if [[ -t 0 ]]; then
 while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
