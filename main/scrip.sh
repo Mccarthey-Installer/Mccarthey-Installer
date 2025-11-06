@@ -2816,8 +2816,18 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-view_online_and_stats() {
+
+            view_online_and_stats() {
     reset_terminal
+
+    # === CONFIGURAR CRON CADA MINUTO AUTOMÁTICAMENTE ===
+    local cron_job="* * * * * /bin/bash -c 'source /root/scrip.sh; update_and_get_stats'"
+    local current_cron=$(crontab -l 2>/dev/null | grep -v "^#" | grep "update_and_get_stats" || true)
+    if [[ "$current_cron" != "$cron_job" ]]; then
+        (crontab -l 2>/dev/null | grep -v "update_and_get_stats"; echo "$cron_job") | crontab -
+        echo -e "${CHECK} ${GREEN}Cron actualizado: stats cada minuto.${NC}"
+    fi
+
     update_and_get_stats
 
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
@@ -2910,7 +2920,6 @@ view_online_and_stats() {
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
-
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
@@ -3395,6 +3404,17 @@ EOF
 
         read -p "Presiona Enter...${NC}" -r </dev/tty
     }
+
+
+    setup_cron_minute() {
+    local cron_job="* * * * * /bin/bash -c 'source /root/scrip.sh; update_and_get_stats'"
+    local current_cron=$(crontab -l 2>/dev/null | grep -v "^#" | grep "update_and_get_stats" || true)
+
+    if [[ "$current_cron" != "$cron_job" ]]; then
+        (crontab -l 2>/dev/null | grep -v "update_and_get_stats"; echo "$cron_job") | crontab -
+        echo -e "${CHECK} ${GREEN}Cron actualizado: stats cada minuto.${NC}"
+    fi
+}
 
     show_v2ray_menu() {  
     reset_terminal  
