@@ -2562,7 +2562,7 @@ update_and_get_stats() {
     local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
 
-    # === OBTENER STATS ACTUALES ===
+    # === STATS ACTUALES ===
     local temp_stats=$(mktemp)
     if [[ -n "$stats_output" ]]; then
         echo "$stats_output" | jq '.stat[] | {(.name): .value}' | jq -s 'add' > "$temp_stats"
@@ -2570,16 +2570,15 @@ update_and_get_stats() {
         echo "{}" > "$temp_stats"
     fi
 
-    # === INICIALIZAR STATS.DB SI NO EXISTE ===
-    if [[ ! -s "$STATS_FILE" ]];
-
+    # === INICIALIZAR STATS.DB ===
+    if [[ ! -s "$STATS_FILE" ]]; then
         while IFS=: read -r name uuid _ _ _ _; do
             [[ $name == "#"* ]] && continue
-            echo "$name:0:0:0:$now:0:0:0:0:0:0:0" >> "$STATS_FILE"  # + creationTime
+            echo "$name:0:0:0:$now:0:0:0:0:0:0:0" >> "$STATS_FILE"
         done < "$USERS_FILE"
     fi
 
-    # === ACTUALIZAR STATS ===
+    # === ACTUALIZAR ===
     local temp_file=$(mktemp)
     while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down creation_time; do
         local current_up=$(jq -r ".\"user>>>$name>>>traffic>>>uplink\" // 0" "$temp_stats")
@@ -2597,16 +2596,15 @@ update_and_get_stats() {
         local new_session_start=$session_start
         local new_creation_time=$creation_time
         local new_last_activity=$last_activity
-        local time_since_last_check=$((now - last_check))
         local new_total_time=$total_time
+        local time_since_last_check=$((now - last_check))
 
-        # === DETECTAR NUEVA SESIÓN CON querySessions ===
-        if [[ -n "$sessions_output" ]]; then
+        # === SESIÓN ACTIVA CON querySessions ===
+        if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
             local active_devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $active_devices -gt 0 ]]; then
                 local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
                 if [[ $min_creation -gt 0 ]]; then
-                    # Si es una sesión nueva (más reciente que la guardada)
                     if [[ $min_creation -gt $creation_time ]]; then
                         new_creation_time=$min_creation
                         new_session_start=$now
@@ -2620,7 +2618,7 @@ update_and_get_stats() {
                 fi
             fi
         else
-            # Fallback: usar tráfico
+            # === FALLBACK: tráfico ===
             if (( diff_up > 0 || diff_down > 0 )); then
                 if (( last_activity == 0 )); then
                     new_creation_time=$now
@@ -2647,7 +2645,7 @@ update_and_get_stats() {
     done < "$STATS_FILE"
 
     mv "$temp_file" "$STATS_FILE"
-    rm "$temp_stats"
+    rm -f "$temp_stats"
 }
 
 menu_v2ray() {
@@ -2846,9 +2844,8 @@ EOF
 
 view_online_and_stats() {
     reset_terminal
-    update_and_get_stats  # Mantiene stats acumuladas y creation_time
+    update_and_get_stats
 
-    # === OBTENER SESIONES REALES DE XRAY ===
     local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
     local now=$(date +%s)
 
@@ -2862,12 +2859,11 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # === DETECCIÓN REAL: querySessions (SIEMPRE PRIORIDAD) ===
+        # === DETECCIÓN CON querySessions ===
         if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $devices -gt 0 ]]; then
                 is_online=1
-                # Usar creation_time guardado en stats.db (persistente)
                 if [[ $creation_time -gt 0 ]]; then
                     local session_sec=$((now - creation_time))
                     [[ $session_sec -lt 0 ]] && session_sec=0
@@ -2876,17 +2872,15 @@ view_online_and_stats() {
             fi
         fi
 
-        # === SI NO HAY SESIÓN ACTIVA → usar última actividad (solo para offline) ===
+        # === OFFLINE: última actividad ===
         if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
             last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
             last_conn_str="Última conexión: $last_conn_str"
         fi
 
-        # === TRANSFERENCIA TOTAL ===
+        # === TRANSFERENCIA Y TIEMPO TOTAL ===
         local total_transfer=$((total_up + total_down))
         local total_transfer_str=$(format_bytes $total_transfer)
-
-        # === TIEMPO TOTAL ACUMULADO ===
         local total_time_sec=$((total_time * 60))
         local total_time_str=$(format_time $total_time_sec)
 
@@ -2912,7 +2906,7 @@ view_online_and_stats() {
         ((active++))
     done < "$STATS_FILE"
 
-    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
+    [[ $active -eq 0 ]] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
     remove_user_menu() {
