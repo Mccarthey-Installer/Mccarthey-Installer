@@ -2557,8 +2557,10 @@ format_bytes() {
 }
 
 # === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA CRON) ===
+
+
 update_and_get_stats() {
-    local now=$(date + 126)
+    local now=$(date +%s)
     local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
     if [[ -z "$stats_output" ]]; then
         return
@@ -2593,7 +2595,7 @@ update_and_get_stats() {
         local time_since_last_check=$((now - last_check))
         local new_total_time=$total_time
 
-        # === DETECCIÓN DE CONEXIÓN ACTIVA (querySessions) ===
+        # === DETECCIÓN DE CONEXIÓN ACTIVA ===
         local active_now=0
         local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
         if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
@@ -2602,9 +2604,9 @@ update_and_get_stats() {
         fi
 
         if (( diff_up > 0 || diff_down > 0 || active_now == 1 )); then
-            # HAY ACTIVIDAD O CONEXIÓN ACTIVA
+            # HAY ACTIVIDAD O CONEXIÓN
             if (( session_start == 0 || (now - last_activity > 300) )); then
-                # NUEVA SESIÓN: >5 min sin actividad
+                # NUEVA SESIÓN: primera vez o >5 min sin actividad
                 new_session_start=$now
                 new_session_up=$diff_up
                 new_session_down=$diff_down
@@ -2623,6 +2625,7 @@ update_and_get_stats() {
     mv "$temp_file" "$STATS_FILE"
     rm "$temp_stats"
 }
+
 
 view_online_and_stats() {
     reset_terminal
@@ -2685,10 +2688,11 @@ view_online_and_stats() {
             fi
         fi
 
-        # === TRANSFERENCIA Y TIEMPO TOTAL ===
+        # === TRANSFERENCIA Y TIEMPO TOTAL (CORREGIDO) ===
         local total_transfer=$((total_up + total_down))
         local total_transfer_str=$(format_bytes $total_transfer)
         local total_time_sec=$((total_time * 60))
+        [[ $total_time_sec -lt 0 ]] && total_time_sec=0
         local total_time_str=$(format_time $total_time_sec)
 
         # === MOSTRAR ===
