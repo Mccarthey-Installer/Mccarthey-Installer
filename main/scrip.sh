@@ -2557,40 +2557,70 @@ format_bytes() {
 }
 
 # === FUNCIÓN PARA ACTUALIZAR Y OBTENER ESTADÍSTICAS (MOVIDA A GLOBAL PARA CRON) ===
-get_devices() {
-    local email="$1"
+update_and_get_stats() {
     local now=$(date +%s)
-    local logfile="$LOG_DIR/access.log"
-    local count=0
+    local stats_output=$($XRAY_BIN api statsquery --server=127.0.0.1:$API_PORT 2>/dev/null)
+    if [[ -z "$stats_output" ]]; then
+        echo "Error: No se pudo obtener stats de Xray."
+        return
+    fi
 
-    [[ -f "$logfile" ]] || { echo 0; return; }
+    # Crear temp file para stats actuales
+    local temp_stats=$(mktemp)
+    echo "$stats_output" | jq '.stat[] | {(.name): .value}' | jq -s 'add' > "$temp_stats"
 
-    count=$(awk -v now="$now" -v pat="email: '"$email"'" '
-        BEGIN {FS=" "; unique_count=0}
-        {
-            if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                cmd = "date -d \""$1" "$2"\" +%s"
-                if ((cmd | getline ts) > 0) {
-                    close(cmd)
-                    if ((now - ts) >= 300) next
-                } else { next }
-            } else { next }
+    # Si stats.db no tiene entradas, inicializar con 0s
+    if [[ ! -s "$STATS_FILE" ]]; then
+        while IFS=: read -r name uuid _ _ _ _; do  # Ignorar extras
+            [[ $name == "#"* ]] && continue
+            echo "$name:0:0:0:$now:0:0:0:0:0:0" >> "$STATS_FILE"  # name:total_up:total_down:total_time:last_check:last_up:last_down:session_start:last_activity:session_up:session_down
+        done < "$USERS_FILE"
+    fi
 
-            if ($0 ~ /accepted/ && $0 ~ pat) {
-                for(i=3; i<=NF; i++) {
-                    if ($i ~ /^(tcp|udp):[0-9.]+:[0-9]+$/) {
-                        gsub(/^(tcp|udp):/, "", $i)
-                        conn=$i
-                        gsub(/:[0-9]+$/, "", conn)  # Quita puerto, queda solo IP
-                        ips[conn]=1
-                    }
-                }
-            }
-        }
-        END {for(i in ips) unique_count++; print unique_count}
-    ' "$logfile" 2>/dev/null)
+    # Actualizar stats acumuladas
+    local temp_file=$(mktemp)
+    while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+        local current_up=$(jq ".\"user>>>$name>>>traffic>>>uplink\" // 0" "$temp_stats")
+        local current_down=$(jq ".\"user>>>$name>>>traffic>>>downlink\" // 0" "$temp_stats")
 
-    echo "${count:-0}"
+        local diff_up=$((current_up - last_up))
+        local diff_down=$((current_down - last_down))
+        ((diff_up < 0)) && diff_up=0
+        ((diff_down < 0)) && diff_down=0
+
+        local new_total_up=$((total_up + diff_up))
+        local new_total_down=$((total_down + diff_down))
+        local new_session_up=$session_up
+        local new_session_down=$session_down
+        local new_session_start=$session_start
+        local new_last_activity=$last_activity
+        local time_since_last_check=$((now - last_check))
+        local new_total_time=$total_time
+
+        if (( diff_up > 0 || diff_down > 0 )); then
+            if (( last_activity == 0 )); then  # Primera conexión ever
+                new_session_start=$now
+                new_session_up=$diff_up
+                new_session_down=$diff_down
+                new_last_activity=$now
+            else
+                if (( now - last_activity > 60 )); then  # Nueva sesión después de inactividad (reducido a 60s)
+                    new_session_start=$now
+                    new_session_up=0
+                    new_session_down=0
+                fi
+                new_session_up=$((new_session_up + diff_up))
+                new_session_down=$((new_session_down + diff_down))
+                new_last_activity=$now
+            fi
+            new_total_time=$((total_time + time_since_last_check / 60))  # Agregar tiempo en minutos
+        fi
+
+        echo "$name:$new_total_up:$new_total_down:$new_total_time:$now:$current_up:$current_down:$new_session_start:$new_last_activity:$new_session_up:$new_session_down" >> "$temp_file"
+    done < "$STATS_FILE"
+
+    mv "$temp_file" "$STATS_FILE"
+    rm "$temp_stats"
 }
 
 menu_v2ray() {
@@ -2615,53 +2645,44 @@ menu_v2ray() {
     # === FUNCIONES LOCALES ===
     get_devices() {
     local email="$1"
-    local now=$(date +%s)
     local logfile="$LOG_DIR/access.log"
     local count=0
 
     # Si el archivo no existe o está vacío, devolver 0
     [[ -f "$logfile" ]] || { echo 0; return; }
 
-    # Usamos un awk más inteligente:
-    # - Busca "accepted" y "email: $email" en cualquier posición
-    # - Extrae el timestamp de los dos primeros campos (fecha y hora)
-    # - Extrae IP:PORT del campo que contenga "tcp:" o "udp:"
-    # - Sólo cuenta conexiones únicas en los últimos 300 segundos (5 min)
+    # Procesar todo el log para rastrear accepts y closes
     count=$(
-        awk -v now="$now" -v email="email: $email" '
+        awk -v email="email: $email" '
         BEGIN { FS = " " }
         {
-            # Reconstruir timestamp de $1 y $2 (ej: "2025-11-05" "09:45:23")
-            if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                cmd = "date -d \"" $1 " " $2 "\" +%s"
-                if ((cmd | getline ts) > 0) {
-                    close(cmd)
-                } else {
-                    next  # línea con fecha inválida
-                }
-            } else {
+            # Saltar líneas sin fecha/hora válida
+            if ($1 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ || $2 !~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
                 next
             }
 
-            # Buscar "accepted" y el email en cualquier campo
             accepted = 0
+            closed = 0
             em = 0
             conn = ""
             for (i=3; i<=NF; i++) {
                 if ($i == "accepted") accepted = 1
+                if ($i == "closed") closed = 1
                 if ($i == email) em = 1
-                if ($i ~ /^(tcp|udp):[^:]+:[0-9]+$/ || $i ~ /^[:.[:alnum:]]+:[0-9]+$/) {
-                    # Formatos posibles: tcp:1.2.3.4:5678  o directamente 1.2.3.4:5678
+                if ($i ~ /^(tcp|udp):[^:]+:[0-9]+$/) {
                     gsub(/^(tcp|udp):/, "", $i)
                     conn = $i
                 }
             }
 
-            if (accepted && em && conn != "" && (now - ts) < 300) {
-                unique[conn] = 1
+            if (accepted && em && conn != "") {
+                open_conns[conn] = 1
+            }
+            if (closed && conn != "") {
+                delete open_conns[conn]
             }
         }
-        END { print length(unique) }
+        END { print length(open_conns) }
         ' "$logfile"
     )
 
@@ -2786,6 +2807,7 @@ EOF
             echo '}'
         } > "$CONFIG_FILE"
     }
+
 view_online_and_stats() {
     reset_terminal
     update_and_get_stats
@@ -2808,7 +2830,7 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # === PRIORIDAD 1: querySessions (si funciona) ===
+        # === PRIORIDAD: querySessions ===
         if [[ $sessions_valid -eq 1 ]]; then
             devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
             if [[ $devices -gt 0 ]]; then
@@ -2821,34 +2843,15 @@ view_online_and_stats() {
             fi
         fi
 
-        # === PRIORIDAD 2: FALLBACK TOTAL → access.log con get_devices() (SIEMPRE confiable) ===
-        if [[ $is_online -eq 0 ]]; then
-            devices=$(get_devices "$name")
-            if [[ $devices -gt 0 ]]; then
+        # === FALLBACK: last_activity (si no hay querySessions) ===
+        if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
+            if (( now - last_activity < 20 )); then
                 is_online=1
-                # Obtener el timestamp más antiguo de las conexiones activas (últimos 5 min)
-                local oldest_ts=$(awk -v pat="email: $name" -v now="$now" '
-                    BEGIN {oldest=9999999999}
-                    /accepted/ && $0 ~ pat {
-                        if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                            cmd = "date -d \""$1" "$2"\" +%s"
-                            if ((cmd | getline ts) > 0) {
-                                if ((now - ts) < 300 && ts < oldest) oldest = ts
-                                close(cmd)
-                            }
-                        }
-                    }
-                    END {print (oldest != 9999999999 ? oldest : 0)}
-                ' "$LOG_DIR/access.log")
-
-                if [[ $oldest_ts -gt 0 ]]; then
-                    session_sec=$((now - oldest_ts))
-                else
-                    session_sec=$((now - last_activity))
-                    [[ $session_sec -lt 0 ]] && session_sec=0
-                fi
+                devices=1
+                session_sec=$((now - session_start))
+                [[ $session_sec -lt 0 ]] && session_sec=0
                 session_time_str=$(format_time $session_sec)
-            elif [[ $last_activity -gt 0 ]]; then
+            else
                 last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
                 last_conn_str="Última conexión: $last_conn_str"
             fi
@@ -2868,16 +2871,15 @@ view_online_and_stats() {
             [[ $devices -gt 1 ]] && device_word="móviles"
             echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
             echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
         else
             if [[ -n "$last_conn_str" ]]; then
                 echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
             else
                 echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No Nunca conectado${NC}"
             fi
-            echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
         fi
 
+        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
         echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
         echo -e "${PURPLE}────────────────────────────────────${NC}"
         ((active++))
@@ -2886,6 +2888,7 @@ view_online_and_stats() {
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
+
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
@@ -3471,7 +3474,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======💫🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
