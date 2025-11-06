@@ -2645,44 +2645,53 @@ menu_v2ray() {
     # === FUNCIONES LOCALES ===
     get_devices() {
     local email="$1"
+    local now=$(date +%s)
     local logfile="$LOG_DIR/access.log"
     local count=0
 
     # Si el archivo no existe o está vacío, devolver 0
     [[ -f "$logfile" ]] || { echo 0; return; }
 
-    # Procesar todo el log para rastrear accepts y closes
+    # Usamos un awk más inteligente:
+    # - Busca "accepted" y "email: $email" en cualquier posición
+    # - Extrae el timestamp de los dos primeros campos (fecha y hora)
+    # - Extrae IP:PORT del campo que contenga "tcp:" o "udp:"
+    # - Sólo cuenta conexiones únicas en los últimos 300 segundos (5 min)
     count=$(
-        awk -v email="email: $email" '
+        awk -v now="$now" -v email="email: $email" '
         BEGIN { FS = " " }
         {
-            # Saltar líneas sin fecha/hora válida
-            if ($1 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ || $2 !~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
+            # Reconstruir timestamp de $1 y $2 (ej: "2025-11-05" "09:45:23")
+            if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
+                cmd = "date -d \"" $1 " " $2 "\" +%s"
+                if ((cmd | getline ts) > 0) {
+                    close(cmd)
+                } else {
+                    next  # línea con fecha inválida
+                }
+            } else {
                 next
             }
 
+            # Buscar "accepted" y el email en cualquier campo
             accepted = 0
-            closed = 0
             em = 0
             conn = ""
             for (i=3; i<=NF; i++) {
                 if ($i == "accepted") accepted = 1
-                if ($i == "closed") closed = 1
                 if ($i == email) em = 1
-                if ($i ~ /^(tcp|udp):[^:]+:[0-9]+$/) {
+                if ($i ~ /^(tcp|udp):[^:]+:[0-9]+$/ || $i ~ /^[:.[:alnum:]]+:[0-9]+$/) {
+                    # Formatos posibles: tcp:1.2.3.4:5678  o directamente 1.2.3.4:5678
                     gsub(/^(tcp|udp):/, "", $i)
                     conn = $i
                 }
             }
 
-            if (accepted && em && conn != "") {
-                open_conns[conn] = 1
-            }
-            if (closed && conn != "") {
-                delete open_conns[conn]
+            if (accepted && em && conn != "" && (now - ts) < 300) {
+                unique[conn] = 1
             }
         }
-        END { print length(open_conns) }
+        END { print length(unique) }
         ' "$logfile"
     )
 
@@ -2812,13 +2821,6 @@ view_online_and_stats() {
     reset_terminal
     update_and_get_stats
 
-    local sessions_output=$($XRAY_BIN api querySessions --server=127.0.0.1:$API_PORT 2>/dev/null)
-    local sessions_valid=0
-
-    if [[ -n "$sessions_output" ]] && echo "$sessions_output" | jq -e '.sessions' >/dev/null 2>&1; then
-        sessions_valid=1
-    fi
-
     echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
     echo -e "${PURPLE}════════════════════════════════════${NC}"
     local active=0
@@ -2830,28 +2832,25 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # === PRIORIDAD: querySessions ===
-        if [[ $sessions_valid -eq 1 ]]; then
-            devices=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name)] | length')
-            if [[ $devices -gt 0 ]]; then
-                is_online=1
-                local min_creation=$(echo "$sessions_output" | jq --arg name "$name" '[.sessions[] | select(.user.email == $name) | .record.creationTime] | min // 0')
-                if [[ $min_creation -gt 0 ]]; then
-                    session_sec=$((now - min_creation))
-                    session_time_str=$(format_time $session_sec)
-                fi
-            fi
-        fi
-
-        # === FALLBACK: last_activity (si no hay querySessions) ===
-        if [[ $is_online -eq 0 && $last_activity -gt 0 ]]; then
-            if (( now - last_activity < 20 )); then
-                is_online=1
-                devices=1
+        # Contar dispositivos usando get_devices (parsea logs para conexiones únicas activas)
+        devices=$(get_devices "$name")
+        if [[ $devices -gt 0 ]]; then
+            is_online=1
+            # Calcular tiempo de sesión basado en la actividad más reciente
+            if [[ $session_start -gt 0 ]]; then
                 session_sec=$((now - session_start))
                 [[ $session_sec -lt 0 ]] && session_sec=0
                 session_time_str=$(format_time $session_sec)
-            else
+            fi
+        else
+            # Fallback si no hay logs recientes: usar last_activity de stats
+            if [[ $last_activity -gt 0 && $((now - last_activity)) < 20 ]]; then
+                is_online=1
+                devices=1  # Aún fallback a 1 si no hay logs, pero get_devices debería capturarlo
+                session_sec=$((now - session_start))
+                [[ $session_sec -lt 0 ]] && session_sec=0
+                session_time_str=$(format_time $session_sec)
+            elif [[ $last_activity -gt 0 ]]; then
                 last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
                 last_conn_str="Última conexión: $last_conn_str"
             fi
@@ -2888,7 +2887,6 @@ view_online_and_stats() {
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
-
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
