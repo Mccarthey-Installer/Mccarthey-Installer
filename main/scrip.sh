@@ -2644,7 +2644,7 @@ menu_v2ray() {
 
     # === FUNCIONES LOCALES ===
     get_devices() {
-    local email="$1"
+    local email_name="$1"  # Renamed for clarity: this is the username
     local now=$(date +%s)
     local logfile="$LOG_DIR/access.log"
     local count=0
@@ -2653,12 +2653,12 @@ menu_v2ray() {
     [[ -f "$logfile" ]] || { echo 0; return; }
 
     # Usamos un awk más inteligente:
-    # - Busca "accepted" y "email: $email" en cualquier posición
+    # - Busca "accepted" y "email:" seguido del username en el siguiente campo
     # - Extrae el timestamp de los dos primeros campos (fecha y hora)
-    # - Extrae IP:PORT del campo que contenga "tcp:" o "udp:"
-    # - Sólo cuenta conexiones únicas en los últimos 300 segundos (5 min)
+    # - Extrae IP:PORT del campo antes de "accepted" (formato típico: CLIENT_IP:PORT accepted ...)
+    # - Sólo cuenta conexiones únicas en los últimos 3600 segundos (1 hora, ajustable)
     count=$(
-        awk -v now="$now" -v email="email: $email" '
+        awk -v now="$now" -v email_name="$email_name" '
         BEGIN { FS = " " }
         {
             # Reconstruir timestamp de $1 y $2 (ej: "2025-11-05" "09:45:23")
@@ -2679,15 +2679,16 @@ menu_v2ray() {
             conn = ""
             for (i=3; i<=NF; i++) {
                 if ($i == "accepted") accepted = 1
-                if ($i == email) em = 1
-                if ($i ~ /^(tcp|udp):[^:]+:[0-9]+$/ || $i ~ /^[:.[:alnum:]]+:[0-9]+$/) {
-                    # Formatos posibles: tcp:1.2.3.4:5678  o directamente 1.2.3.4:5678
-                    gsub(/^(tcp|udp):/, "", $i)
+                if ($i == "email:" && i+1 <= NF && $(i+1) == email_name) em = 1
+                if ($i ~ /^(tcp|udp)[:\/][^.]+[.:][0-9]+:[0-9]+$/) {
+                    # Formatos posibles: tcp:1.2.3.4:5678, tcp/1.2.3.4:5678 o directamente 1.2.3.4:5678
+                    # Ajustado para manejar / o : después de tcp/udp
+                    gsub(/^(tcp|udp)[:\/]/, "", $i)
                     conn = $i
                 }
             }
 
-            if (accepted && em && conn != "" && (now - ts) < 300) {
+            if (accepted && em && conn != "" && (now - ts) < 3600) {
                 unique[conn] = 1
             }
         }
