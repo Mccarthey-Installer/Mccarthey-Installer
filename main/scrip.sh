@@ -2812,7 +2812,8 @@ EOF
             echo '}'
         } > "$CONFIG_FILE"
     }
-view_online_and_stats() {
+
+        view_online_and_stats() {
     reset_terminal
     update_and_get_stats
 
@@ -2838,17 +2839,21 @@ view_online_and_stats() {
     echo -e "" >> "$archivo"
 
     local active=0
+    local total_users=0
 
     while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
+        ((total_users++))
         local is_online=0
         local devices=0
         local session_time_str="00:00:00"
         local last_conn_str=""
+        local status_emoji="🔴"
 
         devices=$(get_devices "$name")
 
         if [[ $devices -gt 0 ]]; then
             is_online=1
+            status_emoji="🟢"
             session_sec=$((now - session_start))
             [[ $session_sec -lt 0 ]] && session_sec=0
             session_time_str=$(format_time $session_sec)
@@ -2856,10 +2861,12 @@ view_online_and_stats() {
         elif [[ $last_activity -gt 0 ]]; then
             if (( now - last_activity < 120 )); then
                 is_online=1
+                status_emoji="🟢"
                 devices=1
                 session_sec=$((now - session_start))
                 [[ $session_sec -lt 0 ]] && session_sec=0
                 session_time_str=$(format_time $session_sec)
+                ((active++))
             else
                 last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
                 last_conn_str="Última: <b>$last_conn_str</b>"
@@ -2872,7 +2879,7 @@ view_online_and_stats() {
         local total_time_str=$(format_time $total_time_sec)
 
         # === TEXTO PARA TELEGRAM (HTML) ===
-        mensaje+="<b>👤 $name</b>\n"
+        mensaje+="<b>$status_emoji $name</b>\n"
         if [[ $is_online -eq 1 ]]; then
             local device_word="móvil"
             [[ $devices -gt 1 ]] && device_word="móviles"
@@ -2890,13 +2897,13 @@ view_online_and_stats() {
         mensaje+="<code>────────────────────────────────────</code>\n\n"
 
         # === TEXTO PARA ARCHIVO ===
-        echo -e "👤 $name" >> "$archivo"
+        echo -e "$status_emoji $name" >> "$archivo"
         if [[ $is_online -eq 1 ]]; then
             echo -e "🔑 Online: Sí ($devices $device_word) 🚀" >> "$archivo"
             echo -e "⏱️ Sesión actual: $session_time_str" >> "$archivo"
         else
             if [[ -n "$last_conn_str" ]]; then
-                echo -e "🔑 Estado: No ─ $last_conn_str" >> "$archivo"
+                echo -e "🔑 Estado: No ─ ${last_conn_str//<b>/}${last_conn_str//<\/b>/}" >> "$archivo"
             else
                 echo -e "🔑 Estado: No ─ Nunca conectado" >> "$archivo"
             fi
@@ -2908,25 +2915,37 @@ view_online_and_stats() {
 
     done < "$STATS_FILE"
 
+    local inactive=$((total_users - active))
+
     if [[ $active -eq 0 ]]; then
         mensaje+="<b>❌ Ningún usuario activo ahora.</b>\n"
         echo -e "❌ Ningún usuario activo ahora." >> "$archivo"
     fi
 
+    # === RESUMEN FINAL ===
+    mensaje+="<b>📋 Resumen:</b>\n"
+    mensaje+="<b>👥 Total usuarios:</b> $total_users\n"
+    mensaje+="<b>🟢 Activos:</b> $active\n"
+    mensaje+="<b>🔴 Inactivos:</b> $inactive\n\n"
+
     mensaje+="<b>🕐 Actualizado:</b> $(date +'%d/%m/%Y %H:%M:%S')\n"
+    echo -e "📋 Resumen:" >> "$archivo"
+    echo -e "👥 Total usuarios: $total_users" >> "$archivo"
+    echo -e "🟢 Activos: $active" >> "$archivo"
+    echo -e "🔴 Inactivos: $inactive" >> "$archivo"
     echo -e "🕐 Actualizado: $(date +'%d/%m/%Y %H:%M:%S')" >> "$archivo"
 
     # === ENVIAR A TELEGRAM ===
     echo -e "${YELLOW}Enviando stats a Telegram...${NC}"
 
-    # Primero el texto directo
+    # Enviar texto (respetando saltos de línea)
     curl -s -X POST "$URL/sendMessage" \
         -d chat_id="$USER_ID" \
-        -d text="$mensaje" \
+        --data-urlencode "text=$mensaje" \
         -d parse_mode=HTML \
         -d disable_web_page_preview=true > /dev/null
 
-    # Luego el archivo .txt
+    # Enviar archivo .txt con caption
     curl -s -F chat_id="$USER_ID" \
         -F document=@"$archivo" \
         -F caption="<b>📊 Stats completas en archivo 📊</b>" \
