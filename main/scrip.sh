@@ -2684,7 +2684,8 @@ menu_v2ray() {
                 if ($i == "email:" && (i+1)<=NF && $(i+1) == email) em = 1
             }
 
-            if (accepted && em && source_ip != "" && (now - ts) < 3600) {
+            # Solo conexiones en los últimos 30 segundos = móvil REALMENTE conectado AHORA
+            if (accepted && em && source_ip != "" && (now - ts) < 30) {
                 unique[source_ip] = 1
             }
         }
