@@ -2821,6 +2821,9 @@ view_online_and_stats() {
     reset_terminal
     update_and_get_stats
 
+    # Remove the invalid querySessions call since it doesn't exist in Xray
+    # Directly use fallback with log parsing for accuracy
+
     echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
     echo -e "${PURPLE}════════════════════════════════════${NC}"
     local active=0
@@ -2832,25 +2835,23 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # Contar dispositivos usando get_devices (parsea logs para conexiones únicas activas)
+        # Use get_devices to count unique active connections from log
         devices=$(get_devices "$name")
+
         if [[ $devices -gt 0 ]]; then
             is_online=1
-            # Calcular tiempo de sesión basado en la actividad más reciente
-            if [[ $session_start -gt 0 ]]; then
-                session_sec=$((now - session_start))
-                [[ $session_sec -lt 0 ]] && session_sec=0
-                session_time_str=$(format_time $session_sec)
-            fi
-        else
-            # Fallback si no hay logs recientes: usar last_activity de stats
-            if [[ $last_activity -gt 0 && $((now - last_activity)) < 20 ]]; then
+            # Use session_start from stats if available
+            session_sec=$((now - session_start))
+            [[ $session_sec -lt 0 ]] && session_sec=0
+            session_time_str=$(format_time $session_sec)
+        elif [[ $last_activity -gt 0 ]]; then
+            if (( now - last_activity < 20 )); then
                 is_online=1
-                devices=1  # Aún fallback a 1 si no hay logs, pero get_devices debería capturarlo
+                devices=1  # Fallback to 1 only if log parse fails but activity is recent
                 session_sec=$((now - session_start))
                 [[ $session_sec -lt 0 ]] && session_sec=0
                 session_time_str=$(format_time $session_sec)
-            elif [[ $last_activity -gt 0 ]]; then
+            else
                 last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
                 last_conn_str="Última conexión: $last_conn_str"
             fi
@@ -2887,6 +2888,7 @@ view_online_and_stats() {
     [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
     read -p "Presiona Enter para volver...${NC}" -r </dev/tty
 }
+
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
