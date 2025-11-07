@@ -2646,22 +2646,22 @@ menu_v2ray() {
     get_devices() {
     local email_name="$1"
     local now=$(date +%s)
-    local logfile="$LOG_DIR/access.log"
     local count=0
 
-    [[ -f "$logfile" ]] || { echo 0; return; }
+    # === PRIMERO: INTENTAMOS CON LA API DE XRAY (MÉTODO PERFECTO) ===
+    local api_output=$($XRAY_BIN api query --server=127.0.0.1:$API_PORT 2>/dev/null)
+    if [[ -n "$api_output" && "$api_output" != *"error"* ]]; then
+        count=$(echo "$api_output" | grep -c "email: $email_name")
+        [[ $count -gt 0 ]] && { echo "$count"; return; }
+    fi
+
+    # === SI FALLA LA API: CAEMOS AL LOG (como backup, con 45 segundos) ===
+    local logfile="$LOG_DIR/access.log"
+    [[ ! -f "$logfile" ]] && { echo 0; return; }
 
     count=$(
         awk -v now="$now" -v email="$email_name" '
-        function parse_month(m) {
-            if (m=="Jan") return "01"; if (m=="Feb") return "02"; if (m=="Mar") return "03"
-            if (m=="Apr") return "04"; if (m=="May") return "05"; if (m=="Jun") return "06"
-            if (m=="Jul") return "07"; if (m=="Aug") return "08"; if (m=="Sep") return "09"
-            if (m=="Oct") return "10"; if (m=="Nov") return "11"; if (m=="Dec") return "12"
-            return "00"
-        }
         {
-            # Formato log Xray: 2025/11/06 20:17:19.072193 from ...
             split($1, fecha, "/")
             year = fecha[1]
             month = sprintf("%02d", int(fecha[2]))
@@ -2671,7 +2671,6 @@ menu_v2ray() {
             sec = s[1]
             ts = mktime(year " " month " " day " " h " " m " " sec)
 
-            # Buscar IP de origen y email
             source_ip = ""
             accepted = 0
             em = 0
@@ -2684,8 +2683,7 @@ menu_v2ray() {
                 if ($i == "email:" && (i+1)<=NF && $(i+1) == email) em = 1
             }
 
-            # Solo conexiones en los últimos 30 segundos = móvil REALMENTE conectado AHORA
-            if (accepted && em && source_ip != "" && (now - ts) < 30) {
+            if (accepted && em && source_ip != "" && (now - ts) < 45) {
                 unique[source_ip] = 1
             }
         }
