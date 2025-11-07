@@ -1,208 +1,141 @@
 #!/bin/bash
-echo "✅ Script TIGO Ilimitado - McCarthey VPN (SSL + BadVPN) ejecutándose..."
+
 set -e
 export TZ="America/El_Salvador"
+echo "🛠️ Instalando dependencias..."
+apt update -y && apt upgrade -y
+apt install -y git cmake build-essential screen curl unzip wget python3 python3-pip \
+    stunnel4 dropbear openssl locales
 
-# ===============================
-# 0. DEPENDENCIAS Y LOCALES
-# ===============================
+# Configuración de Locales a Español El Salvador
+sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
+locale-gen
+update-locale LANG=es_SV.UTF-8
+timedatectl set-timezone America/El_Salvador
 
-echo "🛠️ Actualizando sistema e instalando dependencias..."
-sudo apt update -y
-sudo apt upgrade -y
-sudo apt install -y util-linux git cmake build-essential curl unzip wget \
-python3 python3-dev python-is-python3 screen net-tools python3-pip locales cpulimit stunnel4 bc
+# ===========================
+# 1. INSTALAR PROXY PYTHON EN PUERTO 80
+# ===========================
+echo "🌀 Configurando proxy Python en puerto 80..."
 
-sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
-sudo locale-gen es_SV.UTF-8
-sudo update-locale LANG=es_SV.UTF-8
-sudo timedatectl set-timezone America/El_Salvador
-
-# ===============================
-# 1. PROXY PYTHON EN 127.0.0.1:80
-# ===============================
-
-echo "🌀 Configurando proxy Python..."
-pkill -f "PDirect.py 80" || true
-fuser -k 80/tcp || true
-sleep 2
-
-mkdir -p /etc/ADMcgh
-
-cat > /etc/ADMcgh/PDirect.py << 'EOF'
+cat > /root/PDirect80.py << 'EOF'
 #!/usr/bin/env python3
-import asyncio, sys
+import socket, threading
 
-LISTENING_ADDR = '0.0.0.0'
-LISTENING_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 80
-PASS = ''
-BUFLEN = 4096 * 4
-TIMEOUT = 60
-DEFAULT_HOST = '127.0.0.1:22'
-STATUS_RESP = '101'
-FTAG = '\r\nContent-length: 0\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\n'
-STATUS_TXT = '<strong style="color: #ff0000;">Kang Sae-byeok</strong>'
-RESPONSE = f"HTTP/1.1 {STATUS_RESP} {STATUS_TXT} {FTAG}"
-MAX_CONNECTIONS = 50
-semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
+LISTEN_HOST = '0.0.0.0'
+LISTEN_PORT = 80
+DEST_HOST = '127.0.0.1'
+DEST_PORT = 22
+RESPONSE = b"HTTP/1.1 101 Web Socket Protocol\r\nContent-length: 999999999\r\n\r\n"
 
-def find_header(header, data):
-    try:
-        s = data.decode(errors='ignore')
-        start = s.find(header + ": ")
-        if start == -1: return ""
-        start += len(header) + 2
-        end = s.find("\r\n", start)
-        return s[start:end] if end != -1 else s[start:]
-    except: return ""
-
-async def connect_target(host_port):
-    try:
-        host = host_port.split(':')[0] if ':' in host_port else host_port
-        port = int(host_port.split(':')[1]) if ':' in host_port else 22
-        return await asyncio.open_connection(host, port)
-    except: return None, None
-
-async def handle_client(reader, writer):
-    async with semaphore:
-        try:
-            data = await asyncio.wait_for(reader.read(BUFLEN), timeout=TIMEOUT)
-            if not data: return
-            host_port = find_header('X-Real-Host', data) or DEFAULT_HOST
-            passwd = find_header('X-Pass', data)
-            if PASS and passwd != PASS:
-                writer.write(b'HTTP/1.1 400 WrongPass!\r\n\r\n')
-                await writer.drain()
-                return
-            if host_port.startswith(('127.0.0.1', 'localhost')) or not PASS:
-                target_reader, target_writer = await connect_target(host_port)
-                if not target_reader: return
-                writer.write(RESPONSE.encode())
-                await writer.drain()
-                await asyncio.gather(
-                    proxy_data(reader, target_writer),
-                    proxy_data(target_reader, writer)
-                )
-        except: pass
-        finally:
-            writer.close()
-            await writer.wait_closed()
-
-async def proxy_data(reader, writer):
+def forward(src, dst):
     try:
         while True:
-            data = await reader.read(BUFLEN)
+            data = src.recv(4096)
             if not data: break
-            writer.write(data)
-            await writer.drain()
+            dst.sendall(data)
     except: pass
     finally:
-        try: writer.close(); await writer.wait_closed()
-        except: pass
+        src.close()
+        dst.close()
 
-async def main():
-    server = await asyncio.start_server(handle_client, LISTENING_ADDR, LISTENING_PORT)
-    addrs = ', '.join(str(s.getsockname()) for s in server.sockets)
-    print("🌐 PROXY HTTP MCCARTHEY")
-    print(f"Listening on: {addrs}")
-    async with server: await server.serve_forever()
+def handle_client(sock, addr):
+    try:
+        data = sock.recv(1024)
+        if b"HTTP" in data: sock.sendall(RESPONSE)
+        remote = socket.create_connection((DEST_HOST, DEST_PORT))
+        threading.Thread(target=forward, args=(sock, remote)).start()
+        threading.Thread(target=forward, args=(remote, sock)).start()
+    except: sock.close()
 
-if __name__ == '__main__':
-    try: asyncio.run(main())
-    except KeyboardInterrupt: print("Parando...")
+def main():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((LISTEN_HOST, LISTEN_PORT))
+    server.listen(100)
+    print("🔁 Proxy activo en puerto 80 redirigiendo a 22")
+    while True:
+        client, addr = server.accept()
+        threading.Thread(target=handle_client, args=(client, addr)).start()
+
+if __name__ == "__main__":
+    main()
 EOF
 
-chmod +x /etc/ADMcgh/PDirect.py
+chmod +x /root/PDirect80.py
+screen -dmS ws80 python3 /root/PDirect80.py
 
-# ===============================
-# 2. STUNNEL4: 443 → 80 (SSL)
-# ===============================
+# ===========================
+# 2. STUNNEL4 PUERTO 443 → 80 CON CERTIFICADO PERSONALIZADO
+# ===========================
+echo "🔐 Generando certificado SSL autofirmado para Stunnel con tu firma personalizada..."
+mkdir -p /etc/stunnel/certs
 
-echo "🔐 Configurando Stunnel4 (443 → 80)..."
-mkdir -p /etc/stunnel/certs /var/run/stunnel4 /var/log
-touch /var/log/stunnel4.log
-chown root:root /var/run/stunnel4 /var/log/stunnel4.log
-chmod 755 /var/run/stunnel4
-chmod 644 /var/log/stunnel4.log
+openssl req -x509 -nodes -days 1095 -newkey rsa:2048 \
+  -keyout /etc/stunnel/certs/stunnel.key \
+  -out /etc/stunnel/certs/stunnel.crt \
+  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=McCPanel/CN=SSLService/emailAddress=admin@mccarthey.net"
 
-if [ ! -f /etc/stunnel/certs/stunnel.pem ]; then
-    openssl req -x509 -nodes -days 1095 -newkey rsa:2048 \
-        -keyout /etc/stunnel/certs/stunnel.key \
-        -out /etc/stunnel/certs/stunnel.crt \
-        -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=McCPanel/CN=SSLService/emailAddress=admin@mccarthey.net" >/dev/null 2>&1
-    cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
-    chmod 600 /etc/stunnel/certs/stunnel.pem
-    echo "✅ Certificado SSL generado: SSLService"
-else
-    echo "✅ Certificado SSL ya existe"
-fi
+cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
+chmod 600 /etc/stunnel/certs/stunnel.pem
 
+echo "🧩 Configurando Stunnel..."
 cat > /etc/stunnel/stunnel.conf <<EOF
 cert = /etc/stunnel/certs/stunnel.pem
-pid = /var/run/stunnel4/stunnel4.pid
-setuid = root
-setgid = root
-debug = 3
-output = /var/log/stunnel4.log
+pid = /var/run/stunnel4.pid
 client = no
 foreground = no
 socket = l:TCP_NODELAY=1
 socket = r:TCP_NODELAY=1
 
 [python-https]
-accept = 0.0.0.0:443
-connect = 127.0.0.1:80
-TIMEOUTclose = 0
+accept = 443
+connect = 80
 EOF
 
-systemctl daemon-reload
-systemctl enable stunnel4 2>/dev/null || true
-systemctl restart stunnel4 || true
+systemctl restart stunnel4
+systemctl enable stunnel4
 
-# Iniciar proxy Python
-pkill -f "PDirect.py 80" || true
-sleep 2
-nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+# ===========================
+# 3. BADVPN PUERTOS 7200 Y 7300 VIA SCREEN
+# ===========================
+echo "📡 Compilando y configurando BadVPN..."
 
-# ===============================
-# 3. BADVPN: 7200 y 7300
-# ===============================
-
-echo "📡 Compilando BadVPN..."
 rm -rf /opt/badvpn
 git clone https://github.com/ambrop72/badvpn.git /opt/badvpn
-cd /opt/badvpn
-mkdir -p build && cd build
+mkdir -p /opt/badvpn/build && cd /opt/badvpn/build
 cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
 make -j$(nproc)
-
-pkill -f badvpn-udpgw || true
 cp udpgw/badvpn-udpgw /usr/bin/
 chmod +x /usr/bin/badvpn-udpgw
 
+# Matar screen viejos si existen
 screen -S badvpn -X quit || true
 screen -S badUDP72 -X quit || true
 
-screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
-screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
+# Levantar BadVPN
+screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
+    --max-clients 1000 --max-connections-for-client 10
+screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 \
+    --max-clients 1000 --max-connections-for-client 10
 
-# ===============================
-# 4. AUTOINICIO (rc.local)
-# ===============================
+# ===========================
+# 4. AUTOINICIO CON /etc/rc.local
+# ===========================
+echo "🧩 Configurando autoarranque vía rc.local..."
 
-echo "🧩 Configurando autoarranque..."
 cat > /etc/rc.local <<'EOF'
 #!/bin/bash
-sleep 15
-nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
-systemctl start stunnel4
+sleep 10
+screen -dmS ws80 python3 /root/PDirect80.py
 screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
 screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
 exit 0
 EOF
+
 chmod +x /etc/rc.local
 
-cat > /etc/systemd/system/rc-local.service <<'EOF'
+cat > /etc/systemd/system/rc-local.service <<EOF
 [Unit]
 Description=/etc/rc.local Compatibility
 ConditionPathExists=/etc/rc.local
@@ -213,6 +146,7 @@ ExecStart=/etc/rc.local start
 TimeoutSec=0
 StandardOutput=tty
 RemainAfterExit=yes
+SysVStartPriority=99
 
 [Install]
 WantedBy=multi-user.target
@@ -220,97 +154,21 @@ EOF
 
 systemctl daemon-reload
 systemctl enable rc-local
-systemctl restart rc-local
+systemctl start rc-local
 
-# ===============================
-# 5. GESTIÓN DE RECURSOS
-# ===============================
-
-echo "🛠️ Configurando gestión de RAM y CPU..."
-touch /var/log/gestionar_recursos.log
-chmod 644 /var/log/gestionar_recursos.log
-
-cat > /root/gestionar_recursos.sh << 'EOF'
-#!/bin/bash
-LOCK="/tmp/gestionar.lock"
-LOG="/var/log/gestionar_recursos.log"
-PIDFILE="/tmp/cpulimit_pids.txt"
-
-[ -f "$LOCK" ] && exit 1
-touch "$LOCK"
-trap 'rm -f "$LOCK"' EXIT
-
-cleanup() {
-    [ -f "$PIDFILE" ] && while read p; do kill -9 $p 2>/dev/null; done < "$PIDFILE"
-    > "$PIDFILE"
-    pkill -9 -f "cpulimit -p" 2>/dev/null
-}
-cleanup
-
-pgrep -f "/root/scrip.sh mon" > /dev/null || { /bin/bash /root/scrip.sh mon & echo "$(date): scrip.sh mon iniciado" >> "$LOG"; }
-
-while :; do
-    FREE=$(free -m | awk '/Mem:/{print $4}')
-    CACHE=$(free -m | awk '/Mem:/{print $6}')
-    [ $FREE -lt 200 ] || [ $CACHE -gt 100 ] && { sync; sudo sysctl -w vm.drop_caches=3 > /dev/null; }
-
-    LOAD=$(awk '{print $1}' /proc/loadavg)
-    if (( $(echo "$LOAD > 2.0" | bc -l) )); then
-        P_DIRECT=$(pgrep -f /etc/ADMcgh/PDirect.py)
-        P_BADVPN=$(pgrep -f badvpn-udpgw)
-        P_SCRIP=$(pgrep -f "/root/scrip.sh mon")
-        for p in $P_DIRECT; do cpulimit -p $p -l 20 & echo $! >> "$PIDFILE"; done
-        for p in $P_BADVPN; do cpulimit -p $p -l 60 & echo $! >> "$PIDFILE"; done
-        for p in $P_SCRIP; do cpulimit -p $p -l 10 & echo $! >> "$PIDFILE"; done
-    fi
-    sleep 10
-done
-EOF
-
-chmod +x /root/gestionar_recursos.sh
-
-cat > /etc/systemd/system/gestionar-recursos.service <<'EOF'
-[Unit]
-Description=Gestión de RAM y CPU
-After=network.target rc-local.service stunnel4.service
-
-[Service]
-Type=simple
-User=root
-ExecStart=/bin/bash /root/gestionar_recursos.sh
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable gestionar-recursos.service
-systemctl restart gestionar-recursos.service
-
-# ===============================
-# 6. MENSAJE FINAL
-# ===============================
-
+# ===========================
+# 5. MENSAJE FINAL CLARO Y BONITO
+# ===========================
 echo ""
-echo "=================================================="
-echo "✅ MCCARTHY VPN INSTALADO CON ÉXITO"
-echo "📡 Puertos activos:"
-ss -tulnp | grep -E ':443|:80|:7200|:7300' || true
+echo "======================================"
+echo "✅ INSTALACIÓN COMPLETA DE MCCARTHY VPN"
+echo "📦 Puertos activos:"
+ss -tulnp | grep -E ':80|:443|:444|:7200|:7300' || true
 echo ""
-echo "🔒 SSL: 443 → 80 (SNI: SSLService)"
-echo "🌐 Proxy: 127.0.0.1:80"
-echo "📶 BadVPN: 7200 y 7300"
-echo "🛠️ Gestión de recursos activa"
-echo "🔄 Autoarranque configurado"
-echo ""
-echo "🎯 HTTP Injector:"
-echo "   SNI: SSLService"
-echo "   Puerto: 443"
-echo "   Proxy: TU_IP"
-echo "   Método: CONNECT"
-echo "=================================================="
+echo "🛡️  SSL + Python Directo (80->22): ACTIVO"
+echo "🎯 Puedes probarlo desde HTTP Injector o curl: 443 -> SSH"
+echo "🧠 Listo para usar con WebSocket SSL"
+echo "======================================"
 echo ""
 
 exit 0
