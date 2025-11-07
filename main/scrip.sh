@@ -2655,16 +2655,14 @@ menu_v2ray() {
         awk -v now="$now" -v email_name="$email_name" '
         BEGIN { FS = " " }
         {
-            # Check and extract timestamp
+            # Extract timestamp (same as before)
             if ($1 ~ /^[0-9]{4}[-\/][0-9]{2}[-\/][0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?$/) {
-                # Strip milliseconds from time if present
                 time = $2
                 dot_pos = index(time, ".")
                 if (dot_pos > 0) {
                     time = substr(time, 1, dot_pos - 1)
                 }
-                # Convert to epoch, handle / or - in date
-                gsub(/\//, "-", $1)  # Normalize to - for date command
+                gsub(/\//, "-", $1)
                 cmd = "date -d \"" $1 " " time "\" +%s"
                 if ((cmd | getline ts) > 0) {
                     close(cmd)
@@ -2675,27 +2673,27 @@ menu_v2ray() {
                 next
             }
 
-            # Start from i=3 (after date time)
+            # Parse fields
             accepted = 0
             em = 0
-            conn = ""
+            source_ip = ""
             for (i=3; i<=NF; i++) {
-                if ($i == "accepted") {
-                    accepted = 1
-                    # Next field after accepted is usually protocol:ip:port
-                    if (i+1 <= NF) {
-                        conn_field = $(i+1)
-                        # Remove protocol: if present
-                        gsub(/^(tcp|udp):/, "", conn_field)
-                        conn = conn_field
+                if ($i == "from" && i+1 <= NF) {
+                    source_field = $(i+1)  # e.g., "201.247.38.197:59267"
+                    colon_pos = index(source_field, ":")
+                    if (colon_pos > 0) {
+                        source_ip = substr(source_field, 1, colon_pos - 1)  # Extract IP only (ignore port)
                     }
                 }
-                if ($i == "from") continue  # Skip "from"
+                if ($i == "accepted") {
+                    accepted = 1
+                }
                 if ($i == "email:" && i+1 <= NF && $(i+1) == email_name) em = 1
             }
 
-            if (accepted && em && conn != "" && (now - ts) < 3600) {
-                unique[conn] = 1
+            # Count unique source IPs if conditions match and within 1 hour
+            if (accepted && em && source_ip != "" && (now - ts) < 3600) {
+                unique[source_ip] = 1
             }
         }
         END { print length(unique) }
