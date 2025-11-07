@@ -2652,46 +2652,38 @@ menu_v2ray() {
     [[ -f "$logfile" ]] || { echo 0; return; }
 
     count=$(
-        awk -v now="$now" -v email_name="$email_name" '
-        BEGIN { FS = " " }
+        awk -v now="$now" -v email="$email_name" '
+        function parse_month(m) {
+            if (m=="Jan") return "01"; if (m=="Feb") return "02"; if (m=="Mar") return "03"
+            if (m=="Apr") return "04"; if (m=="May") return "05"; if (m=="Jun") return "06"
+            if (m=="Jul") return "07"; if (m=="Aug") return "08"; if (m=="Sep") return "09"
+            if (m=="Oct") return "10"; if (m=="Nov") return "11"; if (m=="Dec") return "12"
+            return "00"
+        }
         {
-            # Extract timestamp (same as before)
-            if ($1 ~ /^[0-9]{4}[-\/][0-9]{2}[-\/][0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?$/) {
-                time = $2
-                dot_pos = index(time, ".")
-                if (dot_pos > 0) {
-                    time = substr(time, 1, dot_pos - 1)
-                }
-                gsub(/\//, "-", $1)
-                cmd = "date -d \"" $1 " " time "\" +%s"
-                if ((cmd | getline ts) > 0) {
-                    close(cmd)
-                } else {
-                    next
-                }
-            } else {
-                next
-            }
+            # Formato log Xray: 2025/11/06 20:17:19.072193 from ...
+            split($1, fecha, "/")
+            year = fecha[1]
+            month = sprintf("%02d", int(fecha[2]))
+            day = sprintf("%02d", int(fecha[3]))
+            split($2, hora, ":")
+            h = hora[1]; m = hora[2]; split(hora[3], s, ".")
+            sec = s[1]
+            ts = mktime(year " " month " " day " " h " " m " " sec)
 
-            # Parse fields
+            # Buscar IP de origen y email
+            source_ip = ""
             accepted = 0
             em = 0
-            source_ip = ""
             for (i=3; i<=NF; i++) {
-                if ($i == "from" && i+1 <= NF) {
-                    source_field = $(i+1)  # e.g., "201.247.38.197:59267"
-                    colon_pos = index(source_field, ":")
-                    if (colon_pos > 0) {
-                        source_ip = substr(source_field, 1, colon_pos - 1)  # Extract IP only (ignore port)
-                    }
+                if ($i == "from" && (i+1)<=NF) {
+                    split($(i+1), src, ":")
+                    source_ip = src[1]
                 }
-                if ($i == "accepted") {
-                    accepted = 1
-                }
-                if ($i == "email:" && i+1 <= NF && $(i+1) == email_name) em = 1
+                if ($i == "accepted") accepted = 1
+                if ($i == "email:" && (i+1)<=NF && $(i+1) == email) em = 1
             }
 
-            # Count unique source IPs if conditions match and within 1 hour
             if (accepted && em && source_ip != "" && (now - ts) < 3600) {
                 unique[source_ip] = 1
             }
