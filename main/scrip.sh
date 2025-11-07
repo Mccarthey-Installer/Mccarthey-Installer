@@ -2644,48 +2644,54 @@ menu_v2ray() {
 
     # === FUNCIONES LOCALES ===
     get_devices() {
-    local email_name="$1"  # Renamed for clarity: this is the username
+    local email_name="$1"
     local now=$(date +%s)
     local logfile="$LOG_DIR/access.log"
     local count=0
 
-    # Si el archivo no existe o está vacío, devolver 0
     [[ -f "$logfile" ]] || { echo 0; return; }
 
-    # Usamos un awk más inteligente:
-    # - Busca "accepted" y "email:" seguido del username en el siguiente campo
-    # - Extrae el timestamp de los dos primeros campos (fecha y hora)
-    # - Extrae IP:PORT del campo antes de "accepted" (formato típico: CLIENT_IP:PORT accepted ...)
-    # - Sólo cuenta conexiones únicas en los últimos 3600 segundos (1 hora, ajustable)
     count=$(
         awk -v now="$now" -v email_name="$email_name" '
         BEGIN { FS = " " }
         {
-            # Reconstruir timestamp de $1 y $2 (ej: "2025-11-05" "09:45:23")
-            if ($1 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}$/) {
-                cmd = "date -d \"" $1 " " $2 "\" +%s"
+            # Check and extract timestamp
+            if ($1 ~ /^[0-9]{4}[-\/][0-9]{2}[-\/][0-9]{2}$/ && $2 ~ /^[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?$/) {
+                # Strip milliseconds from time if present
+                time = $2
+                dot_pos = index(time, ".")
+                if (dot_pos > 0) {
+                    time = substr(time, 1, dot_pos - 1)
+                }
+                # Convert to epoch, handle / or - in date
+                gsub(/\//, "-", $1)  # Normalize to - for date command
+                cmd = "date -d \"" $1 " " time "\" +%s"
                 if ((cmd | getline ts) > 0) {
                     close(cmd)
                 } else {
-                    next  # línea con fecha inválida
+                    next
                 }
             } else {
                 next
             }
 
-            # Buscar "accepted" y el email en cualquier campo
+            # Start from i=3 (after date time)
             accepted = 0
             em = 0
             conn = ""
             for (i=3; i<=NF; i++) {
-                if ($i == "accepted") accepted = 1
-                if ($i == "email:" && i+1 <= NF && $(i+1) == email_name) em = 1
-                if ($i ~ /^(tcp|udp)[:\/][^.]+[.:][0-9]+:[0-9]+$/) {
-                    # Formatos posibles: tcp:1.2.3.4:5678, tcp/1.2.3.4:5678 o directamente 1.2.3.4:5678
-                    # Ajustado para manejar / o : después de tcp/udp
-                    gsub(/^(tcp|udp)[:\/]/, "", $i)
-                    conn = $i
+                if ($i == "accepted") {
+                    accepted = 1
+                    # Next field after accepted is usually protocol:ip:port
+                    if (i+1 <= NF) {
+                        conn_field = $(i+1)
+                        # Remove protocol: if present
+                        gsub(/^(tcp|udp):/, "", conn_field)
+                        conn = conn_field
+                    }
                 }
+                if ($i == "from") continue  # Skip "from"
+                if ($i == "email:" && i+1 <= NF && $(i+1) == email_name) em = 1
             }
 
             if (accepted && em && conn != "" && (now - ts) < 3600) {
