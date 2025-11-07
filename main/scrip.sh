@@ -2813,17 +2813,28 @@ EOF
         } > "$CONFIG_FILE"
     }
 
-view_online_and_stats() {
-    reset_terminal
+send_online_to_telegram() {
+    # Verificamos bot
+    if [[ ! -f /root/sshbot_token || ! -f /root/sshbot_userid ]]; then
+        echo -e "${CROSS} ${RED}Bot no configurado. Usa opción 9 o configura SSH BOT.${NC}"
+        sleep 2
+        return
+    fi
+
+    TOKEN=$(cat /root/sshbot_token)
+    USER_ID=$(cat /root/sshbot_userid)
+    URL="https://api.telegram.org/bot$TOKEN"
+
+    # Actualizamos stats
     update_and_get_stats
 
-    # Remove the invalid querySessions call since it doesn't exist in Xray
-    # Directly use fallback with log parsing for accuracy
-
-    echo -e "${STAR} ${BLUE}USUARIOS ONLINE Y ESTADÍSTICAS${NC} $SPARK"
-    echo -e "${PURPLE}════════════════════════════════════${NC}"
-    local active=0
+    local message=""
     local now=$(date +%s)
+    local active_count=0
+
+    message="🔥 *USUARIOS ONLINE AHORA* 🔥%0A"
+    message+="$(date '+%d/%m/%Y %H:%M:%S')%0A"
+    message+="════════════════════%0A"
 
     while IFS=: read -r name total_up total_down total_time last_check last_up last_down session_start last_activity session_up session_down; do
         local is_online=0
@@ -2831,60 +2842,56 @@ view_online_and_stats() {
         local session_time_str="00:00:00"
         local last_conn_str=""
 
-        # Use get_devices to count unique active connections from log
+        # Usamos la función get_devices PRO (con API + log)
         devices=$(get_devices "$name")
 
         if [[ $devices -gt 0 ]]; then
-            is_online=1
-            # Use session_start from stats if available
-            session_sec=$((now - session_start))
-            [[ $session_sec -lt 0 ]] && session_sec=0
-            session_time_str=$(format_time $session_sec)
-        elif [[ $last_activity -gt 0 ]]; then
-            if (( now - last_activity < 20 )); then
-                is_online=1
-                devices=1  # Fallback to 1 only if log parse fails but activity is recent
-                session_sec=$((now - session_start))
-                [[ $session_sec -lt 0 ]] && session_sec=0
-                session_time_str=$(format_time $session_sec)
-            else
-                last_conn_str=$(date -d "@$last_activity" +"%H:%M" 2>/dev/null || echo "??:??")
-                last_conn_str="Última conexión: $last_conn_str"
-            fi
+        is_online=1
+        session_sec=$((now - session_start))
+        [[ $session_sec -lt 0 ]] && session_sec=0
+        session_time_str=$(format_time $session_sec)
         fi
 
-        # === TRANSFERENCIA Y TIEMPO TOTAL ===
+        # Transferencia total
         local total_transfer=$((total_up + total_down))
         local total_transfer_str=$(format_bytes $total_transfer)
         local total_time_sec=$((total_time * 60))
         local total_time_str=$(format_time $total_time_sec)
 
-        # === MOSTRAR ===
-        echo -e "${USER} ${YELLOW}Nombre:${NC} ${YELLOW}$name${NC}"
-        
         if [[ $is_online -eq 1 ]]; then
-            local device_word="móvil"
-            [[ $devices -gt 1 ]] && device_word="móviles"
-            echo -e "${KEY} ${WHITE}Online:${NC} ${GREEN}Sí ($devices $device_word)${NC}"
-            echo -e "${CLOCK} ${WHITE}Sesión actual:${NC} ${PURPLE}$session_time_str${NC}"
-        else
-            if [[ -n "$last_conn_str" ]]; then
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No $last_conn_str${NC}"
-            else
-                echo -e "${KEY} ${WHITE}Estado:${NC} ${RED}No Nunca conectado${NC}"
-            fi
+        local device_word="móvil"
+        [[ $devices -gt 1 ]] && device_word="móviles"
+        
+        message+="👤 *$name*%0A"
+        message+="🔑 Online: Sí ($devices $device_word)%0A"
+        message+="⏱️ Sesión: $session_time_str%0A"
+        message+="📊 Tráfico: $total_transfer_str%0A"
+        message+="🕐 Total conectado: $total_time_str%0A"
+        message+="─ ─ ─ ─ ─ ─ ─ ─ ─ ─%0A"
+        ((active_count++))
         fi
-
-        echo -e "${DATA} ${WHITE}Transferencia:${NC} ${CYAN}$total_transfer_str${NC}"
-        echo -e "${CLOCK} ${WHITE}Tiempo total conectado:${NC} ${PURPLE}$total_time_str${NC}"
-        echo -e "${PURPLE}────────────────────────────────────${NC}"
-        ((active++))
     done < "$STATS_FILE"
 
-    [ $active -eq 0 ] && echo -e "${CROSS} ${RED}No hay usuarios con stats.${NC}"
-    read -p "Presiona Enter para volver...${NC}" -r </dev/tty
-}
+    if [[ $active_count -eq 0 ]]; then
+        message+="😴 No hay nadie conectado ahora.%0A"
+    else
+        message+="✅ *$active_count usuario(s) online*%0A"
+    fi
 
+    message+="👀 Enviado desde tu VPS"
+
+    # Enviamos con Markdown
+    curl -s -X POST "$URL/sendMessage" \
+        -d "chat_id=$USER_ID" \
+        -d "text=$message" \
+        -d "parse_mode=Markdown" \
+        -d "disable_web_page_preview=true" > /dev/null
+
+    reset_terminal
+    echo -e "${CHECK} ${GREEN}Estadísticas enviadas a Telegram! 🚀${NC}"
+    echo -e "${CYAN}Revisa tu bot ahora mismo.${NC}"
+    sleep 2
+}
     remove_user_menu() {
         reset_terminal
         echo -e "ELIMINAR USUARIOS"
@@ -3452,7 +3459,7 @@ EOF
             9) send_backup_telegram ;;  
             10) restore_v2ray ;;  
             11) restore_from_telegram ;;  
-            12) view_online_and_stats ;;  # Llamar a la nueva función
+            12) send_online_to_telegram ;;  # Llamar a la nueva función
             0) return ;;  
             *) echo -e "${CROSS} ${RED}Opción inválida.${NC}"; sleep 1.5;;  
         esac  
