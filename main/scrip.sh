@@ -752,6 +752,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
     esac
 }                        
                                           
+
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
@@ -761,7 +762,7 @@ function barra_sistema() {
     AMARILLO='\033[93m'  
     VERDE='\033[92m'  
     NC='\033[0m'  
-    CIAN='\033[38;5;51m'  # Added CIAN to match verificar_online for consistency
+    CIAN='\033[38;5;51m'  # Para inactivos
 
     # ================= Config persistente =================
     STATE_FILE="/etc/mi_script/contador_online.conf"
@@ -770,7 +771,7 @@ function barra_sistema() {
     TOTAL_CONEXIONES=0  
     TOTAL_USUARIOS=0  
     USUARIOS_EXPIRAN=()  
-    inactivos=0  # Initialize inactivos counter
+    inactivos=0  
 
     if [[ -f "$REGISTROS" ]]; then  
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
@@ -781,7 +782,6 @@ function barra_sistema() {
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then  
                     USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
                 fi  
-                # Calculate inactivos based on verificar_online logic
                 conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))  
                 bloqueo_file="/tmp/bloqueo_${usuario}.lock"  
                 if [[ $conexiones -eq 0 && ! -f "$bloqueo_file" ]]; then  
@@ -790,7 +790,7 @@ function barra_sistema() {
                     bloqueo_hasta=$(cat "$bloqueo_file")  
                     if [[ $(date +%s) -ge $bloqueo_hasta ]]; then  
                         rm -f "$bloqueo_file"  
-                        ((inactivos++))  # Consider unblocked but disconnected users as inactive
+                        ((inactivos++))  
                     fi  
                 fi  
             fi  
@@ -821,7 +821,7 @@ function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')  
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')  
     MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')  
-    MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")  
+    MEM_PORC=$((100 * MEM_USO / MEM_TOTAL))
 
     human() {  
         local value=$1  
@@ -846,12 +846,26 @@ function barra_sistema() {
         DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  
     fi  
 
-    # ================= CPU =================  
-    CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')  
-    CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")  
-    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)  
-    [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"  
+    # ================= CPU tipo kernel instantáneo =================
+    CPU_STAT_FILE="/tmp/.cpu_stat_prev"
+    read cpu a b c d e f g h i j < /proc/stat
+    idle=$d
+    total=$((a+b+c+d+e+f+g+h+i+j))
+    if [[ -f "$CPU_STAT_FILE" ]]; then
+        read prev_total prev_idle < "$CPU_STAT_FILE"
+        diff_idle=$((idle - prev_idle))
+        diff_total=$((total - prev_total))
+        if [[ $diff_total -gt 0 ]]; then
+            CPU_PORC=$(( (100 * (diff_total - diff_idle)) / diff_total ))
+        else
+            CPU_PORC=0
+        fi
+    else
+        CPU_PORC=0
+    fi
+    echo "$total $idle" > "$CPU_STAT_FILE"
 
+    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
     # ================= IP y fecha =================  
     if command -v curl &>/dev/null; then  
         IP_PUBLICA=$(curl -s ifconfig.me)  
@@ -877,19 +891,16 @@ function barra_sistema() {
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"  
     fi  
 
-# ================= Uptime =================    
-UPTIME=$(uptime -p | sed 's/up //')  # Obtiene el uptime en formato legible, ej: "6 hours, 13 minutes"
-UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con color y emoji para destacar
+    # ================= Uptime =================    
+    UPTIME=$(uptime -p | sed 's/up //')  
+    UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  
 
-
-    # ================= Transferencia acumulada =================  
+    # ================= Transferencia =================  
     TRANSFER_FILE="/tmp/vps_transfer_total"  
     LAST_FILE="/tmp/vps_transfer_last"  
-
     RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
     TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
     TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
-
     if [[ ! -f "$LAST_FILE" ]]; then
         TRANSFER_ACUM=0
         DIFF=0
@@ -902,7 +913,6 @@ UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con c
         echo "$TOTAL_BYTES" > "$LAST_FILE"
         echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
     fi
-
     human_transfer() {  
         local bytes=$1  
         if [ "$bytes" -ge 1073741824 ]; then  
@@ -911,18 +921,17 @@ UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con c
             awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
         fi  
     }  
-
     TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
     # ================= Imprimir todo =================  
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL:${AMARILLO} ${MEM_TOTAL_H}${NC}     ${BLANCO}∘ 💧 DISPONIBLE:${AMARILLO} ${MEM_DISPONIBLE_H}${NC} ${BLANCO}∘ 💿 HDD:${AMARILLO} ${DISCO_TOTAL_H}${NC} ${DISCO_PORC_COLOR}"
-    echo -e "${BLANCO} 📊 U/RAM:${AMARILLO} ${MEM_PORC}%${NC}   ${BLANCO}∘ 🖥️ U/CPU:${AMARILLO}${CPU_PORC}%${NC}       ${BLANCO}∘ 🔧 CPU MHz:${AMARILLO} ${CPU_MHZ}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM: ${MEM_PORC}%   🖥️ U/CPU: ${CPU_PORC}%       🔧 CPU MHz: ${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
     echo -e "${BLANCO} ${UPTIME_COLOR}${NC}"
-    echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"  # Updated line to match requested format
+    echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
@@ -930,10 +939,6 @@ UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con c
         echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
 }
-                                                
-                                            
-
-
 
         
 
@@ -2488,7 +2493,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======💫✨PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
@@ -2508,29 +2513,32 @@ while true; do
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
     read -p "$PROMPT" OPCION  
 
+    # ✅ Si presionan solo Enter, ignorar y continuar el loop
+    [[ -z "$OPCION" ]] && continue
+
     case $OPCION in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_multiples_usuarios ;;
-        4) informacion_usuarios ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) activar_desactivar_limitador ;;
-        10) configurar_banner_ssh ;;
-        11) contador_online ;;
-        12) ssh_bot ;;
-        13) renovar_usuario ;;
-        14) activar_desactivar_swap ;;
-        0) 
-            echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash   # ✅ vuelve al bash normal
-            ;;
-        *) 
-            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
-            ;;
-    esac
+    1) crear_usuario ;;
+    2) ver_registros ;;
+    3) eliminar_multiples_usuarios ;;
+    4) informacion_usuarios ;;
+    5) verificar_online ;;
+    6) bloquear_desbloquear_usuario ;;
+    7) crear_multiples_usuarios ;;
+    8) mini_registro ;;
+    9) activar_desactivar_limitador ;;
+    10) configurar_banner_ssh ;;
+    11) contador_online ;;
+    12) ssh_bot ;;
+    13) renovar_usuario ;;
+    14) activar_desactivar_swap ;;
+    0) 
+        echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
+        exec /bin/bash
+        ;;
+    *) 
+        # No hacer nada ni mostrar mensaje → solo continuar
+        continue
+        ;;
+esac
 done
 fi
