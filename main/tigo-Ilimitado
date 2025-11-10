@@ -50,9 +50,9 @@ PASS = ''
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = '127.0.0.1:22'
-STATUS_RESP = '200'  # Cambiado a 200 estándar para CONNECT
-STATUS_TXT = 'Kang Sae-byeok'  # Quitado HTML para evitar corrupción
-RESPONSE = f"HTTP/1.1 {STATUS_RESP} {STATUS_TXT}\r\n\r\n"  # Respuesta limpia, sin extras
+STATUS_RESP = '200'
+STATUS_TXT = 'Connection Established'  # Estándar para evitar problemas
+RESPONSE = f"HTTP/1.1 {STATUS_RESP} {STATUS_TXT}\r\n\r\n"  # Respuesta limpia
 
 MAX_CONNECTIONS = 50
 semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
@@ -99,15 +99,7 @@ async def handle_client(client_reader, client_writer):
                 await client_writer.wait_closed()
                 return
 
-            # Parsear request line para CONNECT estándar si no hay X-Real-Host
-            data_str = data.decode(errors='ignore')
-            request_line = data_str.split('\r\n')[0]
-            parts = request_line.split()
-            if len(parts) == 3 and parts[0] == 'CONNECT':
-                host_port = parts[1]  # Usa el host:port del CONNECT
-            else:
-                host_port = find_header('X-Real-Host', data) or DEFAULT_HOST
-
+            host_port = find_header('X-Real-Host', data) or DEFAULT_HOST  # Ignorar CONNECT host, usar solo X-Real-Host o default local
             split = find_header('X-Split', data)
             passwd = find_header('X-Pass', data)
 
@@ -121,19 +113,20 @@ async def handle_client(client_reader, client_writer):
                 await client_writer.wait_closed()
                 return
 
-            target_reader, target_writer = await connect_target(host_port)
-            if not target_reader:
-                client_writer.close()
-                await client_writer.wait_closed()
-                return
-            client_writer.write(RESPONSE.encode())
-            await client_writer.drain()
+            if host_port.startswith('127.0.0.1') or host_port.startswith('localhost') or not PASS:
+                target_reader, target_writer = await connect_target(host_port)
+                if not target_reader:
+                    client_writer.close()
+                    await client_writer.wait_closed()
+                    return
+                client_writer.write(RESPONSE.encode())
+                await client_writer.drain()
 
-            # Proxy bidireccional
-            await asyncio.gather(
-                proxy_data(client_reader, target_writer),
-                proxy_data(target_reader, client_writer)
-            )
+                # Proxy bidireccional
+                await asyncio.gather(
+                    proxy_data(client_reader, target_writer),
+                    proxy_data(target_reader, client_writer)
+                )
         except Exception as e:
             print(f"{log_prefix} - error: {e}")
         finally:
@@ -442,9 +435,9 @@ echo "✅ INSTALACIÓN COMPLETA DE MCCARTHY VPN"
 echo "📦 Puertos activos:"
 ss -tulnp | grep -E ':80|:443|:7200|:7300' || true
 echo ""
-echo "🛡️  Proxy HTTP (80 -> target) ACTIVO via Nohup, con Stunnel en 443"
-echo "🎯 Listo para usar con HTTP Injector / Custom (soporte CONNECT estándar)"
-echo "💎 Firma personalizada: Kang Sae-byeok"
+echo "🛡️  Proxy HTTP (80 -> 22 local) ACTIVO via Nohup, con Stunnel en 443"
+echo "🎯 Listo para usar con HTTP Custom (ignora host CONNECT, usa local SSH)"
+echo "💎 Respuesta estándar para compatibilidad"
 echo "🛠️ Gestión de RAM y CPU activa (servicio: gestionar-recursos)"
 echo "======================================"
 echo ""
