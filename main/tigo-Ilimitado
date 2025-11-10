@@ -1,40 +1,44 @@
 #!/bin/bash
-echo "✅ Script MCCARTHEY - SSL 443 → SSH 22 (SIN HTTP)"
+# ==============================================
+# MCCARTHEY SSL TUNNEL - OFICIAL (AUTOMÁTICO)
+# SSL 443 → 80 → SSH 22 (SIN HTTP, SIN PAYLOAD)
+# ==============================================
+
+echo "MCCARTHEY SSL TUNNEL - INSTALACIÓN AUTOMÁTICA"
 set -e
-export TZ="America/El_Salvador"
 
-# Actualizar sistema
-sudo apt update -y && sudo apt upgrade -y
+# --- Actualizar sistema ---
+apt update -y && apt upgrade -y
 
-# Instalar dependencias
-sudo apt install -y stunnel4 netcat-openbsd screen locales
+# --- Instalar dependencias ---
+apt install -y stunnel4 netcat-openbsd screen locales curl
 
-# Configurar zona horaria
-sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
-sudo locale-gen
-sudo update-locale LANG=es_SV.UTF-8
-sudo timedatectl set-timezone America/El_Salvador
+# --- Configurar zona horaria ---
+sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
+locale-gen
+update-locale LANG=es_SV.UTF-8
+timedatectl set-timezone America/El_Salvador
 
-# ===========================
-# 1. STUNNEL: 443 → 80
-# ===========================
-echo "🔐 Configurando Stunnel (443 → 80)..."
+# --- Detener servicios previos ---
+pkill -f "nc -l" || true
+pkill -f stunnel4 || true
+pkill -f badvpn-udpgw || true
+screen -S tunnel -X quit || true
+screen -S badvpn -X quit || true
+screen -S badUDP72 -X quit || true
 
-# Remover stunnel viejo
-sudo apt remove --purge -y stunnel4 > /dev/null 2>&1 || true
-sudo apt install -y stunnel4
-
-# Generar certificado self-signed (CN = pruebat.org)
+# --- Generar certificado AUTOMÁTICO (CN=pruebat.org) ---
+echo "Generando certificado SSL (CN=pruebat.org)..."
 mkdir -p /etc/stunnel/certs
 openssl req -x509 -newkey rsa:2048 -keyout /etc/stunnel/certs/stunnel.key \
-  -out /etc/stunnel/certs/stunnel.crt -days 3650 -nodes \
-  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=SSL/CN=pruebat.org/emailAddress=admin@mccarthey.net"
+  -out /etc/stunnel/certs/stunnel.crt -days 3650 -nodes -subj "/C=US/ST=New York/L=Secaucus/O=ChumoGH Corp/OU=ADMcgh/CN=pruebat.org/emailAddress=admin@mccarthey.net"
 
 cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
 chmod 600 /etc/stunnel/certs/stunnel.pem
 
-# Config Stunnel: 443 → 127.0.0.1:80
-cat > /etc/stunnel/stunnel.conf <<EOF
+# --- Configurar Stunnel: 443 → 80 ---
+echo "Configurando Stunnel: 443 → 80"
+cat > /etc/stunnel/stunnel.conf <<'EOF'
 pid = /var/run/stunnel4/stunnel.pid
 setuid = stunnel4
 setgid = stunnel4
@@ -51,38 +55,38 @@ accept = 443
 connect = 127.0.0.1:80
 EOF
 
-# Habilitar stunnel
 sed -i 's/ENABLED=0/ENABLED=1/' /etc/default/stunnel4
 systemctl enable stunnel4
 systemctl restart stunnel4
 
-# ===========================
-# 2. TUNNEL DIRECTO 80 → 22 (sin HTTP)
-# ===========================
-echo "🔀 Configurando tunnel directo 80 → 22 (SSH local)..."
-
-# Matar procesos previos
-pkill -f "nc -l" || true
-pkill -f badvpn-udpgw || true
-screen -S tunnel -X quit || true
-
-# Iniciar tunnel con netcat (puerto 80 → 22)
+# --- Tunnel directo 80 → 22 (SSH local) ---
+echo "Iniciando tunnel directo: 80 → 22"
 screen -dmS tunnel bash -c 'while true; do nc -l -p 80 -q 1 < /dev/null | nc 127.0.0.1 22; done'
 
-# ===========================
-# 3. AUTOINICIO
-# ===========================
+# --- BadVPN (UDPGW) ---
+echo "Iniciando BadVPN UDPGW..."
+git clone https://github.com/ambrop72/badvpn.git /opt/badvpn >/dev/null 2>&1 || true
+cd /opt/badvpn/build
+cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 >/dev/null 2>&1
+make -j$(nproc) >/dev/null 2>&1
+cp udpgw/badvpn-udpgw /usr/bin/
+screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000
+screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000
+
+# --- Autoarranque ---
 cat > /etc/rc.local <<'EOF'
 #!/bin/bash
-sleep 10
+sleep 15
 screen -dmS tunnel bash -c 'while true; do nc -l -p 80 -q 1 < /dev/null | nc 127.0.0.1 22; done'
+screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000
+screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000
 exit 0
 EOF
 chmod +x /etc/rc.local
 
 cat > /etc/systemd/system/rc-local.service <<'EOF'
 [Unit]
-Description=/etc/rc.local Compatibility
+Description=/etc/rc.local
 ConditionPathExists=/etc/rc.local
 
 [Service]
@@ -100,22 +104,25 @@ systemctl daemon-reload
 systemctl enable rc-local
 systemctl start rc-local
 
-# ===========================
-# 4. MENSAJE FINAL
-# ===========================
+# --- MENSAJE FINAL ---
+clear
 echo ""
-echo "========================================"
-echo "✅ MCCARTHEY SSL TUNNEL LISTO"
-echo "🔒 Stunnel: 443 → 80"
-echo "🔀 Tunnel directo: 80 → 22 (SSH local)"
-echo "📡 Puertos activos:"
-ss -tulnp | grep -E ':80|:443' || true
+echo "=============================================="
+echo "      MCCARTHEY SSL TUNNEL - ¡LISTO!"
+echo "=============================================="
+echo "   SSL: 443 → 80 → 22 (SSH Local)"
+echo "   SNI: pruebat.org"
+echo "   Cert: US@ChumoGH (Automático)"
+echo "   Payload: VACÍO"
 echo ""
-echo "📱 En HTTP Custom:"
+echo "   Puertos activos:"
+ss -tulnp | grep -E ':80|:443|:7200|:7300' || echo "   (Algunos puertos pueden tardar en iniciarse)"
+echo ""
+echo "   En HTTP Custom:"
 echo "   • Host: TU_IP"
 echo "   • Puerto: 443"
 echo "   • SNI: pruebat.org"
 echo "   • SSH: 127.0.0.1:22"
-echo "   • SIN payload (directo)"
-echo "========================================"
+echo "   • Payload: [DEJAR VACÍO]"
+echo "=============================================="
 echo ""
