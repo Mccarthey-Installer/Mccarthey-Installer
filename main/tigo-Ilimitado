@@ -1,191 +1,46 @@
 #!/bin/bash
-echo "Script TIGO Ilimitado ejecutado correctamente."
+echo "✅ Script MCCARTHEY - SSL 443 → SSH 22 (SIN HTTP)"
 set -e
 export TZ="America/El_Salvador"
-echo "Instalando dependencias..."
 
-# Actualizar índices de paquetes
-sudo apt update -y
-sudo apt upgrade -y
+# Actualizar sistema
+sudo apt update -y && sudo apt upgrade -y
 
-# Instalar paquetes necesarios
-sudo apt install -y util-linux git cmake build-essential curl unzip wget \
-python3 python3-dev python-is-python3 screen net-tools python3-pip locales cpulimit
+# Instalar dependencias
+sudo apt install -y stunnel4 netcat-openbsd screen locales
 
-# Configurar locales
+# Configurar zona horaria
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
 sudo locale-gen
 sudo update-locale LANG=es_SV.UTF-8
 sudo timedatectl set-timezone America/El_Salvador
 
-# Detener procesos previos para evitar conflictos de puertos
-pkill -f PDirect.py || true
-pkill -f badvpn-udpgw || true
-systemctl stop stunnel4 || true
-screen -S badvpn -X quit || true
-screen -S badUDP72 -X quit || true
-
 # ===========================
-# 1. INSTALAR PROXY PYTHON EN PUERTO 80 (NOHUP)
+# 1. STUNNEL: 443 → 80
 # ===========================
-echo "Configurando proxy Python en puerto 80..."
+echo "🔐 Configurando Stunnel (443 → 80)..."
 
-mkdir -p /etc/Mccarthey
+# Remover stunnel viejo
+sudo apt remove --purge -y stunnel4 > /dev/null 2>&1 || true
+sudo apt install -y stunnel4
 
-cat > /etc/Mccarthey/PDirect.py << 'EOF'
-#!/usr/bin/env python3
-# encoding: utf-8
-
-import asyncio
-import sys
-
-# ==========================
-# CONFIGURACIÓN PRINCIPAL
-# ==========================
-LISTENING_ADDR = '0.0.0.0'
-LISTENING_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 80
-BUFLEN = 4096 * 4
-TIMEOUT = 60
-DEFAULT_HOST = '127.0.0.1:22'
-
-# Respuesta 100% estándar y limpia (HTTP/1.1 200 Connection Established)
-RESPONSE = b"HTTP/1.1 200 Connection Established\r\n\r\n"
-
-MAX_CONNECTIONS = 50
-semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
-
-# ==========================
-# FUNCIONES AUXILIARES
-# ==========================
-def find_header(header, data):
-    try:
-        data_str = data.decode(errors='ignore')
-        start = data_str.find(header + ": ")
-        if start == -1:
-            return ""
-        start += len(header) + 2
-        end = data_str.find("\r\n", start)
-        return data_str[start:end] if end != -1 else data_str[start:]
-    except Exception:
-        return ""
-
-async def connect_target(host_port):
-    try:
-        if ':' in host_port:
-            host, port = host_port.split(':')
-            port = int(port)
-        else:
-            host = host_port
-            port = 22
-        reader, writer = await asyncio.open_connection(host, port)
-        return reader, writer
-    except Exception as e:
-        return None, None
-
-# ==========================
-# HANDLER DE CONEXIONES
-# ==========================
-async def handle_client(client_reader, client_writer):
-    async with semaphore:
-        try:
-            data = await asyncio.wait_for(client_reader.read(BUFLEN), timeout=TIMEOUT)
-            if not data:
-                client_writer.close()
-                await client_writer.wait_closed()
-                return
-
-            # Extraer host:port del CONNECT (línea: CONNECT host:port HTTP/1.1)
-            data_str = data.decode(errors='ignore')
-            first_line = data_str.split('\r\n')[0]
-            if first_line.startswith('CONNECT '):
-                host_port = first_line.split(' ')[1]
-            else:
-                # Fallback a X-Real-Host si existe
-                host_port = find_header('X-Real-Host', data) or DEFAULT_HOST
-
-            # Enviar respuesta limpia ANTES de conectar al target
-            client_writer.write(RESPONSE)
-            await client_writer.drain()
-
-            # Conectar al destino real
-            target_reader, target_writer = await connect_target(host_port)
-            if not target_reader:
-                client_writer.close()
-                await client_writer.wait_closed()
-                return
-
-            # Proxy bidireccional
-            await asyncio.gather(
-                proxy_data(client_reader, target_writer),
-                proxy_data(target_reader, client_writer)
-            )
-        except Exception as e:
-            print(f"Error: {e}")
-        finally:
-            client_writer.close()
-            await client_writer.wait_closed()
-
-async def proxy_data(reader, writer):
-    try:
-        while True:
-            data = await reader.read(BUFLEN)
-            if not data:
-                break
-            writer.write(data)
-            await writer.drain()
-    except Exception:
-        pass
-    finally:
-        try:
-            writer.close()
-            await writer.wait_closed()
-        except Exception:
-            pass
-
-# ==========================
-# SERVIDOR MAIN
-# ==========================
-async def main(host=LISTENING_ADDR, port=LISTENING_PORT):
-    server = await asyncio.start_server(handle_client, host, port)
-    addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
-    print("PROXY HTTP MCCARTHEY - VPS TUNNEL")
-    print("IP:", host)
-    print("PORTA:", port)
-    print("Powered by MCC-KEY System")
-    print(f"Listening on: {addrs}")
-
-    async with server:
-        await server.serve_forever()
-
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Parando servidor...")
-EOF
-
-chmod +x /etc/Mccarthey/PDirect.py
-
-# Iniciar con nohup
-nohup python3 /etc/Mccarthey/PDirect.py 80 > /root/nohup.out 2>&1 &
-
-# ===========================
-# 1.1 CONFIGURAR STUNNEL (443 → 80)
-# ===========================
-echo "Configurando Stunnel (SSL 443 → Proxy 80)..."
-
-apt remove --purge -y stunnel4 > /dev/null 2>&1 || true
-apt install -y stunnel4 > /dev/null 2>&1
-
+# Generar certificado self-signed (CN = pruebat.org)
 mkdir -p /etc/stunnel/certs
 openssl req -x509 -newkey rsa:2048 -keyout /etc/stunnel/certs/stunnel.key \
   -out /etc/stunnel/certs/stunnel.crt -days 3650 -nodes \
-  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=SSLService/CN=pruebat.org/emailAddress=admin@mccarthey.net"
+  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=SSL/CN=pruebat.org/emailAddress=admin@mccarthey.net"
 
 cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
 chmod 600 /etc/stunnel/certs/stunnel.pem
 
+# Config Stunnel: 443 → 127.0.0.1:80
 cat > /etc/stunnel/stunnel.conf <<EOF
+pid = /var/run/stunnel4/stunnel.pid
+setuid = stunnel4
+setgid = stunnel4
+debug = 7
+output = /var/log/stunnel4/stunnel.log
+
 cert = /etc/stunnel/certs/stunnel.pem
 client = no
 socket = l:TCP_NODELAY=1
@@ -196,51 +51,36 @@ accept = 443
 connect = 127.0.0.1:80
 EOF
 
+# Habilitar stunnel
 sed -i 's/ENABLED=0/ENABLED=1/' /etc/default/stunnel4
 systemctl enable stunnel4
 systemctl restart stunnel4
-sleep 1
-systemctl status stunnel4 --no-pager || true
 
 # ===========================
-# 2. BADVPN PUERTOS 7200 Y 7300
+# 2. TUNNEL DIRECTO 80 → 22 (sin HTTP)
 # ===========================
-echo "Compilando y configurando BadVPN..."
-rm -rf /opt/badvpn
-git clone https://github.com/ambrop72/badvpn.git /opt/badvpn
-mkdir -p /opt/badvpn/build && cd /opt/badvpn/build
-cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
-make -j$(nproc)
+echo "🔀 Configurando tunnel directo 80 → 22 (SSH local)..."
 
+# Matar procesos previos
+pkill -f "nc -l" || true
 pkill -f badvpn-udpgw || true
-cp udpgw/badvpn-udpgw /usr/bin/
-chmod +x /usr/bin/badvpn-udpgw
+screen -S tunnel -X quit || true
 
-screen -S badvpn -X quit || true
-screen -S badUDP72 -X quit || true
-
-screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
-  --max-clients 1000 --max-connections-for-client 10
-screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 \
-  --max-clients 1000 --max-connections-for-client 10
+# Iniciar tunnel con netcat (puerto 80 → 22)
+screen -dmS tunnel bash -c 'while true; do nc -l -p 80 -q 1 < /dev/null | nc 127.0.0.1 22; done'
 
 # ===========================
-# 3. AUTOINICIO /etc/rc.local
+# 3. AUTOINICIO
 # ===========================
-echo "Configurando autoarranque vía rc.local..."
-
-cat > /etc/rc.local <<EOF
+cat > /etc/rc.local <<'EOF'
 #!/bin/bash
 sleep 10
-nohup python3 /etc/Mccarthey/PDirect.py 80 > /root/nohup.out 2>&1 &
-screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
-screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
+screen -dmS tunnel bash -c 'while true; do nc -l -p 80 -q 1 < /dev/null | nc 127.0.0.1 22; done'
 exit 0
 EOF
-
 chmod +x /etc/rc.local
 
-cat > /etc/systemd/system/rc-local.service <<EOF
+cat > /etc/systemd/system/rc-local.service <<'EOF'
 [Unit]
 Description=/etc/rc.local Compatibility
 ConditionPathExists=/etc/rc.local
@@ -251,7 +91,6 @@ ExecStart=/etc/rc.local start
 TimeoutSec=0
 StandardOutput=tty
 RemainAfterExit=yes
-SysVStartPriority=99
 
 [Install]
 WantedBy=multi-user.target
@@ -262,124 +101,21 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 4. GESTIÓN DE RECURSOS (sin scrip.sh)
-# ===========================
-echo "Configurando gestión de RAM y CPU..."
-
-touch /var/log/gestionar_recursos.log
-chmod 644 /var/log/gestionar_recursos.log
-
-cat > /root/gestionar_recursos.sh << 'EOF'
-#!/bin/bash
-LOCK_FILE="/tmp/gestionar_recursos.lock"
-LOG_FILE="/var/log/gestionar_recursos.log"
-PID_FILE="/tmp/cpulimit_pids.txt"
-
-if [ -f "$LOCK_FILE" ]; then
-    echo "$(date): Ya en ejecución" >> "$LOG_FILE"
-    exit 1
-fi
-
-touch "$LOCK_FILE"
-trap 'rm -f "$LOCK_FILE"; exit' INT TERM EXIT
-
-cleanup_cpulimit() {
-    if [ -f "$PID_FILE" ]; then
-        while read -r cpid; do
-            kill -9 "$cpid" 2>/dev/null
-        done < "$PID_FILE"
-        > "$PID_FILE"
-    fi
-    pkill -9 -f "cpulimit -p" 2>/dev/null
-}
-
-cleanup_cpulimit
-
-MEM_THRESHOLD=200
-CACHE_THRESHOLD=100
-LOAD_THRESHOLD=2.0
-PREV_PIDS_PDIRECT=""
-PREV_PIDS_BADVPN=""
-
-while true; do
-    FREE_MEM=$(free -m | awk '/Mem:/ {print $4}')
-    CACHE_MEM=$(free -m | awk '/Mem:/ {print $6}')
-    
-    if [ "$FREE_MEM" -lt "$MEM_THRESHOLD" ] || [ "$CACHE_MEM" -gt "$CACHE_THRESHOLD" ]; then
-        echo "$(date): Liberando caché..." >> "$LOG_FILE"
-        sync
-        sudo sysctl -w vm.drop_caches=3 > /dev/null
-    fi
-
-    LOAD_AVG=$(awk '{print $1}' /proc/loadavg)
-    if (( $(echo "$LOAD_AVG > $LOAD_THRESHOLD" | bc -l) )); then
-        CURRENT_PIDS_PDIRECT=$(pgrep -f /etc/Mccarthey/PDirect.py)
-        CURRENT_PIDS_BADVPN=$(pgrep -f badvpn-udpgw)
-
-        if [ "$CURRENT_PIDS_PDIRECT" != "$PREV_PIDS_PDIRECT" ] || [ "$CURRENT_PIDS_BADVPN" != "$PREV_PIDS_BADVPN" ]; then
-            cleanup_cpulimit
-
-            for pid in $CURRENT_PIDS_PDIRECT; do
-                if ps -p "$pid" > /dev/null; then
-                    cpulimit -p "$pid" -l 20 &
-                    echo $! >> "$PID_FILE"
-                fi
-            done
-
-            for pid in $CURRENT_PIDS_BADVPN; do
-                if ps -p "$pid" > /dev/null; then
-                    cpulimit -p "$pid" -l 60 &
-                    echo $! >> "$PID_FILE"
-                fi
-            done
-
-            PREV_PIDS_PDIRECT="$CURRENT_PIDS_PDIRECT"
-            PREV_PIDS_BADVPN="$CURRENT_PIDS_BADVPN"
-        fi
-    fi
-
-    sleep 10
-done
-EOF
-
-chmod +x /root/gestionar_recursos.sh
-
-cat > /etc/systemd/system/gestionar-recursos.service <<EOF
-[Unit]
-Description=Gestiona RAM y CPU
-After=network.target rc-local.service
-
-[Service]
-Type=simple
-User=root
-ExecStart=/bin/bash /root/gestionar_recursos.sh
-ExecStop=/bin/bash -c "pkill -9 -f 'cpulimit -p'; rm -f /tmp/cpulimit_pids.txt"
-Restart=always
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-chmod 644 /etc/systemd/system/gestionar-recursos.service
-systemctl daemon-reload
-systemctl enable gestionar-recursos.service
-systemctl start gestionar-recursos.service
-
-# ===========================
-# 5. MENSAJE FINAL
+# 4. MENSAJE FINAL
 # ===========================
 echo ""
-echo "======================================"
-echo "INSTALACIÓN COMPLETA DE MCCARTHY VPN"
-echo "Puertos activos:"
-ss -tulnp | grep -E ':80|:443|:7200|:7300' || true
+echo "========================================"
+echo "✅ MCCARTHEY SSL TUNNEL LISTO"
+echo "🔒 Stunnel: 443 → 80"
+echo "🔀 Tunnel directo: 80 → 22 (SSH local)"
+echo "📡 Puertos activos:"
+ss -tulnp | grep -E ':80|:443' || true
 echo ""
-echo "Proxy HTTP (80) + Stunnel (443) → SSH Local"
-echo "Respuesta 100% estándar: HTTP/1.1 200 Connection Established"
-echo "CONNECT host:port → Conecta al destino real"
-echo "Usa puerto 443 + SNI: pruebat.org"
-echo "======================================"
+echo "📱 En HTTP Custom:"
+echo "   • Host: TU_IP"
+echo "   • Puerto: 443"
+echo "   • SNI: pruebat.org"
+echo "   • SSH: 127.0.0.1:22"
+echo "   • SIN payload (directo)"
+echo "========================================"
 echo ""
-
-exit 0
