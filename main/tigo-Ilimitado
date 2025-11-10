@@ -18,6 +18,13 @@ sudo locale-gen
 sudo update-locale LANG=es_SV.UTF-8
 sudo timedatectl set-timezone America/El_Salvador
 
+# Detener procesos previos para evitar conflictos de puertos
+pkill -f PDirect.py || true
+pkill -f badvpn-udpgw || true
+systemctl stop stunnel4 || true
+screen -S badvpn -X quit || true
+screen -S badUDP72 -X quit || true
+
 # ===========================
 # 1. INSTALAR PROXY PYTHON EN PUERTO 80 (NOHUP)
 # ===========================
@@ -43,12 +50,11 @@ PASS = ''
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = '127.0.0.1:22'
-STATUS_RESP = '101'
-FTAG = '\r\nContent-length: 0\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\n'
-STATUS_TXT = '<strong style="color: #ff0000;">Kang Sae-byeok</strong>'
-RESPONSE = f"HTTP/1.1 {STATUS_RESP} {STATUS_TXT} {FTAG}"
+STATUS_RESP = '200'  # Cambiado a 200 estándar para CONNECT
+STATUS_TXT = 'Kang Sae-byeok'  # Quitado HTML para evitar corrupción
+RESPONSE = f"HTTP/1.1 {STATUS_RESP} {STATUS_TXT}\r\n\r\n"  # Respuesta limpia, sin extras
 
-MAX_CONNECTIONS = 50  # Controla cuántas conexiones simultáneas manejar
+MAX_CONNECTIONS = 50
 semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
 
 # ==========================
@@ -93,12 +99,20 @@ async def handle_client(client_reader, client_writer):
                 await client_writer.wait_closed()
                 return
 
-            host_port = find_header('X-Real-Host', data) or DEFAULT_HOST
+            # Parsear request line para CONNECT estándar si no hay X-Real-Host
+            data_str = data.decode(errors='ignore')
+            request_line = data_str.split('\r\n')[0]
+            parts = request_line.split()
+            if len(parts) == 3 and parts[0] == 'CONNECT':
+                host_port = parts[1]  # Usa el host:port del CONNECT
+            else:
+                host_port = find_header('X-Real-Host', data) or DEFAULT_HOST
+
             split = find_header('X-Split', data)
             passwd = find_header('X-Pass', data)
 
             if split:
-                await client_reader.read(BUFLEN)  # Leer siguiente parte si aplica
+                await client_reader.read(BUFLEN)
 
             if PASS and passwd != PASS:
                 client_writer.write(b'HTTP/1.1 400 WrongPass!\r\n\r\n')
@@ -106,20 +120,20 @@ async def handle_client(client_reader, client_writer):
                 client_writer.close()
                 await client_writer.wait_closed()
                 return
-            elif host_port.startswith('127.0.0.1') or host_port.startswith('localhost') or not PASS:
-                target_reader, target_writer = await connect_target(host_port)
-                if not target_reader:
-                    client_writer.close()
-                    await client_writer.wait_closed()
-                    return
-                client_writer.write(RESPONSE.encode())
-                await client_writer.drain()
 
-                # Proxy bidireccional
-                await asyncio.gather(
-                    proxy_data(client_reader, target_writer),
-                    proxy_data(target_reader, client_writer)
-                )
+            target_reader, target_writer = await connect_target(host_port)
+            if not target_reader:
+                client_writer.close()
+                await client_writer.wait_closed()
+                return
+            client_writer.write(RESPONSE.encode())
+            await client_writer.drain()
+
+            # Proxy bidireccional
+            await asyncio.gather(
+                proxy_data(client_reader, target_writer),
+                proxy_data(target_reader, client_writer)
+            )
         except Exception as e:
             print(f"{log_prefix} - error: {e}")
         finally:
@@ -426,10 +440,10 @@ echo ""
 echo "======================================"
 echo "✅ INSTALACIÓN COMPLETA DE MCCARTHY VPN"
 echo "📦 Puertos activos:"
-ss -tulnp | grep -E ':80|:7200|:7300' || true
+ss -tulnp | grep -E ':80|:443|:7200|:7300' || true
 echo ""
-echo "🛡️  Proxy HTTP (80 -> 22) ACTIVO via Nohup"
-echo "🎯 Listo para usar con HTTP Injector"
+echo "🛡️  Proxy HTTP (80 -> target) ACTIVO via Nohup, con Stunnel en 443"
+echo "🎯 Listo para usar con HTTP Injector / Custom (soporte CONNECT estándar)"
 echo "💎 Firma personalizada: Kang Sae-byeok"
 echo "🛠️ Gestión de RAM y CPU activa (servicio: gestionar-recursos)"
 echo "======================================"
