@@ -1,13 +1,13 @@
 #!/bin/bash
-echo "Script MCCARTHEY - SSL 443 → SSH 22 (Automático, sin menú)"
+echo "🔰 Script MCCARTHEY - SSL 443 → SSH 22 (Automático, sin menú)"
 set -e
 export TZ="America/El_Salvador"
 
 # === Actualizar sistema ===
 sudo apt update -y && sudo apt upgrade -y
 
-# === Instalar dependencias mínimas ===
-sudo apt install -y stunnel4 netcat-openbsd locales openssl
+# === Instalar dependencias necesarias ===
+sudo apt install -y stunnel4 locales openssl
 
 # === Configurar idioma y zona horaria ===
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
@@ -16,28 +16,26 @@ sudo update-locale LANG=es_SV.UTF-8
 sudo timedatectl set-timezone America/El_Salvador
 
 # === Detener servicios previos ===
-pkill -f "nc -l" || true
 pkill -f stunnel4 || true
 systemctl stop stunnel4 2>/dev/null || true
-screen -S tunnel -X quit 2>/dev/null || true
 
-# === Configuración automática: 22 → 443 (sin preguntas) ===
+# === Variables principales ===
 LOCAL_PORT=22
 SSL_PORT=443
 SNI_HOST="pruebat.org"
 
 # === Generar certificado SSL automático (CN = pruebat.org) ===
-echo "Generando certificado SSL automático (CN: $SNI_HOST)..."
+echo "🧾 Generando certificado SSL automático (CN: $SNI_HOST)..."
 mkdir -p /etc/stunnel/certs
 openssl req -x509 -newkey rsa:2048 -keyout /etc/stunnel/certs/stunnel.key \
   -out /etc/stunnel/certs/stunnel.crt -days 3650 -nodes -batch \
-  -subj "/C=US/ST=Florida/L=Miami/O=McCartheyVPN/OU=SSLService/CN=$SNI_HOST/emailAddress=admin@mccarthey.net"
+  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=SSLService/CN=$SNI_HOST/emailAddress=admin@mccarthey.net"
 
 cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
 chmod 600 /etc/stunnel/certs/stunnel.pem
 
-# === Configurar Stunnel: 443 → 80 (puerto intermedio) ===
-echo "Configurando Stunnel: $SSL_PORT → 80"
+# === Configurar Stunnel: 443 → 22 (directo) ===
+echo "⚙️ Configurando Stunnel: $SSL_PORT → $LOCAL_PORT"
 cat > /etc/stunnel/stunnel.conf <<EOF
 pid = /var/run/stunnel4/stunnel.pid
 setuid = stunnel4
@@ -52,23 +50,17 @@ socket = r:TCP_NODELAY=1
 
 [ssh]
 accept = $SSL_PORT
-connect = 127.0.0.1:80
+connect = 127.0.0.1:$LOCAL_PORT
 EOF
-
-# === Tunnel directo: 80 → 22 (SSH local) con netcat ===
-echo "Configurando tunnel directo: 80 → $LOCAL_PORT"
-screen -dmS tunnel bash -c "while true; do nc -l -p 80 -q 1 < /dev/null | nc 127.0.0.1 $LOCAL_PORT; done"
 
 # === Habilitar Stunnel al inicio ===
 sed -i 's/ENABLED=0/ENABLED=1/' /etc/default/stunnel4
 systemctl enable stunnel4
 systemctl restart stunnel4
 
-# === Autoarranque completo ===
+# === Verificar arranque automático ===
 cat > /etc/rc.local <<'EOF'
 #!/bin/bash
-sleep 10
-screen -dmS tunnel bash -c 'while true; do nc -l -p 80 -q 1 < /dev/null | nc 127.0.0.1 22; done'
 exit 0
 EOF
 chmod +x /etc/rc.local
@@ -95,23 +87,24 @@ systemctl start rc-local
 
 # === Mensaje final ===
 echo ""
-echo "MCCARTHEY SSL TUNNEL (AUTOMÁTICO)"
+echo "🟢 MCCARTHEY SSL TUNNEL (AUTOMÁTICO)"
 echo "========================================"
-echo "SSL: $SSL_PORT → 80 → $LOCAL_PORT (SSH)"
+echo "SSL: $SSL_PORT → $LOCAL_PORT (SSH directo)"
 echo "Certificado: CN = $SNI_HOST"
-echo "SNI en cliente: pruebat.org"
+echo "SNI en cliente: $SNI_HOST"
 echo ""
-echo "HTTP Custom (SIN payload):"
+echo "⚙️ Configuración para HTTP Custom (SIN payload):"
 echo "   • Host: TU_IP"
 echo "   • Puerto: 443"
-echo "   • SNI: pruebat.org"
+echo "   • SNI: $SNI_HOST"
 echo "   • SSH: 127.0.0.1:22"
 echo "   • Payload: [VACÍO]"
 echo ""
-echo "Verificación:"
-echo "   ss -tulnp | grep -E ':80|:443'"
+echo "🔎 Verificación rápida:"
+echo "   ss -tulnp | grep 443"
 echo "   systemctl status stunnel4"
-echo "   screen -ls | grep tunnel"
+echo ""
+echo "✅ Instalación completada correctamente."
 echo "========================================"
 echo ""
 
