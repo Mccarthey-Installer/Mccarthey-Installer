@@ -4,23 +4,23 @@ echo "================================================================"
 set -e
 export TZ="America/El_Salvador"
 
-# Actualizar sistema
+# === Actualizar sistema ===
 echo "Actualizando sistema..."
 sudo apt update -y && sudo apt upgrade -y
 
-# Instalando dependencias
+# === Instalar dependencias necesarias ===
 echo "Instalando dependencias..."
 sudo apt install -y stunnel4 locales openssl util-linux git cmake build-essential \
 curl unzip wget python3 python3-dev python-is-python3 screen net-tools python3-pip cpulimit
 
-# Configurando idioma y zona horaria
+# === Configurar idioma y zona horaria ===
 echo "Configurando zona horaria e idioma..."
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
 sudo locale-gen
 sudo update-locale LANG=es_SV.UTF-8
-sudo timedate cafetimectl set-timezone America/El_Salvador
+sudo timedatectl set-timezone America/El_Salvador
 
-# Deteniendo servicios previos
+# === Detener servicios previos ===
 echo "Deteniendo servicios previos..."
 pkill -f stunnel4 || true
 pkill -f PDirect.py || true
@@ -29,14 +29,14 @@ systemctl stop stunnel4 2>/dev/null || true
 screen -S badvpn -X quit || true
 screen -S badUDP72 -X quit || true
 
-# Variables principales
+# === Variables principales ===
 LOCAL_PORT=22
 SSL_PORT=443
 SNI_HOST="pruebat.org"
 PROXY_PORT=80
 
 # ===========================
-# 1. STUNNEL: 443 → 22
+# 1. CONFIGURAR STUNNEL: 443 → 22
 # ===========================
 echo "Generando certificado SSL (CN: $SNI_HOST)..."
 mkdir -p /etc/stunnel/certs
@@ -298,7 +298,7 @@ CACHE_THRESHOLD=100
 LOAD_THRESHOLD=2.0
 PREV_PIDS_PDIRECT=""
 PREV_PIDS_BADVPN=""
-PREV_PIDSday_SCRIP=""
+PREV_PIDS_SCRIP=""
 
 while true; do
     FREE_MEM=$(free -m | awk '/Mem:/ {print $4}')
@@ -367,7 +367,7 @@ systemctl enable gestionar-recursos.service
 systemctl start gestionar-recursos.service
 
 # ===========================
-# 6. MENSAJE FINAL CON EMOJIS
+# 6. MENSAJE FINAL
 # ===========================
 sleep 2
 echo ""
