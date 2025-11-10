@@ -8,7 +8,6 @@ echo "🛠️ Instalando dependencias..."
 sudo apt update -y
 sudo apt upgrade -y
 
-
 # Instalar paquetes necesarios
 sudo apt install -y util-linux git cmake build-essential curl unzip wget \
 python3 python3-dev python-is-python3 screen net-tools python3-pip locales cpulimit
@@ -24,9 +23,9 @@ sudo timedatectl set-timezone America/El_Salvador
 # ===========================
 echo "🌀 Configurando proxy Python en puerto 80..."
 
-mkdir -p /etc/ADMcgh
+mkdir -p /etc/Mccarthey
 
-cat > /etc/ADMcgh/PDirect.py << 'EOF'
+cat > /etc/Mccarthey/PDirect.py << 'EOF'
 #!/usr/bin/env python3
 # encoding: utf-8
 
@@ -166,10 +165,43 @@ if __name__ == '__main__':
         print("Parando servidor...")
 EOF
 
-chmod +x /etc/ADMcgh/PDirect.py
+chmod +x /etc/Mccarthey/PDirect.py
 
 # Iniciar con nohup
-nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+nohup python3 /etc/Mccarthey/PDirect.py 80 > /root/nohup.out 2>&1 &
+
+# ===========================
+# 1.1 CONFIGURAR STUNNEL (443 → 80 → 22)
+# ===========================
+echo "🔐 Configurando Stunnel (SSL 443 → Proxy 80 → SSH 22)..."
+
+apt remove --purge -y stunnel4 > /dev/null 2>&1 || true
+apt install -y stunnel4 > /dev/null 2>&1
+
+mkdir -p /etc/stunnel/certs
+openssl req -x509 -newkey rsa:2048 -keyout /etc/stunnel/certs/stunnel.key \
+  -out /etc/stunnel/certs/stunnel.crt -days 3650 -nodes \
+  -subj "/C=SV/ST=San Salvador/L=Santa Ana/O=McCartheyVPN/OU=SSLService/CN=SSLService/emailAddress=admin@mccarthey.net"
+
+cat /etc/stunnel/certs/stunnel.key /etc/stunnel/certs/stunnel.crt > /etc/stunnel/certs/stunnel.pem
+chmod 600 /etc/stunnel/certs/stunnel.pem
+
+cat > /etc/stunnel/stunnel.conf <<EOF
+cert = /etc/stunnel/certs/stunnel.pem
+client = no
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+
+[ssh]
+accept = 443
+connect = 127.0.0.1:80
+EOF
+
+sed -i 's/ENABLED=0/ENABLED=1/' /etc/default/stunnel4
+systemctl enable stunnel4
+systemctl restart stunnel4
+sleep 1
+systemctl status stunnel4 --no-pager || true
 
 # ===========================
 # 2. BADVPN PUERTOS 7200 Y 7300
@@ -202,7 +234,7 @@ echo "🧩 Configurando autoarranque vía rc.local..."
 cat > /etc/rc.local <<EOF
 #!/bin/bash
 sleep 10
-nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+nohup python3 /etc/Mccarthey/PDirect.py 80 > /root/nohup.out 2>&1 &
 screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
 screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
 exit 0
@@ -268,7 +300,7 @@ cleanup_cpulimit() {
         > "$PID_FILE" # Vaciar el archivo de PIDs
     fi
     pkill -9 -f "cpulimit -p" 2>/dev/null
-    pkill -9 -f "pgrep -f /etc/ADMcgh/PDirect.py" 2>/dev/null
+    pkill -9 -f "pgrep -f /etc/Mccarthey/PDirect.py" 2>/dev/null
 }
 
 # Limpieza inicial
@@ -314,7 +346,7 @@ while true; do
         echo "$(date): Carga CPU alta: $LOAD_AVG. Limitando procesos intensivos..." >> "$LOG_FILE"
         
         # Obtener PIDs actuales
-        CURRENT_PIDS_PDIRECT=$(pgrep -f /etc/ADMcgh/PDirect.py)
+        CURRENT_PIDS_PDIRECT=$(pgrep -f /etc/Mccarthey/PDirect.py)
         CURRENT_PIDS_BADVPN=$(pgrep -f badvpn-udpgw)
         CURRENT_PIDS_SCRIP=$(pgrep -f "/root/scrip.sh mon")
 
@@ -374,7 +406,7 @@ After=network.target rc-local.service
 Type=simple
 User=root
 ExecStart=/bin/bash /root/gestionar_recursos.sh
-ExecStop=/bin/bash -c "pkill -9 -f 'cpulimit -p'; pkill -9 -f 'pgrep -f /etc/ADMcgh/PDirect.py'; pkill -9 -f 'pgrep -f badvpn-udpgw'; pkill -9 -f 'pgrep -f /root/scrip.sh mon'; rm -f /tmp/cpulimit_pids.txt"
+ExecStop=/bin/bash -c "pkill -9 -f 'cpulimit -p'; pkill -9 -f 'pgrep -f /etc/Mccarthey/PDirect.py'; pkill -9 -f 'pgrep -f badvpn-udpgw'; pkill -9 -f 'pgrep -f /root/scrip.sh mon'; rm -f /tmp/cpulimit_pids.txt"
 Restart=always
 RestartSec=5s
 
