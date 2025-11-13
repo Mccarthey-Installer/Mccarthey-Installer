@@ -119,13 +119,6 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 DAYS=''
                 MOBILES=''
 
-                # Función para calcular la fecha de expiración
-                calcular_expiracion() {
-                    local dias=\$1
-                    local fecha_expiracion=\$(date -d \"+\$dias days\" \"+%d/%B/%Y\")
-                    echo \$fecha_expiracion
-                }
-
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
                     local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
@@ -297,7 +290,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ Error al establecer la fecha de expiración.\" -d parse_mode=Markdown >/dev/null
                                                         else
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
-                                                            fecha_expiracion=\$(calcular_expiracion \$DAYS)
+                                                            fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
@@ -757,7 +750,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}                        
+                                          
 
 function barra_sistema() {  
     # ================= Colores =================  
