@@ -120,48 +120,49 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 MOBILES=''
 
                 calcular_dias_restantes() {
-                    local fecha_expiracion=\"\$1\"
-                    local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
-                    local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
-                    mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
-                    local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
+    local fecha_expiracion="$1"
 
-                    case \$mes in
-                        \"enero\") mes_num=\"01\" ;;
-                        \"febrero\") mes_num=\"02\" ;;
-                        \"marzo\") mes_num=\"03\" ;;
-                        \"abril\") mes_num=\"04\" ;;
-                        \"mayo\") mes_num=\"05\" ;;
-                        \"junio\") mes_num=\"06\" ;;
-                        \"julio\") mes_num=\"07\" ;;
-                        \"agosto\") mes_num=\"08\" ;;
-                        \"septiembre\") mes_num=\"09\" ;;
-                        \"octubre\") mes_num=\"10\" ;;
-                        \"noviembre\") mes_num=\"11\" ;;
-                        \"diciembre\") mes_num=\"12\" ;;
-                        *) echo 0; return ;;
-                    esac
+    local dia=$(echo "$fecha_expiracion" | cut -d'/' -f1)
+    local mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
+    local anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
 
-                    local fecha_formateada=\"\$anio-\$mes_num-\$dia\"
-                    local fecha_actual=\$(date \"+%Y-%m-%d\")
+    # Convertir mes español a número
+    case $mes in
+        "enero") mes_num="01" ;;
+        "febrero") mes_num="02" ;;
+        "marzo") mes_num="03" ;;
+        "abril") mes_num="04" ;;
+        "mayo") mes_num="05" ;;
+        "junio") mes_num="06" ;;
+        "julio") mes_num="07" ;;
+        "agosto") mes_num="08" ;;
+        "septiembre") mes_num="09" ;;
+        "octubre") mes_num="10" ;;
+        "noviembre") mes_num="11" ;;
+        "diciembre") mes_num="12" ;;
+        *) echo 0; return ;;
+    esac
 
-                    local fecha_exp_epoch=\$(date -d \"\$fecha_formateada\" \"+%s\" 2>/dev/null)
-                    local fecha_act_epoch=\$(date -d \"\$fecha_actual\" \"+%s\")
+    local fecha_formateada="$anio-$mes_num-$dia"
+    local fecha_actual=$(date "+%Y-%m-%d")
 
-                    if [[ -z \"\$fecha_exp_epoch\" ]]; then
-                        echo 0
-                        return
-                    fi
+    local fecha_exp_epoch=$(date -d "$fecha_formateada" "+%s" 2>/dev/null)
+    local fecha_act_epoch=$(date -d "$fecha_actual" "+%s")
 
-                    local diff_segundos=\$((fecha_exp_epoch - fecha_act_epoch))
-                    local dias_restantes=\$((diff_segundos / 86400))
+    if [[ -z "$fecha_exp_epoch" ]]; then
+        echo 0
+        return
+    fi
 
-                    if [ \$dias_restantes -lt 0 ]; then
-                        dias_restantes=0
-                    fi
+    local diff_segundos=$((fecha_exp_epoch - fecha_act_epoch))
+    local dias_restantes=$((diff_segundos / 86400))
 
-                    echo \$dias_restantes
-                }
+    if [ $dias_restantes -lt 0 ]; then
+        dias_restantes=0
+    fi
+
+    echo $dias_restantes
+}
 
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
