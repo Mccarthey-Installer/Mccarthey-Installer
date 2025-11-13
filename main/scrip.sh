@@ -63,7 +63,7 @@ fi
 systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
-              ssh_bot() {
+ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -75,11 +75,13 @@ systemctl restart sshd && echo "SSH configurado correctamente."
     export REGISTROS="/diana/reg.txt"
     export HISTORIAL="/alexia/log.txt"
     export PIDFILE="/Abigail/mon.pid"
+    export CONEXION_STATUS_DIR="/tmp/sshbot_status"
 
     # Crear directorios si no existen
     mkdir -p "$(dirname "$REGISTROS")"
     mkdir -p "$(dirname "$HISTORIAL")"
     mkdir -p "$(dirname "$PIDFILE")"
+    mkdir -p "$CONEXION_STATUS_DIR"
 
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
@@ -101,6 +103,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 export REGISTROS='$REGISTROS'
                 export HISTORIAL='$HISTORIAL'
                 export PIDFILE='$PIDFILE'
+                export CONEXION_STATUS_DIR='$CONEXION_STATUS_DIR'
 
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
@@ -119,13 +122,21 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 DAYS=''
                 MOBILES=''
 
+                calcular_expiracion() {
+                    local dias=\$1
+                    local fecha_expiracion=\$(date -d \"+\$dias days\" \"+%d/%B/%Y\" 2>/dev/null)
+                    if [[ -z \"\$fecha_expiracion\" ]]; then
+                        echo \"\"
+                        return
+                    fi
+                    echo \$fecha_expiracion
+                }
+
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
                     local dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
                     local mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
-                    mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                     local anio=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f3)
-
                     case \$mes in
                         \"enero\") mes_num=\"01\" ;;
                         \"febrero\") mes_num=\"02\" ;;
@@ -141,27 +152,70 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                         \"diciembre\") mes_num=\"12\" ;;
                         *) echo 0; return ;;
                     esac
-
                     local fecha_formateada=\"\$anio-\$mes_num-\$dia\"
                     local fecha_actual=\$(date \"+%Y-%m-%d\")
-
                     local fecha_exp_epoch=\$(date -d \"\$fecha_formateada\" \"+%s\" 2>/dev/null)
                     local fecha_act_epoch=\$(date -d \"\$fecha_actual\" \"+%s\")
-
                     if [[ -z \"\$fecha_exp_epoch\" ]]; then
                         echo 0
                         return
                     fi
-
                     local diff_segundos=\$((fecha_exp_epoch - fecha_act_epoch))
                     local dias_restantes=\$((diff_segundos / 86400))
-
                     if [ \$dias_restantes -lt 0 ]; then
                         dias_restantes=0
                     fi
-
                     echo \$dias_restantes
                 }
+
+                # Función para monitorear conexiones
+                monitor_conexiones() {
+                    while true; do
+                        if [[ -f \"\$REGISTROS\" && -s \"\$REGISTROS\" ]]; then
+                            while IFS=' ' read -r userpass _ _ moviles _; do
+                                usuario=\${userpass%%:*}
+                                if ! id \"\$usuario\" &>/dev/null; then
+                                    continue
+                                fi
+                                conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
+                                status_file=\"\$CONEXION_STATUS_DIR/\${usuario}_status\"
+                                if [[ \$conexiones -gt \$moviles ]]; then
+                                    if [[ ! -f \"\$status_file\" || \$(cat \"\$status_file\") != \"exceeded\" ]]; then
+                                        echo \"exceeded\" > \"\$status_file\"
+                                        fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
+                                        ALERTA=\"⚠️ *OYE 😱 ${USER_NAME} HAY MAÑOSOS ACTIVOS* 🚨
+
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Problema*: Ha superado el límite de conexiones permitidas.
+✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
+🚫 *Conexiones actuales*: \\\`\${conexiones}\\\`
+⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
+
+🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$ALERTA\" -d parse_mode=Markdown >/dev/null
+                                    fi
+                                elif [[ \$conexiones -le \$moviles && -f \"\$status_file\" && \$(cat \"\$status_file\") == \"exceeded\" ]]; then
+                                    echo \"normal\" > \"\$status_file\"
+                                    fecha_hora=\$(date \"+%Y-%m-%d %H:%M\")
+                                    NOTIFICACION=\"✅ *¡Hola ${USER_NAME} ya le di Jake 😈!*
+
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Estado*: Ha vuelto a su límite normal de conexiones.
+✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
+🌟 *Conexiones actuales*: \\\`\${conexiones}\\\`
+⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
+
+🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
+                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=$USER_ID -d text=\"\$NOTIFICACION\" -d parse_mode=Markdown >/dev/null
+                                fi
+                            done < \"\$REGISTROS\"
+                        fi
+                        sleep 60  # Verificar cada 60 segundos
+                    done
+                }
+
+                # Iniciar monitoreo en segundo plano
+                monitor_conexiones &
 
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
@@ -250,7 +304,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                 fi
                                 continue
                             fi
-                             if [[ \$EXPECTING_USER_DATA -eq 1 ]]; then
+                            if [[ \$EXPECTING_USER_DATA -eq 1 ]]; then
                                 case \$USER_DATA_STEP in
                                     1)
                                         USERNAME=\"\$MSG_TEXT\"
@@ -387,8 +441,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                     1)
                                         USUARIO=\"\$MSG_TEXT\"
                                         if ! grep -q \"^\$USUARIO:\" \"\$REGISTROS\"; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *El usuario* \\\`\${USUARIO}\\\` *no existe.* 😕
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *El usuario* \\\`\${USUARIO}\\\` *no existe.* 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             EXPECTING_RENEW_USER=0
                                             RENEW_STEP=0
                                         else
@@ -408,8 +461,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                     2)
                                         DIAS_RENOVAR=\"\$MSG_TEXT\"
                                         if ! [[ \"\$DIAS_RENOVAR\" =~ ^-?[0-9]+$ ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Días inválidos.* Debe ser un número entero (positivo o negativo). 😕
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Días inválidos.* Debe ser un número entero (positivo o negativo). 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             EXPECTING_RENEW_USER=0
                                             RENEW_STEP=0
                                         else
@@ -424,17 +476,15 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         fi
                                         nuevos_moviles=\$((moviles + MOVILES_CAMBIOS))
                                         if (( nuevos_moviles < 0 )); then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *El límite de móviles no puede ser menor que 0.* 😕
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *El límite de móviles no puede ser menor que 0.* 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             EXPECTING_RENEW_USER=0
                                             RENEW_STEP=0
                                         else
-                                            fecha_expiracion_std=\$(echo \"\$fecha_expiracion\" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|')
+                                            fecha_expiracion_std=\$(echo \"\$fecha_expiracion\" | sed 's|enero|01|;s|febrero|02|;s|marzo|03|;s|abril|04|;s|mayo|05|;s|junio|06|;s|julio|07|;s|agosto|08|;s|septiembre|09|;s|octubre|10|;s|noviembre|11|;s|diciembre|12|' | tr '[:upper:]' '[:lower:]')
                                             fecha_expiracion_std=\$(echo \"\$fecha_expiracion_std\" | awk -F'/' '{printf \"%04d-%02d-%02d\", \$3, \$2, \$1}')
                                             nueva_fecha_std=\$(date -d \"\$fecha_expiracion_std + \$DIAS_RENOVAR days\" \"+%Y-%m-%d\" 2>/dev/null)
                                             if [[ -z \"\$nueva_fecha_std\" ]]; then
-                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al calcular la nueva fecha de expiración.* 😕
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al calcular la nueva fecha de expiración.* 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 echo \"Error al calcular nueva fecha para \$USUARIO, Fecha: \$(date \"+%Y-%m-%d %H:%M:%S\")\" >> \"\$HISTORIAL\"
                                                 EXPECTING_RENEW_USER=0
                                                 RENEW_STEP=0
@@ -442,8 +492,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 fecha_expiracion_sistema=\$(date -d \"\$nueva_fecha_std + 1 day\" \"+%Y-%m-%d\" 2>/dev/null)
                                                 if ! chage -E \"\$fecha_expiracion_sistema\" \"\$USUARIO\" 2>/tmp/chage_error; then
                                                     error_msg=\$(cat /tmp/chage_error)
-                                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al actualizar la fecha de expiración en el sistema:* \$error_msg 😕
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al actualizar la fecha de expiración en el sistema:* \$error_msg 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     echo \"Error al actualizar fecha de expiración para \$USUARIO: \$error_msg, Fecha: \$(date \"+%Y-%m-%d %H:%M:%S\")\" >> \"\$HISTORIAL\"
                                                     rm -f /tmp/chage_error
                                                     EXPECTING_RENEW_USER=0
@@ -455,21 +504,17 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                         meses[\"09\"]=\"septiembre\"; meses[\"10\"]=\"octubre\"; meses[\"11\"]=\"noviembre\"; meses[\"12\"]=\"diciembre\";
                                                         printf \"%02d/%s/%04d\", \$3, meses[\$2], \$1
                                                     }')
-                                                    dias_restantes=\$(calcular_dias_restantes \"\$nueva_fecha\")
+                                                    dias_restantes=\$(( ( ( \$(date -d \"\$nueva_fecha_std\" +%s) - \$(date +%s) ) / 86400 ) + 1 ))
                                                     if ! grep -q \"^\$USUARIO:\" \"\$REGISTROS\"; then
-                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error: el usuario \$USUARIO no se encuentra en los registros.* 😕
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error: el usuario \$USUARIO no se encuentra en los registros.* 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                         echo \"Error: usuario \$USUARIO no encontrado en \$REGISTROS, Fecha: \$(date \"+%Y-%m-%d %H:%M:%S\")\" >> \"\$HISTORIAL\"
                                                         EXPECTING_RENEW_USER=0
                                                         RENEW_STEP=0
                                                     else
-                                                        temp_file=\"/tmp/registros_\$USUARIO.tmp\"
-                                                        sed \"/^\$USUARIO:/d\" \"\$REGISTROS\" > \"\$temp_file\"
-                                                        echo \"\$USUARIO:\$clave \$nueva_fecha \$dias_actuales \$nuevos_moviles \$fecha_creacion\" >> \"\$temp_file\"
-                                                        if ! mv \"\$temp_file\" \"\$REGISTROS\" 2>/tmp/sed_error; then
+                                                        sed -i \"s|^ \$USUARIO:.*|\$USUARIO:\$clave \$nueva_fecha \$dias_actuales \$nuevos_moviles \$fecha_creacion|\" \"\$REGISTROS\" 2>/tmp/sed_error
+                                                        if [[ \$? -ne 0 ]]; then
                                                             error_msg=\$(cat /tmp/sed_error)
-                                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al actualizar el archivo de registros:* \$error_msg 😕
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *Error al actualizar el archivo de registros:* \$error_msg 😕 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                             echo \"Error al actualizar \$REGISTROS para \$USUARIO: \$error_msg, Fecha: \$(date \"+%Y-%m-%d %H:%M:%S\")\" >> \"\$HISTORIAL\"
                                                             rm -f /tmp/sed_error
                                                             EXPECTING_RENEW_USER=0
@@ -502,7 +547,7 @@ Escribe *hola* para volver al menú.\"
                             else
                                 case \"\$MSG_TEXT\" in
                                     'Hola'|'hola'|'/start')
-                                        MENU=\"¡Hola! 😏 *$USER_NAME* 👋 Te invito a seleccionar una de estas opciones:
+                                        MENU=\"¡Hola! 😏 *${USER_NAME}* 👋 Te invito a seleccionar una de estas opciones:
 
 🔧 *Presiona 1* para crear usuario
 📋 *Presiona 2* para ver los usuarios registrados
@@ -539,6 +584,7 @@ Escribe *hola* para volver al menú.\"
                                                 dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
                                                 dia=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f1)
                                                 mes=\$(echo \"\$fecha_expiracion\" | cut -d'/' -f2)
+                                                mes=\$(echo \"\$mes\" | tr '[:upper:]' '[:lower:]')
                                                 case \$mes in
                                                     enero) mes=\"ene\" ;;
                                                     febrero) mes=\"feb\" ;;
@@ -552,6 +598,7 @@ Escribe *hola* para volver al menú.\"
                                                     octubre) mes=\"oct\" ;;
                                                     noviembre) mes=\"nov\" ;;
                                                     diciembre) mes=\"dic\" ;;
+                                                    *) mes=\"???\" ;;
                                                 esac
                                                 fecha_corta=\"\$dia/\$mes\"
 
@@ -568,8 +615,7 @@ Escribe *hola* para volver al menú.\"
                                         ;;
                                     '3')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.* Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             LISTA=\"¡Hola! 😏 *$USER_NAME* Aquí te muestro todos los usuarios que tienes registrados, solo pon un usuario y lo vamos a eliminar al instante 😈
 
@@ -586,8 +632,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     '4')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.* Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             LISTA=\"🌸 *USUARIOS REGISTRADOS* 🌸
 
@@ -609,8 +654,7 @@ Selecciona un usuario para renovar:
                                         ;;
                                     '5')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.* Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             FECHA_ACTUAL=\$(date +\"%Y-%m-%d %H:%M\")
                                             LISTA=\"===== 🥳 *USUARIOS ONLINE* 😎 =====
@@ -712,8 +756,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                     '6')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados para crear backup.*
-Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados para crear backup.* Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             temp_backup=\"/tmp/backup_\$(date +%Y%m%d_%H%M%S).txt\"
                                             cp \"\$REGISTROS\" \"\$temp_backup\"
@@ -754,6 +797,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                 rm -f "$PIDFILE"
             fi
             rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
+            rm -rf "$CONEXION_STATUS_DIR"
             pkill -f "api.telegram.org"
             echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
             ;;
@@ -764,9 +808,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                        
+}
                                           
-
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
@@ -776,7 +819,7 @@ function barra_sistema() {
     AMARILLO='\033[93m'  
     VERDE='\033[92m'  
     NC='\033[0m'  
-    CIAN='\033[38;5;51m'  # Para inactivos
+    CIAN='\033[38;5;51m'  # Added CIAN to match verificar_online for consistency
 
     # ================= Config persistente =================
     STATE_FILE="/etc/mi_script/contador_online.conf"
@@ -785,7 +828,7 @@ function barra_sistema() {
     TOTAL_CONEXIONES=0  
     TOTAL_USUARIOS=0  
     USUARIOS_EXPIRAN=()  
-    inactivos=0  
+    inactivos=0  # Initialize inactivos counter
 
     if [[ -f "$REGISTROS" ]]; then  
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
@@ -796,6 +839,7 @@ function barra_sistema() {
                 if [[ $DIAS_RESTANTES -eq 0 ]]; then  
                     USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
                 fi  
+                # Calculate inactivos based on verificar_online logic
                 conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))  
                 bloqueo_file="/tmp/bloqueo_${usuario}.lock"  
                 if [[ $conexiones -eq 0 && ! -f "$bloqueo_file" ]]; then  
@@ -804,7 +848,7 @@ function barra_sistema() {
                     bloqueo_hasta=$(cat "$bloqueo_file")  
                     if [[ $(date +%s) -ge $bloqueo_hasta ]]; then  
                         rm -f "$bloqueo_file"  
-                        ((inactivos++))  
+                        ((inactivos++))  # Consider unblocked but disconnected users as inactive
                     fi  
                 fi  
             fi  
@@ -835,7 +879,7 @@ function barra_sistema() {
     MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')  
     MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')  
     MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')  
-    MEM_PORC=$((100 * MEM_USO / MEM_TOTAL))
+    MEM_PORC=$(awk "BEGIN {printf \"%.2f\", ($MEM_USO/$MEM_TOTAL)*100}")  
 
     human() {  
         local value=$1  
@@ -860,26 +904,12 @@ function barra_sistema() {
         DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  
     fi  
 
-    # ================= CPU tipo kernel instantáneo =================
-    CPU_STAT_FILE="/tmp/.cpu_stat_prev"
-    read cpu a b c d e f g h i j < /proc/stat
-    idle=$d
-    total=$((a+b+c+d+e+f+g+h+i+j))
-    if [[ -f "$CPU_STAT_FILE" ]]; then
-        read prev_total prev_idle < "$CPU_STAT_FILE"
-        diff_idle=$((idle - prev_idle))
-        diff_total=$((total - prev_total))
-        if [[ $diff_total -gt 0 ]]; then
-            CPU_PORC=$(( (100 * (diff_total - diff_idle)) / diff_total ))
-        else
-            CPU_PORC=0
-        fi
-    else
-        CPU_PORC=0
-    fi
-    echo "$total $idle" > "$CPU_STAT_FILE"
+    # ================= CPU =================  
+    CPU_PORC=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')  
+    CPU_PORC=$(awk "BEGIN {printf \"%.0f\", $CPU_PORC}")  
+    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {print $2; exit}' /proc/cpuinfo)  
+    [[ -z "$CPU_MHZ" ]] && CPU_MHZ="Desconocido"  
 
-    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
     # ================= IP y fecha =================  
     if command -v curl &>/dev/null; then  
         IP_PUBLICA=$(curl -s ifconfig.me)  
@@ -905,16 +935,19 @@ function barra_sistema() {
         LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"  
     fi  
 
-    # ================= Uptime =================    
-    UPTIME=$(uptime -p | sed 's/up //')  
-    UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  
+# ================= Uptime =================    
+UPTIME=$(uptime -p | sed 's/up //')  # Obtiene el uptime en formato legible, ej: "6 hours, 13 minutes"
+UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  # Formato con color y emoji para destacar
 
-    # ================= Transferencia =================  
+
+    # ================= Transferencia acumulada =================  
     TRANSFER_FILE="/tmp/vps_transfer_total"  
     LAST_FILE="/tmp/vps_transfer_last"  
+
     RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
     TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
     TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
+
     if [[ ! -f "$LAST_FILE" ]]; then
         TRANSFER_ACUM=0
         DIFF=0
@@ -927,6 +960,7 @@ function barra_sistema() {
         echo "$TOTAL_BYTES" > "$LAST_FILE"
         echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
     fi
+
     human_transfer() {  
         local bytes=$1  
         if [ "$bytes" -ge 1073741824 ]; then  
@@ -935,17 +969,18 @@ function barra_sistema() {
             awk "BEGIN {printf \"%.2f MB\", $bytes/1048576}"  
         fi  
     }  
+
     TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
     # ================= Imprimir todo =================  
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL:${AMARILLO} ${MEM_TOTAL_H}${NC}     ${BLANCO}∘ 💧 DISPONIBLE:${AMARILLO} ${MEM_DISPONIBLE_H}${NC} ${BLANCO}∘ 💿 HDD:${AMARILLO} ${DISCO_TOTAL_H}${NC} ${DISCO_PORC_COLOR}"
-    echo -e "${BLANCO} 📊 U/RAM: ${MEM_PORC}%   🖥️ U/CPU: ${CPU_PORC}%       🔧 CPU MHz: ${CPU_MHZ}${NC}"
+    echo -e "${BLANCO} 📊 U/RAM:${AMARILLO} ${MEM_PORC}%${NC}   ${BLANCO}∘ 🖥️ U/CPU:${AMARILLO}${CPU_PORC}%${NC}       ${BLANCO}∘ 🔧 CPU MHz:${AMARILLO} ${CPU_MHZ}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
     echo -e "${BLANCO} ${UPTIME_COLOR}${NC}"
-    echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
+    echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"  # Updated line to match requested format
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
     if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
@@ -953,6 +988,10 @@ function barra_sistema() {
         echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
 }
+                                                
+                                            
+
+
 
         
 
@@ -2507,7 +2546,7 @@ while true; do
     clear
     barra_sistema
     echo
-    echo -e "${VIOLETA}======🐳PANEL DE USUARIOS VPN/SSH ======${NC}"
+    echo -e "${VIOLETA}======🐳🦈PANEL DE USUARIOS VPN/SSH ======${NC}"
     echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"
     echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"
     echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"
