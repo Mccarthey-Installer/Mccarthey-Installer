@@ -1,17 +1,16 @@
 #!/bin/bash
-echo "✅ Script TIGO Ilimitado ejecutado correctamente."
+echo "Script TIGO Ilimitado ejecutado correctamente."
 set -e
 export TZ="America/El_Salvador"
-echo "🛠️ Instalando dependencias..."
+echo "Instalando dependencias..."
 
 # Actualizar índices de paquetes
 sudo apt update -y
 sudo apt upgrade -y
 
-
 # Instalar paquetes necesarios
 sudo apt install -y util-linux git cmake build-essential curl unzip wget \
-python3 python3-dev python-is-python3 screen net-tools python3-pip locales cpulimit
+python3 python3-dev python-is-python3 screen net-tools python3-pip locales cpulimit bc
 
 # Configurar locales
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
@@ -20,15 +19,14 @@ sudo update-locale LANG=es_SV.UTF-8
 sudo timedatectl set-timezone America/El_Salvador
 
 # ===========================
-# 1. INSTALAR PROXY PYTHON EN PUERTO 80 (NOHUP)
+# 1. INSTALAR PROXY PYTHON (PUERTO 80 o 443)
 # ===========================
-echo "🌀 Configurando proxy Python en puerto 80..."
+echo "Configurando proxy Python en puerto 80..."
 
-mkdir -p /etc/ADMcgh
-
+mkdir -p /etc/ADMcgh /logs
 cat > /etc/ADMcgh/PDirect.py << 'EOF'
 #!/usr/bin/env python3
-# encoding: utf-8
+# -*- coding: utf-8 -*-
 
 import asyncio
 import sys
@@ -38,22 +36,25 @@ import time
 # ==========================
 # CONFIGURACIÓN PRINCIPAL
 # ==========================
+
 LISTENING_ADDR = '0.0.0.0'
 LISTENING_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 80
-PASS = ''
+PASS = ''  # Deja vacío si no usas contraseña
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = '127.0.0.1:22'
 STATUS_RESP = '101'
 FTAG = '\r\nContent-length: 0\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\n'
-RESPONSE = "HTTP/1.1 200 Connection Established\r\n\r\n"
+STATUS_TXT = '<strong style="color: #ff0000;">Kang Sae-byeok</strong>'
+RESPONSE = f"HTTP/1.1 {STATUS_RESP} {STATUS_TXT} {FTAG}"
 
-MAX_CONNECTIONS = 50  # Controla cuántas conexiones simultáneas manejar
+MAX_CONNECTIONS = 100
 semaphore = asyncio.Semaphore(MAX_CONNECTIONS)
 
 # ==========================
 # FUNCIONES AUXILIARES
 # ==========================
+
 def find_header(header, data):
     try:
         data_str = data.decode(errors='ignore')
@@ -63,7 +64,7 @@ def find_header(header, data):
         start += len(header) + 2
         end = data_str.find("\r\n", start)
         return data_str[start:end] if end != -1 else data_str[start:]
-    except Exception:
+    except:
         return ""
 
 async def connect_target(host_port):
@@ -77,15 +78,54 @@ async def connect_target(host_port):
         reader, writer = await asyncio.open_connection(host, port)
         return reader, writer
     except Exception as e:
+        print(f"[ERROR] connect_target: {e}")
         return None, None
+
+# ==========================
+# KEEP-ALIVE (CRUCIAL)
+# ==========================
+
+async def keep_alive(reader, writer):
+    while True:
+        await asyncio.sleep(10)  # Cada 10 segundos
+        try:
+            if not writer.is_closing():
+                writer.write(b'\x00')  # NUL byte (invisible, mantiene vivo)
+                await writer.drain()
+        except:
+            break
+
+# ==========================
+# PROXY BIDIRECCIONAL
+# ==========================
+
+async def proxy_data(reader, writer, name=""):
+    try:
+        while True:
+            data = await reader.read(BUFLEN)
+            if not data:
+                break
+            writer.write(data)
+            await writer.drain()
+    except Exception as e:
+        pass
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except:
+            pass
 
 # ==========================
 # HANDLER DE CONEXIONES
 # ==========================
+
 async def handle_client(client_reader, client_writer):
     async with semaphore:
         client_addr = client_writer.get_extra_info('peername')
-        log_prefix = f"Connection: {client_addr}"
+        log_prefix = f"[{time.strftime('%H:%M:%S')}] {client_addr}"
+        print(f"{log_prefix} → Nueva conexión")
+
         try:
             data = await asyncio.wait_for(client_reader.read(BUFLEN), timeout=TIMEOUT)
             if not data:
@@ -98,62 +138,62 @@ async def handle_client(client_reader, client_writer):
             passwd = find_header('X-Pass', data)
 
             if split:
-                await client_reader.read(BUFLEN)  # Leer siguiente parte si aplica
+                await client_reader.read(BUFLEN)
 
             if PASS and passwd != PASS:
                 client_writer.write(b'HTTP/1.1 400 WrongPass!\r\n\r\n')
                 await client_writer.drain()
                 client_writer.close()
                 await client_writer.wait_closed()
+                print(f"{log_prefix} Contraseña incorrecta")
                 return
             elif host_port.startswith('127.0.0.1') or host_port.startswith('localhost') or not PASS:
                 target_reader, target_writer = await connect_target(host_port)
                 if not target_reader:
                     client_writer.close()
                     await client_writer.wait_closed()
+                    print(f"{log_prefix} No se pudo conectar a {host_port}")
                     return
+
                 client_writer.write(RESPONSE.encode())
                 await client_writer.drain()
+                print(f"{log_prefix} Túnel SSH establecido → {host_port}")
 
-                # Proxy bidireccional
+                # === PROXY + KEEP-ALIVE ===
                 await asyncio.gather(
-                    proxy_data(client_reader, target_writer),
-                    proxy_data(target_reader, client_writer)
+                    proxy_data(client_reader, target_writer, "CLIENT→SERVER"),
+                    proxy_data(target_reader, client_writer, "SERVER→CLIENT"),
+                    keep_alive(client_reader, target_writer),
+                    keep_alive(target_reader, client_writer)
                 )
-        except Exception as e:
-            print(f"{log_prefix} - error: {e}")
-        finally:
-            client_writer.close()
-            await client_writer.wait_closed()
+                print(f"{log_prefix} Conexión cerrada")
 
-async def proxy_data(reader, writer):
-    try:
-        while True:
-            data = await reader.read(BUFLEN)
-            if not data:
-                break
-            writer.write(data)
-            await writer.drain()
-    except Exception:
-        pass
-    finally:
-        try:
-            writer.close()
-            await writer.wait_closed()
-        except Exception:
-            pass
+        except asyncio.TimeoutError:
+            print(f"{log_prefix} Timeout")
+        except Exception as e:
+            print(f"{log_prefix} Error: {e}")
+        finally:
+            try:
+                client_writer.close()
+                await client_writer.wait_closed()
+            except:
+                pass
 
 # ==========================
 # SERVIDOR MAIN
 # ==========================
+
 async def main(host=LISTENING_ADDR, port=LISTENING_PORT):
     server = await asyncio.start_server(handle_client, host, port)
     addrs = ', '.join(str(sock.getsockname()) for sock in server.sockets)
-    print("🌐 PROXY HTTP MCCARTHEY - VPS TUNNEL")
-    print("IP:", host)
-    print("PORTA:", port)
-    print("🔐 Powered by MCC-KEY System 💎")
-    print(f"Listening on: {addrs}")
+    print("="*50)
+    print("PROXY HTTP MCCARTHEY - VPS TUNNEL")
+    print(f"IP: {host}")
+    print(f"PUERTO: {port}")
+    print("Powered by MCC-KEY System")
+    print(f"Escuchando en: {addrs}")
+    print("Keep-Alive: ACTIVO cada 10s")
+    print("="*50)
 
     async with server:
         await server.serve_forever()
@@ -162,25 +202,27 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Parando servidor...")
+        print("\nServidor detenido por el usuario.")
+    except Exception as e:
+        print(f"Error crítico: {e}")
 EOF
 
 chmod +x /etc/ADMcgh/PDirect.py
 
-# Iniciar con nohup
-nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+# Iniciar con nohup en puerto 80
+pkill -f PDirect.py || true
+nohup python3 /etc/ADMcgh/PDirect.py 80 > /logs/proxy.log 2>&1 &
 
 # ===========================
 # 2. BADVPN PUERTOS 7200 Y 7300
 # ===========================
-echo "📡 Compilando y configurando BadVPN..."
+echo "Compilando y configurando BadVPN..."
 rm -rf /opt/badvpn
 git clone https://github.com/ambrop72/badvpn.git /opt/badvpn
 mkdir -p /opt/badvpn/build && cd /opt/badvpn/build
 cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1
 make -j$(nproc)
 
-# Detener instancias previas de badvpn-udpgw para evitar error "Text file busy"
 pkill -f badvpn-udpgw || true
 cp udpgw/badvpn-udpgw /usr/bin/
 chmod +x /usr/bin/badvpn-udpgw
@@ -188,20 +230,27 @@ chmod +x /usr/bin/badvpn-udpgw
 screen -S badvpn -X quit || true
 screen -S badUDP72 -X quit || true
 
-screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
-  --max-clients 1000 --max-connections-for-client 10
-screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 \
-  --max-clients 1000 --max-connections-for-client 10
+screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
+screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
 
 # ===========================
-# 3. AUTOINICIO /etc/rc.local
+# 3. CONFIGURAR SSHD (KEEP-ALIVE)
 # ===========================
-echo "🧩 Configurando autoarranque vía rc.local..."
+echo "Configurando Keep-Alive en SSHD..."
+if ! grep -q "ClientAliveInterval" /etc/ssh/sshd_config; then
+    echo -e "\nClientAliveInterval 10\nClientAliveCountMax 3" >> /etc/ssh/sshd_config
+fi
+systemctl restart sshd
+
+# ===========================
+# 4. AUTOINICIO /etc/rc.local
+# ===========================
+echo "Configurando autoarranque vía rc.local..."
 
 cat > /etc/rc.local <<EOF
 #!/bin/bash
-sleep 10
-nohup python3 /etc/ADMcgh/PDirect.py 80 > /root/nohup.out 2>&1 &
+sleep 15
+nohup python3 /etc/ADMcgh/PDirect.py 80 > /logs/proxy.log 2>&1 &
 screen -dmS badvpn /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
 screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
 exit 0
@@ -231,174 +280,116 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 4. INSTALAR SCRIPT DE GESTIÓN DE RECURSOS
+# 5. GESTIÓN DE RECURSOS (MEJORADA)
 # ===========================
-echo "🛠️ Configurando gestión de RAM y CPU..."
+echo "Configurando gestión de RAM y CPU..."
 
-# Crear archivo de log si no existe
 touch /var/log/gestionar_recursos.log
 chmod 644 /var/log/gestionar_recursos.log
 
 cat > /root/gestionar_recursos.sh << 'EOF'
 #!/bin/bash
-# Script: gestionar_recursos.sh
-# Combina liberación de RAM, ejecución de scrip.sh mon y limitación dinámica de CPU
+
 LOCK_FILE="/tmp/gestionar_recursos.lock"
 LOG_FILE="/var/log/gestionar_recursos.log"
 PID_FILE="/tmp/cpulimit_pids.txt"
 
-# Verificar si el script ya está en ejecución
 if [ -f "$LOCK_FILE" ]; then
-    echo "$(date): Proceso ya en ejecución, saliendo..." >> "$LOG_FILE"
+    echo "$(date): Ya en ejecución." >> "$LOG_FILE"
     exit 1
 fi
 
 touch "$LOCK_FILE"
 trap 'rm -f "$LOCK_FILE"; exit' INT TERM EXIT
 
-# Función para limpiar procesos cpulimit previos
 cleanup_cpulimit() {
     if [ -f "$PID_FILE" ]; then
         while read -r cpid; do
-            if ps -p "$cpid" > /dev/null; then
-                kill -9 "$cpid" 2>/dev/null
-            fi
+            kill -9 "$cpid" 2>/dev/null || true
         done < "$PID_FILE"
-        > "$PID_FILE" # Vaciar el archivo de PIDs
+        > "$PID_FILE"
     fi
     pkill -9 -f "cpulimit -p" 2>/dev/null
-    pkill -9 -f "pgrep -f /etc/ADMcgh/PDirect.py" 2>/dev/null
 }
 
-# Limpieza inicial
 cleanup_cpulimit
 
-# Arrancar scrip.sh mon si no está corriendo
-if ! pgrep -f "/root/scrip.sh mon" > /dev/null; then
-    /bin/bash /root/scrip.sh mon &
-    echo "$(date): Iniciado /root/scrip.sh mon" >> "$LOG_FILE"
-fi
+MEM_THRESHOLD=200
+CACHE_THRESHOLD=100
+LOAD_THRESHOLD=2.0
 
-# Variables para umbrales
-MEM_THRESHOLD=200    # Memoria libre en MB
-CACHE_THRESHOLD=100  # Caché en MB
-LOAD_THRESHOLD=2.0   # Carga CPU (ajusta según núcleos)
-
-# Variables para rastrear PIDs anteriores
 PREV_PIDS_PDIRECT=""
 PREV_PIDS_BADVPN=""
-PREV_PIDS_SCRIP=""
 
 while true; do
-    # Verificar memoria
     FREE_MEM=$(free -m | awk '/Mem:/ {print $4}')
     CACHE_MEM=$(free -m | awk '/Mem:/ {print $6}')
-    
-    # Liberar caché si es necesario
+
     if [ "$FREE_MEM" -lt "$MEM_THRESHOLD" ] || [ "$CACHE_MEM" -gt "$CACHE_THRESHOLD" ]; then
-        echo "$(date): Memoria libre: $FREE_MEM MB, Caché: $CACHE_MEM MB. Liberando caché completa..." >> "$LOG_FILE"
-        sync
-        sudo sysctl -w vm.drop_caches=3 > /dev/null
-        NEW_FREE=$(free -m | awk '/Mem:/ {print $4}')
-        echo "$(date): Caché liberado. Memoria libre ahora: $NEW_FREE MB" >> "$LOG_FILE"
-    else
-        echo "$(date): No es necesario liberar caché (Libre: $FREE_MEM MB, Caché: $CACHE_MEM MB)" >> "$LOG_FILE"
+        echo "$(date): Liberando caché..." >> "$LOG_FILE"
+        sync; sudo sysctl -w vm.drop_caches=3 > /dev/null
     fi
 
-    # Verificar carga de CPU
     LOAD_AVG=$(awk '{print $1}' /proc/loadavg)
-    
-    # Controlar picos de CPU si la carga es alta
     if (( $(echo "$LOAD_AVG > $LOAD_THRESHOLD" | bc -l) )); then
-        echo "$(date): Carga CPU alta: $LOAD_AVG. Limitando procesos intensivos..." >> "$LOG_FILE"
-        
-        # Obtener PIDs actuales
         CURRENT_PIDS_PDIRECT=$(pgrep -f /etc/ADMcgh/PDirect.py)
         CURRENT_PIDS_BADVPN=$(pgrep -f badvpn-udpgw)
-        CURRENT_PIDS_SCRIP=$(pgrep -f "/root/scrip.sh mon")
 
-        # Verificar si hay cambios en los PIDs
-        if [ "$CURRENT_PIDS_PDIRECT" != "$PREV_PIDS_PDIRECT" ] || [ "$CURRENT_PIDS_BADVPN" != "$PREV_PIDS_BADVPN" ] || [ "$CURRENT_PIDS_SCRIP" != "$PREV_PIDS_SCRIP" ]; then
+        if [ "$CURRENT_PIDS_PDIRECT" != "$PREV_PIDS_PDIRECT" ] || [ "$CURRENT_PIDS_BADVPN" != "$PREV_PIDS_BADVPN" ]; then
             cleanup_cpulimit
 
-            # Limitar PDirect.py a 20%
             for pid in $CURRENT_PIDS_PDIRECT; do
-                if ps -p "$pid" > /dev/null; then
-                    cpulimit -p "$pid" -l 20 &
-                    echo $! >> "$PID_FILE"
-                    echo "$(date): Limitando PID $pid (PDirect.py) a 20% CPU" >> "$LOG_FILE"
-                fi
+                cpulimit -p "$pid" -l 40 & echo $! >> "$PID_FILE"
             done
-
-            # Limitar badvpn-udpgw a 60%
             for pid in $CURRENT_PIDS_BADVPN; do
-                if ps -p "$pid" > /dev/null; then
-                    cpulimit -p "$pid" -l 60 &
-                    echo $! >> "$PID_FILE"
-                    echo "$(date): Limitando PID $pid (badvpn-udpgw) a 60% CPU" >> "$LOG_FILE"
-                fi
+                cpulimit -p "$pid" -l 60 & echo $! >> "$PID_FILE"
             done
 
-            # Limitar scrip.sh a 10%
-            for pid in $CURRENT_PIDS_SCRIP; do
-                if ps -p "$pid" > /dev/null; then
-                    cpulimit -p "$pid" -l 10 &
-                    echo $! >> "$PID_FILE"
-                    echo "$(date): Limitando PID $pid (scrip.sh) a 10% CPU" >> "$LOG_FILE"
-                fi
-            done
-
-            # Actualizar PIDs anteriores
             PREV_PIDS_PDIRECT="$CURRENT_PIDS_PDIRECT"
             PREV_PIDS_BADVPN="$CURRENT_PIDS_BADVPN"
-            PREV_PIDS_SCRIP="$CURRENT_PIDS_SCRIP"
         fi
-    else
-        echo "$(date): Carga CPU aceptable: $LOAD_AVG. No se requiere acción." >> "$LOG_FILE"
     fi
 
-    sleep 10
+    sleep 15
 done
 EOF
 
 chmod +x /root/gestionar_recursos.sh
 
-# Crear archivo systemd para gestión de recursos
 cat > /etc/systemd/system/gestionar-recursos.service <<EOF
 [Unit]
-Description=Gestiona RAM y CPU (liberar caché y limitar procesos)
+Description=Gestiona RAM y CPU
 After=network.target rc-local.service
 
 [Service]
 Type=simple
 User=root
 ExecStart=/bin/bash /root/gestionar_recursos.sh
-ExecStop=/bin/bash -c "pkill -9 -f 'cpulimit -p'; pkill -9 -f 'pgrep -f /etc/ADMcgh/PDirect.py'; pkill -9 -f 'pgrep -f badvpn-udpgw'; pkill -9 -f 'pgrep -f /root/scrip.sh mon'; rm -f /tmp/cpulimit_pids.txt"
 Restart=always
-RestartSec=5s
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-chmod 644 /etc/systemd/system/gestionar-recursos.service
 systemctl daemon-reload
 systemctl enable gestionar-recursos.service
 systemctl start gestionar-recursos.service
 
 # ===========================
-# 5. MENSAJE FINAL
+# 6. MENSAJE FINAL
 # ===========================
 echo ""
 echo "======================================"
-echo "✅ INSTALACIÓN COMPLETA DE MCCARTHY VPN"
-echo "📦 Puertos activos:"
+echo "INSTALACIÓN COMPLETA DE MCCARTHY VPN"
+echo "Puertos activos:"
 ss -tulnp | grep -E ':80|:7200|:7300' || true
 echo ""
-echo "🛡️  Proxy HTTP (80 -> 22) ACTIVO via Nohup"
-echo "🎯 Listo para usar con HTTP Injector"
-echo "💎 Firma personalizada: Kang Sae-byeok"
-echo "🛠️ Gestión de RAM y CPU activa (servicio: gestionar-recursos)"
+echo "Proxy HTTP (80 -> 22) ACTIVO"
+echo "Keep-Alive: 10s (SSH + Proxy)"
+echo "Listo para HTTP Custom"
+echo "Firma: Kang Sae-byeok"
+echo "Logs: tail -f /logs/proxy.log"
 echo "======================================"
 echo ""
 
