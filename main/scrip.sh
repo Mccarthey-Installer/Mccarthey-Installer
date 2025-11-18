@@ -2487,31 +2487,31 @@ eliminar_swap() {
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
 }
+
 function usuarios_ssh() {
     clear
-    echo -e "${VIOLETA}===== REGISTROS =====${NC}"
+    echo -e "${VIOLETA}===== 🌸 REGISTROS =====${NC}"
     
     [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]] && {
-        echo -e "${ROJO}No hay usuarios registrados aún.${NC}"
+        echo -e "${ROJO}❌ No hay usuarios registrados aún.${NC}"
         read -p "$(echo -e ${CIAN}Presiona Enter...${NC})"
         return
     }
 
     declare -a lista_usuarios=()
     declare -A info
-
     n=1
     while IFS=' ' read -r userpass expira dias moviles fecha_crea resto; do
         usuario="${userpass%%:*}"
         clave="${userpass#*: }"
         lista_usuarios+=("$usuario")
         info["$usuario"]="$clave|$expira|$dias|$moviles"
-        printf " ${AMARILLO}%2d${VERDE} %s${NC}\n" "$n" "$usuario"
+        printf " ${AMARILLO}%2d ${VERDE}%s${NC}\n" "$n" "$usuario"
         ((n++))
     done < "$REGISTROS"
 
     echo
-    read -p "$(echo -e ${AZUL}Ingresa número o nombre del usuario: ${NC})" entrada
+    read -p "$(echo -e ${AZUL}🔍 Ingresa número o nombre del usuario ➜ ${NC})" entrada
 
     # Buscar usuario
     if [[ "$entrada" =~ ^[0-9]+$ ]] && (( entrada >= 1 && entrada < n )); then
@@ -2524,17 +2524,11 @@ function usuarios_ssh() {
         done
     fi
 
-    [[ -z "$usuario" ]] && {
-        echo -e "${ROJO}Usuario no encontrado${NC}"
-        sleep 1.5
-        return
-    }
+    [[ -z "$usuario" ]] && { echo -e "${ROJO}❌ Usuario no encontrado${NC}"; sleep 1.5; return; }
 
-    # Cargar datos
     IFS='|' read -r clave expira dias moviles <<< "${info[$usuario]}"
     dias_rest=$(calcular_dias_restantes "$expira")
 
-    # Conexiones actuales y tiempo conectado
     conexiones=$(ps -u "$usuario" -o comm= 2>/dev/null | grep -cE "^(sshd|dropbear)$")
     tmp_file="/tmp/status_${usuario}.tmp"
     if (( conexiones > 0 )) && [[ -f "$tmp_file" ]]; then
@@ -2548,52 +2542,47 @@ function usuarios_ssh() {
 
     clear
     echo -e "     ${VIOLETA}INFORMACIÓN DE ${usuario^^}${NC} "
-    echo -e "${AZUL}FECHA: $(date '+%Y-%m-%d %H:%M')${NC}"
-    echo -e "${AZUL}Usuario      ${AMARILLO}$usuario${NC}"
-    echo -e "${AZUL}Clave        ${AMARILLO}$clave${NC}"
-    echo -e "${AZUL}Expira       ${AMARILLO}$expira${NC}"
-    echo -e "${AZUL}Días         ${AMARILLO}$dias_rest${NC}"
-    echo -e "${AZUL}Móviles      ${AMARILLO}$moviles${NC}"
+    echo -e "${AZUL}🕒 FECHA: $(date '+%Y-%m-%d %H:%M')${NC}"
+    echo -e "${AZUL}👩 Usuario   ${AMARILLO}$usuario${NC}"
+    echo -e "${AZUL}🔒 Clave     ${AMARILLO}$clave${NC}"
+    echo -e "${AZUL}📅 Expira    ${AMARILLO}$expira${NC}"
+    echo -e "${AZUL}⏳   Días   ${AMARILLO}$dias_rest${NC}"
+    echo -e "${AZUL}📲 Móviles   ${AMARILLO}$moviles${NC}"
+    echo
+    echo -e "${VERDE}📲 CONEXIONES $conexiones${NC}"
+    
+    if [[ -n "$tiempo_actual" ]]; then
+        echo -e "${VIOLETA}📱 MÓVILES  $moviles${NC}"
+        echo -e "${VIOLETA}⏰  TIEMPO CONECTADO    ⏰  ${BLANCO}$tiempo_actual${NC}"
+    else
+        echo -e "${AMARILLO}📱 MÓVILES  $moviles${NC}"
+    fi
     echo
 
-    echo -e "${VERDE}CONEXIONES $conexiones${NC}"
-    [[ -n "$tiempo_actual" ]] && echo -e "${VERDE}MÓVILES  $moviles${NC}"
-    [[ -n "$tiempo_actual" ]] && echo -e "${VERDE}TIEMPO CONECTADO    ⏰  $tiempo_actual${NC}"
-    [[ -z "$tiempo_actual" ]] && echo -e "${AMARILLO}MÓVILES  $moviles${NC}"
-    echo
-
-    # HISTORIAL DE CONEXIÓN
     ultima_linea=$(tail -n 1 "$HISTORIAL" 2>/dev/null)
-
     if [[ -n "$ultima_linea" && "$ultima_linea" == *\|* ]]; then
         conexion=$(echo "$ultima_linea" | cut -d'|' -f2)
         desconexion=$(echo "$ultima_linea" | cut -d'|' -f3)
-
         conn_fmt=$(date -d "$conexion" '+%d/%B %H:%M' 2>/dev/null || echo "$conexion")
 
-        # Caso 1: Está conectada ahora mismo
         if [[ -z "$desconexion" || "$desconexion" == "null" || $conexiones -gt 0 ]]; then
-            echo -e "${VERDE}Conectada    $conn_fmt (ESTÁ CONECTADA AHORA)${NC}"
-            [[ -n "$tiempo_actual" ]] && echo -e "${VERDE}Tiempo actual   $tiempo_actual${NC}"
+            echo -e "${ROSADO}🌷 Conectada    $conn_fmt ${VERDE}(ESTÁ CONECTADA AHORA)${NC}"
+            [[ -n "$tiempo_actual" ]] && echo -e "${ROSADO}⏰ Tiempo actual    ⏰  ${BLANCO}$tiempo_actual${NC}"
         else
-            # Caso 2: Ya se desconectó
             desc_fmt=$(date -d "$desconexion" '+%d/%B %H:%M' 2>/dev/null || echo "$desconexion")
             ultima_desc=$(date -d "$desconexion" '+%d de %B %H:%M' 2>/dev/null || echo "$desconexion")
-
-            seg1=$(date -d "$conexion" +%s)
-            seg2=$(date -d "$desconexion" +%s)
-            dur=$((seg2-seg1))
-            dh=$((dur/3600)); dm=$(((dur%3600)/60)); ds=$((dur%60))
+            seg1=$(date -d "$conexion" +%s); seg2=$(date -d "$desconexion" +%s)
+            dur=$((seg2-seg1)); dh=$((dur/3600)); dm=$(((dur%3600)/60)); ds=$((dur%60))
             duracion=$(printf "%02d:%02d:%02d" $dh $dm $ds)
 
-            echo -e "${ROJO}Última: $ultima_desc${NC}"
+            echo -e "${ROJO}📅 Última: $ultima_desc${NC}"
             echo
-            echo -e "${VERDE}Conectada      $conn_fmt${NC}"
-            echo -e "${ROJO}Desconectada   $desc_fmt${NC}"
-            echo -e "${AMARILLO}Duración       $duracion${NC}"
+            echo -e "${ROSADO}🌷 Conectada      $conn_fmt${NC}"
+            echo -e "${ROJO}🌙 Desconectada   $desc_fmt${NC}"
+            echo -e "${AMARILLO}⏰   Duración     $duracion${NC}"
         fi
     else
-        echo -e "${VIOLETA}Nunca conectado${NC}"
+        echo -e "${VIOLETA}😴 Nunca conectado${NC}"
     fi
 
     echo
