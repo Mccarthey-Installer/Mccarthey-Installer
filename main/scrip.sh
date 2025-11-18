@@ -62,8 +62,7 @@ fi
 # ================================
 systemctl restart sshd && echo "SSH configurado correctamente."
     
-                                        
-              ssh_bot() {
+     ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -568,18 +567,18 @@ Escribe *hola* para volver al menú.\"
                                         conex_info=\"📲 *CONEXIONES* 0 🔴\"
                                     fi
 
-                                    INFO=$'*===== 💖 INFORMACIÓN DE '"\${usuario^^}"$' 💖 =====*\n*🕒 FECHA: '"\$fecha_actual"'*\n*👩 Usuario* \\\`\${usuario}\\\`\n*🔒 Clave*   \\\`\${clave}\\\`\n*📅 Expira*    '"\$fecha_expiracion"$'\n*⏳  Días*   '"\$dias_restantes"$'\n*📲 Móviles*   '"\$moviles"$'\n'"\$conex_info"
+                                    INFO=\"*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*\"$'\n'\"*🕒 FECHA: \$fecha_actual*\"$'\n'\"*👩 Usuario* \\\`\${usuario}\\\`\"$'\n'\"*🔒 Clave*   \\\`\${clave}\\\`\"$'\n'\"*📅 Expira*    \$fecha_expiracion\"$'\n'\"*⏳  Días*   \$dias_restantes\"$'\n'\"*📲 Móviles*   \$moviles\"$'\n'\"\$conex_info\"
 
                                     if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
-                                        INFO+=$'\n'"\$ultima_conexion"
+                                        INFO+=$'\n'\"\$ultima_conexion\"
                                     fi
                                     if [[ -n \"\$tiempo_conectado\" ]]; then
-                                        INFO+=$'\n'"\$tiempo_conectado"
+                                        INFO+=$'\n'\"\$tiempo_conectado\"
                                     fi
                                     if [[ -n \"\$historia_conexion\" ]]; then
                                         INFO+=\"\$historia_conexion\"
                                     elif [[ \"\$ultima_conexion\" == \"😴 *Nunca conectado*\" ]]; then
-                                        INFO+=$'\n'"\$ultima_conexion"
+                                        INFO+=$'\n'\"\$ultima_conexion\"
                                     fi
 
                                     INFO+=$'\n\nEscribe *hola* para volver al menú.'
@@ -871,7 +870,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}                                   
+              
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
