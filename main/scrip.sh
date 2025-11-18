@@ -2497,17 +2497,9 @@ eliminar_swap() {
     LILA='\033[38;5;183m'
     TURQUESA='\033[38;5;45m'
     VERDE_SUAVE='\033[38;5;159m'
-    AMARILLO_SUAVE='\033[38;5;230m'
     ROJO_SUAVE='\033[38;5;210m'
     AZUL_SUAVE='\033[38;5;153m'
     NC='\033[0m'
-
-    # Mapa de meses en inglés a español (minúsculas)
-    declare -A full_month_map=(
-        ["january"]="enero" ["february"]="febrero" ["march"]="marzo" ["april"]="abril"
-        ["may"]="mayo" ["june"]="junio" ["july"]="julio" ["august"]="agosto"
-        ["september"]="septiembre" ["october"]="octubre" ["november"]="noviembre" ["december"]="diciembre"
-    )
 
     # Mostrar lista de registros
     echo -e "${ROSADO}===== 🌸 REGISTROS =====${NC}"
@@ -2576,10 +2568,9 @@ eliminar_swap() {
         IFS='|' read -r _ hora_conexion hora_desconexion _ <<< "$ultimo_registro"
 
         # Formatear última desconexión con "de mes"
-        ult_month_en=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-        ult_month_es=${full_month_map[$ult_month_en]:-desconocido}
+        ult_month=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         ult_fmt=$(date -d "$hora_desconexion" +"%d de MONTH %H:%M" 2>/dev/null)
-        ult_fmt=${ult_fmt/MONTH/$ult_month_es}
+        ult_fmt=${ult_fmt/MONTH/$ult_month}
         ultima_conexion="📅 Última: ${ROJO_SUAVE}${ult_fmt}${NC}"
 
         # Calcular duración
@@ -2596,15 +2587,13 @@ eliminar_swap() {
         fi
 
         # Formatear conexión y desconexión con /mes
-        con_month_en=$(date -d "$hora_conexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-        con_month_es=${full_month_map[$con_month_en]:-desconocido}
+        con_month=$(date -d "$hora_conexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         conexion_fmt=$(date -d "$hora_conexion" +"%d/MONTH %H:%M" 2>/dev/null)
-        conexion_fmt=${conexion_fmt/MONTH/$con_month_es}
+        conexion_fmt=${conexion_fmt/MONTH/$con_month}
 
-        des_month_en=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-        des_month_es=${full_month_map[$des_month_en]:-desconocido}
+        des_month=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
         desconexion_fmt=$(date -d "$hora_desconexion" +"%d/MONTH %H:%M" 2>/dev/null)
-        desconexion_fmt=${desconexion_fmt/MONTH/$des_month_es}
+        desconexion_fmt=${desconexion_fmt/MONTH/$des_month}
 
         historia_conexion="\n${LILA}-------------------------${NC}\n${VERDE_SUAVE}🌷 Conectada    ${conexion_fmt}${NC}\n${ROJO_SUAVE}🌙 Desconectada       ${desconexion_fmt}${NC}\n${AZUL_SUAVE}⏰   Duración   ${duracion}${NC}\n${LILA}-------------------------${NC}"
     else
@@ -2660,8 +2649,6 @@ eliminar_swap() {
     fi
     read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
 }
-   
-        
     
 # ==== MENU ====
 if [[ -t 0 ]]; then
