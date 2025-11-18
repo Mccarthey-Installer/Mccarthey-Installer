@@ -547,9 +547,6 @@ Escribe *hola* para volver al menú.\"
 
                                     if [[ \$conexiones -gt 0 ]]; then
                                         conex_info=\"📲 *CONEXIONES* \$conexiones 🟢\"
-                                    else
-                                        conex_info=\"📲 *CONEXIONES* \$conexiones 🔴\"
-                                    fi    
                                         if [[ -f \"\$tmp_status\" ]]; then
                                             contenido=\$(cat \"\$tmp_status\")
                                             if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
@@ -568,10 +565,10 @@ Escribe *hola* para volver al menú.\"
                                             tiempo_conectado=\"⏰  *TIEMPO CONECTADO*    ⏰  N/A\"
                                         fi
                                     else
-                                        conex_info=\"📲 *CONEXIONES* 0\"
+                                        conex_info=\"📲 *CONEXIONES* 0 🔴\"
                                     fi
 
-                                    INFO=$'*===== 💖 INFORMACIÓN DE '"\${usuario^^}"$' 💖 =====*\n*🕒 FECHA:* '"\$fecha_actual"$'\n*👩 Usuario* '"\$usuario"$'\n*🔒 Clave*   '"\$clave"$'\n*📅 Expira*    '"\$fecha_expiracion"$'\n*⏳  Días*   '"\$dias_restantes"$'\n*📲 Móviles*   '"\$moviles"$'\n'"\$conex_info"$'\n*📱 MÓVILES*  '"\$moviles"
+                                    INFO=$'*===== 💖 INFORMACIÓN DE '"\${usuario^^}"$' 💖 =====*\n*🕒 FECHA:* '"\$fecha_actual"$'\n*👩 Usuario* '"\$usuario"$'\n*🔒 Clave*   '"\$clave"$'\n*📅 Expira*    '"\$fecha_expiracion"$'\n*⏳  Días*   '"\$dias_restantes"$'\n*📲 Móviles*   '"\$moviles"$'\n'"\$conex_info"
 
                                     if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
                                         INFO+=$'\n'"\$ultima_conexion"
@@ -875,8 +872,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }
-                                          
-
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
