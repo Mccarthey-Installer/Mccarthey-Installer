@@ -2490,13 +2490,15 @@ eliminar_swap() {
 
 
        
-    function usuarios_ssh() {
+    
+        function usuarios_ssh() {
     clear
     # Colores bonitos y suaves
     ROSADO='\033[38;5;211m'
     LILA='\033[38;5;183m'
     TURQUESA='\033[38;5;45m'
     VERDE_SUAVE='\033[38;5;159m'
+    AMARILLO_SUAVE='\033[38;5;230m'
     ROJO_SUAVE='\033[38;5;210m'
     AZUL_SUAVE='\033[38;5;153m'
     NC='\033[0m'
@@ -2512,9 +2514,12 @@ eliminar_swap() {
     # Leer usuarios y mostrar numerados (solo nombres de usuario)
     count=1
     declare -A user_map
+    declare -A lower_to_original
     while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
         usuario=${user_data%%:*}
+        lower_usuario=$(echo "$usuario" | tr '[:upper:]' '[:lower:]')
         user_map[$count]="$usuario"
+        lower_to_original["$lower_usuario"]="$usuario"
         echo -e "${TURQUESA}${count} ${AMARILLO_SUAVE}${usuario}${NC}"
         ((count++))
     done < $REGISTROS
@@ -2522,14 +2527,14 @@ eliminar_swap() {
     # Solicitar input
     read -p "$(echo -e ${LILA}🌟 Ingresa el número o nombre del usuario: ${NC})" input
 
-    # Validar input: si número, obtener usuario; si nombre, verificar existencia
+    # Validar input: si número, obtener usuario; si nombre, verificar existencia case-insensitive
     if [[ $input =~ ^[0-9]+$ && -n "${user_map[$input]}" ]]; then
         usuario="${user_map[$input]}"
     else
-        usuario="$input"
-        # Verificar si existe
-        grep -q "^$usuario:" $REGISTROS
-        if [[ $? -ne 0 ]]; then
+        lower_input=$(echo "$input" | tr '[:upper:]' '[:lower:]')
+        if [[ -n "${lower_to_original[$lower_input]}" ]]; then
+            usuario="${lower_to_original[$lower_input]}"
+        else
             echo -e "${ROJO_SUAVE}❌ Usuario no encontrado.${NC}"
             read -p "$(echo -e ${LILA}Presiona Enter para continuar... ✨${NC})"
             return
