@@ -2487,6 +2487,114 @@ eliminar_swap() {
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
 }
+function usuarios_ssh() {
+    clear
+    echo -e "${VIOLETA}===== 🌸 REGISTROS =====${NC}"
+    
+    [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]] && {
+        echo -e "${ROJO}No hay usuarios registrados aún.${NC}"
+        read -p "$(echo -e ${CIAN}Presiona Enter...${NC})"
+        return
+    }
+
+    declare -a lista_usuarios=()
+    declare -A info
+
+    n=1
+    while IFS=' ' read -r userpass expira dias moviles fecha_crea resto; do
+        usuario="${userpass%%:*}"
+        clave="${userpass#*: }"
+        lista_usuarios+=("$usuario")
+        info["$usuario"]="$clave|$expira|$dias|$moviles"
+        printf " ${AMARILLO}%2d${VERDE} %s${NC}\n" "$n" "$usuario"
+        ((n++))
+    done < "$REGISTROS"
+
+    echo
+    read -p "$(echo -e ${AZUL}Ingresa número o nombre del usuario ➜ ${NC})" entrada
+
+    # Buscar usuario
+    if [[ "$entrada" =~ ^[0-9]+$ ]] && (( entrada >= 1 && entrada < n )); then
+        usuario="${lista_usuarios[$((entrada-1))]}"
+    else
+        usuario=$(echo "$entrada" | tr '[:upper:]' '[:lower:]')
+        encontrado=false
+        for u in "${lista_usuarios[@]}"; do
+            [[ "${u,,}" == "$usuario" ]] && { usuario="$u"; encontrado=true; break; }
+        done
+        [[ $encontrado == false ]] && usuario=""
+    fi
+
+    [[ -z "$usuario" ]] && {
+        echo -e "${ROJO}Usuario no encontrado${NC}"
+        sleep 1.5
+        return
+    }
+
+    # Cargar datos del usuario
+    IFS='|' read -r clave expira dias moviles <<< "${info[$usuario]}"
+    dias_rest=$(calcular_dias_restantes "$expira")
+
+    clear
+    echo -e "     ${VIOLETA}INFORMACIÓN DE ${usuario^^}${NC} "
+    echo -e "${AZUL}🕒 FECHA: $(date '+%Y-%m-%d %H:%M')${NC}"
+    echo -e "${AZUL}Usuario      ${AMARILLO}$usuario${NC}"
+    echo -e "${AZUL}Clave        ${AMARILLO}$clave${NC}"
+    echo -e "${AZUL}Expira       ${AMARILLO}$expira${NC}"
+    echo -e "${AZUL}Días         ${AMARILLO}$dias_rest${NC}"
+    echo -e "${AZUL}Móviles      ${AMARILLO}$moviles${NC}"
+    echo
+
+    # Conexiones actuales
+    conexiones=$(ps -u "$usuario" -o comm= 2>/dev/null | grep -cE "^(sshd|dropbear)$")
+    echo -e "${VERDE}CONEXIONES $conexiones${NC}"
+
+    # Tiempo conectado actual (si está online)
+    tmp_file="/tmp/status_${usuario}.tmp"
+    if (( conexiones > 0 )) && [[ -f "$tmp_file" ]]; then
+        inicio=$(cat "$tmp_file")
+        segundos=$(( $(date +%s) - inicio ))
+        h=$((segundos/3600)); m=$(((segundos%3600)/60)); s=$((segundos%60))
+        echo -e "${VERDE}MÓVILES  $moviles${NC}"
+        echo -e "${VERDE}TIEMPO CONECTADO    ⏰  $(printf '%02d:%02d:%02d' $h $m $s)${NC}"
+    else
+        echo -e "${AMARILLO}MÓVILES  $moviles${NC}"
+    fi
+
+    # Última conexión desde el historial (tu formato actual: sshd|fecha|fecha)
+    ultima_linea=$(tail -n 30 "$HISTORIAL" 2>/dev/null | tail -1)
+    if [[ -n "$ultima_linea" ]]; then
+        conexion=$(echo "$ultima_linea" | cut -d'|' -f2)
+        desconexion=$(echo "$ultima_linea" | cut -d'|' -f3)
+
+        conn_fmt=$(date -d "$conexion" '+%d/%B %H:%M' 2>/dev/null || echo "$conexion")
+
+        if [[ -n "$desconexion" && "$desconexion" =~ ^[0-9]{4}- ]]; then
+            desc_fmt=$(date -d "$desconexion" '+%d/%B %H:%M' 2>/dev/null || echo "$desconexion")
+            ultima_desc=$(date -d "$desconexion" '+%d de %B %H:%M' 2>/dev/null || echo "$desconexion")
+            seg1=$(date -d "$conexion" +%s 2>/dev/null)
+            seg2=$(date -d "$desconexion" +%s 2>/dev/null)
+            dur=$((seg2-seg1))
+            h=$((dur/3600)); m=$(((dur%3600)/60)); s=$((dur%60))
+            duracion=$(printf "%02d:%02d:%02d" $h $m $s)
+
+            echo -e "${ROJO}Última: $ultima_desc${NC}"
+            echo
+            echo -e "${VERDE}Conectada    $conn_fmt${NC}"
+            echo -e "${ROJO}Desconectada $desc_fmt${NC}"
+            echo -e "${AMARILLO}Duración   $duracion${NC}"
+        elif (( conexiones > 0 )); then
+            echo -e "${VERDE}Conectada    $conn_fmt (AHORA)${NC}"
+        fi
+    else
+        # Nunca conectado
+        echo -e "${VIOLETA}Nunca conectado${NC}"
+    fi
+
+    echo
+    echo -e "${CIAN}PRESIONE ENTER PARA REGRESAR AL MENÚ PRINCIPAL${NC}"
+    read -s
+}
 
 # ==== MENU ====
 if [[ -t 0 ]]; then
@@ -2509,6 +2617,7 @@ while true; do
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
     echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
     echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}15. 👁️‍🗨️ Información detallada de usuario${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
@@ -2532,6 +2641,7 @@ while true; do
     12) ssh_bot ;;
     13) renovar_usuario ;;
     14) activar_desactivar_swap ;;
+    15) usuarios_ssh ;;
     0) 
         echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
         exec /bin/bash
