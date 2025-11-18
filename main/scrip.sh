@@ -62,7 +62,8 @@ fi
 # ================================
 systemctl restart sshd && echo "SSH configurado correctamente."
     
-       ssh_bot() {
+                                        
+              ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -567,17 +568,7 @@ Escribe *hola* para volver al menú.\"
                                         conex_info=\"📲 *CONEXIONES* 0 🔴\"
                                     fi
 
-                                    INFO=$(cat <<EOF
-*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*
-*🕒 FECHA: \$fecha_actual*
-👩 Usuario \\\`\${usuario}\\\`
-🔒 Clave   \\\`\${clave}\\\`
-*📅 Expira*    \$fecha_expiracion
-*⏳  Días*   \$dias_restantes
-*📲 Móviles*   \$moviles
-\$conex_info
-EOF
-)
+                                    INFO=$'*===== 💖 INFORMACIÓN DE '"\${usuario^^}"$' 💖 =====*\n*🕒 FECHA:* '"\$fecha_actual"$'\n*👩 Usuario* '"\$usuario"$'\n*🔒 Clave*   '"\$clave"$'\n*📅 Expira*    '"\$fecha_expiracion"$'\n*⏳  Días*   '"\$dias_restantes"$'\n*📲 Móviles*   '"\$moviles"$'\n'"\$conex_info"
 
                                     if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
                                         INFO+=$'\n'"\$ultima_conexion"
@@ -880,8 +871,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                                 
-              
+}
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
