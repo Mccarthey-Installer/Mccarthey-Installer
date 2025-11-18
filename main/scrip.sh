@@ -2491,7 +2491,8 @@ eliminar_swap() {
 
        
     
-        function usuarios_ssh() {
+        
+function usuarios_ssh() {
     clear
     # Colores bonitos y suaves
     ROSADO='\033[38;5;211m'
@@ -2513,12 +2514,9 @@ eliminar_swap() {
     # Leer usuarios y mostrar numerados (solo nombres de usuario)
     count=1
     declare -A user_map
-    declare -A lower_to_original
     while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
         usuario=${user_data%%:*}
-        lower_usuario=$(echo "$usuario" | tr '[:upper:]' '[:lower:]')
         user_map[$count]="$usuario"
-        lower_to_original["$lower_usuario"]="$usuario"
         echo -e "${TURQUESA}${count} ${AMARILLO_SUAVE}${usuario}${NC}"
         ((count++))
     done < $REGISTROS
@@ -2526,14 +2524,14 @@ eliminar_swap() {
     # Solicitar input
     read -p "$(echo -e ${LILA}🌟 Ingresa el número o nombre del usuario: ${NC})" input
 
-    # Validar input: si número, obtener usuario; si nombre, verificar existencia case-insensitive
+    # Validar input: si número, obtener usuario; si nombre, verificar existencia
     if [[ $input =~ ^[0-9]+$ && -n "${user_map[$input]}" ]]; then
         usuario="${user_map[$input]}"
     else
-        lower_input=$(echo "$input" | tr '[:upper:]' '[:lower:]')
-        if [[ -n "${lower_to_original[$lower_input]}" ]]; then
-            usuario="${lower_to_original[$lower_input]}"
-        else
+        usuario="$input"
+        # Verificar si existe
+        grep -q "^$usuario:" $REGISTROS
+        if [[ $? -ne 0 ]]; then
             echo -e "${ROJO_SUAVE}❌ Usuario no encontrado.${NC}"
             read -p "$(echo -e ${LILA}Presiona Enter para continuar... ✨${NC})"
             return
@@ -2620,7 +2618,7 @@ eliminar_swap() {
             h=$(( elapsed / 3600 ))
             m=$(( (elapsed % 3600) / 60 ))
             s=$(( elapsed % 60 ))
-            tiempo_conectado=$(printf "⏰  TIEMPO CONECTADO    ⏰  %02d:%02d:%02d" "$h" "$m" "$s")
+            tiempo_conectado=$(printf "⏰ TIEMPO CONECTADO    ⏰ %02d:%02d:%02d" "$h" "$m" "$s")
         else
             tiempo_conectado="⏰  TIEMPO CONECTADO    ⏰  N/A"
         fi
@@ -2632,14 +2630,14 @@ eliminar_swap() {
     # Mostrar información detallada
     clear
     echo -e "${ROSADO}===== 💖 INFORMACIÓN DE ${usuario^^} 💖 =====${NC}"
-    echo -e "${AZUL_SUAVE}🕒 FECHA: ${fecha_actual}${NC}"
+    echo -e "${AZUL_SUAVE}🕒 FECHA:   ${fecha_actual}${NC}"
     echo -e "${VERDE_SUAVE}👩 Usuario ${usuario}${NC}"
-    echo -e "${VERDE_SUAVE}🔑 Clave   ${clave}${NC}"
+    echo -e "${VERDE_SUAVE}🔒 Clave   ${clave}${NC}"
     echo -e "${VERDE_SUAVE}📅 Expira  ${fecha_expiracion}${NC}"
     echo -e "${VERDE_SUAVE}⏳ Días    ${dias_restantes}${NC}"
     echo -e "${VERDE_SUAVE}📲 Móviles ${moviles}${NC}"
     echo -e "${conex_info}"
-    echo -e "${VERDE_SUAVE}📱 MÓVILES  ${moviles}${NC}"
+    echo -e "${VERDE_SUAVE}📱 MÓVILES ${moviles}${NC}"
     if [[ -n "$ultima_conexion" && "$ultima_conexion" != "😴 Nunca conectado" ]]; then
         echo -e "${ultima_conexion}"
     fi
