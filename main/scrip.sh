@@ -510,7 +510,7 @@ Escribe *hola* para volver al menú.\"
                                     if [[ -f \"\$bloqueo_file\" ]]; then
                                         bloqueo_hasta=\$(cat \"\$bloqueo_file\")
                                         if [[ \$(date +%s) -lt \$bloqueo_hasta ]]; then
-                                            ultima_conexion=\"🚫 Bloqueado hasta \$(date -d @\$bloqueo_hasta '+%I:%M%p')\"
+                                            ultima_conexion=\"🚫 *Bloqueado hasta* \$(date -d @\$bloqueo_hasta '+%I:%M%p')\"
                                         fi
                                     fi
 
@@ -519,9 +519,8 @@ Escribe *hola* para volver al menú.\"
                                         IFS='|' read -r _ hora_conexion hora_desconexion _ <<< \"\$ultimo_registro\"
 
                                         ult_month=\$(date -d \"\$hora_desconexion\" +\"%B\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-                                        ult_fmt=\$(date -d \"\$hora_desconexion\" +\"%d de MONTH %H:%M\" 2>/dev/null)
-                                        ult_fmt=\${ult_fmt/MONTH/\$ult_month}
-                                        ultima_conexion=\"📅 Última: \$ult_fmt\"
+                                        ult_fmt=\$(date -d \"\$hora_desconexion\" +\"%d de %B %H:%M\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+                                        ultima_conexion=\"📅 *Última:* \$ult_fmt\"
 
                                         sec_con=\$(date -d \"\$hora_conexion\" +%s 2>/dev/null)
                                         sec_des=\$(date -d \"\$hora_desconexion\" +%s 2>/dev/null)
@@ -536,20 +535,18 @@ Escribe *hola* para volver al menú.\"
                                         fi
 
                                         con_month=\$(date -d \"\$hora_conexion\" +\"%B\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-                                        conexion_fmt=\$(date -d \"\$hora_conexion\" +\"%d/MONTH %H:%M\" 2>/dev/null)
-                                        conexion_fmt=\${conexion_fmt/MONTH/\$con_month}
+                                        conexion_fmt=\$(date -d \"\$hora_conexion\" +\"%d/%B %H:%M\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
 
                                         des_month=\$(date -d \"\$hora_desconexion\" +\"%B\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-                                        desconexion_fmt=\$(date -d \"\$hora_desconexion\" +\"%d/MONTH %H:%M\" 2>/dev/null)
-                                        desconexion_fmt=\${desconexion_fmt/MONTH/\$des_month}
+                                        desconexion_fmt=\$(date -d \"\$hora_desconexion\" +\"%d/%B %H:%M\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
 
-                                        historia_conexion=\"\n-------------------------\\n🌷 Conectada    \$conexion_fmt\\n🌙 Desconectada       \$desconexion_fmt\\n⏰   Duración   \$duracion\\n-------------------------\"
+                                        historia_conexion=$'\n-------------------------\n🌷 *Conectada*    '"\$conexion_fmt"$'\n🌙 *Desconectada*       '"\$desconexion_fmt"$'\n⏰   *Duración*   '"\$duracion"$'\n-------------------------'
                                     else
-                                        ultima_conexion=\"😴 Nunca conectado\"
+                                        ultima_conexion=\"😴 *Nunca conectado*\"
                                     fi
 
                                     if [[ \$conexiones -gt 0 ]]; then
-                                        conex_info=\"📲 CONEXIONES \$conexiones\"
+                                        conex_info=\"📲 *CONEXIONES* \$conexiones\"
                                         if [[ -f \"\$tmp_status\" ]]; then
                                             contenido=\$(cat \"\$tmp_status\")
                                             if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
@@ -563,43 +560,37 @@ Escribe *hola* para volver al menú.\"
                                             h=\$(( elapsed / 3600 ))
                                             m=\$(( (elapsed % 3600) / 60 ))
                                             s=\$(( elapsed % 60 ))
-                                            tiempo_conectado=\$(printf \"⏰  TIEMPO CONECTADO    ⏰  %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
+                                            tiempo_conectado=\$(printf \"⏰  *TIEMPO CONECTADO*    ⏰  %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
                                         else
-                                            tiempo_conectado=\"⏰  TIEMPO CONECTADO    ⏰  N/A\"
+                                            tiempo_conectado=\"⏰  *TIEMPO CONECTADO*    ⏰  N/A\"
                                         fi
                                     else
-                                        conex_info=\"📲 CONEXIONES 0\"
+                                        conex_info=\"📲 *CONEXIONES* 0\"
                                     fi
 
-                                    INFO=\"===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====
-🕒 *FECHA:* \$fecha_actual
-👩 *Usuario* \$usuario
-🔒 *Clave*   \$clave
-📅 *Expira*   \$fecha_expiracion
-⏳ *Días*     \$dias_restantes
-📲 *Móviles*  \$moviles
+                                    INFO=\"*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*
+*🕒 FECHA:* \$fecha_actual
+*👩 Usuario* \$usuario
+*🔒 Clave*   \$clave
+*📅 Expira*    \$fecha_expiracion
+*⏳  Días*   \$dias_restantes
+*📲 Móviles*   \$moviles
 \$conex_info
-📱 *MÓVILES*  \$moviles\"
+*📱 MÓVILES*  \$moviles\"
 
-                                    if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 Nunca conectado\" ]]; then
-                                        INFO=\"\$INFO
-\$ultima_conexion\"
+                                    if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
+                                        INFO=\"\$INFO\n\$ultima_conexion\"
                                     fi
                                     if [[ -n \"\$tiempo_conectado\" ]]; then
-                                        INFO=\"\$INFO
-\$tiempo_conectado\"
+                                        INFO=\"\$INFO\n\$tiempo_conectado\"
                                     fi
                                     if [[ -n \"\$historia_conexion\" ]]; then
-                                        INFO=\"\$INFO
-\$historia_conexion\"
-                                    elif [[ \"\$ultima_conexion\" == \"😴 Nunca conectado\" ]]; then
-                                        INFO=\"\$INFO
-\$ultima_conexion\"
+                                        INFO=\"\$INFO\$historia_conexion\"
+                                    elif [[ \"\$ultima_conexion\" == \"😴 *Nunca conectado*\" ]]; then
+                                        INFO=\"\$INFO\n\$ultima_conexion\"
                                     fi
 
-                                    INFO=\"\$INFO
-
-Escribe *hola* para volver al menú.\"
+                                    INFO=\"\$INFO\n\nEscribe *hola* para volver al menú.\"
 
                                     curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$INFO\" -d parse_mode=Markdown >/dev/null
                                 fi
