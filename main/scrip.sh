@@ -546,7 +546,10 @@ Escribe *hola* para volver al menú.\"
                                     fi
 
                                     if [[ \$conexiones -gt 0 ]]; then
-                                        conex_info=\"📲 *CONEXIONES* \$conexiones\"
+                                        conex_info=\"📲 *CONEXIONES* \$conexiones 🟢\"
+                                    else
+                                        conex_info=\"📲 *CONEXIONES* \$conexiones 🔴\"
+                                    fi    
                                         if [[ -f \"\$tmp_status\" ]]; then
                                             contenido=\$(cat \"\$tmp_status\")
                                             if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
