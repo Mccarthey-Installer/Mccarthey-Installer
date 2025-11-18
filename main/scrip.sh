@@ -2490,133 +2490,133 @@ eliminar_swap() {
 
 function usuarios_ssh() {
     clear
+    # Colores bonitos y suaves con emojis
+    ROSADO='\033[38;5;211m'  # Rosa suave ✨
+    LILA='\033[38;5;183m'    # Lila mágico 🌸
+    TURQUESA='\033[38;5;45m' # Turquesa fresco 💎
+    VERDE_SUAVE='\033[38;5;120m' # Verde pastel 🟢
+    AMARILLO_SUAVE='\033[38;5;222m' # Amarillo cálido ☀️
+    ROJO_SUAVE='\033[38;5;210m' # Rojo suave ❤️
+    VIOLETA='\033[38;5;177m' # Violeta encantador 💜
+    NC='\033[0m'             # Sin color
 
-    # Colores femeninos y suaves
-    ROSADO='\033[38;5;211m'  # Rosa suave
-    LILA='\033[38;5;183m'    # Lila
-    TURQUESA='\033[38;5;45m' # Turquesa
-    CORAL='\033[38;5;217m'   # Coral suave
-    VIOLETA='\033[38;5;141m' # Violeta
-    AMARILLO_SUAVE='\033[38;5;223m' # Amarillo pastel
-    VERDE_SUAVE='\033[38;5;158m' # Verde menta
-    ROJO_SUAVE='\033[38;5;210m' # Rojo rosado
-    NC='\033[0m'
-
-    # Mostrar lista de usuarios
     echo -e "${ROSADO}===== 🌸 REGISTROS =====${NC}"
-    if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
-        echo -e "${ROJO_SUAVE}😿 No hay usuarias registradas aún, corazón! 💔${NC}"
-        read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú... 🌟${NC})"
+
+    # Obtener lista de usuarios únicos de REGISTROS
+    if [[ ! -f "$REGISTROS" || ! -s "$REGISTROS" ]]; then
+        echo -e "${ROJO_SUAVE}❌ No hay usuarios registrados aún, ¡crea algunos! 💔${NC}"
+        read -p "$(echo -e ${LILA}Presiona Enter para regresar... ✨${NC})"
         return
     fi
 
     # Leer usuarios y mostrar numerados (solo nombres)
-    count=1
-    declare -A user_map
-    while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
-        usuario=${user_data%%:*}
-        echo -e "${TURQUESA}${count} ${usuario}${NC}"
-        user_map[$count]="$usuario"
-        user_map[$usuario]="$usuario"  # Para búsqueda por nombre
-        ((count++))
-    done < $REGISTROS
+    mapfile -t USUARIOS < <(awk -F':' '{print $1}' "$REGISTROS" | sort -u)
+    for i in "${!USUARIOS[@]}"; do
+        num=$((i + 1))
+        echo -e "${TURQUESA}${num} ${AMARILLO_SUAVE}${USUARIOS[$i]}${NC}"
+    done
 
-    # Solicitar input
-    read -p "$(echo -e ${CORAL}💖 Elige un número o nombre de usuaria: ${NC})" input
-    if [[ -z "$input" ]]; then
-        return
+    # Solicitar selección
+    read -p "$(echo -e ${LILA}🌟 Ingresa el número o nombre del usuario: ${NC})" seleccion
+
+    # Resolver selección a nombre de usuario
+    if [[ "$seleccion" =~ ^[0-9]+$ ]]; then
+        idx=$((seleccion - 1))
+        if [[ $idx -ge 0 && $idx -lt ${#USUARIOS[@]} ]]; then
+            usuario="${USUARIOS[$idx]}"
+        else
+            echo -e "${ROJO_SUAVE}❌ Número inválido, ¡intenta de nuevo! 😿${NC}"
+            read -p "$(echo -e ${LILA}Presiona Enter para continuar... ✨${NC})"
+            return
+        fi
+    else
+        usuario="$seleccion"
+        if ! grep -q "^$usuario:" "$REGISTROS"; then
+            echo -e "${ROJO_SUAVE}❌ Usuario no encontrado, ¡verifica el nombre! 💔${NC}"
+            read -p "$(echo -e ${LILA}Presiona Enter para continuar... ✨${NC})"
+            return
+        fi
     fi
 
-    # Obtener usuario seleccionado
-    usuario="${user_map[$input]}"
-    if [[ -z "$usuario" ]]; then
-        echo -e "${ROJO_SUAVE}❌ ¡Oh no! Esa usuaria no existe, dulce! 💔${NC}"
-        read -p "$(echo -e ${LILA}Presiona Enter para continuar... 🌟${NC})"
-        return
-    fi
-
-    # Obtener datos del usuario desde REGISTROS
-    linea=$(grep "^${usuario}:" $REGISTROS)
+    # Extraer info del usuario de REGISTROS
+    linea=$(grep "^$usuario:" "$REGISTROS")
     if [[ -z "$linea" ]]; then
-        echo -e "${ROJO_SUAVE}❌ No se encontró info de ${usuario}, pequeña! 💔${NC}"
-        read -p "$(echo -e ${LILA}Presiona Enter para continuar... 🌟${NC})"
+        echo -e "${ROJO_SUAVE}❌ No se encontró info para $usuario. 😿${NC}"
+        read -p "$(echo -e ${LILA}Presiona Enter para continuar... ✨${NC})"
         return
     fi
-
     IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2 <<< "$linea"
     clave=${user_data#*:}
     dias_restantes=$(calcular_dias_restantes "$fecha_expiracion")
     fecha_actual=$(date "+%Y-%m-%d %H:%M")
 
-    # Mostrar cabecera de info
-    echo -e "${ROSADO}     INFORMACIÓN DE ${usuario^^} 💖${NC}"
-    echo -e "${LILA}🕒 FECHA: ${TURQUESA}${fecha_actual}${NC}"
-    echo -e "${LILA}👩 Usuaria ${TURQUESA}${usuario}${NC}"
-    echo -e "${LILA}🔒 Clave   ${TURQUESA}${clave}${NC}"
-    echo -e "${LILA}📅 Expira    ${TURQUESA}${fecha_expiracion}${NC}"
-    echo -e "${LILA}⏳   Días   ${TURQUESA}${dias_restantes}${NC}"
-    echo -e "${LILA}📲 Móviles   ${TURQUESA}${moviles}${NC}"
-
-    # Obtener conexiones actuales (similar a verificar_online)
+    # Info de conexiones actuales (similar a verificar_online)
     conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
     tmp_status="/tmp/status_${usuario}.tmp"
-
     if [[ $conexiones -gt 0 ]]; then
-        # Conectada actualmente
-        echo -e "${VERDE_SUAVE} 📲 CONEXIONES ${conexiones}${NC}"
-        echo -e "${VERDE_SUAVE} 📱 MÓVILES  ${moviles}${NC}"
         if [[ -f "$tmp_status" ]]; then
             start_s=$(cat "$tmp_status")
             now_s=$(date +%s)
-            elapsed=$(( now_s - start_s ))
-            h=$(( elapsed / 3600 ))
-            m=$(( (elapsed % 3600) / 60 ))
-            s=$(( elapsed % 60 ))
-            echo -e "${VERDE_SUAVE} ⏰  TIEMPO CONECTADO    ⏰  $(printf "%02d:%02d:%02d" "$h" "$m" "$s")${NC}"
-        fi
-    else
-        # No conectada: verificar si nunca o última
-        ult=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
-        if [[ -z "$ult" ]]; then
-            echo -e "${VIOLETA} 😴 Nunca conectada 💤${NC}"
+            elapsed=$((now_s - start_s))
+            h=$((elapsed / 3600))
+            m=$(((elapsed % 3600) / 60))
+            s=$((elapsed % 60))
+            tiempo_conectado=$(printf "%02d:%02d:%02d" "$h" "$m" "$s")
         else
-            ult_mes=$(date -d "$ult" +"%B" | tr '[:upper:]' '[:lower:]')
-            ult_fmt=$(date -d "$ult" +"%d de ${ult_mes} %H:%M")
-            echo -e "${ROJO_SUAVE}   📅 Última: ${ult_fmt}${NC}"
+            tiempo_conectado="00:00:00"
         fi
-    fi
-
-    # Mostrar historial de conexiones desde HISTORIAL
-    historial_usuario=$(grep "^$usuario|" "$HISTORIAL")
-    if [[ -n "$historial_usuario" ]]; then
-        while IFS='|' read -r _ hora_con hora_des _; do
-            if [[ -n "$hora_con" ]]; then
-                con_mes=$(date -d "$hora_con" +"%B" | tr '[:upper:]' '[:lower:]')
-                con_fmt=$(date -d "$hora_con" +"%d/${con_mes} %H:%M")
-                echo -e "${AMARILLO_SUAVE}🌷 Conectada    ${con_fmt}${NC}"
-
-                if [[ -n "$hora_des" ]]; then
-                    des_mes=$(date -d "$hora_des" +"%B" | tr '[:upper:]' '[:lower:]')
-                    des_fmt=$(date -d "$hora_des" +"%d/${des_mes} %H:%M")
-                    echo -e "${AMARILLO_SUAVE}🌙 Desconectada       ${des_fmt}${NC}"
-
-                    sec_con=$(date -d "$hora_con" +%s)
-                    sec_des=$(date -d "$hora_des" +%s)
-                    elapsed=$(( sec_des - sec_con ))
-                    h=$(( elapsed / 3600 ))
-                    m=$(( (elapsed % 3600) / 60 ))
-                    s=$(( elapsed % 60 ))
-                    echo -e "${AMARILLO_SUAVE} ⏰   Duración   $(printf "%02d:%02d:%02d" "$h" "$m" "$s")${NC}"
-                else
-                    echo -e "${AMARILLO_SUAVE}🌙 Aún conectada ✨${NC}"
-                fi
-                echo ""  # Separador entre conexiones
+        conex_info="${VERDE_SUAVE}📲 CONEXIONES ${conexiones}${NC}"
+        tiempo_info="${VERDE_SUAVE}⏰  TIEMPO CONECTADO    ⏰  ${tiempo_conectado}${NC}"
+    else
+        # Verificar si nunca conectado
+        if ! grep -q "^$usuario|" "$HISTORIAL"; then
+            tiempo_info="${VIOLETA}😴 Nunca conectado${NC}"
+        else
+            # Última conexión de HISTORIAL
+            ultima=$(grep "^$usuario|" "$HISTORIAL" | tail -1 | awk -F'|' '{print $3}')
+            if [[ -n "$ultima" ]]; then
+                ult_fmt=$(date -d "$ultima" +"%d de %B %H:%M")
+                tiempo_info="${ROJO_SUAVE}📅 Última: ${ult_fmt}${NC}"
+            else
+                tiempo_info="${VIOLETA}😴 Nunca conectado${NC}"
             fi
-        done <<< "$historial_usuario"
+        fi
+        conex_info=""
     fi
 
-    read -p "$(echo -e ${LILA}PRESIONE ENTER PARA REGRESAR AL MENÚ PRINCIPAL 🌸${NC})"
+    # Mostrar info principal
+    echo -e "${ROSADO}===== 💖 INFORMACIÓN DE ${usuario^^} 💖 =====${NC}"
+    echo -e "${TURQUESA}🕒 FECHA: ${AMARILLO_SUAVE}${fecha_actual}${NC}"
+    echo -e "${TURQUESA}👩 Usuario ${AMARILLO_SUAVE}${usuario}${NC}"
+    echo -e "${TURQUESA}🔒 Clave   ${AMARILLO_SUAVE}${clave}${NC}"
+    echo -e "${TURQUESA}📅 Expira    ${AMARILLO_SUAVE}${fecha_expiracion}${NC}"
+    echo -e "${TURQUESA}⏳   Días   ${AMARILLO_SUAVE}${dias_restantes}${NC}"
+    echo -e "${TURQUESA}📲 Móviles   ${AMARILLO_SUAVE}${moviles}${NC}"
+    [[ -n "$conex_info" ]] && echo -e "$conex_info"
+    echo -e "${TURQUESA}📱 MÓVILES  ${AMARILLO_SUAVE}${moviles}${NC}"
+    echo -e "$tiempo_info"
+
+    # Mostrar historial de conexiones pasadas de HISTORIAL
+    echo -e "${LILA}===== 🌷 HISTORIAL DE CONEXIONES 🌷 =====${NC}"
+    historial=$(grep "^$usuario|" "$HISTORIAL")
+    if [[ -z "$historial" ]]; then
+        echo -e "${VIOLETA}😴 No hay conexiones pasadas. 💤${NC}"
+    else
+        while IFS='|' read -r _ conexion desconexion duracion; do
+            if [[ -n "$conexion" && -n "$desconexion" ]]; then
+                conn_fmt=$(date -d "$conexion" +"%d/%B %H:%M")
+                disc_fmt=$(date -d "$desconexion" +"%d/%B %H:%M")
+                echo -e "${VERDE_SUAVE}🌷 Conectada    ${AMARILLO_SUAVE}${conn_fmt}${NC}"
+                echo -e "${ROJO_SUAVE}🌙 Desconectada       ${AMARILLO_SUAVE}${disc_fmt}${NC}"
+                echo -e "${TURQUESA}⏰   Duración   ${AMARILLO_SUAVE}${duracion}${NC}"
+                echo -e "${LILA}-------------------------${NC}"
+            fi
+        done <<< "$historial"
+    fi
+
+    read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
 }
+            
     
 # ==== MENU ====
 if [[ -t 0 ]]; then
