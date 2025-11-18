@@ -2498,7 +2498,6 @@ eliminar_swap() {
     LILA='\033[38;5;183m'
     TURQUESA='\033[38;5;45m'
     VERDE_SUAVE='\033[38;5;159m'
-    AMARILLO_SUAVE='\033[38;5;230m'
     ROJO_SUAVE='\033[38;5;210m'
     AZUL_SUAVE='\033[38;5;153m'
     NC='\033[0m'
@@ -2600,7 +2599,7 @@ eliminar_swap() {
         desconexion_fmt=$(date -d "$hora_desconexion" +"%d/MONTH %H:%M" 2>/dev/null)
         desconexion_fmt=${desconexion_fmt/MONTH/$des_month}
 
-        historia_conexion="\n${LILA}-------------------------${NC}\n${VERDE_SUAVE}🌷 Conectada    ${conexion_fmt}${NC}\n${ROJO_SUAVE}🌙 Desconectada       ${desconexion_fmt}${NC}\n${AZUL_SUAVE}⏰   Duración   ${duracion}${NC}\n${LILA}-------------------------${NC}"
+        historia_conexion="\n${LILA}-------------------------${NC}\n${VERDE_SUAVE}🌷 Conectada    ${conexion_fmt}${NC}\n${ROJO_SUAVE}🌙 Desconectada       ${desconexion_fmt}${NC}\n${AZUL_SUAVE}⏰ Duración   ${duracion}${NC}\n${LILA}-------------------------${NC}"
     else
         ultima_conexion="😴 Nunca conectado"
     fi
@@ -2635,10 +2634,10 @@ eliminar_swap() {
     echo -e "${ROSADO}===== 💖 INFORMACIÓN DE ${usuario^^} 💖 =====${NC}"
     echo -e "${AZUL_SUAVE}🕒 FECHA: ${fecha_actual}${NC}"
     echo -e "${VERDE_SUAVE}👩 Usuario ${usuario}${NC}"
-    echo -e "${VERDE_SUAVE}🔒 Clave   ${clave}${NC}"
-    echo -e "${VERDE_SUAVE}📅 Expira    ${fecha_expiracion}${NC}"
-    echo -e "${VERDE_SUAVE}⏳   Días   ${dias_restantes}${NC}"
-    echo -e "${VERDE_SUAVE}📲 Móviles   ${moviles}${NC}"
+    echo -e "${VERDE_SUAVE}🔑 Clave   ${clave}${NC}"
+    echo -e "${VERDE_SUAVE}📅 Expira  ${fecha_expiracion}${NC}"
+    echo -e "${VERDE_SUAVE}⏳ Días    ${dias_restantes}${NC}"
+    echo -e "${VERDE_SUAVE}📲 Móviles ${moviles}${NC}"
     echo -e "${conex_info}"
     echo -e "${VERDE_SUAVE}📱 MÓVILES  ${moviles}${NC}"
     if [[ -n "$ultima_conexion" && "$ultima_conexion" != "😴 Nunca conectado" ]]; then
