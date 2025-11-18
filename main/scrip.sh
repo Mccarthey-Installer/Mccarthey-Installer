@@ -316,7 +316,6 @@ Por favor cumple con estas reglas para mantener tu acceso activo:
  📥 Prohibido torrents o descargas abusivas
  🔒 No cambies tu clave ni uses accesos de otros
  ⚠️ Nada de usos ilegales (spam/ataques)
- ⚠️ Nada de usos ilegales (spam/ataques)
  🧑‍💻 SOPORTE: ENVÍA TU MENSAJE UNA SOLA VEZ Y ESPERA RESPUESTA. 🚫 NO HAGAS SPAM.
 
 ⚡👉 El incumplimiento resultará en suspensión inmediata.
@@ -569,21 +568,21 @@ Escribe *hola* para volver al menú.\"
                                         conex_info=\"📲 *CONEXIONES* 0\"
                                     fi
 
-                                    INFO=\"*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*\n*🕒 FECHA:* \$fecha_actual\n*👩 Usuario* \$usuario\n*🔒 Clave*   \$clave\n*📅 Expira*    \$fecha_expiracion\n*⏳  Días*   \$dias_restantes\n*📲 Móviles*   \$moviles\n\$conex_info\n*📱 MÓVILES*  \$moviles\"
+                                    INFO=$'*===== 💖 INFORMACIÓN DE '"\${usuario^^}"$' 💖 =====*\n*🕒 FECHA:* '"\$fecha_actual"$'\n*👩 Usuario* '"\$usuario"$'\n*🔒 Clave*   '"\$clave"$'\n*📅 Expira*    '"\$fecha_expiracion"$'\n*⏳  Días*   '"\$dias_restantes"$'\n*📲 Móviles*   '"\$moviles"$'\n'"\$conex_info"$'\n*📱 MÓVILES*  '"\$moviles"
 
                                     if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
-                                        INFO=\"\${INFO}\"'$'\n'"\${ultima_conexion}\"
+                                        INFO+=$'\n'"\$ultima_conexion"
                                     fi
                                     if [[ -n \"\$tiempo_conectado\" ]]; then
-                                        INFO=\"\${INFO}\"'$'\n'"\${tiempo_conectado}\"
+                                        INFO+=$'\n'"\$tiempo_conectado"
                                     fi
                                     if [[ -n \"\$historia_conexion\" ]]; then
-                                        INFO=\"\${INFO}\${historia_conexion}\"
+                                        INFO+=\"\$historia_conexion\"
                                     elif [[ \"\$ultima_conexion\" == \"😴 *Nunca conectado*\" ]]; then
-                                        INFO=\"\${INFO}\"'$'\n'"\${ultima_conexion}\"
+                                        INFO+=$'\n'"\$ultima_conexion"
                                     fi
 
-                                    INFO=\"\${INFO}\"'$'\n\n'"Escribe *hola* para volver al menú.\"
+                                    INFO+=$'\n\nEscribe *hola* para volver al menú.'
 
                                     curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$INFO\" -d parse_mode=Markdown >/dev/null
                                 fi
