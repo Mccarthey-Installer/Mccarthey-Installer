@@ -2489,31 +2489,24 @@ eliminar_swap() {
 }
 
 
-       function usuarios_ssh() {
+       
+    function usuarios_ssh() {
     clear
     # Colores bonitos y suaves
     ROSADO='\033[38;5;211m'
     LILA='\033[38;5;183m'
     TURQUESA='\033[38;5;45m'
     VERDE_SUAVE='\033[38;5;159m'
+    AMARILLO_SUAVE='\033[38;5;230m'
     ROJO_SUAVE='\033[38;5;210m'
     AZUL_SUAVE='\033[38;5;153m'
     NC='\033[0m'
 
     # Mapa de meses en inglés a español (minúsculas)
     declare -A full_month_map=(
-        ["january"]="enero"
-        ["february"]="febrero"
-        ["march"]="marzo"
-        ["april"]="abril"
-        ["may"]="mayo"
-        ["june"]="junio"
-        ["july"]="julio"
-        ["august"]="agosto"
-        ["september"]="septiembre"
-        ["october"]="octubre"
-        ["november"]="noviembre"
-        ["december"]="diciembre"
+        ["january"]="enero" ["february"]="febrero" ["march"]="marzo" ["april"]="abril"
+        ["may"]="mayo" ["june"]="junio" ["july"]="julio" ["august"]="agosto"
+        ["september"]="septiembre" ["october"]="octubre" ["november"]="noviembre" ["december"]="diciembre"
     )
 
     # Mostrar lista de registros
@@ -2577,7 +2570,48 @@ eliminar_swap() {
         fi
     fi
 
-    # 🟢 Si el usuario está conectado
+    # Siempre obtener el último registro completado de HISTORIAL
+    ultimo_registro=$(grep "^$usuario|" "$HISTORIAL" | grep -E '\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -1)
+    if [[ -n "$ultimo_registro" ]]; then
+        IFS='|' read -r _ hora_conexion hora_desconexion _ <<< "$ultimo_registro"
+
+        # Formatear última desconexión con "de mes"
+        ult_month_en=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        ult_month_es=${full_month_map[$ult_month_en]:-desconocido}
+        ult_fmt=$(date -d "$hora_desconexion" +"%d de MONTH %H:%M" 2>/dev/null)
+        ult_fmt=${ult_fmt/MONTH/$ult_month_es}
+        ultima_conexion="📅 Última: ${ROJO_SUAVE}${ult_fmt}${NC}"
+
+        # Calcular duración
+        sec_con=$(date -d "$hora_conexion" +%s 2>/dev/null)
+        sec_des=$(date -d "$hora_desconexion" +%s 2>/dev/null)
+        if [[ -n "$sec_con" && -n "$sec_des" && $sec_des -ge $sec_con ]]; then
+            dur_seg=$((sec_des - sec_con))
+            h=$((dur_seg / 3600))
+            m=$(((dur_seg % 3600) / 60))
+            s=$((dur_seg % 60))
+            duracion=$(printf "%02d:%02d:%02d" $h $m $s)
+        else
+            duracion="N/A"
+        fi
+
+        # Formatear conexión y desconexión con /mes
+        con_month_en=$(date -d "$hora_conexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        con_month_es=${full_month_map[$con_month_en]:-desconocido}
+        conexion_fmt=$(date -d "$hora_conexion" +"%d/MONTH %H:%M" 2>/dev/null)
+        conexion_fmt=${conexion_fmt/MONTH/$con_month_es}
+
+        des_month_en=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        des_month_es=${full_month_map[$des_month_en]:-desconocido}
+        desconexion_fmt=$(date -d "$hora_desconexion" +"%d/MONTH %H:%M" 2>/dev/null)
+        desconexion_fmt=${desconexion_fmt/MONTH/$des_month_es}
+
+        historia_conexion="\n${LILA}-------------------------${NC}\n${VERDE_SUAVE}🌷 Conectada    ${conexion_fmt}${NC}\n${ROJO_SUAVE}🌙 Desconectada       ${desconexion_fmt}${NC}\n${AZUL_SUAVE}⏰   Duración   ${duracion}${NC}\n${LILA}-------------------------${NC}"
+    else
+        ultima_conexion="😴 Nunca conectado"
+    fi
+
+    # 🟢 Si el usuario está conectado actualmente
     if [[ $conexiones -gt 0 ]]; then
         conex_info="📲 CONEXIONES ${VERDE_SUAVE}${conexiones}${NC}"
         if [[ -f "$tmp_status" ]]; then
@@ -2599,43 +2633,7 @@ eliminar_swap() {
         fi
     else
         conex_info="📲 CONEXIONES ${ROJO_SUAVE}0${NC}"
-        # Obtener el último registro válido del usuario desde HISTORIAL
-        ultimo_registro=$(grep "^$usuario|" "$HISTORIAL" | grep -E '\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -1)
-        if [[ -n "$ultimo_registro" ]]; then
-            IFS='|' read -r _ hora_conexion hora_desconexion _ <<< "$ultimo_registro"
-
-            # Formatear última desconexión
-            ult_month_en=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-            ult_month_es=${full_month_map[$ult_month_en]}
-            ult_fmt=$(date -d "$hora_desconexion" +"%d de %m %H:%M" 2>/dev/null | sed "s/%m/$ult_month_es/")
-            ultima_conexion="📅 Última: ${ROJO_SUAVE}${ult_fmt}${NC}"
-
-            # Calcular duración
-            sec_con=$(date -d "$hora_conexion" +%s 2>/dev/null)
-            sec_des=$(date -d "$hora_desconexion" +%s 2>/dev/null)
-            if [[ -n "$sec_con" && -n "$sec_des" && $sec_des -ge $sec_con ]]; then
-                dur_seg=$((sec_des - sec_con))
-                h=$((dur_seg / 3600))
-                m=$(((dur_seg % 3600) / 60))
-                s=$((dur_seg % 60))
-                duracion=$(printf "%02d:%02d:%02d" $h $m $s)
-            else
-                duracion="N/A"
-            fi
-
-            # Formatear conexión y desconexión con meses en español
-            con_month_en=$(date -d "$hora_conexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-            con_month_es=${full_month_map[$con_month_en]}
-            conexion_fmt=$(date -d "$hora_conexion" +"%d/%m %H:%M" 2>/dev/null | sed "s/%m/$con_month_es/")
-
-            des_month_en=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-            des_month_es=${full_month_map[$des_month_en]}
-            desconexion_fmt=$(date -d "$hora_desconexion" +"%d/%m %H:%M" 2>/dev/null | sed "s/%m/$des_month_es/")
-
-            historia_conexion="\n${LILA}-------------------------${NC}\n${VERDE_SUAVE}🌷 Conectada    ${conexion_fmt}${NC}\n${ROJO_SUAVE}🌙 Desconectada       ${desconexion_fmt}${NC}\n${AZUL_SUAVE}⏰   Duración   ${duracion}${NC}\n${LILA}-------------------------${NC}"
-        else
-            ultima_conexion="😴 Nunca conectado"
-        fi
+        # Si no conectado y hay ultima, mostrarla
     fi
 
     # Mostrar información detallada
@@ -2649,7 +2647,7 @@ eliminar_swap() {
     echo -e "${VERDE_SUAVE}📲 Móviles   ${moviles}${NC}"
     echo -e "${conex_info}"
     echo -e "${VERDE_SUAVE}📱 MÓVILES  ${moviles}${NC}"
-    if [[ -n "$ultima_conexion" ]]; then
+    if [[ -n "$ultima_conexion" && "$ultima_conexion" != "😴 Nunca conectado" ]]; then
         echo -e "${ultima_conexion}"
     fi
     if [[ -n "$tiempo_conectado" ]]; then
@@ -2657,9 +2655,11 @@ eliminar_swap() {
     fi
     if [[ -n "$historia_conexion" ]]; then
         echo -e "${historia_conexion}"
+    elif [[ "$ultima_conexion" == "😴 Nunca conectado" ]]; then
+        echo -e "${ultima_conexion}"
     fi
     read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
-} 
+}
    
         
     
