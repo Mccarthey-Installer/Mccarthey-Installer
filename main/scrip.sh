@@ -62,7 +62,7 @@ fi
 # ================================
 systemctl restart sshd && echo "SSH configurado correctamente."
     
-  ssh_bot() {
+                   ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -539,7 +539,7 @@ Escribe *hola* para volver al menú.\"
                                         des_month=\$(date -d \"\$hora_desconexion\" +\"%B\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
                                         desconexion_fmt=\$(date -d \"\$hora_desconexion\" +\"%d/%B %H:%M\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
 
-                                        historia_conexion=$'\n-------------------------\n🌷 *Conectada*    '"\$conexion_fmt"$'\n🌙 *Desconectada*       '"\$desconexion_fmt"$'\n⏰   *Duración*   '"\$duracion"$'\n-------------------------'
+                                        historia_conexion=\"\\n-------------------------\\n🌷 *Conectada*    \$conexion_fmt\\n🌙 *Desconectada*       \$desconexion_fmt\\n⏰   *Duración*   \$duracion\\n-------------------------\"
                                     else
                                         ultima_conexion=\"😴 *Nunca conectado*\"
                                     fi
@@ -559,7 +559,7 @@ Escribe *hola* para volver al menú.\"
                                             h=\$(( elapsed / 3600 ))
                                             m=\$(( (elapsed % 3600) / 60 ))
                                             s=\$(( elapsed % 60 ))
-                                            tiempo_conectado=\$(printf \"⏰  *TIEMPO CONECTADO*    ⏰  %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
+                                            tiempo_conectado=\"⏰  *TIEMPO CONECTADO*    ⏰  \$(printf \"%02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")\"
                                         else
                                             tiempo_conectado=\"⏰  *TIEMPO CONECTADO*    ⏰  N/A\"
                                         fi
@@ -567,21 +567,31 @@ Escribe *hola* para volver al menú.\"
                                         conex_info=\"📲 *CONEXIONES* 0 🔴\"
                                     fi
 
-                                    INFO=$'*===== 💖 INFORMACIÓN DE '"\${usuario^^}"$' 💖 =====*\n*🕒 FECHA: '"\$fecha_actual"'*\n*👩 Usuario* `'"\$usuario"'`\n*🔒 Clave*   `'"\$clave"'`\n*📅 Expira*    '"\$fecha_expiracion"$'\n*⏳  Días*   '"\$dias_restantes"$'\n*📲 Móviles*   '"\$moviles"$'\n'"\$conex_info"
+                                    INFO=\$(cat <<EOF
+*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*
+*🕒 FECHA: \$fecha_actual*
+👩 Usuario \\\`\${usuario}\\\`
+🔒 Clave   \\\`\${clave}\\\`
+📅 Expira    \$fecha_expiracion
+⏳  Días   \$dias_restantes
+📲 Móviles   \$moviles
+\$conex_info
+EOF
+)
 
                                     if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
-                                        INFO+=$'\n'"\$ultima_conexion"
+                                        INFO=\"\$INFO\\n\$ultima_conexion\"
                                     fi
                                     if [[ -n \"\$tiempo_conectado\" ]]; then
-                                        INFO+=$'\n'"\$tiempo_conectado"
+                                        INFO=\"\$INFO\\n\$tiempo_conectado\"
                                     fi
                                     if [[ -n \"\$historia_conexion\" ]]; then
-                                        INFO+=\"\$historia_conexion\"
+                                        INFO=\"\$INFO\$historia_conexion\"
                                     elif [[ \"\$ultima_conexion\" == \"😴 *Nunca conectado*\" ]]; then
-                                        INFO+=$'\n'"\$ultima_conexion"
+                                        INFO=\"\$INFO\\n\$ultima_conexion\"
                                     fi
 
-                                    INFO+=$'\n\nEscribe *hola* para volver al menú.'
+                                    INFO=\"\$INFO\\n\\nEscribe *hola* para volver al menú.\"
 
                                     curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$INFO\" -d parse_mode=Markdown >/dev/null
                                 fi
@@ -870,7 +880,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                                      
+}                     
               
 function barra_sistema() {  
     # ================= Colores =================  
