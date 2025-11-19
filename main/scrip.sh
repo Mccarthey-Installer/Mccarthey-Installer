@@ -818,7 +818,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
 Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
-                                            LISTA=\"===== 🌸 REGISTROS =====
+                                            LISTA=\"*===== 🌸 REGISTROS =====*
 
 \"
                                             while IFS=' ' read -r user_data _; do
