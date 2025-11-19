@@ -567,7 +567,7 @@ Escribe *hola* para volver al menú.\"
                                         conex_info=\"📲 *CONEXIONES* 0 🔴\"
                                     fi
 
-                                    INFO=\"*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*\"$'\n'\"*🕒 FECHA: \$fecha_actual*\"$'\n'\"*👩 Usuario* \\\`\${usuario}\\\`\"$'\n'\"*🔒 Clave*   \\\`\${clave}\\\`\"$'\n'\"*📅 Expira*    \$fecha_expiracion\"$'\n'\"*⏳  Días*   \$dias_restantes\"$'\n'\"*📲 Móviles*   \$moviles\"$'\n'\"\$conex_info\"
+                                    INFO=\"*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*\"$'\n'\"*🕒 FECHA: \$fecha_actual*\"$'\n'\"*👩 Usuario* \\\`\${usuario}\\\`\"$'\n'\"*🔒 Clave*   \\\`\${clave}\\\`\"$'\n'\"*📅 Expira*   \\\`\${fecha_expiracion}\\\`\"$'\n'\"*⏳  Días*   \$dias_restantes\"$'\n'\"*📲 Móviles*   \$moviles\"$'\n'\"\$conex_info\"
 
                                     if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
                                         INFO+=$'\n'\"\$ultima_conexion\"
