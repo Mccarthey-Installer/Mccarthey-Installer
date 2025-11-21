@@ -294,11 +294,16 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                                             fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
+                                                            if [[ \"\$DAYS\" -eq 1 ]]; then
+                                                                DIAS_TEXTO=\"DÍA\"
+                                                            else
+                                                                DIAS_TEXTO=\"DÍAS\"
+                                                            fi
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
-⏳ *DÍAS*: \\\`\${DAYS}\\\`
+⏳ *$DIAS_TEXTO*: \\\`\${DAYS}\\\`
 \\\`📅 Expira: \${fecha_expiracion}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
