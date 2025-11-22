@@ -303,8 +303,8 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
-⏳ *$DIAS_TEXTO*: \\\`\${DAYS}\\\`
 \\\`📅 Expira: \${fecha_expiracion}\\\`
+⏳ *\${DIAS_TEXTO}*: \\\`\${DAYS}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
@@ -1403,12 +1403,12 @@ function crear_usuario() {
     echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$usuario${NC}"
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$clave${NC}"
+    echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
     if [[ "$dias" -eq 1 ]]; then
     echo -e "${AZUL}⏳ DÍA: ${AMARILLO}$dias${NC}"
     else
     echo -e "${AZUL}⏳ DÍAS: ${AMARILLO}$dias${NC}"
     fi
-    echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
     echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
     echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
     echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
