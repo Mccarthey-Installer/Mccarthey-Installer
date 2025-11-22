@@ -1405,9 +1405,9 @@ function crear_usuario() {
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$clave${NC}"
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
     if [[ "$dias" -eq 1 ]]; then
-    echo -e "${AZUL}⏳ DÍA: ${AMARILLO}$dias${NC}"
+    echo -e "${AZUL}⏳ Día: ${AMARILLO}$dias${NC}"
     else
-    echo -e "${AZUL}⏳ DÍAS: ${AMARILLO}$dias${NC}"
+    echo -e "${AZUL}⏳ Días: ${AMARILLO}$dias${NC}"
     fi
     echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
     echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
