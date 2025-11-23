@@ -15,18 +15,31 @@ if [[ -z "$1" && -t 0 ]]; then   # Solo si es menú interactivo (sin argumentos)
     fi
 fi
 
+
 # ================================
-# VARIABLES Y RUTAS
+# VARIABLES Y RUTAS (Consolidadas para evitar duplicados)
 # ================================
+# Exports comunes (REGISTROS, HISTORIAL, etc.)
 export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
-export PIDFILE="/Abigail/mon.pid"
+export LOGFILE="/alexia/conexiones_log.txt"  # Si lo usas en múltiples lugares, inclúyelo aquí
+export STATUS="/tmp/limitador_status"
+export ENABLED="/tmp/limitador_enabled"     # Control estricto de activación
 
-# Crear directorios si no existen
+# Modificación: Definir PIDFILE separados para cada modo para evitar sobrescrituras y conflictos
+export MON_PIDFILE="/Abigail/mon.pid"              # Para monitoreo de conexiones ("mon")
+export LIMITADOR_PIDFILE="/Abigail/limitador.pid"  # Para limitador
+export BLOQUEOS_PIDFILE="/Abigail/mon_bloqueos.pid" # Para monitoreo de bloqueos ("mon_bloqueos")
+
+# Crear directorios si no existen (una sola vez)
 mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
-mkdir -p "$(dirname "$PIDFILE")"
-
+mkdir -p "$(dirname "$LOGFILE")"
+mkdir -p "$(dirname "$MON_PIDFILE")"        # Para mon
+mkdir -p "$(dirname "$LIMITADOR_PIDFILE")"  # Para limitador
+mkdir -p "$(dirname "$BLOQUEOS_PIDFILE")"   # Para bloqueos
+mkdir -p "$(dirname "$STATUS")"
+mkdir -p "$(dirname "$ENABLED")"
 
 
 
@@ -86,10 +99,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
         chmod +x /usr/bin/jq
     fi
 
-    # Definir rutas de archivos
-    export REGISTROS="/diana/reg.txt"
-    export HISTORIAL="/alexia/log.txt"
-    export PIDFILE="/Abigail/mon.pid"
+   
 
     # Crear directorios si no existen
     mkdir -p "$(dirname "$REGISTROS")"
@@ -1098,16 +1108,7 @@ function barra_sistema() {
     read -p "$(echo -e ${BLANCO}Presiona Enter para continuar...${NC})"
 }
 
-export REGISTROS="/diana/reg.txt"
-export HISTORIAL="/alexia/log.txt"
-export PIDFILE="/Abigail/mon.pid"
-export LOGFILE="/alexia/conexiones_log.txt"
 
-# Crear directorios si no existen
-mkdir -p "$(dirname "$REGISTROS")"
-mkdir -p "$(dirname "$HISTORIAL")"
-mkdir -p "$(dirname "$PIDFILE")"
-mkdir -p "$(dirname "$LOGFILE")"
 
 function informacion_usuarios() {
     clear
@@ -1866,26 +1867,18 @@ fi
 # ================================
 #  ARRANQUE AUTOMÁTICO DEL MONITOR
 # ================================
-if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE"
-    nohup bash "$0" mon >/dev/null 2>&1 &
-    echo $! > "$PIDFILE"
+MON_PIDFILE_LOCK="${MON_PIDFILE}.lock"
+if flock -n "$MON_PIDFILE_LOCK" -c '
+    if [[ ! -f "$MON_PIDFILE" ]] || ! ps -p "$(cat "$MON_PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        rm -f "$MON_PIDFILE"
+        nohup bash "$0" mon >/dev/null 2>&1 &
+        echo $! > "$MON_PIDFILE"
+    fi
+'; then
+    :  # Éxito o ya corriendo
+else
+    :  # Bloqueado por otra instancia, no hacemos nada
 fi
-
-
-# ================================
-# VARIABLES Y RUTAS
-# ================================
-export REGISTROS="/diana/reg.txt"
-export HISTORIAL="/alexia/log.txt"
-export PIDFILE="/Abigail/mon.pid"
-export STATUS="/tmp/limitador_status"
-export ENABLED="/tmp/limitador_enabled"   # Control estricto de activación
-
-# Crear directorios si no existen
-mkdir -p "$(dirname "$REGISTROS")"
-mkdir -p "$(dirname "$HISTORIAL")"
-mkdir -p "$(dirname "$PIDFILE")"
 
 # Colores bonitos
 AZUL_SUAVE='\033[38;5;45m'
@@ -1987,15 +1980,19 @@ fi
 # ================================
 # ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
 # ================================
+LIMITADOR_PIDFILE_LOCK="${LIMITADOR_PIDFILE}.lock"
 if [[ -f "$ENABLED" ]]; then
-    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        nohup bash "$0" limitador >/dev/null 2>&1 &
-        echo $! > "$PIDFILE"
+    if flock -n "$LIMITADOR_PIDFILE_LOCK" -c '
+        if [[ ! -f "$LIMITADOR_PIDFILE" ]] || ! ps -p "$(cat "$LIMITADOR_PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+            nohup bash "$0" limitador >/dev/null 2>&1 &
+            echo $! > "$LIMITADOR_PIDFILE"
+        fi
+    '; then
+        :  # Éxito o ya corriendo
+    else
+        :  # Bloqueado por otra instancia, no hacemos nada
     fi
 fi
-
-
-
 
 function verificar_online() {
     clear
@@ -2240,11 +2237,18 @@ monitorear_bloqueos() {
 # ================================
 #  ARRANQUE AUTOMÁTICO DEL MONITOR DE BLOQUEOS
 # ================================
-if [[ ! -f "$PIDFILE.bloqueos" ]] || ! ps -p "$(cat "$PIDFILE.bloqueos" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE.bloqueos"
-    nohup bash "$0" mon_bloqueos >/dev/null 2>&1 &
-    echo $! > "$PIDFILE.bloqueos"
-fi
+BLOQUEOS_PIDFILE_LOCK="${BLOQUEOS_PIDFILE}.lock"
+if flock -n "$BLOQUEOS_PIDFILE_LOCK" -c '
+    if [[ ! -f "$BLOQUEOS_PIDFILE" ]] || ! ps -p "$(cat "$BLOQUEOS_PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+        rm -f "$BLOQUEOS_PIDFILE"
+        nohup bash "$0" mon_bloqueos >/dev/null 2>&1 &
+        echo $! > "$BLOQUEOS_PIDFILE"
+    fi
+'; then
+    :  # Éxito o ya corriendo
+else
+    :  # Bloqueado por otra instancia, no hacemos nada
+fi  
 
 # ================================
 #  MODO MONITOREO DE BLOQUEOS
