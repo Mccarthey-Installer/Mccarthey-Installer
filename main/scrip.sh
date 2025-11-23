@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# ==================================================================
+# MATA SOLO MENÚS DUPLICADOS SIN JODER EL LIMITADOR NI FUNCIONES
+# ==================================================================
+if [[ -z "$1" && -t 0 ]]; then   # Solo si es menú interactivo (sin argumentos)
+    MI_PID=$$
+    # Busca otros procesos que sean exactamente "bash scrip.sh" sin nada más
+    OTROS_MENUS=$(pgrep -f '^bash.*scrip\.sh$' | grep -v "^$$\$")
+    
+    if [[ -n "$OTROS_MENUS" ]]; then
+        echo -e "\033[1;33mYa había otro menú abierto, lo cierro para evitar duplicados...\033[0m"
+        kill -9 $OTROS_MENUS 2>/dev/null
+        sleep 0.3
+    fi
+fi
+
 # ================================
 # VARIABLES Y RUTAS
 # ================================
@@ -11,6 +26,7 @@ export PIDFILE="/Abigail/mon.pid"
 mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
 mkdir -p "$(dirname "$PIDFILE")"
+
 
 
 
