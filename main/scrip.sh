@@ -807,9 +807,11 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 # Determinar estado de conexiones
                                                 if [[ $conexiones -gt $moviles ]]; then
                                                     conexiones_status="$conexiones 🟢"
-                                                    alerta_matalo="\n☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"          # salto literal
-                                                    alerta_matalo_txt="\n ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
-                                                    (( total_online += conexiones ))
+                                                    alerta_matalo="
+ ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
+                                                    alerta_matalo_txt="
+ ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
+                                                    (( total_online += conexiones ))  # sigue contando aunque esté por encima
                                                 elif [[ $conexiones -gt 0 ]]; then
                                                     conexiones_status="$conexiones 🟢"
                                                     alerta_matalo=""
@@ -821,21 +823,21 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     alerta_matalo_txt=""
                                                 fi
 
-                                                # Telegram con tu estilo exacto de backticks escapados
-                                                LISTA="${LISTA}🕒 *FECHA*: \\\`${FECHA_ACTUAL}\\\`
-*🧑‍💻Usuario*: \\\`${usuario}\\\`
-*🌐Conexiones*: ${conexiones_status}${alerta_matalo}
-*📲Móviles permitidos*: ${moviles}
-*🟣Estado del cliente*: ${detalle}
+                                                # Construcción de la línea del usuario para Telegram (Markdown)
+                                                LISTA="${LISTA}🕒 *FECHA*: \`${FECHA_ACTUAL}\`
+*🧑‍💻Usuario*: \`${usuario}\`
+*🌐Conexiones*: $conexiones_status$alerta_matalo
+*📲Móviles permitidos*: $moviles
+*🟣Estado del cliente*: $detalle
 
 "
 
-                                                # TXT normal (sin cambios)
+                                                # Versión TXT para el archivo
                                                 LISTA_TXT="${LISTA_TXT}🕒 FECHA: $FECHA_ACTUAL
 🧑‍💻Usuario: $usuario
-🌐Conexiones: $conexiones_status${alerta_matalo_txt}
+🌐Conexiones: $conexiones_status$alerta_matalo_txt
 📲Móviles permitidos: $moviles
-🧑Estado del cliente: $detalle
+🟣Estado del cliente: $detalle
 
 "
 
