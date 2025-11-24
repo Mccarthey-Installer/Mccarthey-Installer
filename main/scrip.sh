@@ -1046,6 +1046,9 @@ function barra_sistema() {
     UPTIME=$(uptime -p | sed 's/up //')  
     UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  
 
+    # ================= Load average =================
+    LOAD_AVG=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+
     # ================= Transferencia =================  
     TRANSFER_FILE="/tmp/vps_transfer_total"  
     LAST_FILE="/tmp/vps_transfer_last"  
@@ -1081,7 +1084,7 @@ function barra_sistema() {
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
-    echo -e "${BLANCO} ${UPTIME_COLOR}${NC}"
+    echo -e "${MAGENTA}🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}   ${MAGENTA}📈 Load average:${AMARILLO} ${LOAD_AVG}${NC}"
     echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
