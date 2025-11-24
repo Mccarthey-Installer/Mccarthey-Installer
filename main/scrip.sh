@@ -804,7 +804,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 fi
                                                 
                                           
-# Determinar estado de conexiones
+
 # Determinar estado de conexiones
                                                 if [[ $conexiones -gt $moviles ]]; then
                                                     conexiones_status="$conexiones 🟢"
