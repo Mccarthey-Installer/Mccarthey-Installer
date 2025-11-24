@@ -1017,6 +1017,7 @@ function barra_sistema() {
     echo "$total $idle" > "$CPU_STAT_FILE"
 
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
+    CPU_CORES=$(nproc)   # Detecta automáticamente los núcleos
     # ================= IP y fecha =================  
     if command -v curl &>/dev/null; then  
         IP_PUBLICA=$(curl -s ifconfig.me)  
@@ -1047,7 +1048,25 @@ function barra_sistema() {
     UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  
 
     # ================= Load average =================
-    LOAD_AVG=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+LOAD_RAW=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+read -r LOAD_1 LOAD_5 LOAD_15 <<< $(echo $LOAD_RAW | tr ',' ' ')
+
+# Colores según carga vs núcleos
+color_load() {
+    local carga=$1
+    local cores=$2
+    local ratio=$(echo "$carga / $cores" | bc -l)
+    if (( $(echo "$ratio < 0.5" | bc -l) )); then
+        echo -e "${VERDE}"   # Baja carga
+    elif (( $(echo "$ratio < 1.0" | bc -l) )); then
+        echo -e "${AMARILLO}"  # Media carga
+    else
+        echo -e "${ROJO}"    # Alta carga
+    fi
+}
+
+LOAD_COLOR=$(color_load $LOAD_1 $CPU_CORES)
+LOAD_AVG="${LOAD_COLOR}${LOAD_1}, ${LOAD_5}, ${LOAD_15}${NC}"
 
     # ================= Transferencia =================  
     TRANSFER_FILE="/tmp/vps_transfer_total"  
@@ -1084,7 +1103,7 @@ function barra_sistema() {
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
-    echo -e "${MAGENTA}🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}   ${MAGENTA}📈 Load average:${AMARILLO} ${LOAD_AVG}${NC}"
+    echo -e "${MAGENTA}🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}  ${MAGENTA}📈 Load average:${NC} ${LOAD_AVG}"
     echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
