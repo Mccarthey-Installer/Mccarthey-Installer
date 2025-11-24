@@ -1052,22 +1052,38 @@ LOAD_RAW=$(uptime | awk -F'load average:' '{print $2}' | xargs)
 read -r LOAD_1 LOAD_5 LOAD_15 <<< $(echo $LOAD_RAW | tr ',' ' ')
 
 # Colores según carga vs núcleos
-color_load() {
+load_icon() {
     local carga=$1
     local cores=$2
     local ratio=$(echo "$carga / $cores" | bc -l)
-    if (( $(echo "$ratio < 0.5" | bc -l) )); then
-        echo -e "${VERDE}"   # Baja carga
-    elif (( $(echo "$ratio < 1.0" | bc -l) )); then
-        echo -e "${AMARILLO}"  # Media carga
+
+    # Si solo tiene 1 núcleo, reglas especiales
+    if [[ "$cores" -eq 1 ]]; then
+        if (( $(echo "$carga < 1.2" | bc -l) )); then
+            echo "🟢"
+        elif (( $(echo "$carga < 2.0" | bc -l) )); then
+            echo "🟡"
+        elif (( $(echo "$carga < 3.0" | bc -l) )); then
+            echo "🔴"
+        else
+            echo "💀"
+        fi
     else
-        echo -e "${ROJO}"    # Alta carga
+        # Multi-core (ratio normalizado)
+        if (( $(echo "$ratio < 0.50" | bc -l) )); then
+            echo "🟢"
+        elif (( $(echo "$ratio < 1.00" | bc -l) )); then
+            echo "🟡"
+        elif (( $(echo "$ratio < 1.50" | bc -l) )); then
+            echo "🔴"
+        else
+            echo "💀"
+        fi
     fi
 }
 
-LOAD_COLOR=$(color_load $LOAD_1 $CPU_CORES)
-LOAD_AVG="${LOAD_COLOR}${LOAD_1}, ${LOAD_5}, ${LOAD_15}${NC}"
-
+ICON_LOAD=$(load_icon $LOAD_1 $CPU_CORES)
+LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
     # ================= Transferencia =================  
     TRANSFER_FILE="/tmp/vps_transfer_total"  
     LAST_FILE="/tmp/vps_transfer_last"  
