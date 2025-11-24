@@ -807,20 +807,18 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 # Determinar estado de conexiones
                                                 if [[ \$conexiones -gt \$moviles ]]; then
                                                     conexiones_status=\"\$conexiones 🟢\"
-                                                    alerta_matalo="
-                                                ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
-                                                    alerta_matalo_txt="
-                                                ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
+                                                    alerta_matalo="\n☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
+                                                    alerta_matalo_txt="\n☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
                                                     (( total_online += conexiones ))  # sigue contando aunque esté por encima
                                                 elif [[ \$conexiones -gt 0 ]]; then
                                                     conexiones_status=\"\$conexiones 🟢\"
-                                                    alerta_matalo=\"\"
-                                                    alerta_matalo_txt=\"\"
+                                                    alerta_matalo=""
+                                                    alerta_matalo_txt=""
                                                     (( total_online += conexiones ))
                                                 else
-                                                    conexiones_status=\"0 🔴\"
-                                                    alerta_matalo=\"\"
-                                                    alerta_matalo_txt=\"\"
+                                                    conexiones_status="0 🔴"
+                                                    alerta_matalo=""
+                                                    alerta_matalo_txt=""
                                                 fi
 
                                                 # Construcción de la línea del usuario para Telegram (Markdown)
