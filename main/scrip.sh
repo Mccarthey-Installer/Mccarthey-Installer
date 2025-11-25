@@ -805,41 +805,40 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 
                                           
 # Determinar estado de conexiones
-                                                if [[ $conexiones -gt $moviles ]]; then
-                                                    conexiones_status="$conexiones 🟢"
-                                                    alerta_matalo="
- ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
-                                                    alerta_matalo_txt="
- ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨"
+                                                if [[ \$conexiones -gt \$moviles ]]; then
+                                                    conexiones_status=\"\$conexiones 🟢\"
+                                                    alerta_matalo=\"\n ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨\"
+                                                    alerta_matalo_txt=\"\n ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨\"
                                                     (( total_online += conexiones ))  # sigue contando aunque esté por encima
-                                                elif [[ $conexiones -gt 0 ]]; then
-                                                    conexiones_status="$conexiones 🟢"
-                                                    alerta_matalo=""
-                                                    alerta_matalo_txt=""
+                                                elif [[ \$conexiones -gt 0 ]]; then
+                                                    conexiones_status=\"\$conexiones 🟢\"
+                                                    alerta_matalo=\"\"
+                                                    alerta_matalo_txt=\"\"
                                                     (( total_online += conexiones ))
                                                 else
-                                                    conexiones_status="0 🔴"
-                                                    alerta_matalo=""
-                                                    alerta_matalo_txt=""
+                                                    conexiones_status=\"0 🔴\"
+                                                    alerta_matalo=\"\"
+                                                    alerta_matalo_txt=\"\"
                                                 fi
 
                                                 # Construcción de la línea del usuario para Telegram (Markdown)
-                                                LISTA="${LISTA}🕒 *FECHA*: \`${FECHA_ACTUAL}\`
-*🧑‍💻Usuario*: \`${usuario}\`
-*🌐Conexiones*: $conexiones_status$alerta_matalo
-*📲Móviles permitidos*: $moviles
-*🟣Estado del cliente*: $detalle
+                                                # Construcción de la línea del usuario para Telegram (Markdown)
+                                                LISTA=\"\${LISTA}🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
+*🧑‍💻Usuario*: \\\`\${usuario}\\\`
+*🌐Conexiones*: \$conexiones_status
+*📲Móviles permitidos*: \$moviles
+*🟣Estado del cliente*: \$detalle\$alerta_matalo
 
-"
+\"
 
                                                 # Versión TXT para el archivo
-                                                LISTA_TXT="${LISTA_TXT}🕒 FECHA: $FECHA_ACTUAL
-🧑‍💻Usuario: $usuario
-🌐Conexiones: $conexiones_status$alerta_matalo_txt
-📲Móviles permitidos: $moviles
-🟣Estado del cliente: $detalle
+                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL
+🧑‍💻Usuario: \$usuario
+🌐Conexiones: \$conexiones_status
+📲Móviles permitidos: \$moviles
+🟣Estado del cliente: \$detalle\$alerta_matalo_txt
 
-"
+\"
 
                                                 
                                             done < \"\$REGISTROS\"
