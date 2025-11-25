@@ -809,7 +809,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     conexiones_status=\"\$conexiones 🟢\"
                                                     alerta_matalo=\"
 *🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸*\"
-                                                    alerta_matalo_txt=\"\n ☠️ MÁTALO 🚨🚨🚨🚨🚨🚨🚨🚨\"
+                                                    alerta_matalo_txt=\"\n🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸\"
                                                     (( total_online += conexiones ))  # sigue contando aunque esté por encima
                                                 elif [[ \$conexiones -gt 0 ]]; then
                                                     conexiones_status=\"\$conexiones 🟢\"
