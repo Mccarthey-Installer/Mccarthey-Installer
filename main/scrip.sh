@@ -1140,48 +1140,20 @@ LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
     TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
 # ================= Imprimir todo =================  
-echo -e "${AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e ""
-echo -e "  ${BLANCO}🖼️  SISTEMA${NC}"
-echo -e "  ${AMARILLO}${SO_NAME}${NC}  |  ${BLANCO}🌍 IP:${NC} ${AMARILLO}${IP_PUBLICA}${NC}"
-echo -e "  ${MAGENTA}🕓 Uptime:${NC} ${AMARILLO}${UPTIME}${NC}  |  ${BLANCO}🕒 Fecha:${NC} ${AMARILLO}${FECHA_ACTUAL}${NC}"
-echo -e ""
-echo -e "  ${BLANCO}📊 RECURSOS${NC}"
-echo -e "  ${BLANCO}💾 RAM:${NC} ${AMARILLO}${MEM_TOTAL_H}${NC} ${BLANCO}(💧 ${AMARILLO}${MEM_DISPONIBLE_H}${NC} ${BLANCO}libre) ·${NC} ${MEM_PORC}% uso"
-echo -e "  ${BLANCO}🖥️  CPU:${NC} ${AMARILLO}${CPU_MHZ}${NC} ${BLANCO}MHz ·${NC} ${CPU_PORC}% uso"
-echo -e "  ${BLANCO}💿 HDD:${NC} ${AMARILLO}${DISCO_TOTAL_H}${NC} ${BLANCO}·${NC} ${DISCO_PORC_COLOR} usado"
-echo -e "  ${MAGENTA}📈 Load:${NC} ${LOAD_AVG}"
-echo -e ""
-echo -e "  ${BLANCO}📡 TRANSFERENCIA${NC}"
-echo -e "  ${BLANCO}Total:${NC} ${AMARILLO}${TRANSFER_DISPLAY}${NC}"
-echo -e ""
-echo -e "  ${BLANCO}👥️ USUARIOS${NC}"
-echo -e "  ${ONLINE_STATUS}  |  ${BLANCO}Total:${NC} ${AMARILLO}${TOTAL_USUARIOS}${NC}  |  ${CIAN}🔴 Inactivos:${NC} ${AMARILLO}${inactivos}${NC}"
-echo -e ""
-echo -e "  ${ROJO}⚠️  ALERTAS${NC}"
-if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
-    echo -e "  ${USUARIOS_EXPIRAN[*]}"
-fi
-echo -e "  ${BLANCO}🔴 Limitador:${NC} ${LIMITADOR_ESTADO}"
-echo -e ""
-echo -e "${AZUL}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-}
-
-        
-
-    function contador_online() {
-    STATE_FILE="/etc/mi_script/contador_online.conf"
-    mkdir -p /etc/mi_script
-
-    if [[ -f "$STATE_FILE" ]] && [[ "$(cat "$STATE_FILE")" == "ON" ]]; then
-        nohup bash -c "echo 'OFF' > '$STATE_FILE'" >/dev/null 2>&1 &
-        echo -e "${VERDE}Contador de usuarios en línea desactivado 🔴${NC}"
-    else
-        nohup bash -c "echo 'ON' > '$STATE_FILE'" >/dev/null 2>&1 &
-        echo -e "${VERDE}Contador de usuarios en línea activado 🟢${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO} 💾 TOTAL:${AMARILLO} ${MEM_TOTAL_H}${NC}     ${BLANCO}∘ 💧 DISPONIBLE:${AMARILLO} ${MEM_DISPONIBLE_H}${NC} ${BLANCO}∘ 💿 HDD:${AMARILLO} ${DISCO_TOTAL_H}${NC} ${DISCO_PORC_COLOR}"
+    echo -e "${BLANCO} 📊 U/RAM: ${MEM_PORC}%   🖥️ U/CPU: ${CPU_PORC}%       🔧 CPU MHz: ${CPU_MHZ}${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
+    echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
+    echo -e "${MAGENTA}🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}  ${MAGENTA}📈 Load average:${NC} ${LOAD_AVG}"
+    echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
+    if [[ ${#USUARIOS_EXPIRAN[@]} -gt 0 ]]; then
+        echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
+        echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
-
-    read -p "$(echo -e ${BLANCO}Presiona Enter para continuar...${NC})"
 }
 
 
