@@ -805,24 +805,21 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                 
                                           
 # Determinar estado de conexiones
-                                                if [[ $conexiones -gt $moviles ]]; then
-                                                    conexiones_status="$conexiones 🟢"
-                                                    alerta_matalo="
-*🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸*"
-                                                    alerta_matalo_txt="
-🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸"
-                                                elif [[ $conexiones -gt 0 ]]; then
-                                                    conexiones_status="$conexiones 🟢"
-                                                    alerta_matalo=""
-                                                    alerta_matalo_txt=""
+                                                if [[ \$conexiones -gt \$moviles ]]; then
+                                                    conexiones_status=\"\$conexiones 🟢\"
+                                                    alerta_matalo=\"
+*🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸*\"
+                                                    alerta_matalo_txt=\"\n🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸\"
+                                                      
+                                                elif [[ \$conexiones -gt 0 ]]; then
+                                                    conexiones_status=\"\$conexiones 🟢\"
+                                                    alerta_matalo=\"\"
+                                                    alerta_matalo_txt=\"\"
+                                                    
                                                 else
-                                                    conexiones_status="0 🔴"
-                                                    alerta_matalo=""
-                                                    alerta_matalo_txt=""
-                                                fi
-
-                                                if [[ $conexiones -gt 0 ]]; then
-                                                    (( total_online += conexiones ))
+                                                    conexiones_status=\"0 🔴\"
+                                                    alerta_matalo=\"\"
+                                                    alerta_matalo_txt=\"\"
                                                 fi
 
                                                 # Construcción de la línea del usuario para Telegram (Markdown)
@@ -1142,7 +1139,7 @@ LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
     }  
     TRANSFER_DISPLAY=$(human_transfer $TRANSFER_ACUM)
 
-# ================= Imprimir todo =================  
+    # ================= Imprimir todo =================  
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL:${AMARILLO} ${MEM_TOTAL_H}${NC}     ${BLANCO}∘ 💧 DISPONIBLE:${AMARILLO} ${MEM_DISPONIBLE_H}${NC} ${BLANCO}∘ 💿 HDD:${AMARILLO} ${DISCO_TOTAL_H}${NC} ${DISCO_PORC_COLOR}"
     echo -e "${BLANCO} 📊 U/RAM: ${MEM_PORC}%   🖥️ U/CPU: ${CPU_PORC}%       🔧 CPU MHz: ${CPU_MHZ}${NC}"
@@ -1157,6 +1154,23 @@ LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
         echo -e "${ROJO}⚠️ USUARIOS QUE EXPIRAN HOY:${NC}"
         echo -e "${USUARIOS_EXPIRAN[*]}"
     fi
+}
+
+        
+
+    function contador_online() {
+    STATE_FILE="/etc/mi_script/contador_online.conf"
+    mkdir -p /etc/mi_script
+
+    if [[ -f "$STATE_FILE" ]] && [[ "$(cat "$STATE_FILE")" == "ON" ]]; then
+        nohup bash -c "echo 'OFF' > '$STATE_FILE'" >/dev/null 2>&1 &
+        echo -e "${VERDE}Contador de usuarios en línea desactivado 🔴${NC}"
+    else
+        nohup bash -c "echo 'ON' > '$STATE_FILE'" >/dev/null 2>&1 &
+        echo -e "${VERDE}Contador de usuarios en línea activado 🟢${NC}"
+    fi
+
+    read -p "$(echo -e ${BLANCO}Presiona Enter para continuar...${NC})"
 }
 
 
