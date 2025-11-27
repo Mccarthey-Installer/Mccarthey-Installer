@@ -1175,6 +1175,9 @@ calcular_dias_restantes() {
     local mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
     local anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
 
+    # Normalizar mes a minúsculas (FIX - ESTO ES LO NUEVO)
+    mes=$(echo "$mes" | tr '[:upper:]' '[:lower:]')
+
     # Convertir mes español a número
     case $mes in
         "enero") mes_num="01" ;;
@@ -1212,6 +1215,7 @@ calcular_dias_restantes() {
 
     echo $dias_restantes
 }
+
 # Función para crear usuario
 function crear_usuario() {
     clear
@@ -1301,16 +1305,19 @@ function ver_registros() {
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
-            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
+            # FIX: Se quitó el segundo parámetro "$dias"
+            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion")
             fecha_creacion="$fecha_creacion1 $fecha_creacion2"
             # Usar la fecha de expiración directamente, ya está en formato dd/mes/YYYY
-            printf "${VERDE}%-2s ${VERDE}%-11s ${AZUL}%-10s ${VIOLETA}%-16s ${VERDE}%-8s ${AMARILLO}%-8s${NC}\n" \
+            printf "${VERDE}%-2s ${VERDE}%-11s ${AZUL}%-10s ${VIOLETA}%-16s ${VERDE}%-8s ${AMARILLO}%-8s${NC}
+" \
                 "$count" "$usuario" "$clave" "$fecha_expiracion" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
     fi
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
+
 
 function mini_registro() {
     clear
@@ -1323,8 +1330,10 @@ function mini_registro() {
         while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
             usuario=${user_data%%:*}
             clave=${user_data#*:}
-            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion" "$dias")
-            printf "${VERDE}%-12s ${AZUL}%-16s ${AMARILLO}%-10s ${AMARILLO}%-10s${NC}\n" \
+            # FIX: Se quitó el segundo parámetro "$dias"
+            dias_restantes=$(calcular_dias_restantes "$fecha_expiracion")
+            printf "${VERDE}%-12s ${AZUL}%-16s ${AMARILLO}%-10s ${AMARILLO}%-10s${NC}
+" \
                 "$usuario" "$clave" "$dias_restantes" "$moviles"
             ((count++))
         done < $REGISTROS
