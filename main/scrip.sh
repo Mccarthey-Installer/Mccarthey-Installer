@@ -764,74 +764,58 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     fi
                                                 fi
 
-                                                if [[ $conexiones -gt 0 ]]; then
+                                                if [[ \$conexiones -gt 0 ]]; then
                                                     (( total_online += conexiones ))
-                                                    
-                                                    # ⭐ Determinar si hay alerta de sobre-conexiones
-                                                    if [[ $conexiones -gt $moviles ]]; then
-                                                        alerta_matalo="
-                                                *🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸*"
-                                                        alerta_matalo_txt="
-                                                🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸"
-                                                    else
-                                                        alerta_matalo=""
-                                                        alerta_matalo_txt=""
-                                                    fi
-                                                    
-                                                    # ⭐ CRONÓMETRO - No tocar esta sección
-                                                    if [[ -f "$tmp_status" ]]; then
-                                                        contenido=$(cat "$tmp_status")
-                                                        if [[ "$contenido" =~ ^[0-9]+$ ]]; then
-                                                            start_s=$((10#$contenido))
+                                                    if [[ -f \"\$tmp_status\" ]]; then
+                                                        contenido=\$(cat \"\$tmp_status\")
+                                                        if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
+                                                            start_s=\$((10#\$contenido))
                                                         else
-                                                            start_s=$(date +%s)
-                                                            echo $start_s > "$tmp_status"
+                                                            start_s=\$(date +%s)
+                                                            echo \$start_s > \"\$tmp_status\"
                                                         fi
-                                                        now_s=$(date +%s)
-                                                        elapsed=$(( now_s - start_s ))
-                                                        h=$(( elapsed / 3600 ))
-                                                        m=$(( (elapsed % 3600) / 60 ))
-                                                        s=$(( elapsed % 60 ))
-                                                        detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                                                        now_s=\$(date +%s)
+                                                        elapsed=\$(( now_s - start_s ))
+                                                        h=\$(( elapsed / 3600 ))
+                                                        m=\$(( (elapsed % 3600) / 60 ))
+                                                        s=\$(( elapsed % 60 ))
+                                                        detalle=\$(printf \"⏰ %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
                                                     else
-                                                        start_s=$(date +%s)
-                                                        echo $start_s > "$tmp_status"
-                                                        detalle="⏰ 00:00:00"
+                                                        start_s=\$(date +%s)
+                                                        echo \$start_s > \"\$tmp_status\"
+                                                        detalle=\"⏰ 00:00:00\"
                                                     fi
-                                                    
-                                                    conexiones_status="$conexiones 🟢"
                                                 else
-                                                    # Usuario sin conexiones activas
-                                                    if [[ ! $detalle =~ "🚫 Bloqueado" ]]; then
-                                                        rm -f "$tmp_status"
-                                                        # ... resto de la lógica de desconexión ...
+                                                    if [[ ! \$detalle =~ \"🚫 Bloqueado\" ]]; then
+                                                        rm -f \"\$tmp_status\"
+                                                        ult=\$(grep \"^\$usuario|\" \"\$HISTORIAL\" | tail -1 | awk -F'|' '{print \$3}')
+                                                        if [[ -n \"\$ult\" ]]; then
+                                                            ult_fmt=\$(date -d \"\$ult\" +\"%d/%b/%Y %H:%M\" 2>/dev/null)
+                                                            if [[ -n \"\$ult_fmt\" ]]; then
+                                                                detalle=\"📅 Última: \$ult_fmt\"
+                                                            else
+                                                                detalle=\"😴 Nunca conectado\"
+                                                            fi
+                                                        else
+                                                            detalle=\"😴 Nunca conectado\"
+                                                        fi
+                                                        (( inactivos++ ))
                                                     fi
-                                                    conexiones_status="0 🔴"
-                                                    alerta_matalo=""
-                                                    alerta_matalo_txt=""
+                                                fi
+                                                if [[ \$conexiones -gt 0 ]]; then
+                                                    conexiones_status=\"\$conexiones 🟢\"
+                                                else
+                                                    conexiones_status=\"\$conexiones 🔴\"
                                                 fi
 
-                                                # Construcción de la línea del usuario para Telegram (Markdown)
                                                 LISTA=\"\${LISTA}🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
 *🧑‍💻Usuario*: \\\`\${usuario}\\\`
-*🌐Conexiones*: \$conexiones_status\$alerta_matalo
-*📲Móviles permitidos*: \$moviles
+*🌐Conexiones*: \$conexiones_status
+*📲Móviles*: \$moviles
 *🟣Estado del cliente*: \$detalle
 
 \"
-
-                                                # Versión TXT para el archivo
-                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL
-🧑‍💻Usuario: \$usuario
-🌐Conexiones: \$conexiones_status\$alerta_matalo_txt
-📲Móviles permitidos: \$moviles
-🟣Estado del cliente: \$detalle
-
-\"                                                                                                
-
-                                                                                                                                                
-
-                                                
+                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL\n🧑‍💻Usuario: \$usuario\n🌐Conexiones: \$conexiones_status\n📲Móviles: \$moviles\n⏳Tiempo conectado/última vez/nunca conectado: \$detalle\n\n\"
                                             done < \"\$REGISTROS\"
 
                                             LISTA=\"\${LISTA}-----------------------------------------------------------------
