@@ -62,8 +62,7 @@ fi
 # ================================
 systemctl restart sshd && echo "SSH configurado correctamente."
     
-                                        
-              ssh_bot() {
+     ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
@@ -115,6 +114,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 EXPECTING_RENEW_USER=0
                 RENEW_STEP=0
                 EXPECTING_BACKUP=0
+                EXPECTING_DETAIL_USER=0
                 USERNAME=''
                 PASSWORD=''
                 DAYS=''
@@ -486,6 +486,106 @@ Escribe *hola* para volver al menú.\"
                                         fi
                                         ;;
                                 esac
+                            elif [[ \$EXPECTING_DETAIL_USER -eq 1 ]]; then
+                                usuario=\"\$MSG_TEXT\"
+                                if ! grep -q \"^\$usuario:\" \"\$REGISTROS\"; then
+                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ El usuario *\\\`\${usuario}\\\`* no está registrado. Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                else
+                                    linea=\$(grep \"^\$usuario:\" \"\$REGISTROS\")
+                                    IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2 <<< \"\$linea\"
+                                    clave=\${user_data#*:}
+                                    dias_restantes=\$(calcular_dias_restantes \"\$fecha_expiracion\")
+                                    fecha_actual=\$(date \"+%Y-%m-%d %H:%M\")
+
+                                    conexiones=\$(( \$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\") ))
+                                    tmp_status=\"/tmp/status_\${usuario}.tmp\"
+                                    bloqueo_file=\"/tmp/bloqueo_\${usuario}.lock\"
+
+                                    conex_info=\"\"
+                                    tiempo_conectado=\"\"
+                                    ultima_conexion=\"\"
+                                    historia_conexion=\"\"
+
+                                    if [[ -f \"\$bloqueo_file\" ]]; then
+                                        bloqueo_hasta=\$(cat \"\$bloqueo_file\")
+                                        if [[ \$(date +%s) -lt \$bloqueo_hasta ]]; then
+                                            ultima_conexion=\"🚫 *Bloqueado hasta* \$(date -d @\$bloqueo_hasta '+%I:%M%p')\"
+                                        fi
+                                    fi
+
+                                    ultimo_registro=\$(grep \"^\$usuario|\" \"\$HISTORIAL\" | grep -E '\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -1)
+                                    if [[ -n \"\$ultimo_registro\" ]]; then
+                                        IFS='|' read -r _ hora_conexion hora_desconexion _ <<< \"\$ultimo_registro\"
+
+                                        ult_month=\$(date -d \"\$hora_desconexion\" +\"%B\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+                                        ult_fmt=\$(date -d \"\$hora_desconexion\" +\"%d de %B %H:%M\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+                                        ultima_conexion=\"📅 *Última:* \$ult_fmt\"
+
+                                        sec_con=\$(date -d \"\$hora_conexion\" +%s 2>/dev/null)
+                                        sec_des=\$(date -d \"\$hora_desconexion\" +%s 2>/dev/null)
+                                        if [[ -n \"\$sec_con\" && -n \"\$sec_des\" && \$sec_des -ge \$sec_con ]]; then
+                                            dur_seg=\$((sec_des - sec_con))
+                                            h=\$((dur_seg / 3600))
+                                            m=\$(((dur_seg % 3600) / 60))
+                                            s=\$((dur_seg % 60))
+                                            duracion=\$(printf \"%02d:%02d:%02d\" \$h \$m \$s)
+                                        else
+                                            duracion=\"N/A\"
+                                        fi
+
+                                        con_month=\$(date -d \"\$hora_conexion\" +\"%B\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+                                        conexion_fmt=\$(date -d \"\$hora_conexion\" +\"%d/%B %H:%M\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+
+                                        des_month=\$(date -d \"\$hora_desconexion\" +\"%B\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+                                        desconexion_fmt=\$(date -d \"\$hora_desconexion\" +\"%d/%B %H:%M\" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+
+                                        historia_conexion=$'\n-------------------------\n🌷 *Conectada*    '"\$conexion_fmt"$'\n🌙 *Desconectada*       '"\$desconexion_fmt"$'\n⏰   *Duración*   '"\$duracion"$'\n-------------------------'
+                                    else
+                                        ultima_conexion=\"😴 *Nunca conectado*\"
+                                    fi
+
+                                    if [[ \$conexiones -gt 0 ]]; then
+                                        conex_info=\"🌐 *CONECTADOS* \$conexiones 🟢\"
+                                        if [[ -f \"\$tmp_status\" ]]; then
+                                            contenido=\$(cat \"\$tmp_status\")
+                                            if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
+                                                start_s=\$((10#\$contenido))
+                                            else
+                                                start_s=\$(date +%s)
+                                                echo \$start_s > \"\$tmp_status\"
+                                            fi
+                                            now_s=\$(date +%s)
+                                            elapsed=\$(( now_s - start_s ))
+                                            h=\$(( elapsed / 3600 ))
+                                            m=\$(( (elapsed % 3600) / 60 ))
+                                            s=\$(( elapsed % 60 ))
+                                            tiempo_conectado=\$(printf \"⏰  *TIEMPO CONECTADO*    ⏰  %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
+                                        else
+                                            tiempo_conectado=\"⏰  *TIEMPO CONECTADO*    ⏰  N/A\"
+                                        fi
+                                    else
+                                        conex_info=\"🌐 *CONECTADOS* 0 🔴\"
+                                    fi
+
+                                    INFO=\"*===== 💖 INFORMACIÓN DE \${usuario^^} 💖 =====*\"$'\n'\"*🕒 FECHA: \$fecha_actual*\"$'\n'\"*👩 Usuario* \\\`\${usuario}\\\`\"$'\n'\"*🔒 Clave*   \\\`\${clave}\\\`\"$'\n'\"\\\`📅 Expira \${fecha_expiracion}\\\`\"$'\n'\"*⏳  Días*   \$dias_restantes\"$'\n'\"*📲 Móviles*   \$moviles\"$'\n'\"\$conex_info\"
+
+                                    if [[ -n \"\$ultima_conexion\" && \"\$ultima_conexion\" != \"😴 *Nunca conectado*\" ]]; then
+                                        INFO+=$'\n'\"\$ultima_conexion\"
+                                    fi
+                                    if [[ -n \"\$tiempo_conectado\" ]]; then
+                                        INFO+=$'\n'\"\$tiempo_conectado\"
+                                    fi
+                                    if [[ -n \"\$historia_conexion\" ]]; then
+                                        INFO+=\"\$historia_conexion\"
+                                    elif [[ \"\$ultima_conexion\" == \"😴 *Nunca conectado*\" ]]; then
+                                        INFO+=$'\n'\"\$ultima_conexion\"
+                                    fi
+
+                                    INFO+=$'\n\nEscribe *hola* para volver al menú.'
+
+                                    curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$INFO\" -d parse_mode=Markdown >/dev/null
+                                fi
+                                EXPECTING_DETAIL_USER=0
                             else
                                 case \"\$MSG_TEXT\" in
                                     'Hola'|'hola'|'/start')
@@ -498,6 +598,7 @@ Escribe *hola* para volver al menú.\"
 ✅ *Presiona 5* para mostrar usuarios conectados
 💾 *Presiona 6* para crear backup
 📥 *Presiona 7* para restaurar backup
+👁️‍🗨️ *Presiona 8* para información detallada de usuario
 🏠 *Presiona 0* para volver al menú principal\"
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$MENU\" -d parse_mode=Markdown >/dev/null
                                         ;;
@@ -712,6 +813,24 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📥 *Envía el archivo de backup (TXT) para restaurar los usuarios.* Escribe 'cancel' para cancelar.\" -d parse_mode=Markdown >/dev/null
                                         EXPECTING_BACKUP=1
                                         ;;
+                                    '8')
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados.*
+Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        else
+                                            LISTA=\"*===== 🌸 REGISTROS =====*
+
+\"
+                                            while IFS=' ' read -r user_data _; do
+                                                usuario=\${user_data%%:*}
+                                                LISTA=\"\${LISTA}\\\`\${usuario}\\\`
+\"
+                                            done < \"\$REGISTROS\"
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🌟 Ingresa el nombre del usuario:\" -d parse_mode=Markdown >/dev/null
+                                            EXPECTING_DETAIL_USER=1
+                                        fi
+                                        ;;
                                     '0')
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
 
@@ -723,7 +842,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 
 🤔 No entiendo esa opción...
 💡 Escribe *hola* para ver el menú
-🔢 O usa: 1, 2, 3, 4, 5, 6, 7, 0\" -d parse_mode=Markdown >/dev/null
+🔢 O usa: 1, 2, 3, 4, 5, 6, 7, 8, 0\" -d parse_mode=Markdown >/dev/null
                                         ;;
                                 esac
                             fi
@@ -751,9 +870,8 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}                        
-                                          
-
+}                                   
+              
 function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
@@ -2488,6 +2606,170 @@ eliminar_swap() {
     activar_desactivar_swap
 }
 
+
+       
+    
+        
+function usuarios_ssh() {
+    clear
+    # Colores bonitos y suaves
+    ROSADO='\033[38;5;211m'
+    LILA='\033[38;5;183m'
+    TURQUESA='\033[38;5;45m'
+    VERDE_SUAVE='\033[38;5;159m'
+    ROJO_SUAVE='\033[38;5;210m'
+    AZUL_SUAVE='\033[38;5;153m'
+    NC='\033[0m'
+
+    # Mostrar lista de registros
+    echo -e "${ROSADO}===== 🌸 REGISTROS =====${NC}"
+    if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
+        echo -e "${ROJO_SUAVE}😿 No hay registros disponibles.${NC}"
+        read -p "$(echo -e ${LILA}Presiona Enter para continuar... ✨${NC})"
+        return
+    fi
+
+    # Leer usuarios y mostrar numerados (solo nombres de usuario)
+    count=1
+    declare -A user_map
+    while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+        usuario=${user_data%%:*}
+        user_map[$count]="$usuario"
+        echo -e "${TURQUESA}${count} ${AMARILLO_SUAVE}${usuario}${NC}"
+        ((count++))
+    done < $REGISTROS
+
+    # Solicitar input
+    read -p "$(echo -e ${LILA}🌟 Ingresa el número o nombre del usuario: ${NC})" input
+
+    # Validar input: si número, obtener usuario; si nombre, verificar existencia
+    if [[ $input =~ ^[0-9]+$ && -n "${user_map[$input]}" ]]; then
+        usuario="${user_map[$input]}"
+    else
+        usuario="$input"
+        # Verificar si existe
+        grep -q "^$usuario:" $REGISTROS
+        if [[ $? -ne 0 ]]; then
+            echo -e "${ROJO_SUAVE}❌ Usuario no encontrado.${NC}"
+            read -p "$(echo -e ${LILA}Presiona Enter para continuar... ✨${NC})"
+            return
+        fi
+    fi
+
+    # Obtener datos del usuario desde REGISTROS
+    linea=$(grep "^$usuario:" $REGISTROS)
+    IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2 <<< "$linea"
+    clave=${user_data#*:}
+    dias_restantes=$(calcular_dias_restantes "$fecha_expiracion")
+    fecha_actual=$(date "+%Y-%m-%d %H:%M")
+
+    # Obtener info de conexiones (similar a verificar_online e informacion_usuarios)
+    conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))
+    tmp_status="/tmp/status_${usuario}.tmp"
+    bloqueo_file="/tmp/bloqueo_${usuario}.lock"
+
+    # Inicializar variables
+    conex_info=""
+    tiempo_conectado=""
+    ultima_conexion=""
+    historia_conexion=""
+
+    # Verificar bloqueo
+    if [[ -f "$bloqueo_file" ]]; then
+        bloqueo_hasta=$(cat "$bloqueo_file")
+        if [[ $(date +%s) -lt $bloqueo_hasta ]]; then
+            ultima_conexion="🚫 Bloqueado hasta $(date -d @$bloqueo_hasta '+%I:%M%p')"
+        fi
+    fi
+
+    # Siempre obtener el último registro completado de HISTORIAL
+    ultimo_registro=$(grep "^$usuario|" "$HISTORIAL" | grep -E '\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\|[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -1)
+    if [[ -n "$ultimo_registro" ]]; then
+        IFS='|' read -r _ hora_conexion hora_desconexion _ <<< "$ultimo_registro"
+
+        # Formatear última desconexión con "de mes"
+        ult_month=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        ult_fmt=$(date -d "$hora_desconexion" +"%d de MONTH %H:%M" 2>/dev/null)
+        ult_fmt=${ult_fmt/MONTH/$ult_month}
+        ultima_conexion="📅 Última: ${ROJO_SUAVE}${ult_fmt}${NC}"
+
+        # Calcular duración
+        sec_con=$(date -d "$hora_conexion" +%s 2>/dev/null)
+        sec_des=$(date -d "$hora_desconexion" +%s 2>/dev/null)
+        if [[ -n "$sec_con" && -n "$sec_des" && $sec_des -ge $sec_con ]]; then
+            dur_seg=$((sec_des - sec_con))
+            h=$((dur_seg / 3600))
+            m=$(((dur_seg % 3600) / 60))
+            s=$((dur_seg % 60))
+            duracion=$(printf "%02d:%02d:%02d" $h $m $s)
+        else
+            duracion="N/A"
+        fi
+
+        # Formatear conexión y desconexión con /mes
+        con_month=$(date -d "$hora_conexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        conexion_fmt=$(date -d "$hora_conexion" +"%d/MONTH %H:%M" 2>/dev/null)
+        conexion_fmt=${conexion_fmt/MONTH/$con_month}
+
+        des_month=$(date -d "$hora_desconexion" +"%B" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+        desconexion_fmt=$(date -d "$hora_desconexion" +"%d/MONTH %H:%M" 2>/dev/null)
+        desconexion_fmt=${desconexion_fmt/MONTH/$des_month}
+
+        historia_conexion="\n${LILA}-------------------------${NC}\n${VERDE_SUAVE}🌷 Conectada    ${conexion_fmt}${NC}\n${ROJO_SUAVE}🌙 Desconectada       ${desconexion_fmt}${NC}\n${AZUL_SUAVE}⏰ Duración   ${duracion}${NC}\n${LILA}-------------------------${NC}"
+    else
+        ultima_conexion="😴 Nunca conectado"
+    fi
+
+    # 🟢 Si el usuario está conectado actualmente
+    if [[ $conexiones -gt 0 ]]; then
+        conex_info="📲 CONEXIONES ${VERDE_SUAVE}${conexiones}${NC}"
+        if [[ -f "$tmp_status" ]]; then
+            contenido=$(cat "$tmp_status")
+            if [[ "$contenido" =~ ^[0-9]+$ ]]; then
+                start_s=$((10#$contenido))
+            else
+                start_s=$(date +%s)
+                echo $start_s > "$tmp_status"
+            fi
+            now_s=$(date +%s)
+            elapsed=$(( now_s - start_s ))
+            h=$(( elapsed / 3600 ))
+            m=$(( (elapsed % 3600) / 60 ))
+            s=$(( elapsed % 60 ))
+            tiempo_conectado=$(printf "⏰ TIEMPO CONECTADO    ⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+        else
+            tiempo_conectado="⏰  TIEMPO CONECTADO    ⏰  N/A"
+        fi
+    else
+        conex_info="📲 CONEXIONES ${ROJO_SUAVE}0${NC}"
+        # Si no conectado y hay ultima, mostrarla
+    fi
+
+    # Mostrar información detallada
+    clear
+    echo -e "${ROSADO}===== 💖 INFORMACIÓN DE ${usuario^^} 💖 =====${NC}"
+    echo -e "${AZUL_SUAVE}🕒 FECHA:   ${fecha_actual}${NC}"
+    echo -e "${VERDE_SUAVE}👩 Usuario ${usuario}${NC}"
+    echo -e "${VERDE_SUAVE}🔒 Clave   ${clave}${NC}"
+    echo -e "${VERDE_SUAVE}📅 Expira  ${fecha_expiracion}${NC}"
+    echo -e "${VERDE_SUAVE}⏳ Días    ${dias_restantes}${NC}"
+    echo -e "${VERDE_SUAVE}📲 Móviles ${moviles}${NC}"
+    echo -e "${conex_info}"
+    echo -e "${VERDE_SUAVE}📱 MÓVILES ${moviles}${NC}"
+    if [[ -n "$ultima_conexion" && "$ultima_conexion" != "😴 Nunca conectado" ]]; then
+        echo -e "${ultima_conexion}"
+    fi
+    if [[ -n "$tiempo_conectado" ]]; then
+        echo -e "${AZUL_SUAVE}${tiempo_conectado}${NC}"
+    fi
+    if [[ -n "$historia_conexion" ]]; then
+        echo -e "${historia_conexion}"
+    elif [[ "$ultima_conexion" == "😴 Nunca conectado" ]]; then
+        echo -e "${ultima_conexion}"
+    fi
+    read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
+}
+    
 # ==== MENU ====
 if [[ -t 0 ]]; then
 while true; do
@@ -2509,6 +2791,7 @@ while true; do
     echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"
     echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"
     echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}15. 👁️‍🗨️ Información detallada de usuario${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
 
     PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")  
@@ -2532,6 +2815,7 @@ while true; do
     12) ssh_bot ;;
     13) renovar_usuario ;;
     14) activar_desactivar_swap ;;
+    15) usuarios_ssh ;;
     0) 
         echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
         exec /bin/bash
