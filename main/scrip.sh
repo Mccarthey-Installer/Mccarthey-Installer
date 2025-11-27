@@ -294,11 +294,17 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                                             fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
+                                                            if [[ \"\$DAYS\" -eq 1 ]]; then
+                                                                DIAS_TEXTO=\"Día\"
+                                                            else
+                                                                DIAS_TEXTO=\"Días\"
+                                                            fi
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
 
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 \\\`📅 Expira: \${fecha_expiracion}\\\`
+⏳ *\${DIAS_TEXTO}*: \\\`\${DAYS}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
@@ -669,20 +675,47 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                         (( inactivos++ ))
                                                     fi
                                                 fi
-                                                if [[ \$conexiones -gt 0 ]]; then
+                                                
+                                          
+# Determinar estado de conexiones
+                                                if [[ \$conexiones -gt \$moviles ]]; then
                                                     conexiones_status=\"\$conexiones 🟢\"
+                                                    alerta_matalo=\"
+*🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸*\"
+                                                    alerta_matalo_txt=\"\n🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸\"
+                                                      
+                                                elif [[ \$conexiones -gt 0 ]]; then
+                                                    conexiones_status=\"\$conexiones 🟢\"
+                                                    alerta_matalo=\"\"
+                                                    alerta_matalo_txt=\"\"
+                                                    
                                                 else
-                                                    conexiones_status=\"\$conexiones 🔴\"
+                                                    conexiones_status=\"0 🔴\"
+                                                    alerta_matalo=\"\"
+                                                    alerta_matalo_txt=\"\"
                                                 fi
 
+                                                # Construcción de la línea del usuario para Telegram (Markdown)
                                                 LISTA=\"\${LISTA}🕒 *FECHA*: \\\`\${FECHA_ACTUAL}\\\`
 *🧑‍💻Usuario*: \\\`\${usuario}\\\`
-*🌐Conexiones*: \$conexiones_status
-*📲Móviles*: \$moviles
-*⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
+*🌐Conexiones*: \$conexiones_status\$alerta_matalo
+*📲Móviles permitidos*: \$moviles
+*🟣Estado del cliente*: \$detalle
 
 \"
-                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL\n🧑‍💻Usuario: \$usuario\n🌐Conexiones: \$conexiones_status\n📲Móviles: \$moviles\n⏳Tiempo conectado/última vez/nunca conectado: \$detalle\n\n\"
+
+                                                # Versión TXT para el archivo
+                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL
+🧑‍💻Usuario: \$usuario
+🌐Conexiones: \$conexiones_status\$alerta_matalo_txt
+📲Móviles permitidos: \$moviles
+🟣Estado del cliente: \$detalle
+
+\"                                                                                                
+
+                                                                                                                                                
+
+                                                
                                             done < \"\$REGISTROS\"
 
                                             LISTA=\"\${LISTA}-----------------------------------------------------------------
@@ -696,7 +729,10 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                             curl -s -X POST \"\$URL/sendDocument\" -F chat_id=\$CHAT_ID -F document=@\"\$temp_users\" -F parse_mode=Markdown >/dev/null
                                             rm -f \"\$temp_users\"
                                         fi
-                                        ;;
+                                        ;;                                    
+
+                                    
+                                                    
                                     '6')
                                         if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
                                             curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❌ *No hay usuarios registrados para crear backup.*
@@ -754,7 +790,9 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 }                        
                                           
 
-function barra_sistema() {  
+
+            
+        function barra_sistema() {  
     # ================= Colores =================  
     BLANCO='\033[97m'  
     AZUL='\033[94m'  
@@ -867,6 +905,7 @@ function barra_sistema() {
     echo "$total $idle" > "$CPU_STAT_FILE"
 
     CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
+    CPU_CORES=$(nproc)   # Detecta automáticamente los núcleos
     # ================= IP y fecha =================  
     if command -v curl &>/dev/null; then  
         IP_PUBLICA=$(curl -s ifconfig.me)  
@@ -896,6 +935,43 @@ function barra_sistema() {
     UPTIME=$(uptime -p | sed 's/up //')  
     UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  
 
+    # ================= Load average =================
+LOAD_RAW=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+read -r LOAD_1 LOAD_5 LOAD_15 <<< $(echo $LOAD_RAW | tr ',' ' ')
+
+# Colores según carga vs núcleos
+load_icon() {
+    local carga=$1
+    local cores=$2
+    local ratio=$(echo "$carga / $cores" | bc -l)
+
+    # Si solo tiene 1 núcleo, reglas especiales
+    if [[ "$cores" -eq 1 ]]; then
+        if (( $(echo "$carga < 1.2" | bc -l) )); then
+            echo "🟢"
+        elif (( $(echo "$carga < 2.0" | bc -l) )); then
+            echo "🟡"
+        elif (( $(echo "$carga < 3.0" | bc -l) )); then
+            echo "🔴"
+        else
+            echo "💀"
+        fi
+    else
+        # Multi-core (ratio normalizado)
+        if (( $(echo "$ratio < 0.50" | bc -l) )); then
+            echo "🟢"
+        elif (( $(echo "$ratio < 1.00" | bc -l) )); then
+            echo "🟡"
+        elif (( $(echo "$ratio < 1.50" | bc -l) )); then
+            echo "🔴"
+        else
+            echo "💀"
+        fi
+    fi
+}
+
+ICON_LOAD=$(load_icon $LOAD_1 $CPU_CORES)
+LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
     # ================= Transferencia =================  
     TRANSFER_FILE="/tmp/vps_transfer_total"  
     LAST_FILE="/tmp/vps_transfer_last"  
@@ -931,7 +1007,7 @@ function barra_sistema() {
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
-    echo -e "${BLANCO} ${UPTIME_COLOR}${NC}"
+    echo -e "${MAGENTA}🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}  ${MAGENTA}📈 Load average:${NC} ${LOAD_AVG}"
     echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
@@ -1280,6 +1356,11 @@ function crear_usuario() {
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$usuario${NC}"
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$clave${NC}"
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
+    if [[ "$dias" -eq 1 ]]; then
+    echo -e "${AZUL}⏳ Día: ${AMARILLO}$dias${NC}"
+    else
+    echo -e "${AZUL}⏳ Días: ${AMARILLO}$dias${NC}"
+    fi
     echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
     echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
     echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
@@ -1289,6 +1370,7 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
+
 
 function ver_registros() {
     clear
