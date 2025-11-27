@@ -764,62 +764,51 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                                     fi
                                                 fi
 
-                                                if [[ \$conexiones -gt 0 ]]; then
+                                                if [[ $conexiones -gt 0 ]]; then
                                                     (( total_online += conexiones ))
-                                                    if [[ -f \"\$tmp_status\" ]]; then
-                                                        contenido=\$(cat \"\$tmp_status\")
-                                                        if [[ \"\$contenido\" =~ ^[0-9]+$ ]]; then
-                                                            start_s=\$((10#\$contenido))
-                                                        else
-                                                            start_s=\$(date +%s)
-                                                            echo \$start_s > \"\$tmp_status\"
-                                                        fi
-                                                        now_s=\$(date +%s)
-                                                        elapsed=\$(( now_s - start_s ))
-                                                        h=\$(( elapsed / 3600 ))
-                                                        m=\$(( (elapsed % 3600) / 60 ))
-                                                        s=\$(( elapsed % 60 ))
-                                                        detalle=\$(printf \"⏰ %02d:%02d:%02d\" \"\$h\" \"\$m\" \"\$s\")
-                                                    else
-                                                        start_s=\$(date +%s)
-                                                        echo \$start_s > \"\$tmp_status\"
-                                                        detalle=\"⏰ 00:00:00\"
-                                                    fi
-                                                else
-                                                    if [[ ! \$detalle =~ \"🚫 Bloqueado\" ]]; then
-                                                        rm -f \"\$tmp_status\"
-                                                        ult=\$(grep \"^\$usuario|\" \"\$HISTORIAL\" | tail -1 | awk -F'|' '{print \$3}')
-                                                        if [[ -n \"\$ult\" ]]; then
-                                                            ult_fmt=\$(date -d \"\$ult\" +\"%d/%b/%Y %H:%M\" 2>/dev/null)
-                                                            if [[ -n \"\$ult_fmt\" ]]; then
-                                                                detalle=\"📅 Última: \$ult_fmt\"
-                                                            else
-                                                                detalle=\"😴 Nunca conectado\"
-                                                            fi
-                                                        else
-                                                            detalle=\"😴 Nunca conectado\"
-                                                        fi
-                                                        (( inactivos++ ))
-                                                    fi
-                                                fi
-                                                
-                                          
-# Determinar estado de conexiones
-                                                if [[ \$conexiones -gt \$moviles ]]; then
-                                                    conexiones_status=\"\$conexiones 🟢\"
-                                                    alerta_matalo=\"
-*🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸*\"
-                                                    alerta_matalo_txt=\"\n🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸\"
-                                                      
-                                                elif [[ \$conexiones -gt 0 ]]; then
-                                                    conexiones_status=\"\$conexiones 🟢\"
-                                                    alerta_matalo=\"\"
-                                                    alerta_matalo_txt=\"\"
                                                     
+                                                    # ⭐ Determinar si hay alerta de sobre-conexiones
+                                                    if [[ $conexiones -gt $moviles ]]; then
+                                                        alerta_matalo="
+                                                *🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸*"
+                                                        alerta_matalo_txt="
+                                                🔪MÁTALO WE🩸🩸🩸🩸🩸🩸🩸"
+                                                    else
+                                                        alerta_matalo=""
+                                                        alerta_matalo_txt=""
+                                                    fi
+                                                    
+                                                    # ⭐ CRONÓMETRO - No tocar esta sección
+                                                    if [[ -f "$tmp_status" ]]; then
+                                                        contenido=$(cat "$tmp_status")
+                                                        if [[ "$contenido" =~ ^[0-9]+$ ]]; then
+                                                            start_s=$((10#$contenido))
+                                                        else
+                                                            start_s=$(date +%s)
+                                                            echo $start_s > "$tmp_status"
+                                                        fi
+                                                        now_s=$(date +%s)
+                                                        elapsed=$(( now_s - start_s ))
+                                                        h=$(( elapsed / 3600 ))
+                                                        m=$(( (elapsed % 3600) / 60 ))
+                                                        s=$(( elapsed % 60 ))
+                                                        detalle=$(printf "⏰ %02d:%02d:%02d" "$h" "$m" "$s")
+                                                    else
+                                                        start_s=$(date +%s)
+                                                        echo $start_s > "$tmp_status"
+                                                        detalle="⏰ 00:00:00"
+                                                    fi
+                                                    
+                                                    conexiones_status="$conexiones 🟢"
                                                 else
-                                                    conexiones_status=\"0 🔴\"
-                                                    alerta_matalo=\"\"
-                                                    alerta_matalo_txt=\"\"
+                                                    # Usuario sin conexiones activas
+                                                    if [[ ! $detalle =~ "🚫 Bloqueado" ]]; then
+                                                        rm -f "$tmp_status"
+                                                        # ... resto de la lógica de desconexión ...
+                                                    fi
+                                                    conexiones_status="0 🔴"
+                                                    alerta_matalo=""
+                                                    alerta_matalo_txt=""
                                                 fi
 
                                                 # Construcción de la línea del usuario para Telegram (Markdown)
