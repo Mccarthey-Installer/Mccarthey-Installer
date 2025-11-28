@@ -1169,7 +1169,6 @@ calcular_expiracion() {
     echo $fecha_expiracion
 }
 
-
 calcular_dias_restantes() {
     local fecha_expiracion="$1"
 
@@ -1177,23 +1176,23 @@ calcular_dias_restantes() {
     local mes=$(echo "$fecha_expiracion" | cut -d'/' -f2)
     local anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
 
-    # Normalizar mes a minúsculas
+    # Normalizar mes a minúsculas (FIX - ESTO ES LO NUEVO)
     mes=$(echo "$mes" | tr '[:upper:]' '[:lower:]')
 
-    # Convertir mes español O inglés a número
+    # Convertir mes español a número
     case $mes in
-        "enero"|"january") mes_num="01" ;;
-        "febrero"|"february") mes_num="02" ;;
-        "marzo"|"march") mes_num="03" ;;
-        "abril"|"april") mes_num="04" ;;
-        "mayo"|"may") mes_num="05" ;;
-        "junio"|"june") mes_num="06" ;;
-        "julio"|"july") mes_num="07" ;;
-        "agosto"|"august") mes_num="08" ;;
-        "septiembre"|"september") mes_num="09" ;;
-        "octubre"|"october") mes_num="10" ;;
-        "noviembre"|"november") mes_num="11" ;;
-        "diciembre"|"december") mes_num="12" ;;
+        "enero") mes_num="01" ;;
+        "febrero") mes_num="02" ;;
+        "marzo") mes_num="03" ;;
+        "abril") mes_num="04" ;;
+        "mayo") mes_num="05" ;;
+        "junio") mes_num="06" ;;
+        "julio") mes_num="07" ;;
+        "agosto") mes_num="08" ;;
+        "septiembre") mes_num="09" ;;
+        "octubre") mes_num="10" ;;
+        "noviembre") mes_num="11" ;;
+        "diciembre") mes_num="12" ;;
         *) echo 0; return ;;
     esac
 
