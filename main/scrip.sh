@@ -305,7 +305,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 \\\`📅 Expira: \${fecha_expiracion}\\\`
-⏳ *Días*: \\\`\${texto_dias}\\\`\
+⏳ *Días*: \\\`\${texto_dias}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
