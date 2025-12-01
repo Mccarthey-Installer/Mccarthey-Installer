@@ -700,10 +700,10 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 *🧑‍💻Usuario*: \\\`\${usuario}\\\`
 *🌐Conexiones*: \$conexiones_status
 *📲Móviles*: \$moviles
-*⏳Tiempo conectado/última vez/nunca conectado*: \$detalle
+*🟣Estado del cliente*: \$detalle
 
 \"
-                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL\n🧑‍💻Usuario: \$usuario\n🌐Conexiones: \$conexiones_status\n📲Móviles: \$moviles\n⏳Tiempo conectado/última vez/nunca conectado: \$detalle\n\n\"
+                                                LISTA_TXT=\"\${LISTA_TXT}🕒 FECHA: \$FECHA_ACTUAL\n🧑‍💻Usuario: \$usuario\n🌐Conexiones: \$conexiones_status\n📲Móviles: \$moviles\n🟣Estado del cliente: \$detalle\n\n\"
                                             done < \"\$REGISTROS\"
 
                                             LISTA=\"\${LISTA}-----------------------------------------------------------------
