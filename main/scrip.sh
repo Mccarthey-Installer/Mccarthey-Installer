@@ -298,7 +298,6 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                                             else
                                                                 DIAS_TEXTO="⌛ Dias: $DAYS"
                                                             fi
-
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
@@ -306,7 +305,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 \\\`📅 Expira: \${fecha_expiracion}\\\`
-\${DIAS_TEXTO}
+${DIAS_TEXTO}
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
