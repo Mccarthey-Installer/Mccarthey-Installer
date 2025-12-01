@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# ==================================================================
+# MATA SOLO MENÚS DUPLICADOS SIN JODER EL LIMITADOR NI FUNCIONES
+# ==================================================================
+if [[ -z "$1" && -t 0 ]]; then   # Solo cuando se ejecuta como menú interactivo
+    MI_PID=$$
+    # Busca otros procesos del mismo script ejecutándose como menú
+    OTROS_MENUS=$(pgrep -f '^bash.*scrip\.sh$' | grep -v "^${MI_PID}$")
+
+    if [[ -n "$OTROS_MENUS" ]]; then
+        echo -e "\033[1;33mYa había otro menú abierto, lo cierro para evitar duplicados...\033[0m"
+        kill -9 $OTROS_MENUS 2>/dev/null
+        sleep 0.3
+    fi
+fi
+
 # ================================
 # VARIABLES Y RUTAS
 # ================================
@@ -292,12 +307,6 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                                                         else
                                                             fecha_creacion=\$(date \"+%Y-%m-%d %H:%M:%S\")
                                                             fecha_expiracion=\$(date -d \"+\$DAYS days\" \"+%d/%B/%Y\")
-                                                            # Singular o plural para días
-                                                            if [[ $DAYS -eq 1 ]]; then
-                                                                DIAS_TEXTO="⏳ Dia: 1"
-                                                            else
-                                                                DIAS_TEXTO="⌛ Dias: $DAYS"
-                                                            fi
                                                             echo \"\$USERNAME:\$PASSWORD \$fecha_expiracion \$DAYS \$MOBILES \$fecha_creacion\" >> \"\$REGISTROS\"
                                                             echo \"Usuario creado: \$USERNAME, Expira: \$fecha_expiracion, Móviles: \$MOBILES, Creado: \$fecha_creacion\" >> \"\$HISTORIAL\"
                                                             RESUMEN=\"✅ *Usuario creado correctamente:*
@@ -305,7 +314,6 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 \\\`📅 Expira: \${fecha_expiracion}\\\`
-${DIAS_TEXTO}
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
 📊 *Datos*: \\\`\${USERNAME}:\${PASSWORD}\\\`
@@ -1326,27 +1334,18 @@ function crear_usuario() {
 
     # Guardar en historial
     echo "Usuario creado: $usuario, Expira: $fecha_expiracion, Móviles: $moviles, Creado: $fecha_creacion" >> $HISTORIAL
-      # Singular o plural
-    if [[ "$dias" -eq 1 ]]; then
-        texto_dia="⌛ Día: 1"
-        texto_resumen="1 día"
-    else
-        texto_dia="⌛ Días: $dias"
-        texto_resumen="$dias días"
-    fi
 
     # Mostrar confirmación
     echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$usuario${NC}"
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$clave${NC}"
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
-    echo -e "${AZUL}${texto_dia}${NC}"
     echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
     echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
     echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
     echo -e "${AMARILLO}👤 Usuario    📅 Expira        ⏳ Días      📱 Móviles    📅 Creado${NC}"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    printf "${VERDE}%-12s %-18s %-12s %-12s %s${NC}\n" "$usuario:$clave" "$fecha_expiracion" "$texto_resumen" "$moviles" "$fecha_creacion"
+    printf "${VERDE}%-12s %-18s %-12s %-12s %s${NC}\n" "$usuario:$clave" "$fecha_expiracion" "$dias días" "$moviles" "$fecha_creacion"
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 }
