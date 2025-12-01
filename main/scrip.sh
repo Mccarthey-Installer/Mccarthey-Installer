@@ -1364,7 +1364,7 @@ function crear_usuario() {
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
 
-   
+}  
 
 function ver_registros() {
     clear
