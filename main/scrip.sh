@@ -1340,21 +1340,31 @@ function crear_usuario() {
 
     # Guardar en historial
     echo "Usuario creado: $usuario, Expira: $fecha_expiracion, Móviles: $moviles, Creado: $fecha_creacion" >> $HISTORIAL
+    # Singular o plural
+    if [[ "$dias" -eq 1 ]]; then
+        texto_dia="⌛ Día: 1"
+        texto_resumen="1 día"
+    else
+        texto_dia="⌛ Días: $dias"
+        texto_resumen="$dias días"
+    fi
 
     # Mostrar confirmación
     echo -e "${VERDE}✅ Usuario creado correctamente:${NC}"
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$usuario${NC}"
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$clave${NC}"
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
+    echo -e "${AZUL}${texto_dia}${NC}"
     echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
     echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
     echo -e "${VIOLETA}===== 📝 RESUMEN DE REGISTRO =====${NC}"
     echo -e "${AMARILLO}👤 Usuario    📅 Expira        ⏳ Días      📱 Móviles    📅 Creado${NC}"
     echo -e "${CIAN}---------------------------------------------------------------${NC}"
-    printf "${VERDE}%-12s %-18s %-12s %-12s %s${NC}\n" "$usuario:$clave" "$fecha_expiracion" "$dias días" "$moviles" "$fecha_creacion"
+    printf "${VERDE}%-12s %-18s %-12s %-12s %s${NC}\n" "$usuario:$clave" "$fecha_expiracion" "$texto_resumen" "$moviles" "$fecha_creacion"
     echo -e "${CIAN}===============================================================${NC}"
     read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
-}
+
+   
 
 function ver_registros() {
     clear
