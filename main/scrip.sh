@@ -20,14 +20,19 @@ fi
 # ================================
 export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
-export PIDFILE="/Abigail/mon.pid"
+
+# PIDs separados
+export PID_MON="/Abigail/mon.pid"                # monitorear_conexiones
+export PID_LIMITADOR="/Abigail/limitador.pid"    # limitador
+export PID_BLOQUEOS="/Abigail/mon_bloqueos.pid"  # monitorear_bloqueos
+
+export STATUS="/tmp/limitador_status"
+export ENABLED="/tmp/limitador_enabled"
 
 # Crear directorios si no existen
 mkdir -p "$(dirname "$REGISTROS")"
 mkdir -p "$(dirname "$HISTORIAL")"
-mkdir -p "$(dirname "$PIDFILE")"
-
-
+mkdir -p "/Abigail"
 
 
 SSHD_CONFIG="/etc/ssh/sshd_config"
@@ -86,15 +91,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
         chmod +x /usr/bin/jq
     fi
 
-    # Definir rutas de archivos
-    export REGISTROS="/diana/reg.txt"
-    export HISTORIAL="/alexia/log.txt"
-    export PIDFILE="/Abigail/mon.pid"
-
-    # Crear directorios si no existen
-    mkdir -p "$(dirname "$REGISTROS")"
-    mkdir -p "$(dirname "$HISTORIAL")"
-    mkdir -p "$(dirname "$PIDFILE")"
+ 
 
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
@@ -1019,16 +1016,7 @@ LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
     read -p "$(echo -e ${BLANCO}Presiona Enter para continuar...${NC})"
 }
 
-export REGISTROS="/diana/reg.txt"
-export HISTORIAL="/alexia/log.txt"
-export PIDFILE="/Abigail/mon.pid"
-export LOGFILE="/alexia/conexiones_log.txt"
 
-# Crear directorios si no existen
-mkdir -p "$(dirname "$REGISTROS")"
-mkdir -p "$(dirname "$HISTORIAL")"
-mkdir -p "$(dirname "$PIDFILE")"
-mkdir -p "$(dirname "$LOGFILE")"
 
 function informacion_usuarios() {
     clear
@@ -1691,103 +1679,92 @@ crear_multiples_usuarios() {
 
 
 
-        # ================================
+# ================================
 #  FUNCIÓN: MONITOREAR CONEXIONES
 # ================================
 monitorear_conexiones() {
     LOG="/var/log/monitoreo_conexiones.log"
-    HISTORIAL="/alexia/log.txt"  # Usar tu ruta definida
+    HISTORIAL="/alexia/log.txt"
     INTERVALO=1
+    DROPBEAR_PORTS="80 443"
 
-    # Asegurarse de que el directorio de HISTORIAL exista    
-    mkdir -p "$(dirname "$HISTORIAL")"    
-    # Crear el archivo HISTORIAL si no existe    
-    [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"    
-    # Asegurarse de que el directorio de LOG exista    
-    mkdir -p "$(dirname "$LOG")"    
-    # Crear el archivo LOG si no existe    
-    [[ ! -f "$LOG" ]] && touch "$LOG"    
+    mkdir -p "$(dirname "$HISTORIAL")"
+    [[ ! -f "$HISTORIAL" ]] && touch "$HISTORIAL"
+    mkdir -p "$(dirname "$LOG")"
+    [[ ! -f "$LOG" ]] && touch "$LOG"
 
-    # Configurar puertos de Dropbear (ajusta según tu configuración)
-    DROPBEAR_PORTS="80 443"  # Agrega más puertos si Dropbear usa otros
+    while true; do
+        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)
 
-    while true; do    
-        usuarios_ps=$(ps -o user= -C sshd -C dropbear | sort -u)    
+        for usuario in $usuarios_ps; do
+            [[ -z "$usuario" ]] && continue
+            tmp_status="/tmp/status_${usuario}.tmp"
 
-        for usuario in $usuarios_ps; do    
-            [[ -z "$usuario" ]] && continue    
-            tmp_status="/tmp/status_${usuario}.tmp"    
+            # ZOMBIES
+            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')
+            if [[ -n "$zombies" ]]; then
+                for pid in $zombies; do
+                    kill -9 "$pid" 2>/dev/null
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"
+                done
+            fi
 
-            # 🔍 Detectar y eliminar procesos zombies    
-            zombies=$(ps -u "$usuario" -o state,pid | grep '^Z' | awk '{print $2}')    
-            if [[ -n "$zombies" ]]; then    
-                for pid in $zombies; do    
-                    kill -9 "$pid" 2>/dev/null    
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): Proceso zombie (PID: $pid) de $usuario terminado." >> "$LOG"    
-                done    
-            fi    
+            # CONEXIONES ACTIVAS
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
-            # 📡 Contar conexiones activas del usuario    
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))    
+            if [[ $conexiones -gt 0 ]]; then
+                if [[ ! -f "$tmp_status" ]]; then
+                    date +%s > "$tmp_status"
+                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"
+                else
+                    contenido=$(cat "$tmp_status")
+                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"
+                fi
+            fi
+        done
 
-            # 🟢 Registrar conexión si no existía previamente    
-            if [[ $conexiones -gt 0 ]]; then    
-                if [[ ! -f "$tmp_status" ]]; then    
-                    date +%s > "$tmp_status"    
-                    echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario conectado." >> "$LOG"    
-                else    
-                    contenido=$(cat "$tmp_status")    
-                    [[ ! "$contenido" =~ ^[0-9]+$ ]] && date +%s > "$tmp_status"    
-                fi    
-            fi    
-        done    
-
-        # 🔥 BLOQUE ANTI CONEXIONES FANTASMA SSH Y DROPBEAR 🔥    
-        # Mata conexiones inactivas por más de 3 minutos (180 seg)    
-        # Incluye estados ESTAB, TIME_WAIT, CLOSE_WAIT    
-
-        # --- SSH (puerto 22)    
+        # SSH anti-conexiones fantasma
         ss -eto '( sport = :22 )' 2>/dev/null | \
-        awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {    
-            if (match($0, /users:\(\("sshd",pid=([0-9]+)/, arr)) {    
-                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)    
-                    print arr[1];    
-            }    
-        }' | while read -r pid; do    
-            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null    
-            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 3min." >> "$LOG"    
-        done    
+        awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {
+            if (match($0, /users:(("sshd",pid=([0-9]+)/, arr)) {
+                if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
+                    print arr[1];
+            }
+        }' | while read -r pid; do
+            [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+            echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión SSH idle (PID: $pid) eliminada tras 3min." >> "$LOG"
+        done
 
-        # --- Dropbear (puertos configurados)    
+        # Dropbear anti-conexiones fantasma
         for port in $DROPBEAR_PORTS; do
             ss -eto '( sport = :'"$port"' )' 2>/dev/null | \
-            awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {    
-                if (match($0, /users:\(\("dropbear",pid=([0-9]+)/, arr)) {    
-                    if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)    
-                        print arr[1];    
-                }    
-            }' | while read -r pid; do    
-                [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null    
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión Dropbear idle (PID: $pid, puerto: $port) eliminada tras 3min." >> "$LOG"    
-            done    
-        done    
+            awk '/(ESTAB|TIME_WAIT|CLOSE_WAIT)/ && /timer:/ {
+                if (match($0, /users:(("dropbear",pid=([0-9]+)/, arr)) {
+                    if (match($0, /timer:[^,]+,([0-9]+)/, tarr) && tarr[1] > 180)
+                        print arr[1];
+                }
+            }' | while read -r pid; do
+                [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): Conexión Dropbear idle (PID: $pid, puerto: $port) eliminada tras 3min." >> "$LOG"
+            done
+        done
 
-        # ⚙️ Revisar desconexiones y registrar historial    
-        for f in /tmp/status_*.tmp; do    
-            [[ ! -f "$f" ]] && continue    
-            usuario=$(basename "$f" .tmp | cut -d_ -f2)    
-            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))    
+        # Revisar desconexiones
+        for f in /tmp/status_*.tmp; do
+            [[ ! -f "$f" ]] && continue
+            usuario=$(basename "$f" .tmp | cut -d_ -f2)
+            conexiones=$(( $(ps -u "$usuario" -o comm= | grep -c "^sshd$") + $(ps -u "$usuario" -o comm= | grep -c "^dropbear$") ))
 
-            if [[ $conexiones -eq 0 ]]; then    
-                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")    
-                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")    
-                rm -f "$f"    
-                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"    
-                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"    
-            fi    
-        done    
+            if [[ $conexiones -eq 0 ]]; then
+                hora_ini=$(date -d @"$(cat "$f")" "+%Y-%m-%d %H:%M:%S")
+                hora_fin=$(date "+%Y-%m-%d %H:%M:%S")
+                rm -f "$f"
+                echo "$usuario|$hora_ini|$hora_fin" >> "$HISTORIAL"
+                echo "$(date '+%Y-%m-%d %H:%M:%S'): $usuario desconectado. Inicio: $hora_ini Fin: $hora_fin" >> "$LOG"
+            fi
+        done
 
-        sleep "$INTERVALO"    
+        sleep "$INTERVALO"
     done
 }
 
@@ -1800,28 +1777,14 @@ if [[ "$1" == "mon" ]]; then
 fi
 
 # ================================
-#  ARRANQUE AUTOMÁTICO DEL MONITOR
+# ARRANQUE AUTOMÁTICO DEL MONITOR DE CONEXIONES
 # ================================
-if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE"
+if [[ ! -f "$PID_MON" ]] || ! ps -p "$(cat "$PID_MON" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$PID_MON"
     nohup bash "$0" mon >/dev/null 2>&1 &
-    echo $! > "$PIDFILE"
+    echo $! > "$PID_MON"
 fi
 
-
-# ================================
-# VARIABLES Y RUTAS
-# ================================
-export REGISTROS="/diana/reg.txt"
-export HISTORIAL="/alexia/log.txt"
-export PIDFILE="/Abigail/mon.pid"
-export STATUS="/tmp/limitador_status"
-export ENABLED="/tmp/limitador_enabled"   # Control estricto de activación
-
-# Crear directorios si no existen
-mkdir -p "$(dirname "$REGISTROS")"
-mkdir -p "$(dirname "$HISTORIAL")"
-mkdir -p "$(dirname "$PIDFILE")"
 
 # Colores bonitos
 AZUL_SUAVE='\033[38;5;45m'
@@ -1839,21 +1802,15 @@ activar_desactivar_limitador() {
     clear
     echo -e "${AZUL_SUAVE}===== ⚙️  ACTIVAR/DESACTIVAR LIMITADOR DE CONEXIONES =====${NC}"
     
-    # Verificar estado actual: chequea si proceso y archivo ENABLED existen
-    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    if [[ -f "$ENABLED" ]] && [[ -f "$PID_LIMITADOR" ]] && ps -p "$(cat "$PID_LIMITADOR" 2>/dev/null)" >/dev/null 2>&1; then
         ESTADO="${VERDE}🟢 Activado${NC}"
         INTERVALO_ACTUAL=$(cat "$STATUS" 2>/dev/null || echo "1")
     else
-        # Limpieza procesos huérfanos si existen
-        if [[ -f "$PIDFILE" ]]; then
-            pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE"
-        fi
+        rm -f "$PID_LIMITADOR" "$STATUS" "$ENABLED"
         ESTADO="${ROJO}🔴 Desactivado${NC}"
         INTERVALO_ACTUAL="N/A"
     fi
 
-    # Presentar estado con colores combinados
     echo -e "${BLANCO}Estado actual:${NC} $ESTADO"
     echo -e "${BLANCO}Intervalo actual:${NC} ${AMARILLO}${INTERVALO_ACTUAL}${NC} ${GRIS}segundo(s)${NC}"
     echo -e "${AZUL_SUAVE}----------------------------------------------------------${NC}"
@@ -1862,21 +1819,24 @@ activar_desactivar_limitador() {
     read respuesta
 
     if [[ "$respuesta" =~ ^[sS]$ ]]; then
-        if [[ "$ESTADO" == *"Activado"* ]]; then
-            # Desactivar limitador - BORRANDO TODOS LOS ARCHIVOS DE CONTROL
-            pkill -f "$0 limitador" 2>/dev/null
-            rm -f "$PIDFILE" "$STATUS" "$ENABLED"
+        if [[ -f "$ENABLED" ]]; then
+            # DESACTIVAR
+            if [[ -f "$PID_LIMITADOR" ]]; then
+                kill "$(cat "$PID_LIMITADOR")" 2>/dev/null
+                rm -f "$PID_LIMITADOR"
+            fi
+            rm -f "$STATUS" "$ENABLED"
             echo -e "${VERDE}✅ Limitador desactivado exitosamente.${NC}"
             echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador desactivado." >> "$HISTORIAL"
         else
-            # Activar limitador
+            # ACTIVAR
             echo -ne "${VERDE}Ingrese el intervalo de verificación en segundos (1-60): ${NC}"
             read intervalo
             if [[ "$intervalo" =~ ^[0-9]+$ ]] && [[ "$intervalo" -ge 1 && "$intervalo" -le 60 ]]; then
                 echo "$intervalo" > "$STATUS"
-                touch "$ENABLED"  # CREA EL ARCHIVO DE CONTROL PARA INDICAR QUE ESTÁ ACTIVO
+                touch "$ENABLED"
                 nohup bash "$0" limitador >/dev/null 2>&1 &
-                echo $! > "$PIDFILE"
+                echo $! > "$PID_LIMITADOR"
                 echo -e "${VERDE}✅ Limitador activado con intervalo de $intervalo segundo(s).${NC}"
                 echo "$(date '+%Y-%m-%d %H:%M:%S'): Limitador activado con intervalo de $intervalo segundos." >> "$HISTORIAL"
             else
@@ -1895,17 +1855,14 @@ activar_desactivar_limitador() {
 # MODO LIMITADOR
 # ================================
 if [[ "$1" == "limitador" ]]; then
-    INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
-
-    while true; do
+    while [[ -f "$ENABLED" ]]; do
+        INTERVALO=$(cat "$STATUS" 2>/dev/null || echo "1")
         if [[ -f "$REGISTROS" ]]; then
             while IFS=' ' read -r user_data _ _ moviles _; do
                 usuario=${user_data%%:*}
                 if id "$usuario" &>/dev/null; then
-                    # Obtener PIDs ordenados: más antiguos primero
                     pids=($(ps -u "$usuario" --sort=start_time -o pid,comm | grep -E '^[ ]*[0-9]+ (sshd|dropbear)$' | awk '{print $1}'))
                     conexiones=${#pids[@]}
-
                     if [[ $conexiones -gt $moviles ]]; then
                         for ((i=moviles; i<conexiones; i++)); do
                             pid=${pids[$i]}
@@ -1918,19 +1875,18 @@ if [[ "$1" == "limitador" ]]; then
         fi
         sleep "$INTERVALO"
     done
+    exit 0
 fi
 
 # ================================
 # ARRANQUE AUTOMÁTICO DEL LIMITADOR (solo si está habilitado)
 # ================================
 if [[ -f "$ENABLED" ]]; then
-    if [[ ! -f "$PIDFILE" ]] || ! ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
+    if [[ ! -f "$PID_LIMITADOR" ]] || ! ps -p "$(cat "$PID_LIMITADOR" 2>/dev/null)" >/dev/null 2>&1; then
         nohup bash "$0" limitador >/dev/null 2>&1 &
-        echo $! > "$PIDFILE"
+        echo $! > "$PID_LIMITADOR"
     fi
 fi
-
-
 
 
 function verificar_online() {
@@ -2151,9 +2107,15 @@ bloquear_desbloquear_usuario() {
 }
 
 
+# ================================
+# monitorear_bloqueos
+# ================================
 monitorear_bloqueos() {
     LOG="/var/log/monitoreo_bloqueos.log"
-    INTERVALO=10 # Verificar cada 10 segundos
+    INTERVALO=10
+
+    mkdir -p "$(dirname "$LOG")"
+    [[ ! -f "$LOG" ]] && touch "$LOG"
 
     while true; do
         for bloqueo_file in /tmp/bloqueo_*.lock; do
@@ -2176,10 +2138,10 @@ monitorear_bloqueos() {
 # ================================
 #  ARRANQUE AUTOMÁTICO DEL MONITOR DE BLOQUEOS
 # ================================
-if [[ ! -f "$PIDFILE.bloqueos" ]] || ! ps -p "$(cat "$PIDFILE.bloqueos" 2>/dev/null)" >/dev/null 2>&1; then
-    rm -f "$PIDFILE.bloqueos"
+if [[ ! -f "$PID_BLOQUEOS" ]] || ! ps -p "$(cat "$PID_BLOQUEOS" 2>/dev/null)" >/dev/null 2>&1; then
+    rm -f "$PID_BLOQUEOS"
     nohup bash "$0" mon_bloqueos >/dev/null 2>&1 &
-    echo $! > "$PIDFILE.bloqueos"
+    echo $! > "$PID_BLOQUEOS"
 fi
 
 # ================================
