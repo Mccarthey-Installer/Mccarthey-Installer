@@ -21,6 +21,9 @@ fi
 export REGISTROS="/diana/reg.txt"
 export HISTORIAL="/alexia/log.txt"
 
+# Archivo donde se guardará la tabla generada
+export LOGFILE="/Abigail/conexiones.log"
+
 # PIDs separados
 export PID_MON="/Abigail/mon.pid"                # monitorear_conexiones
 export PID_LIMITADOR="/Abigail/limitador.pid"    # limitador
