@@ -944,8 +944,14 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${VERDE}   ➤ Listo para activar de nuevo sin miedo ${NC}"
             sleep 3
             ;;
+        0)
+            return
+            ;;
+        *)
+            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            ;;
     esac
- } 
+}                        
 
     
     function barra_sistema() {  
