@@ -104,33 +104,36 @@ systemctl restart sshd && echo "SSH configurado correctamente."
     mkdir -p "$(dirname "$HISTORIAL")"
     mkdir -p "$(dirname "$PIDFILE")"
 
-    clear
-    echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
-    echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
-    echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
-    read -p "➡️ Selecciona una opción: " BOT_OPCION
+clear
+echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
+echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
+echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
+echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
+read -p "➡️ Selecciona una opción: " BOT_OPCION
 
-    case $BOT_OPCION in
-        1)
-            read -p "👉 Ingresa tu Token ID: " TOKEN_ID
-            read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
-            read -p "👉 Ingresa tu nombre: " USER_NAME
-            echo "$TOKEN_ID" > /root/sshbot_token
-            echo "$USER_ID" > /root/sshbot_userid
-            echo "$USER_NAME" > /root/sshbot_username
+case $BOT_OPCION in
+    1)
+        read -p "👉 Ingresa tu Token ID: " TOKEN_ID
+        read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
+        read -p "👉 Ingresa tu nombre: " USER_NAME
+        echo "$TOKEN_ID" > /root/sshbot_token
+        echo "$USER_ID" > /root/sshbot_userid
+        echo "$USER_NAME" > /root/sshbot_username
+        BOT_NAME=$(echo "SSH_BOT_${USER_NAME}" | tr '[:lower:]' '[:upper:]')
 
-            nohup bash -c "
+        nohup bash -c "
+            echo $$ > \"$PIDFILE\"
+            exec -a $BOT_NAME bash -c '
                 export LC_ALL=es_SV.utf8
-                export REGISTROS='$REGISTROS'
-                export HISTORIAL='$HISTORIAL'
-                export PIDFILE='$PIDFILE'
+                export REGISTROS=\"$REGISTROS\"
+                export HISTORIAL=\"$HISTORIAL\"
+                export PIDFILE=\"$PIDFILE\"
 
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
                 mkdir -p \"\$(dirname \"\$PIDFILE\")\"
 
-                URL='https://api.telegram.org/bot$TOKEN_ID'
+                URL=\"https://api.telegram.org/bot$TOKEN_ID\"
                 OFFSET=0
                 EXPECTING_USER_DATA=0
                 USER_DATA_STEP=0
@@ -138,10 +141,12 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 EXPECTING_RENEW_USER=0
                 RENEW_STEP=0
                 EXPECTING_BACKUP=0
-                USERNAME=''
-                PASSWORD=''
-                DAYS=''
-                MOBILES=''
+                EXPECTING_USER_DETAILS=0
+                declare -A USER_MAP
+                USERNAME=\"\"
+                PASSWORD=\"\"
+                DAYS=\"\"
+                MOBILES=\"\"
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
