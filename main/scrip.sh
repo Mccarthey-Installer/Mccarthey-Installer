@@ -87,51 +87,45 @@ systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
              ssh_bot() {
-    # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
         curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
         chmod +x /usr/bin/jq
     fi
 
-    # Definir rutas de archivos
     export REGISTROS="/diana/reg.txt"
     export HISTORIAL="/alexia/log.txt"
     export PIDFILE="/Abigail/mon.pid"
 
-    # Crear directorios si no existen
     mkdir -p "$(dirname "$REGISTROS")"
     mkdir -p "$(dirname "$HISTORIAL")"
     mkdir -p "$(dirname "$PIDFILE")"
 
-clear
-echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
-echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
-echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
-echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
-read -p "➡️ Selecciona una opción: " BOT_OPCION
+    clear
+    echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
+    echo -e "${AMARILLO_SUAVE}1. 🟢 Activar Bot${NC}"
+    echo -e "${AMARILLO_SUAVE}2. 🔴 Eliminar Token${NC}"
+    echo -e "${AMARILLO_SUAVE}0. 🚪 Volver${NC}"
+    read -p "➡️ Selecciona una opción: " BOT_OPCION
 
-case $BOT_OPCION in
-    1)
-        read -p "👉 Ingresa tu Token ID: " TOKEN_ID
-        read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
-        read -p "👉 Ingresa tu nombre: " USER_NAME
-        echo "$TOKEN_ID" > /root/sshbot_token
-        echo "$USER_ID" > /root/sshbot_userid
-        echo "$USER_NAME" > /root/sshbot_username
-        BOT_NAME=$(echo "SSH_BOT_${USER_NAME}" | tr '[:lower:]' '[:upper:]')
+    case $BOT_OPCION in
+        1)
+            read -p "👉 Ingresa tu Token ID: " TOKEN_ID
+            read -p "👉 Ingresa tu ID de usuario de Telegram: " USER_ID
+            read -p "👉 Ingresa tu nombre: " USER_NAME
+            echo "$TOKEN_ID" > /root/sshbot_token
+            echo "$USER_ID" > /root/sshbot_userid
+            echo "$USER_NAME" > /root/sshbot_username
 
-        nohup bash -c "
-            echo $$ > \"$PIDFILE\"
-            exec -a $BOT_NAME bash -c '
+            nohup bash -c "
                 export LC_ALL=es_SV.utf8
-                export REGISTROS=\"$REGISTROS\"
-                export HISTORIAL=\"$HISTORIAL\"
-                export PIDFILE=\"$PIDFILE\"
+                export REGISTROS='$REGISTROS'
+                export HISTORIAL='$HISTORIAL'
+                export PIDFILE='$PIDFILE'
 
-                mkdir -p \"\$(dirname \"\$REGISTROS\")\"
-                mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
-                mkdir -p \"\$(dirname \"\$PIDFILE\")\"
+                mkdir -p "$(dirname "$REGISTROS")"
+                mkdir -p "$(dirname "$HISTORIAL")"
+                mkdir -p "$(dirname "$PIDFILE")"
 
                 URL='https://api.telegram.org/bot$TOKEN_ID'
                 OFFSET=0
