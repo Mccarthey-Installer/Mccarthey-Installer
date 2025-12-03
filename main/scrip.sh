@@ -117,7 +117,7 @@ ssh_bot() {
                 export LC_ALL=es_SV.utf8
                 export REGISTROS='$REGISTROS'
                 export HISTORIAL='$HISTORIAL'
-                export PIDFILE='$PIDFILE'
+                echo \\$$ > "$PIDFILE"
 
                 mkdir -p \"\$(dirname \"\$REGISTROS\")\"
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
