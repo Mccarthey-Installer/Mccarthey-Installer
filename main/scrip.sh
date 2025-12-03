@@ -109,8 +109,11 @@ ssh_bot() {
             echo "$TOKEN_ID" > /root/sshbot_token
             echo "$USER_ID" > /root/sshbot_userid
             echo "$USER_NAME" > /root/sshbot_username
+            BOT_NAME=$(echo "SSH_BOT_${USER_NAME}" | tr '[:lower:]' '[:upper:]')
 
             nohup bash -c "
+             echo $$ > "$PIDFILE"
+             exec -a $BOT_NAME bash -c '
                 export LC_ALL=es_SV.utf8
                 export REGISTROS='$REGISTROS'
                 export HISTORIAL='$HISTORIAL'
@@ -924,6 +927,41 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             ;;
     esac
 }              
+
+        2)
+            echo -e "${ROJO}🛑 Deteniendo TODOS los bots SSH... ¡Prepárate para la masacre!${NC}"
+
+            # ← NUEVO: Leer el nombre guardado
+            USER_NAME=$(cat /root/sshbot_username 2>/dev/null)
+            BOT_NAME=$(echo "SSH_BOT_${USER_NAME}" | tr '[:lower:]' '[:upper:]')
+
+            PROCESOS_ANTES=$(ps aux | grep -E "api.telegram.org/bot|$BOT_NAME" | grep -v grep | wc -l)
+
+            pkill -f "ssh_bot_telegram" 2>/dev/null
+            pkill -f "api.telegram.org/bot" 2>/dev/null
+            pkill -f "getUpdates" 2>/dev/null
+            pkill -f "sendMessage" 2>/dev/null
+            pkill -f "$BOT_NAME" 2>/dev/null  # ← AHORA USA LA VARIABLE
+
+            [[ -f "$PIDFILE" ]] && kill -9 $(cat "$PIDFILE") 2>/dev/null && rm -f "$PIDFILE"
+
+            ps aux | grep -E "api.telegram.org/bot|$BOT_NAME" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+
+            sleep 1
+
+            PROCESOS_DESPUES=$(ps aux | grep -E "api.telegram.org/bot|$BOT_NAME" | grep -v grep | wc -l)
+            ELIMINADOS=$((PROCESOS_ANTES - PROCESOS_DESPUES))
+
+            BORRADOS=$(find /root/sshbot_* "$PIDFILE" /tmp/sshbot* /tmp/status_* /tmp/bloqueo_* -delete -print 2>/dev/null | wc -l)
+
+            echo -e "${VERDE}☠️ ¡Bot ANIQUILADO por completo!${NC}"
+            echo -e "${VERDE}   ➤ Procesos eliminados: ${AMARILLO}${ELIMINADOS}${VERDE}${NC}"
+            echo -e "${VERDE}   ➤ Archivos borrados: ${AMARILLO}${BORRADOS}${VERDE}${NC}"
+            echo -e "${VERDE}   ➤ Listo para activar de nuevo sin miedo ${NC}"
+            sleep 3
+            ;;
+    esac
+ } 
 
     
     function barra_sistema() {  
