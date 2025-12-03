@@ -862,35 +862,34 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"📥 *Envía el archivo de backup (TXT) para restaurar los usuarios.* Escribe 'cancel' para cancelar.\" -d parse_mode=Markdown >/dev/null
                                         EXPECTING_BACKUP=1
                                         ;;
-
                                     '8')
-                                        if [[ ! -f "\$REGISTROS" || ! -s "\$REGISTROS" ]]; then
-                                            curl -s -X POST "\$URL/sendMessage" -d chat_id=\$CHAT_ID -d text=\"*No hay registros disponibles.* Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
+                                        if [[ ! -f \"\$REGISTROS\" || ! -s \"\$REGISTROS\" ]]; then
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"😿 *No hay registros disponibles.* Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                                         else
                                             LISTA=\"===== 🌸 *REGISTROS* =====
-
 \"
                                             count=1
-                                            declare -A USER_MAP
-                                            while IFS=' ' read -r user_data _; do
-                                                usuario=\"\${user_data%%:}\"
+                                            USER_MAP=()
+                                            while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
+                                                usuario=\${user_data%%:*}
                                                 USER_MAP[\$count]=\"\$usuario\"
-                                                LISTA=\"\${LISTA}\${count} \${usuario}
+                                                LISTA=\"\${LISTA}\${count} \\\`\${usuario}\\\`
 \"
                                                 ((count++))
                                             done < \"\$REGISTROS\"
-
-                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\${LISTA}
-*Ingresa el número o nombre del usuario:*\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"\$LISTA\" -d parse_mode=Markdown >/dev/null
+                                            curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🌟 *Ingresa el número o nombre del usuario:*\" -d parse_mode=Markdown >/dev/null
                                             EXPECTING_USER_DETAILS=1
                                         fi
                                         ;;
                                     '0')
-                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"*Menú Principal*
+                                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"🏠 *Menú Principal* 🔙
 
-*Regresando al menú...*
-Hasta pronto!\" -d parse_mode=Markdown >/dev/null
+✅ *Regresando al menú...*
+👋 ¡Hasta pronto!\" -d parse_mode=Markdown >/dev/null
                                         ;;
+
+                                    
                                     *)
                                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\$CHAT_ID -d text=\"❓ *Opción no válida* ⚠️
 
