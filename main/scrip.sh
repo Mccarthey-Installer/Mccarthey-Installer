@@ -910,23 +910,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano (PID: $(cat $PIDFILE)).${NC}"
             echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
             ;;
-        2)
-            if [[ -f "$PIDFILE" ]]; then
-                kill -9 $(cat "$PIDFILE") 2>/dev/null
-                rm -f "$PIDFILE"
-            fi
-            rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
-            pkill -f "api.telegram.org"
-            echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
-            ;;
-        0)
-            return
-            ;;
-        *)
-            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-            ;;
-    esac
-}              
+
 
         2)
             echo -e "${ROJO}🛑 Deteniendo TODOS los bots SSH... ¡Prepárate para la masacre!${NC}"
