@@ -133,7 +133,7 @@ case $BOT_OPCION in
                 mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
                 mkdir -p \"\$(dirname \"\$PIDFILE\")\"
 
-                URL=\"https://api.telegram.org/bot$TOKEN_ID\"
+                URL='https://api.telegram.org/bot$TOKEN_ID'
                 OFFSET=0
                 EXPECTING_USER_DATA=0
                 USER_DATA_STEP=0
@@ -141,12 +141,10 @@ case $BOT_OPCION in
                 EXPECTING_RENEW_USER=0
                 RENEW_STEP=0
                 EXPECTING_BACKUP=0
-                EXPECTING_USER_DETAILS=0
-                declare -A USER_MAP
-                USERNAME=\"\"
-                PASSWORD=\"\"
-                DAYS=\"\"
-                MOBILES=\"\"
+                USERNAME=''
+                PASSWORD=''
+                DAYS=''
+                MOBILES=''
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
