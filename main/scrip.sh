@@ -93,9 +93,13 @@ systemctl restart sshd && echo "SSH configurado correctamente."
         chmod +x /usr/bin/jq
     fi
 
+    export REGISTROS="/diana/reg.txt"
+    export HISTORIAL="/alexia/log.txt"
+    export PIDFILE="/Abigail/mon.pid"
 
-
-
+    mkdir -p "$(dirname "$REGISTROS")"
+    mkdir -p "$(dirname "$HISTORIAL")"
+    mkdir -p "$(dirname "$PIDFILE")"
 
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
