@@ -95,9 +95,7 @@ systemctl restart sshd && echo "SSH configurado correctamente."
 
 
 
-    mkdir -p "$(dirname "$REGISTROS")"
-    mkdir -p "$(dirname "$HISTORIAL")"
-    mkdir -p "$(dirname "$PIDFILE")"
+
 
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
