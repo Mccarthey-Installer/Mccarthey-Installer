@@ -86,20 +86,13 @@ fi
 systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
-             ssh_bot() {
+ssh_bot() {
+    # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
         curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
         chmod +x /usr/bin/jq
     fi
-
-    export REGISTROS="/diana/reg.txt"
-    export HISTORIAL="/alexia/log.txt"
-    export PIDFILE="/Abigail/mon.pid"
-
-    mkdir -p "$(dirname "$REGISTROS")"
-    mkdir -p "$(dirname "$HISTORIAL")"
-    mkdir -p "$(dirname "$PIDFILE")"
 
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
@@ -123,9 +116,9 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 export HISTORIAL='$HISTORIAL'
                 export PIDFILE='$PIDFILE'
 
-                mkdir -p "$(dirname "$REGISTROS")"
-                mkdir -p "$(dirname "$HISTORIAL")"
-                mkdir -p "$(dirname "$PIDFILE")"
+                mkdir -p \"\$(dirname \"\$REGISTROS\")\"
+                mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
+                mkdir -p \"\$(dirname \"\$PIDFILE\")\"
 
                 URL='https://api.telegram.org/bot$TOKEN_ID'
                 OFFSET=0
@@ -135,6 +128,8 @@ systemctl restart sshd && echo "SSH configurado correctamente."
                 EXPECTING_RENEW_USER=0
                 RENEW_STEP=0
                 EXPECTING_BACKUP=0
+                EXPECTING_USER_DETAILS=0
+                declare -A USER_MAP
                 USERNAME=''
                 PASSWORD=''
                 DAYS=''
@@ -912,39 +907,14 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${VERDE}✅ Bot activado y corriendo en segundo plano (PID: $(cat $PIDFILE)).${NC}"
             echo -e "${AMARILLO_SUAVE}💡 El bot responderá a 'hola' con el menú interactivo.${NC}"
             ;;
-
-
         2)
-            echo -e "${ROJO}🛑 Deteniendo TODOS los bots SSH... ¡Prepárate para la masacre!${NC}"
-
-            # ← NUEVO: Leer el nombre guardado
-            USER_NAME=$(cat /root/sshbot_username 2>/dev/null)
-            BOT_NAME=$(echo "SSH_BOT_${USER_NAME}" | tr '[:lower:]' '[:upper:]')
-
-            PROCESOS_ANTES=$(ps aux | grep -E "api.telegram.org/bot|$BOT_NAME" | grep -v grep | wc -l)
-
-            pkill -f "ssh_bot_telegram" 2>/dev/null
-            pkill -f "api.telegram.org/bot" 2>/dev/null
-            pkill -f "getUpdates" 2>/dev/null
-            pkill -f "sendMessage" 2>/dev/null
-            pkill -f "$BOT_NAME" 2>/dev/null  # ← AHORA USA LA VARIABLE
-
-            [[ -f "$PIDFILE" ]] && kill -9 $(cat "$PIDFILE") 2>/dev/null && rm -f "$PIDFILE"
-
-            ps aux | grep -E "api.telegram.org/bot|$BOT_NAME" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
-
-            sleep 1
-
-            PROCESOS_DESPUES=$(ps aux | grep -E "api.telegram.org/bot|$BOT_NAME" | grep -v grep | wc -l)
-            ELIMINADOS=$((PROCESOS_ANTES - PROCESOS_DESPUES))
-
-            BORRADOS=$(find /root/sshbot_* "$PIDFILE" /tmp/sshbot* /tmp/status_* /tmp/bloqueo_* -delete -print 2>/dev/null | wc -l)
-
-            echo -e "${VERDE}☠️ ¡Bot ANIQUILADO por completo!${NC}"
-            echo -e "${VERDE}   ➤ Procesos eliminados: ${AMARILLO}${ELIMINADOS}${VERDE}${NC}"
-            echo -e "${VERDE}   ➤ Archivos borrados: ${AMARILLO}${BORRADOS}${VERDE}${NC}"
-            echo -e "${VERDE}   ➤ Listo para activar de nuevo sin miedo ${NC}"
-            sleep 3
+            if [[ -f "$PIDFILE" ]]; then
+                kill -9 $(cat "$PIDFILE") 2>/dev/null
+                rm -f "$PIDFILE"
+            fi
+            rm -f /root/sshbot_token /root/sshbot_userid /root/sshbot_username
+            pkill -f "api.telegram.org"
+            echo -e "${ROJO}❌ Token eliminado y bot detenido.${NC}"
             ;;
         0)
             return
@@ -953,7 +923,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}              
 
     
     function barra_sistema() {  
