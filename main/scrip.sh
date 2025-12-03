@@ -86,13 +86,23 @@ fi
 systemctl restart sshd && echo "SSH configurado correctamente."
     
                                         
-ssh_bot() {
+             ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
         echo -e "${AMARILLO_SUAVE}📥 Instalando jq...${NC}"
         curl -L -o /usr/bin/jq https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64
         chmod +x /usr/bin/jq
     fi
+
+    # Definir rutas de archivos
+    export REGISTROS="/diana/reg.txt"
+    export HISTORIAL="/alexia/log.txt"
+    export PIDFILE="/Abigail/mon.pid"
+
+    # Crear directorios si no existen
+    mkdir -p "$(dirname "$REGISTROS")"
+    mkdir -p "$(dirname "$HISTORIAL")"
+    mkdir -p "$(dirname "$PIDFILE")"
 
     clear
     echo -e "${VIOLETA}======🤖 SSH BOT ======${NC}"
@@ -109,34 +119,29 @@ ssh_bot() {
             echo "$TOKEN_ID" > /root/sshbot_token
             echo "$USER_ID" > /root/sshbot_userid
             echo "$USER_NAME" > /root/sshbot_username
-            BOT_NAME=$(echo "SSH_BOT_${USER_NAME}" | tr '[:lower:]' '[:upper:]')
 
             nohup bash -c "
-                echo $$ > \"$PIDFILE\"
-                exec -a $BOT_NAME bash -c '
-                    export LC_ALL=es_SV.utf8
-                    export REGISTROS=\"$REGISTROS\"
-                    export HISTORIAL=\"$HISTORIAL\"
-                    export PIDFILE=\"$PIDFILE\"
+                export LC_ALL=es_SV.utf8
+                export REGISTROS='$REGISTROS'
+                export HISTORIAL='$HISTORIAL'
+                export PIDFILE='$PIDFILE'
 
-                    mkdir -p \"\$(dirname \"\$REGISTROS\")\"
-                    mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
-                    mkdir -p \"\$(dirname \"\$PIDFILE\")\"
+                mkdir -p \"\$(dirname \"\$REGISTROS\")\"
+                mkdir -p \"\$(dirname \"\$HISTORIAL\")\"
+                mkdir -p \"\$(dirname \"\$PIDFILE\")\"
 
-                    URL=\"https://api.telegram.org/bot$TOKEN_ID\"
-                    OFFSET=0
-                    EXPECTING_USER_DATA=0
-                    USER_DATA_STEP=0
-                    EXPECTING_DELETE_USER=0
-                    EXPECTING_RENEW_USER=0
-                    RENEW_STEP=0
-                    EXPECTING_BACKUP=0
-                    EXPECTING_USER_DETAILS=0
-                    declare -A USER_MAP
-                    USERNAME=\"\"
-                    PASSWORD=\"\"
-                    DAYS=\"\"
-                    MOBILES=\"\"
+                URL='https://api.telegram.org/bot$TOKEN_ID'
+                OFFSET=0
+                EXPECTING_USER_DATA=0
+                USER_DATA_STEP=0
+                EXPECTING_DELETE_USER=0
+                EXPECTING_RENEW_USER=0
+                RENEW_STEP=0
+                EXPECTING_BACKUP=0
+                USERNAME=''
+                PASSWORD=''
+                DAYS=''
+                MOBILES=''
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
