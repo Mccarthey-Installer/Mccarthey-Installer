@@ -112,7 +112,7 @@ ssh_bot() {
             BOT_NAME=$(echo "SSH_BOT_${USER_NAME}" | tr '[:lower:]' '[:upper:]')
 
             nohup bash -c "
-             echo $$ > "$PIDFILE"
+             echo \\$$ > "$PIDFILE"
              exec -a $BOT_NAME bash -c '
                 export LC_ALL=es_SV.utf8
                 export REGISTROS='$REGISTROS'
