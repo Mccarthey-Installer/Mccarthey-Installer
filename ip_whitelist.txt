@@ -1,2 +1,4 @@
 # IPs autorizadas
 127.0.0.1
+# Mia xd
+102.129.137.92
