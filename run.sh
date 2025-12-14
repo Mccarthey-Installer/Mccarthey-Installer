@@ -1,11 +1,12 @@
 #!/bin/bash
 set -e
 
-ENCRYPTED_FILE="run.sh"
+ENCRYPTED_FILE="payload.enc"
 
 read -s -p "Contraseña: " PASS
 echo
 
-openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 \
+# Pasar la contraseña por STDIN (forma segura)
+printf "%s" "$PASS" | openssl enc -d -aes-256-cbc -pbkdf2 -iter 10000 \
   -in "$ENCRYPTED_FILE" \
-  -pass pass:"$PASS" | bash
+  -pass stdin | bash
