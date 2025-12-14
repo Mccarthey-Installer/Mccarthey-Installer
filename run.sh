@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-ENCRYPTED_FILE="scrip.enc"
+ENCRYPTED_FILE="run.sh"
 
 read -s -p "Contraseña: " PASS
 echo
