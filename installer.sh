@@ -4,7 +4,7 @@
 # Versión: 3.2 PROFESIONAL
 #
 # Uso:
-# wget -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main/installer.sh && chmod +x installer.sh && bash installer.sh
+# wget -O installer.sh https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/master/installer.sh && chmod +x installer.sh && bash installer.sh
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ echo ""
 # CONFIGURACIÓN
 # ════════════════════════════════════════════════════════════════
 
-REPO_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/main"
+REPO_URL="https://raw.githubusercontent.com/Mccarthey-Installer/Mccarthey-Installer/master"
 BINARY_FILE="mccarthey_installer"
 
 # ════════════════════════════════════════════════════════════════
