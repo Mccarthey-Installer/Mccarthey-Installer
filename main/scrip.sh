@@ -2871,7 +2871,7 @@ while true; do
     echo -e "${AMARILLO_SUAVE}15. 👁️‍🗨️ Información detallada de usuario${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
-    echo
+
 
     # == MENU 🚫
     while true; do
