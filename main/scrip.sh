@@ -2870,12 +2870,12 @@ while true; do
     echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"
     echo -e "${AMARILLO_SUAVE}15. 👁️‍🗨️ Información detallada de usuario${NC}"
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
-    echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
+    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
 
     # == MENU 🚫
     while true; do
-        read -p "$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")" OPCION
+        read -p "$(echo -e "${VERDE}➡️ Selecciona una opción: ${NC}")" OPCION
 
         # ENTER vacío → no imprime nada
         if [[ -z "$OPCION" ]]; then
