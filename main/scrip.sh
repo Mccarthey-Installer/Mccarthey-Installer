@@ -2873,47 +2873,50 @@ while true; do
     echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
-
-# == MENU 🚫
-while true; do
-    echo -ne "${VERDE}➡️ Selecciona una opción: ${NC}"
-    read OPCION
-
-    # ENTER vacío
-    if [[ -z "$OPCION" ]]; then
-        echo -ne "\r\033[K"
-        continue
-    fi
-
-    # Solo permitir 0–15
-    if [[ ! "$OPCION" =~ ^([0-9]|1[0-5])$ ]]; then
-        echo -ne "\r\033[K"
-        continue
-    fi
-
-    break
-done
-
-    case "$OPCION" in
-        1) crear_usuario ;;
-        2) ver_registros ;;
-        3) eliminar_multiples_usuarios ;;
-        4) informacion_usuarios ;;
-        5) verificar_online ;;
-        6) bloquear_desbloquear_usuario ;;
-        7) crear_multiples_usuarios ;;
-        8) mini_registro ;;
-        9) activar_desactivar_limitador ;;
-        10) configurar_banner_ssh ;;
-        11) contador_online ;;
-        12) ssh_bot ;;
-        13) renovar_usuario ;;
-        14) activar_desactivar_swap ;;
-        15) usuarios_ssh ;;
-        0)
-            echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"
-            exec /bin/bash
-            ;;
-    esac
-done
-fi
+  
+    # == MENU 🚫    
+    while true; do    
+        echo -ne "${VERDE}➡️ Selecciona una opción: ${NC}"    
+        read OPCION    
+    
+        # ENTER vacío → no imprime nada    
+        if [[ -z "$OPCION" ]]; then    
+            tput cuu1    
+            tput dl1    
+            continue    
+        fi    
+    
+        # Solo permitir 0–15    
+        if [[ ! "$OPCION" =~ ^([0-9]|1[0-5])$ ]]; then    
+            tput cuu1    
+            tput dl1    
+            continue    
+        fi    
+    
+        break    
+    done    
+    
+    case "$OPCION" in    
+        1) crear_usuario ;;    
+        2) ver_registros ;;    
+        3) eliminar_multiples_usuarios ;;    
+        4) informacion_usuarios ;;    
+        5) verificar_online ;;    
+        6) bloquear_desbloquear_usuario ;;    
+        7) crear_multiples_usuarios ;;    
+        8) mini_registro ;;    
+        9) activar_desactivar_limitador ;;    
+        10) configurar_banner_ssh ;;    
+        11) contador_online ;;    
+        12) ssh_bot ;;    
+        13) renovar_usuario ;;    
+        14) activar_desactivar_swap ;;    
+        15) usuarios_ssh ;;    
+        0)    
+            echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"    
+            exec /bin/bash    
+            ;;    
+    esac    
+done    
+fi    
+ 
