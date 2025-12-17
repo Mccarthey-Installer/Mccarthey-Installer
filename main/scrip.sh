@@ -1141,7 +1141,8 @@ LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
-    echo -e "${MAGENTA}🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}  ${MAGENTA}📈 Load average:${NC} ${LOAD_AVG}"
+    echo -e "${MAGENTA}🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}"
+    echo -e "${MAGENTA}📈 Load average:${NC} ${LOAD_AVG}"
     echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} LIMITADOR:${NC} ${LIMITADOR_ESTADO}"
@@ -2873,26 +2874,25 @@ while true; do
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
 
-    # == MENU 🚫
-    while true; do
-        read -p "$(echo -e "${VERDE}➡️ Selecciona una opción: ${NC}")" OPCION
+# == MENU 🚫
+while true; do
+    echo -ne "${VERDE}➡️ Selecciona una opción: ${NC}"
+    read OPCION
 
-        # ENTER vacío → no imprime nada
-        if [[ -z "$OPCION" ]]; then
-            tput cuu1
-            tput dl1
-            continue
-        fi
+    # ENTER vacío
+    if [[ -z "$OPCION" ]]; then
+        echo -ne "\r\033[K"
+        continue
+    fi
 
-        # Solo permitir 0–15
-        if [[ ! "$OPCION" =~ ^([0-9]|1[0-5])$ ]]; then
-            tput cuu1
-            tput dl1
-            continue
-        fi
+    # Solo permitir 0–15
+    if [[ ! "$OPCION" =~ ^([0-9]|1[0-5])$ ]]; then
+        echo -ne "\r\033[K"
+        continue
+    fi
 
-        break
-    done
+    break
+done
 
     case "$OPCION" in
         1) crear_usuario ;;
