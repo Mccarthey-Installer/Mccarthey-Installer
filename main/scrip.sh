@@ -2874,12 +2874,10 @@ while true; do
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
 
   
-    # == MENU 🚫  
+# Menu
 while true; do  
-    # ✅ SOLUCIÓN: Imprime el prompt directamente sin buffering
-printf "${VERDE}➡️ Selecciona una opción: ${NC}"
-stty echo
-read OPCION < /dev/tty
+    echo -ne "${VERDE}➡️ Selecciona una opción: ${NC}"
+    read OPCION  
 
     # ENTER vacío → no imprime nada  
     if [[ -z "$OPCION" ]]; then  
