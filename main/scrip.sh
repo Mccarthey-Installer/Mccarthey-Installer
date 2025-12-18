@@ -1,5 +1,27 @@
 #!/bin/bash
 
+# === BLOQUE DE ACTIVACIÓN ===
+BACKEND="http://102.129.137.139:8080/check.php"
+
+clear
+echo "🔐 Activación requerida"
+read -p "Ingresa tu token: " TOKEN
+
+IP=$(curl -s https://api.ipify.org)
+
+RESP=$(curl -s "$BACKEND?token=$TOKEN&ip=$IP")
+
+if [[ "$RESP" != "OK" ]]; then
+  echo "❌ Token inválido o ya usado"
+  exit 1
+fi
+
+echo "✅ Activación correcta"
+sleep 1
+
+# === AQUÍ EMPIEZA TU SCRIPT NORMAL ===
+# (menús, installs, paneles, lo que ya tenías)
+
 # ==================================================================
 # MATA SOLO MENÚS DUPLICADOS SIN JODER EL LIMITADOR NI FUNCIONES
 # ==================================================================
