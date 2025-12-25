@@ -1592,138 +1592,156 @@ function mini_registro() {
 # Función para crear múltiples usuarios
 crear_multiples_usuarios() {
     clear
-    echo "===== 🆕 CREAR MÚLTIPLES USUARIOS SSH ====="
-    echo "📝 Formato: nombre contraseña días móviles (separados por espacios, una línea por usuario)"
+    echo "===== 🆕 CREAR / ACTUALIZAR MÚLTIPLES USUARIOS SSH ====="
+    echo "📝 Formato: nombre contraseña días móviles"
     echo "📋 Ejemplo: lucy 123 5 4"
-    echo "✅ Presiona Enter dos veces para confirmar."
+    echo "✅ Ingresa los usuarios (una línea por usuario)"
+    echo "   Presiona Enter en una línea vacía para terminar."
 
-    # Array para almacenar las entradas de usuarios
     declare -a usuarios_input
+    declare -a usuarios_crear
+    declare -a usuarios_actualizar
+    declare -a errores
+
+    # ============================
+    # LECTURA DE INPUT
+    # ============================
     while true; do
-        read -r linea
-        # Si la línea está vacía y la anterior también, salir del bucle
-        if [[ -z "$linea" ]]; then
-            read -r linea_siguiente
-            if [[ -z "$linea_siguiente" ]]; then
-                break
-            else
-                usuarios_input+=("$linea" "$linea_siguiente")
-                continue
-            fi
-        fi
+        read -r linea || break  # Sale si EOF (Ctrl+D)
+        [[ -z "$linea" ]] && break
         usuarios_input+=("$linea")
     done
 
-    # Verificar si se ingresaron usuarios
     if [ ${#usuarios_input[@]} -eq 0 ]; then
         echo "❌ No se ingresaron usuarios."
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    # Procesar y validar entradas
-    declare -a usuarios_validos
-    declare -a errores
+    # ============================
+    # VALIDAR DUPLICADOS EN INPUT
+    # ============================
+    if printf '%s\n' "${usuarios_input[@]}" | awk '{print $1}' | sort | uniq -d | grep -q .; then
+        echo "❌ Error: Hay nombres de usuario repetidos en la misma lista."
+        echo "   Corrígelo y vuelve a intentarlo."
+        read -p "Presiona Enter para continuar..."
+        return
+    fi
+
+    # ============================
+    # PROCESAR ENTRADAS
+    # ============================
     for linea in "${usuarios_input[@]}"; do
-        # Separar los campos
         read -r usuario clave dias moviles <<< "$linea"
 
-        # Validar que todos los campos estén presentes
         if [[ -z "$usuario" || -z "$clave" || -z "$dias" || -z "$moviles" ]]; then
-            errores+=("Línea '$linea': Todos los campos son obligatorios.")
+            errores+=("Línea inválida: '$linea' → faltan campos")
             continue
         fi
 
-        # Validar que días y móviles sean números
         if ! [[ "$dias" =~ ^[0-9]+$ ]] || ! [[ "$moviles" =~ ^[0-9]+$ ]]; then
-            errores+=("Línea '$linea': Días y móviles deben ser números.")
+            errores+=("Línea inválida: '$linea' → días o móviles no son números")
             continue
         fi
 
-        # Verificar si el usuario ya existe en el sistema
         if id "$usuario" >/dev/null 2>&1; then
-            errores+=("Línea '$linea': El usuario $usuario ya existe en el sistema.")
-            continue
+            usuarios_actualizar+=("$usuario:$clave:$dias:$moviles")
+        else
+            usuarios_crear+=("$usuario:$clave:$dias:$moviles")
         fi
-
-        # Almacenar usuario válido
-        usuarios_validos+=("$usuario:$clave:$dias:$moviles")
     done
 
-    # Mostrar errores si los hay
+    # ============================
+    # MOSTRAR ERRORES
+    # ============================
     if [ ${#errores[@]} -gt 0 ]; then
-        echo "❌ Errores encontrados:"
-        for error in "${errores[@]}"; do
-            echo "$error"
-        done
-        read -p "Presiona Enter para continuar..."
-        return
+        echo "⚠️ Errores encontrados:"
+        for e in "${errores[@]}"; do echo "   - $e"; done
+        echo ""
+        read -p "¿Continuar solo con los usuarios válidos? (s/n): " r
+        [[ "$r" != "s" && "$r" != "S" ]] && return
+        echo ""
     fi
 
-    # Mostrar resumen de usuarios a crear
-    echo "===== 📋 USUARIOS A CREAR ====="
-    echo "👤 Usuario    🔑 Clave      ⏳ Días       📱 Móviles"
-    echo "---------------------------------------------------------------"
-    for usuario_data in "${usuarios_validos[@]}"; do
-        IFS=':' read -r usuario clave dias moviles <<< "$usuario_data"
-        printf "%-12s %-12s %-12s %-12s\n" "$usuario" "$clave" "$dias" "$moviles"
-    done
-    echo "==============================================================="
+    # ============================
+    # RESUMEN ANTES DE EJECUTAR
+    # ============================
+    total=$(( ${#usuarios_crear[@]} + ${#usuarios_actualizar[@]} ))
+    echo "===== 📋 RESUMEN DE OPERACIÓN ====="
+    echo "Total usuarios a procesar: $total"
+    [ ${#usuarios_crear[@]}     -gt 0 ] && echo "🆕 A crear:     ${#usuarios_crear[@]}"
+    [ ${#usuarios_actualizar[@]} -gt 0 ] && echo "🔄 A actualizar: ${#usuarios_actualizar[@]}"
+    echo ""
 
-    # Confirmar creación
-    read -p "✅ ¿Confirmar creación de estos usuarios? (s/n): " confirmacion
-    if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
-        echo "❌ Creación cancelada."
-        read -p "Presiona Enter para continuar..."
-        return
-    fi
+    read -p "✅ ¿Confirmar operación? (s/n): " confirmacion
+    [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]] && { echo "Operación cancelada."; read; return; }
 
-    # Crear usuarios y registrar
-    count=0
-    for usuario_data in "${usuarios_validos[@]}"; do
-        IFS=':' read -r usuario clave dias moviles <<< "$usuario_data"
+    count_creados=0
+    count_actualizados=0
 
-        # Crear usuario en el sistema Linux
+    # ============================
+    # CREAR USUARIOS NUEVOS
+    # ============================
+    for data in "${usuarios_crear[@]}"; do
+        IFS=':' read -r usuario clave dias moviles <<< "$data"
+
         if ! useradd -M -s /sbin/nologin "$usuario" 2>/dev/null; then
-            echo "❌ Error al crear el usuario $usuario en el sistema."
+            echo "❌ Falló creación de $usuario (useradd)"
             continue
         fi
 
-        # Establecer la contraseña
         if ! echo "$usuario:$clave" | chpasswd 2>/dev/null; then
-            echo "❌ Error al establecer la contraseña para $usuario."
+            echo "❌ Falló contraseña de $usuario → eliminando usuario"
             userdel "$usuario" 2>/dev/null
             continue
         fi
 
-        # Configurar fecha de expiración en el sistema
-        fecha_expiracion_sistema=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
-        if ! chage -E "$fecha_expiracion_sistema" "$usuario" 2>/dev/null; then
-            echo "❌ Error al establecer la fecha de expiración para $usuario."
-            userdel "$usuario" 2>/dev/null
-            continue
-        fi
+        fecha_exp=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
+        chage -E "$fecha_exp" "$usuario" 2>/dev/null
 
-        # Obtener fecha actual y de expiración para registros
         fecha_creacion=$(date "+%Y-%m-%d %H:%M:%S")
-        fecha_expiracion=$(calcular_expiracion $dias)
+        fecha_expiracion=$(calcular_expiracion "$dias")
 
-        # Guardar en archivo de registros
-        echo "$usuario:$clave $fecha_expiracion $dias $moviles $fecha_creacion" >> $REGISTROS
+        echo "$usuario:$clave $fecha_expiracion $dias $moviles $fecha_creacion" >> "$REGISTROS"
+        echo "Usuario creado: $usuario ($fecha_creacion)" >> "$HISTORIAL"
 
-        # Guardar en historial
-        echo "Usuario creado: $usuario, Expira: $fecha_expiracion, Móviles: $moviles, Creado: $fecha_creacion" >> $HISTORIAL
-
-        ((count++))
+        echo "✅ Creado: $usuario"
+        ((count_creados++))
     done
 
-    # Mostrar resumen de creación
-    echo "===== 📊 RESUMEN DE CREACIÓN ====="
-    echo "✅ Usuarios creados exitosamente: $count"
-    echo "Presiona Enter para continuar... ✨"
-    read
-}
+    # ============================
+    # ACTUALIZAR USUARIOS EXISTENTES
+    # ============================
+    for data in "${usuarios_actualizar[@]}"; do
+        IFS=':' read -r usuario clave dias moviles <<< "$data"
 
+        echo "$usuario:$clave" | chpasswd 2>/dev/null || { echo "❌ Falló actualización contraseña de $usuario"; continue; }
+
+        fecha_exp=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
+        chage -E "$fecha_exp" "$usuario" 2>/dev/null
+
+        fecha_act=$(date "+%Y-%m-%d %H:%M:%S")
+        fecha_expiracion=$(calcular_expiracion "$dias")
+
+        # Reemplazar línea anterior en REGISTROS (más seguro que grep -v)
+        sed -i "/^$usuario:/d" "$REGISTROS" 2>/dev/null
+        echo "$usuario:$clave $fecha_expiracion $dias $moviles $fecha_act" >> "$REGISTROS"
+
+        echo "Usuario actualizado: $usuario ($fecha_act)" >> "$HISTORIAL"
+        echo "🔄 Actualizado: $usuario"
+        ((count_actualizados++))
+    done
+
+    # ============================
+    # RESUMEN FINAL
+    # ============================
+    echo ""
+    echo "===== 📊 RESUMEN FINAL ====="
+    echo "🆕 Usuarios creados:     $count_creados"
+    echo "🔄 Usuarios actualizados: $count_actualizados"
+    echo "============================"
+    read -p "Presiona Enter para continuar..."
+}
 
 # Función para eliminar múltiples usuarios
 
