@@ -1717,7 +1717,8 @@ crear_multiples_usuarios() {
     # ============================
     # CONFIRMACIÓN FINAL
     # ============================
-    read -p "${ROSA_FUERTE}✅ ¿Confirmar operación? (s/n): ${RESET}" confirmacion
+    echo -ne "${ROSA_FUERTE}✅ ¿Confirmar operación? (s/n): ${RESET}"
+    read confirmacion
     [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]] && { echo -e "${ROJO}Operación cancelada.${RESET}"; read; return; }
 
     count_creados=0
