@@ -1591,12 +1591,23 @@ function mini_registro() {
 
 # Función para crear múltiples usuarios
 crear_multiples_usuarios() {
+    # ===================== COLORES FEMENINOS VIBRANTES =====================
+    ROSA_FUERTE="\033[38;5;207m"    # Magenta/rosa principal
+    ROSA_CLARO="\033[38;5;219m"     # Rosa suave
+    MORADO="\033[38;5;213m"        # Morado/fucsia
+    CYAN_CLARO="\033[38;5;156m"     # Verde agua / cian suave
+    LILA="\033[38;5;183m"          # Lila pastel (no lo usé mucho, pero por si acaso)
+    BLANCO="\033[38;5;231m"        # Blanco puro para nombres/claves
+    AMARILLO="\033[93m"            # Amarillo para warnings
+    ROJO="\033[91m"                # Rojo para errores
+    RESET="\033[0m"                # Resetear color
+
     clear
-    echo "===== 🆕 CREAR / ACTUALIZAR MÚLTIPLES USUARIOS SSH ====="
-    echo "📝 Formato: nombre contraseña días móviles"
-    echo "📋 Ejemplo: lucy 123 5 4"
-    echo "✅ Ingresa los usuarios (una línea por usuario)"
-    echo "   Presiona Enter en una línea vacía para terminar."
+    echo -e "${ROSA_FUERTE}===== 🆕 CREAR / ACTUALIZAR MÚLTIPLES USUARIOS SSH =====${RESET}"
+    echo -e "${ROSA_CLARO}📝 Formato: nombre contraseña días móviles${RESET}"
+    echo -e "${MORADO}📋 Ejemplo: lucy 123 5 4${RESET}"
+    echo -e "${ROSA_FUERTE}✅ Ingresa los usuarios (una línea por usuario)${RESET}"
+    echo -e "${ROSA_FUERTE}   Presiona Enter en una línea vacía para terminar.${RESET}\n"
 
     declare -a usuarios_input
     declare -a usuarios_crear
@@ -1607,13 +1618,13 @@ crear_multiples_usuarios() {
     # LECTURA DE INPUT
     # ============================
     while true; do
-        read -r linea || break  # Sale si EOF (Ctrl+D)
+        read -r linea || break
         [[ -z "$linea" ]] && break
         usuarios_input+=("$linea")
     done
 
     if [ ${#usuarios_input[@]} -eq 0 ]; then
-        echo "❌ No se ingresaron usuarios."
+        echo -e "${ROJO}❌ No se ingresaron usuarios.${RESET}"
         read -p "Presiona Enter para continuar..."
         return
     fi
@@ -1622,8 +1633,8 @@ crear_multiples_usuarios() {
     # VALIDAR DUPLICADOS EN INPUT
     # ============================
     if printf '%s\n' "${usuarios_input[@]}" | awk '{print $1}' | sort | uniq -d | grep -q .; then
-        echo "❌ Error: Hay nombres de usuario repetidos en la misma lista."
-        echo "   Corrígelo y vuelve a intentarlo."
+        echo -e "${ROJO}❌ Error: Hay nombres de usuario repetidos en la misma lista.${RESET}"
+        echo -e "${ROJO}   Corrígelo y vuelve a intentarlo.${RESET}"
         read -p "Presiona Enter para continuar..."
         return
     fi
@@ -1655,26 +1666,59 @@ crear_multiples_usuarios() {
     # MOSTRAR ERRORES
     # ============================
     if [ ${#errores[@]} -gt 0 ]; then
-        echo "⚠️ Errores encontrados:"
-        for e in "${errores[@]}"; do echo "   - $e"; done
+        echo -e "${AMARILLO}⚠️ Errores encontrados:${RESET}"
+        for e in "${errores[@]}"; do echo -e "   ${ROJO}- $e${RESET}"; done
         echo ""
-        read -p "¿Continuar solo con los usuarios válidos? (s/n): " r
+        read -p "${AMARILLO}¿Continuar solo con los usuarios válidos? (s/n): ${RESET}" r
         [[ "$r" != "s" && "$r" != "S" ]] && return
         echo ""
     fi
 
     # ============================
-    # RESUMEN ANTES DE EJECUTAR
+    # RESUMEN GENERAL
     # ============================
     total=$(( ${#usuarios_crear[@]} + ${#usuarios_actualizar[@]} ))
-    echo "===== 📋 RESUMEN DE OPERACIÓN ====="
-    echo "Total usuarios a procesar: $total"
-    [ ${#usuarios_crear[@]}     -gt 0 ] && echo "🆕 A crear:     ${#usuarios_crear[@]}"
-    [ ${#usuarios_actualizar[@]} -gt 0 ] && echo "🔄 A actualizar: ${#usuarios_actualizar[@]}"
+    echo -e "${ROSA_FUERTE}===== 📋 RESUMEN DE OPERACIÓN =====${RESET}"
+    echo -e "${ROSA_CLARO}Total usuarios a procesar: $total${RESET}"
+    [ ${#usuarios_crear[@]}     -gt 0 ] && echo -e "${CYAN_CLARO}🆕 A crear:     ${#usuarios_crear[@]}${RESET}"
+    [ ${#usuarios_actualizar[@]} -gt 0 ] && echo -e "${MORADO}🔄 A actualizar: ${#usuarios_actualizar[@]}${RESET}"
     echo ""
 
-    read -p "✅ ¿Confirmar operación? (s/n): " confirmacion
-    [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]] && { echo "Operación cancelada."; read; return; }
+    # ============================
+    # MOSTRAR TABLA DE USUARIOS A CREAR
+    # ============================
+    if [ ${#usuarios_crear[@]} -gt 0 ]; then
+        echo -e "${CYAN_CLARO}===== 📋 USUARIOS A CREAR =====${RESET}"
+        echo -e "${ROSA_CLARO}👤 Usuario    🔑 Clave      ⏳ Días       📱 Móviles${RESET}"
+        echo -e "${ROSA_FUERTE}---------------------------------------------------------------${RESET}"
+        for data in "${usuarios_crear[@]}"; do
+            IFS=':' read -r usuario clave dias moviles <<< "$data"
+            printf "${BLANCO}%-12s${RESET} ${MORADO}%-12s${RESET} ${CYAN_CLARO}%-12s${RESET} ${ROSA_FUERTE}%-12s${RESET}\n" "$usuario" "$clave" "$dias" "$moviles"
+        done
+        echo -e "${ROSA_FUERTE}===============================================================${RESET}"
+        echo ""
+    fi
+
+    # ============================
+    # MOSTRAR TABLA DE USUARIOS A ACTUALIZAR
+    # ============================
+    if [ ${#usuarios_actualizar[@]} -gt 0 ]; then
+        echo -e "${MORADO}===== 🔄 USUARIOS A ACTUALIZAR =====${RESET}"
+        echo -e "${ROSA_CLARO}👤 Usuario    🔑 Clave      ⏳ Días       📱 Móviles${RESET}"
+        echo -e "${ROSA_FUERTE}---------------------------------------------------------------${RESET}"
+        for data in "${usuarios_actualizar[@]}"; do
+            IFS=':' read -r usuario clave dias moviles <<< "$data"
+            printf "${BLANCO}%-12s${RESET} ${MORADO}%-12s${RESET} ${CYAN_CLARO}%-12s${RESET} ${ROSA_FUERTE}%-12s${RESET}\n" "$usuario" "$clave" "$dias" "$moviles"
+        done
+        echo -e "${ROSA_FUERTE}===============================================================${RESET}"
+        echo ""
+    fi
+
+    # ============================
+    # CONFIRMACIÓN FINAL
+    # ============================
+    read -p "${ROSA_FUERTE}✅ ¿Confirmar operación? (s/n): ${RESET}" confirmacion
+    [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]] && { echo -e "${ROJO}Operación cancelada.${RESET}"; read; return; }
 
     count_creados=0
     count_actualizados=0
@@ -1686,12 +1730,12 @@ crear_multiples_usuarios() {
         IFS=':' read -r usuario clave dias moviles <<< "$data"
 
         if ! useradd -M -s /sbin/nologin "$usuario" 2>/dev/null; then
-            echo "❌ Falló creación de $usuario (useradd)"
+            echo -e "${ROJO}❌ Falló creación de $usuario (useradd)${RESET}"
             continue
         fi
 
         if ! echo "$usuario:$clave" | chpasswd 2>/dev/null; then
-            echo "❌ Falló contraseña de $usuario → eliminando usuario"
+            echo -e "${ROJO}❌ Falló contraseña de $usuario → eliminando usuario${RESET}"
             userdel "$usuario" 2>/dev/null
             continue
         fi
@@ -1705,7 +1749,7 @@ crear_multiples_usuarios() {
         echo "$usuario:$clave $fecha_expiracion $dias $moviles $fecha_creacion" >> "$REGISTROS"
         echo "Usuario creado: $usuario ($fecha_creacion)" >> "$HISTORIAL"
 
-        echo "✅ Creado: $usuario"
+        echo -e "${CYAN_CLARO}✅ Creado: $usuario${RESET}"
         ((count_creados++))
     done
 
@@ -1715,7 +1759,7 @@ crear_multiples_usuarios() {
     for data in "${usuarios_actualizar[@]}"; do
         IFS=':' read -r usuario clave dias moviles <<< "$data"
 
-        echo "$usuario:$clave" | chpasswd 2>/dev/null || { echo "❌ Falló actualización contraseña de $usuario"; continue; }
+        echo "$usuario:$clave" | chpasswd 2>/dev/null || { echo -e "${ROJO}❌ Falló actualización contraseña de $usuario${RESET}"; continue; }
 
         fecha_exp=$(date -d "+$((dias + 1)) days" "+%Y-%m-%d")
         chage -E "$fecha_exp" "$usuario" 2>/dev/null
@@ -1723,12 +1767,11 @@ crear_multiples_usuarios() {
         fecha_act=$(date "+%Y-%m-%d %H:%M:%S")
         fecha_expiracion=$(calcular_expiracion "$dias")
 
-        # Reemplazar línea anterior en REGISTROS (más seguro que grep -v)
         sed -i "/^$usuario:/d" "$REGISTROS" 2>/dev/null
         echo "$usuario:$clave $fecha_expiracion $dias $moviles $fecha_act" >> "$REGISTROS"
 
         echo "Usuario actualizado: $usuario ($fecha_act)" >> "$HISTORIAL"
-        echo "🔄 Actualizado: $usuario"
+        echo -e "${MORADO}🔄 Actualizado: $usuario${RESET}"
         ((count_actualizados++))
     done
 
@@ -1736,10 +1779,10 @@ crear_multiples_usuarios() {
     # RESUMEN FINAL
     # ============================
     echo ""
-    echo "===== 📊 RESUMEN FINAL ====="
-    echo "🆕 Usuarios creados:     $count_creados"
-    echo "🔄 Usuarios actualizados: $count_actualizados"
-    echo "============================"
+    echo -e "${ROSA_FUERTE}===== 📊 RESUMEN FINAL =====${RESET}"
+    echo -e "${CYAN_CLARO}🆕 Usuarios creados:     $count_creados${RESET}"
+    echo -e "${MORADO}🔄 Usuarios actualizados: $count_actualizados${RESET}"
+    echo -e "${ROSA_FUERTE}============================${RESET}"
     read -p "Presiona Enter para continuar..."
 }
 
