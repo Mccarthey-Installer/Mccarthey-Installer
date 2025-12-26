@@ -219,11 +219,17 @@ ssh_bot() {
                         CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
                         USERNAME_TELEGRAM=\$(echo \$row | jq -r '.message.from.username')
                         DOCUMENT_ID=$(echo "$row" | jq -r '
-                       .message.document.file_id //
-                       .message.reply_to_message.document.file_id //
-                       .edited_message.document.file_id //
-                       empty
-                     ')
+                        .message.document.file_id //
+                        .message.reply_to_message.document.file_id //
+                        .edited_message.document.file_id //
+                        .edited_message.reply_to_message.document.file_id //
+                        empty
+                      ')
+                       
+                       
+                       
+                       
+                     
 
                         if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                             if [[ \$EXPECTING_BACKUP -eq 1 ]]; then
