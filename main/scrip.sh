@@ -213,18 +213,12 @@ ssh_bot() {
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
                     for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
-                        echo "$row" >> /tmp/debug_updates.json
                         OFFSET=\$(echo \$row | jq '.update_id')
                         OFFSET=\$((OFFSET+1))
                         MSG_TEXT=\$(echo \$row | jq -r '.message.text')
                         CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
                         USERNAME_TELEGRAM=\$(echo \$row | jq -r '.message.from.username')
                         DOCUMENT_ID=\$(echo \$row | jq -r '.message.document.file_id // empty')
-                       
-                       
-                       
-                       
-                     
 
                         if [[ \"\$CHAT_ID\" == \"$USER_ID\" ]]; then
                             if [[ \$EXPECTING_BACKUP -eq 1 ]]; then
