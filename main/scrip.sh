@@ -219,13 +219,7 @@ ssh_bot() {
                         MSG_TEXT=\$(echo \$row | jq -r '.message.text')
                         CHAT_ID=\$(echo \$row | jq -r '.message.chat.id')
                         USERNAME_TELEGRAM=\$(echo \$row | jq -r '.message.from.username')
-                        DOCUMENT_ID=$(echo "$row" | jq -r '
-                        .message.document.file_id //
-                        .message.reply_to_message.document.file_id //
-                        .edited_message.document.file_id //
-                        .edited_message.reply_to_message.document.file_id //
-                        empty
-                      ')
+                        DOCUMENT_ID=\$(echo \$row | jq -r '.message.document.file_id // empty')
                        
                        
                        
