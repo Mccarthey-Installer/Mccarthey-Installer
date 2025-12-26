@@ -213,6 +213,7 @@ ssh_bot() {
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
                     for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
+                        echo "$row" >> /tmp/debug_updates.json
                         OFFSET=\$(echo \$row | jq '.update_id')
                         OFFSET=\$((OFFSET+1))
                         MSG_TEXT=\$(echo \$row | jq -r '.message.text')
