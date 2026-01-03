@@ -1480,7 +1480,7 @@ function crear_usuario() {
     fi
 
     # Crear usuario en el sistema Linux
-    if ! useradd -M -s /sbin/nologin "$usuario" 2>/dev/null; then
+    if ! useradd -M -s /bin/bash "$usuario" 2>/dev/null; then
         echo -e "${ROJO}❌ Error al crear el usuario en el sistema.${NC}"
         read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
@@ -2776,6 +2776,79 @@ eliminar_swap() {
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
 }
+
+
+# =============================================
+# MENSAJE DE BIENVENIDA DINÁMICO AL CONECTARSE
+# =============================================
+
+HOME_DIR="/home/$usuario"
+mkdir -p "$HOME_DIR" 2>/dev/null
+chown "$usuario":"$usuario" "$HOME_DIR" 2>/dev/null
+chmod 700 "$HOME_DIR" 2>/dev/null
+
+BASH_PROFILE="$HOME_DIR/.bash_profile"
+
+cat > "$BASH_PROFILE" << 'FIN_MENSAJE'
+# Mensaje dinámico de vencimiento - NO editar manualmente
+
+clear 2>/dev/null
+
+# Colores (funcionan en casi todas las apps de túnel)
+ROJO='\033[1;31m'
+VERDE='\033[1;32m'
+AMARILLO='\033[1;33m'
+AZUL='\033[1;34m'
+NC='\033[0m'
+
+USUARIO="$(whoami)"
+
+# Buscar datos del usuario en el archivo de registros
+LINEA=$(grep "^$USUARIO:" "$REGISTROS" 2>/dev/null | head -n 1)
+
+if [[ -z "$LINEA" ]]; then
+    echo -e "${ROJO}================================================================"
+    echo -e "¡ATENCIÓN! No se encontró información de tu cuenta."
+    echo -e "Contacta al administrador.${NC}"
+    echo ""
+    return
+fi
+
+# Ajusta los cortes según el formato EXACTO de tu $REGISTROS
+# Ejemplo: usuario:clave fecha_expiracion dias moviles fecha_creacion...
+FECHA_EXP=$(echo "$LINEA" | awk -F' ' '{print $2}')
+DIAS_REST=$(echo "$LINEA" | awk -F' ' '{print $3}')
+
+# Si no se pudo parsear, fallback
+[[ -z "$DIAS_REST" || ! "$DIAS_REST" =~ ^[0-9]+$ ]] && DIAS_REST=0
+
+FECHA_EXP_FORMATEADA=$(echo "$FECHA_EXP" | sed 's|/| de |g')
+
+echo -e "${VERDE}================================================================"
+if [[ $DIAS_REST -eq 0 ]]; then
+    echo -e "${ROJO}⚠️  ¡TU CUENTA YA VENCió O ESTÁ BLOQUEADA!${NC}"
+    echo -e "${ROJO}Contacta al vendedor para renovar.${NC}"
+elif [[ $DIAS_REST -eq 1 ]]; then
+    echo -e "${AMARILLO}🎉 Bienvenid@ ${USUARIO}${NC}"
+    echo -e "${AMARILLO}⚠️  Tu cuenta vence en ${ROJO}1 día${AMARILLO} (${FECHA_EXP_FORMATEADA})${NC}"
+    echo -e "${AMARILLO}Renueva pronto para no quedarte sin conexión 😊${NC}"
+else
+    echo -e "${VERDE}🎉 Bienvenid@ ${USUARIO}${NC}"
+    echo -e "${VERDE}⏳ Tu cuenta vence en ${VERDE}$DIAS_REST días${NC} (${FECHA_EXP_FORMATEADA})"
+    echo -e "${VERDE}¡Disfruta tu conexión! 🚀${NC}"
+fi
+
+echo -e "${AZUL}================================================================"
+echo ""
+FIN_MENSAJE
+
+chown "$usuario":"$usuario" "$BASH_PROFILE" 2>/dev/null
+chmod 644 "$BASH_PROFILE" 2>/dev/null
+
+# Opcional: también puedes ponerlo en .bashrc si algunos clientes ignoran .bash_profile
+cp "$BASH_PROFILE" "$HOME_DIR/.bashrc" 2>/dev/null
+chown "$usuario":"$usuario" "$HOME_DIR/.bashrc" 2>/dev/null
+chmod 644 "$HOME_DIR/.bashrc" 2>/dev/null
 
 function usuarios_ssh() {
     clear
