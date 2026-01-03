@@ -1480,7 +1480,7 @@ function crear_usuario() {
     fi
 
     # Crear usuario en el sistema Linux
-    if ! useradd -M -s /bin/bash "$usuario" 2>/dev/null; then
+    if ! useradd -M -s /sbin/nologin "$usuario" 2>/dev/null; then
         echo -e "${ROJO}❌ Error al crear el usuario en el sistema.${NC}"
         read -p "$(echo -e ${CIAN}Presiona Enter para continuar...${NC})"
         return
@@ -2776,77 +2776,6 @@ eliminar_swap() {
     read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
     activar_desactivar_swap
 }
-
-
-# =============================================
-# Crea el mensaje dinámico para un usuario específico (ejecuta por cada uno o intégralo en crear_usuario)
-# Ejemplo para lucy:
-USUARIO="lucy"
-REGISTROS="/diana/reg.txt"
-
-HOME_DIR="/home/$USUARIO"
-mkdir -p "$HOME_DIR" 2>/dev/null
-chown "$USUARIO":"$USUARIO" "$HOME_DIR" 2>/dev/null
-chmod 700 "$HOME_DIR" 2>/dev/null
-
-BASH_PROFILE="$HOME_DIR/.bash_profile"
-
-cat > "$BASH_PROFILE" << 'FIN'
-# Mensaje de bienvenida dinámico - generado automáticamente
-
-clear 2>/dev/null
-
-ROJO='\033[1;31m'
-VERDE='\033[1;32m'
-AMARILLO='\033[1;33m'
-AZUL='\033[1;34m'
-NC='\033[0m'
-
-USUARIO="$(whoami)"
-
-# Extraer línea del usuario
-LINEA=$(grep "^${USUARIO}:" "$REGISTROS" 2>/dev/null | head -n 1)
-
-if [[ -z "$LINEA" ]]; then
-    echo -e "${ROJO}================================================================"
-    echo -e "¡ATENCIÓN! No se encontró tu cuenta en los registros."
-    echo -e "Contacta al administrador.${NC}"
-    echo ""
-    sleep 3
-    exit 0
-fi
-
-# Parseo correcto según tu formato
-FECHA_EXP=$(echo "$LINEA" | awk '{print $2}')
-DIAS_REST=$(echo "$LINEA" | awk '{print $3}')
-
-# Fallback si algo falla
-[[ -z "$DIAS_REST" || ! "$DIAS_REST" =~ ^[0-9]+$ ]] && DIAS_REST=0
-
-echo -e "${VERDE}================================================================"
-if [[ $DIAS_REST -eq 0 ]]; then
-    echo -e "${ROJO}⚠️ ¡TU CUENTA YA VENCió O ESTÁ BLOQUEADA!${NC}"
-    echo -e "${ROJO}Contacta al vendedor para renovar.${NC}"
-elif [[ $DIAS_REST -eq 1 ]]; then
-    echo -e "${AMARILLO}🎉 Bienvenid@ ${USUARIO}${NC}"
-    echo -e "${AMARILLO}⚠️ Tu cuenta vence en ${ROJO}1 día${AMARILLO} (${FECHA_EXP})${NC}"
-    echo -e "${AMARILLO}Renueva pronto 😊${NC}"
-else
-    echo -e "${VERDE}🎉 Bienvenid@ ${USUARIO}${NC}"
-    echo -e "${VERDE}⏳ Tu cuenta vence en ${VERDE}$DIAS_REST días${NC} (${FECHA_EXP})"
-    echo -e "${VERDE}¡Disfruta tu conexión! 🚀${NC}"
-fi
-echo -e "${AZUL}================================================================"
-echo ""
-FIN
-
-chown "$USUARIO":"$USUARIO" "$BASH_PROFILE" 2>/dev/null
-chmod 644 "$BASH_PROFILE" 2>/dev/null
-
-# Copia también a .bashrc por si la app lo prioriza
-cp "$BASH_PROFILE" "$HOME_DIR/.bashrc" 2>/dev/null
-chown "$USUARIO":"$USUARIO" "$HOME_DIR/.bashrc" 2>/dev/null
-chmod 644 "$HOME_DIR/.bashrc" 2>/dev/null
 
 function usuarios_ssh() {
     clear
