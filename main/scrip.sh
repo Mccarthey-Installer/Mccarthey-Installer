@@ -1097,8 +1097,63 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
     fi  
 
     # ================= Uptime =================    
-    UPTIME=$(uptime -p | sed 's/up //')  
-    UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${UPTIME}${NC}"  
+ uptime_seconds=$(cut -d. -f1 /proc/uptime)
+
+if (( uptime_seconds < 3600 )); then
+    minutos=$(( uptime_seconds / 60 ))
+    [[ $minutos -lt 1 ]] && minutos=0
+
+    if (( minutos == 1 )); then
+        texto="1 minuto"
+    else
+        texto="${minutos} minutos"
+    fi
+
+elif (( uptime_seconds < 86400 )); then
+    horas=$(( uptime_seconds / 3600 ))
+    minutos_restantes=$(( (uptime_seconds % 3600) / 60 ))
+
+    hora_texto=$([[ $horas == 1 ]] && echo "1 hora" || echo "${horas} horas")
+
+    if (( minutos_restantes == 0 )); then
+        texto="${hora_texto}"
+    elif (( minutos_restantes == 1 )); then
+        texto="${hora_texto} 1 minuto"
+    else
+        texto="${hora_texto} ${minutos_restantes} minutos"
+    fi
+
+elif (( uptime_seconds < 2592000 )); then
+    dias=$(( uptime_seconds / 86400 ))
+    horas_restantes=$(( (uptime_seconds % 86400) / 3600 ))
+
+    dia_texto=$([[ $dias == 1 ]] && echo "1 día" || echo "${dias} días")
+
+    if (( horas_restantes == 0 )); then
+        texto="${dia_texto}"
+    elif (( horas_restantes == 1 )); then
+        texto="${dia_texto} 1 hora"
+    else
+        texto="${dia_texto} ${horas_restantes} horas"
+    fi
+
+else
+    meses=$(( uptime_seconds / 2592000 ))
+    dias=$(( (uptime_seconds % 2592000) / 86400 ))
+
+    mes_texto=$([[ $meses == 1 ]] && echo "1 mes" || echo "${meses} meses")
+
+    if (( dias == 0 )); then
+        texto="${mes_texto}"
+    elif (( dias == 1 )); then
+        texto="${mes_texto} 1 día"
+    else
+        texto="${mes_texto} ${dias} días"
+    fi
+fi
+
+UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${texto}${NC}"
+
 
     # ================= Load average =================
 LOAD_RAW=$(uptime | awk -F'load average:' '{print $2}' | xargs)
@@ -1172,7 +1227,7 @@ LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 🌍 IP:${AMARILLO} ${IP_PUBLICA}${NC}          ${BLANCO} 🕒 FECHA:${AMARILLO} ${FECHA_ACTUAL}${NC}"
     echo -e "${BLANCO} 🖼️ SO:${AMARILLO}${SO_NAME}${NC}        ${BLANCO}📡 TRANSFERENCIA TOTAL:${AMARILLO} ${TRANSFER_DISPLAY}${NC}"
-    echo -e "${MAGENTA} 🕓 UPTIME:${AMARILLO} ${UPTIME}${NC}${BLANCO}.${NC}"
+    echo -e "${UPTIME_COLOR}${BLANCO}.${NC}"
     echo -e "${MAGENTA} 📈 Load average:${NC} ${LOAD_AVG}"
     echo -e "${BLANCO} ${ONLINE_STATUS}    👥️ TOTAL:${AMARILLO}${TOTAL_USUARIOS}${NC}    ${CIAN}🔴 Inactivos:${AMARILLO} ${inactivos}${NC}"
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
