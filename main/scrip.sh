@@ -1152,7 +1152,7 @@ else
     fi
 fi
 
-UPTIME_COLOR="${MAGENTA}🕓 UPTIME: ${AMARILLO}${texto}${NC}"
+UPTIME_COLOR="${MAGENTA} 🕓 UPTIME: ${AMARILLO}${texto}${NC}"
 
 
     # ================= Load average =================
