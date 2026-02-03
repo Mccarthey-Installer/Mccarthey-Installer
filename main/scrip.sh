@@ -350,6 +350,7 @@ ssh_bot() {
 👤 *Usuario*: \\\`\${USERNAME}\\\`
 🔑 *Clave*: \\\`\${PASSWORD}\\\`
 \\\`📅 Expira: \${fecha_expiracion}\\\`
+🧔 *Usuario*: \\\`\${USERNAME}\\\`
 ⏳  *\${DIAS_TEXTO}*: \\\`\${DAYS}\\\`
 📱 *Límite móviles*: \\\`\${MOBILES}\\\`
 📅 *Creado*: \\\`\${fecha_creacion}\\\`
@@ -1597,6 +1598,7 @@ function crear_usuario() {
     echo -e "${AZUL}👤 Usuario: ${AMARILLO}$usuario${NC}"
     echo -e "${AZUL}🔑 Clave: ${AMARILLO}$clave${NC}"
     echo -e "${AZUL}📅 Expira: ${AMARILLO}$fecha_expiracion${NC}"
+    echo -e "${AZUL}🧔 Usuario: ${AMARILLO}$usuario${NC}"
     echo -e "${AZUL}${texto_dia}${NC}"
     echo -e "${AZUL}📱 Límite móviles: ${AMARILLO}$moviles${NC}"
     echo -e "${AZUL}📅 Creado: ${AMARILLO}$fecha_creacion${NC}"
