@@ -3040,7 +3040,7 @@ while true; do
     echo -e "${AMARILLO_SUAVE}➜ 0. Bai baii~                         🚪😘${NC}"
     echo
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
-    echo
+    
 }
   
   
