@@ -3018,26 +3018,29 @@ ${LILA}-------------------------${NC}"
 if [[ -t 0 ]]; then  
 while true; do  
     clear  
-    barra_sistema  
-    echo  
-    echo -e "${VIOLETA}======🥵😺 PANEL DE USUARIOS VPN/SSH ======${NC}"  
-    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
-    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"  
-    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"  
-    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"  
-    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"  
-    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"  
-    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"  
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"  
-    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"  
-    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"  
-    echo -e "${AMARILLO_SUAVE}15. 👁️‍🗨️ Información detallada de usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"  
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"  
+    barra_sistema() {
+    echo
+    echo -e "${VIOLETA}🌸✨═══ 🐾 PANELCITO VPN | SSH UWU ═══✨🌸${NC}"
+    echo
+    echo -e "${AMARILLO_SUAVE}➜ 1. Crear usuario nuevo               🆕💕${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 2. Ver listita de usuarios           📋✨${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 3. Eliminar usuario                  🗑️😿${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 4. Info chula del servidor           📊🌟${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 5. Quién anda conectado?             🟢👀${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 6. Bloq / Desbloq corazoncito        🔒💔🫶${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 7. Multi usuarios rápido             🆕🆕${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 8. Mini mini registro                📋🌸${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 9. Limitador ON/OFF                  ⚙️✨${NC}"
+    echo -e "${AMARILLO_SUAVE}➜10. Banner cute SSH                   🎨💖${NC}"
+    echo -e "${AMARILLO_SUAVE}➜11. Contador online active            🔄🥰${NC}"
+    echo -e "${AMARILLO_SUAVE}➜12. Bot SSH kawaii                    🤖🐱${NC}"
+    echo -e "${AMARILLO_SUAVE}➜13. Renovar vidita                    🔄🌷${NC}"
+    echo -e "${AMARILLO_SUAVE}➜14. Swap ON/OFF                       💾💤${NC}"
+    echo -e "${AMARILLO_SUAVE}➜15. Info detalladita                  👁️‍🗨️🩷${NC}"
+    echo -e "${AMARILLO_SUAVE}➜ 0. Bai baii~                         🚪😘${NC}"
+    echo
+    echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
+    
   
   
     # == MENU 🚫  
