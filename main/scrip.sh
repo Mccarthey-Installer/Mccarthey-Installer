@@ -3018,7 +3018,7 @@ ${LILA}-------------------------${NC}"
 if [[ -t 0 ]]; then  
 while true; do  
     clear  
-    barra_sistema() {
+    barra_sistema
     echo
     echo -e "${VIOLETA}🌸✨═══ 🐾 PANELCITO VPN | SSH UWU ═══✨🌸${NC}"
     echo
@@ -3041,9 +3041,6 @@ while true; do
     echo
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
     
-  }  # <<< AQUÍ se cierra la función
-
-    barra_sistema   # <<< aquí la llamás
   
     # == MENU 🚫  
     while true; do  
