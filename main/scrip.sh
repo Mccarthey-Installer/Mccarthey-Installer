@@ -3041,7 +3041,9 @@ while true; do
     echo
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
     
-  
+  }  # <<< AQUÍ se cierra la función
+
+    barra_sistema   # <<< aquí la llamás
   
     # == MENU 🚫  
     while true; do  
