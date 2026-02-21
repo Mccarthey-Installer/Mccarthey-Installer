@@ -3019,6 +3019,7 @@ if [[ -t 0 ]]; then
 while true; do  
     clear  
     barra_sistema
+    echo
              echo -e "${VIOLETA}🌸✨═══ 🐾 PANELCITO VPN | SSH UWU ═══✨🌸${NC}"
     
     echo -e "${VERDE}➜ 1.${NC} ${AMARILLO_SUAVE}Crear usuario nuevo              🆕${NC}"
