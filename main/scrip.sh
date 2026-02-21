@@ -3019,27 +3019,27 @@ if [[ -t 0 ]]; then
 while true; do  
     clear  
     barra_sistema
-        echo -e "${VIOLETA}🌸✨═══ 🐾 PANELCITO VPN | SSH UWU ═══✨🌸${NC}"
+             echo -e "${VIOLETA}🌸✨═══ 🐾 PANELCITO VPN | SSH UWU ═══✨🌸${NC}"
     
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}1. Crear usuario nuevo               🆕💕${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}2. Ver listita de usuarios           📋✨${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}3. Eliminar usuario                  🗑️😿${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}4. Info chula del servidor           📊🌟${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}5. Quién anda conectado?             🟢👀${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}6. Bloq / Desbloq corazoncito        🔒💔🫶${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}7. Multi usuarios rápido             🆕🆕${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}8. Mini mini registro                📋🌸${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}9. Limitador ON/OFF                  ⚙️✨${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}10. Banner cute SSH                   🎨💖${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}11. Contador online active            🔄🥰${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}12. Bot SSH kawaii                    🤖🐱${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}13. Renovar vidita                    🔄🌷${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}14. Swap ON/OFF                       💾💤${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}15. Info detalladita                  👁️‍🗨️🩷${NC}"
-    echo -e "${VERDE}➜ ${NC}${AMARILLO_SUAVE}0. Bai baii~                         🚪😘${NC}"
+    echo -e "${VERDE}➜ 1.${NC} ${AMARILLO_SUAVE}Crear usuario nuevo              🆕${NC}"
+    echo -e "${VERDE}➜ 2.${NC} ${AMARILLO_SUAVE}Ver listita de usuarios          📋${NC}"
+    echo -e "${VERDE}➜ 3.${NC} ${AMARILLO_SUAVE}Eliminar usuario                 🗑️${NC}"
+    echo -e "${VERDE}➜ 4.${NC} ${AMARILLO_SUAVE}Info chula del servidor          📊${NC}"
+    echo -e "${VERDE}➜ 5.${NC} ${AMARILLO_SUAVE}Quién anda conectado?            🟢${NC}"
+    echo -e "${VERDE}➜ 6.${NC} ${AMARILLO_SUAVE}Bloq / Desbloq corazoncito       🔒${NC}"
+    echo -e "${VERDE}➜ 7.${NC} ${AMARILLO_SUAVE}Multi usuarios rápido            🆕${NC}"
+    echo -e "${VERDE}➜ 8.${NC} ${AMARILLO_SUAVE}Mini mini registro               📜${NC}"
+    echo -e "${VERDE}➜ 9.${NC} ${AMARILLO_SUAVE}Limitador ON/OFF                 ⚙️${NC}"
+    echo -e "${VERDE}➜10.${NC} ${AMARILLO_SUAVE}Banner cute SSH                  🎨${NC}"
+    echo -e "${VERDE}➜11.${NC} ${AMARILLO_SUAVE}Contador online active           🔄${NC}"
+    echo -e "${VERDE}➜12.${NC} ${AMARILLO_SUAVE}Bot SSH kawaii                   🤖${NC}"
+    echo -e "${VERDE}➜13.${NC} ${AMARILLO_SUAVE}Renovar vidita                   🔄${NC}"
+    echo -e "${VERDE}➜14.${NC} ${AMARILLO_SUAVE}Swap ON/OFF                      💾${NC}"
+    echo -e "${VERDE}➜15.${NC} ${AMARILLO_SUAVE}Info detalladita                 👁️${NC}"
+    echo -e "${VERDE}➜ 0.${NC} ${AMARILLO_SUAVE}Bai baii~                        🚪${NC}"
     
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
-    
+   
   
     # == MENU 🚫  
     while true; do  
