@@ -242,29 +242,21 @@ ssh_bot() {
                         local mensaje
 
                         if [[ "$estado_nuevo" == "excedido" ]]; then
-                            mensaje=$(cat <<EOF
-⚠️ *OYE 😱 ${USER_NAME^^} HAY MAÑOSOS ACTIVOS* 🚨
-👤 *Usuario*: \`$usuario\`
-📱 *Problema*: Ha superado el límite de conexiones permitidas.
-✅ *Límite*: \`$moviles\` móvil(es)
-🚫 *Conexiones actuales*: \`$conexiones\`
-⏰ *Fecha y hora*: \`$ahora\`
-
-🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡
-EOF
-)
+                            mensaje=$'⚠️ *OYE 😱 '"${USER_NAME^^}"$' HAY MAÑOSOS ACTIVOS* 🚨\n'\
+$'👤 *Usuario*: `'"$usuario"'`\n'\
+$'📱 *Problema*: Ha superado el límite de conexiones permitidas.\n'\
+$'✅ *Límite*: `'"$moviles"'` móvil(es)\n'\
+$'🚫 *Conexiones actuales*: `'"$conexiones"'`\n'\
+$'⏰ *Fecha y hora*: `'"$ahora"'`\n\n'\
+$'🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡'
                         else
-                            mensaje=$(cat <<EOF
-✅ *¡Hola $USER_NAME!*
-👤 *Usuario*: \`$usuario\`
-📱 *Estado*: Ha vuelto a su límite normal de conexiones.
-✅ *Límite*: \`$moviles\` móvil(es)
-🌟 *Conexiones actuales*: \`$conexiones\`
-⏰ *Fecha y hora*: \`$ahora\`
-
-🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.
-EOF
-)
+                            mensaje=$'✅ *¡Hola '"$USER_NAME"'!*\n'\
+$'👤 *Usuario*: `'"$usuario"'`\n'\
+$'📱 *Estado*: Ha vuelto a su límite normal de conexiones.\n'\
+$'✅ *Límite*: `'"$moviles"'` móvil(es)\n'\
+$'🌟 *Conexiones actuales*: `'"$conexiones"'`\n'\
+$'⏰ *Fecha y hora*: `'"$ahora"'`\n\n'\
+$'🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.'
                         fi
 
                         curl -s -X POST "$URL/sendMessage" \
