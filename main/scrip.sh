@@ -231,24 +231,23 @@ ssh_bot() {
 
                     if [[ \"\$estado_nuevo\" != \"\$estado_previo\" ]]; then
                         if [[ \"\$estado_nuevo\" == \"excedido\" ]]; then
-                            mensaje=\"⚠️ OYE 😱 \${USER_NAME^^} HAY MAÑOSOS ACTIVOS 🚨
-👤 Usuario: \$usuario
-📱 Problema: Ha superado el límite de conexiones permitidas.
-✅ Límite: \$moviles móvil(es)
-🚫 Conexiones actuales: \$conexiones
-⏰ Fecha y hora: \$ahora
+                            ALERTA=\"⚠️ *OYE 😱 ${USER_NAME} HAY MAÑOSOS ACTIVOS* 🚨
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Problema*: Ha superado el límite de conexiones permitidas.
+✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
+🚫 *Conexiones actuales*: \\\`\${conexiones}\\\`
+⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
+
 🔐 Acción recomendada: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡
-Traducción en barrio:
-👉 El maje “\$usuario” tenía permiso para \$moviles, pero anda con \$conexiones conectados. Alguien anda regalando la cuenta o se la están ordeñando.\"
+👉 El maje \\\`\${usuario}\\\` tenía permiso para \$moviles, pero anda con \$conexiones conectados. Alguien anda regalando la cuenta o se la están ordeñando.\"
                         else
-                            mensaje=\"✅ ¡Hola \$USER_NAME ya le di Jake 😈!
-👤 Usuario: \$usuario
-📱 Estado: Ha vuelto a su límite normal de conexiones.
-✅ Límite: \$moviles móvil(es)
-🌟 Conexiones actuales: \$conexiones
-⏰ Fecha y hora: \$ahora
-🎉 Buen trabajo: El usuario ya está dentro de los parámetros permitidos.
-Traducción en barrio:
+                            mensaje=\"✅ ¡Hola ${USER_NAME} ya le di Jake 😈!
+👤 *Usuario*: \\\`\${usuario}\\\`
+📱 *Estado*: Ha vuelto a su límite normal de conexiones.
+✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
+🌟 *Conexiones actuales*: \\\`\${conexiones}\\\`
+⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
+
 👉 El maje ya dejó de pasarse de vivo, cerró sesiones o lo botaron, y quedó cabal en lo permitido.\"
                         fi
                         curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\"$USER_ID\" -d text=\"\$mensaje\" >/dev/null
