@@ -211,7 +211,7 @@ ssh_bot() {
                     echo \$dias_restantes
                 }
                 
-                chequear_y_notificar() {
+chequear_y_notificar() {
                     local usuario="$1"
                     local linea
                     linea=$(grep "^$usuario:" "$REGISTROS")
@@ -242,23 +242,29 @@ ssh_bot() {
                         local mensaje
 
                         if [[ "$estado_nuevo" == "excedido" ]]; then
-                            mensaje="⚠️ *OYE 😱 ${USER_NAME^^} HAY MAÑOSOS ACTIVOS* 🚨
+                            mensaje=$(cat <<EOF
+⚠️ *OYE 😱 ${USER_NAME^^} HAY MAÑOSOS ACTIVOS* 🚨
 👤 *Usuario*: \`$usuario\`
 📱 *Problema*: Ha superado el límite de conexiones permitidas.
 ✅ *Límite*: \`$moviles\` móvil(es)
 🚫 *Conexiones actuales*: \`$conexiones\`
 ⏰ *Fecha y hora*: \`$ahora\`
 
-🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡"
+🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡
+EOF
+)
                         else
-                            mensaje="✅ *¡Hola $USER_NAME!*
+                            mensaje=$(cat <<EOF
+✅ *¡Hola $USER_NAME!*
 👤 *Usuario*: \`$usuario\`
 📱 *Estado*: Ha vuelto a su límite normal de conexiones.
 ✅ *Límite*: \`$moviles\` móvil(es)
 🌟 *Conexiones actuales*: \`$conexiones\`
 ⏰ *Fecha y hora*: \`$ahora\`
 
-🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos."
+🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.
+EOF
+)
                         fi
 
                         curl -s -X POST "$URL/sendMessage" \
