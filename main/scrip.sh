@@ -116,6 +116,7 @@ fi
 # ================================
 systemctl restart sshd && echo "SSH configurado correctamente."
     
+                                        
 ssh_bot() {
     # Asegurar que jq esté instalado
     if ! command -v jq &>/dev/null; then
@@ -164,7 +165,6 @@ ssh_bot() {
                 PASSWORD=''
                 DAYS=''
                 MOBILES=''
-                LAST_CHECK=0  # Nueva variable para chequeo periódico
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
@@ -208,51 +208,6 @@ ssh_bot() {
                     fi
 
                     echo \$dias_restantes
-                }
-
-                # Nueva función para chequear y notificar excedentes
-                chequear_y_notificar() {
-                    local usuario=\"\$1\"
-                    local linea=\$(grep \"^\$usuario:\" \"\$REGISTROS\")
-                    if [[ -z \"\$linea\" ]]; then return; fi
-                    local moviles=\$(echo \"\$linea\" | awk '{print \$4}')
-                    if [[ -z \"\$moviles\" || \"\$moviles\" -eq 0 ]]; then return; fi
-
-                    local conexiones=\$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\")
-                    local ahora=\$(date +\"%Y-%m-%d %H:%M\")
-                    local estado_file=\"/tmp/estado_\${usuario}.txt\"
-                    local estado_previo=\$(cat \"\$estado_file\" 2>/dev/null || echo \"normal\")
-
-                    if [[ \"\$conexiones\" -gt \"\$moviles\" ]]; then
-                        estado_nuevo=\"excedido\"
-                    else
-                        estado_nuevo=\"normal\"
-                    fi
-
-                    if [[ \"\$estado_nuevo\" != \"\$estado_previo\" ]]; then
-                        if [[ \"\$estado_nuevo\" == \"excedido\" ]]; then
-                            ALERTA=\"⚠️ *OYE 😱 ${USER_NAME} HAY MAÑOSOS ACTIVOS* 🚨
-👤 *Usuario*: \\\`\${usuario}\\\`
-📱 *Problema*: Ha superado el límite de conexiones permitidas.
-✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
-🚫 *Conexiones actuales*: \\\`\${conexiones}\\\`
-⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
-
-🔐 Acción recomendada: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡
-👉 El maje \\\`\${usuario}\\\` tenía permiso para \$moviles, pero anda con \$conexiones conectados. Alguien anda regalando la cuenta o se la están ordeñando.\"
-                        else
-                            mensaje=\"✅ ¡Hola ${USER_NAME} ya le di Jake 😈!
-👤 *Usuario*: \\\`\${usuario}\\\`
-📱 *Estado*: Ha vuelto a su límite normal de conexiones.
-✅ *Límite*: \\\`\${moviles}\\\` móvil(es)
-🌟 *Conexiones actuales*: \\\`\${conexiones}\\\`
-⏰ *Fecha y hora*: \\\`\${fecha_hora}\\\`
-
-👉 El maje ya dejó de pasarse de vivo, cerró sesiones o lo botaron, y quedó cabal en lo permitido.\"
-                        fi
-                        curl -s -X POST \"\$URL/sendMessage\" -d chat_id=\"$USER_ID\" -d text=\"\$mensaje\" >/dev/null
-                        echo \"\$estado_nuevo\" > \"\$estado_file\"
-                    fi
                 }
 
                 while true; do
@@ -978,18 +933,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                             fi
                         fi
                     done
-
-                    # Chequeo periódico de conexiones (cada 60 segundos)
-                    current_time=\$(date +%s)
-                    if [[ \$((current_time - LAST_CHECK)) -ge 60 ]]; then
-                        LAST_CHECK=\$current_time
-                        if [[ -f \"\$REGISTROS\" && -s \"\$REGISTROS\" ]]; then
-                            while IFS=' ' read -r user_data _; do
-                                usuario=\${user_data%%:*}
-                                chequear_y_notificar \"\$usuario\"
-                            done < \"\$REGISTROS\"
-                        fi
-                    fi
                 done
             " >/dev/null 2>&1 &
             echo $! > "$PIDFILE"
@@ -1012,7 +955,7 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
             echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
             ;;
     esac
-}
+}              
 
     
     function barra_sistema() {  
@@ -3075,27 +3018,30 @@ ${LILA}-------------------------${NC}"
 if [[ -t 0 ]]; then  
 while true; do  
     clear  
-    barra_sistema  
-    echo  
-    echo -e "${VIOLETA}======🥵😺 PANEL DE USUARIOS VPN/SSH ======${NC}"  
-    echo -e "${AMARILLO_SUAVE}1. 🆕 Crear usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}2. 📋 Ver registros${NC}"  
-    echo -e "${AMARILLO_SUAVE}3. 🗑️ Eliminar usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}4. 📊 Información${NC}"  
-    echo -e "${AMARILLO_SUAVE}5. 🟢 Verificar usuarios online${NC}"  
-    echo -e "${AMARILLO_SUAVE}6. 🔒 Bloquear/Desbloquear usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}7. 🆕 Crear múltiples usuarios${NC}"  
-    echo -e "${AMARILLO_SUAVE}8. 📋 Mini registro${NC}"  
-    echo -e "${AMARILLO_SUAVE}9. ⚙️ Activar/Desactivar limitador${NC}"  
-    echo -e "${AMARILLO_SUAVE}10. 🎨 Configurar banner SSH${NC}"  
-    echo -e "${AMARILLO_SUAVE}11. 🔄 Activar/Desactivar contador online${NC}"  
-    echo -e "${AMARILLO_SUAVE}12. 🤖 SSH BOT${NC}"  
-    echo -e "${AMARILLO_SUAVE}13. 🔄 Renovar usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}14. 💾 Activar/Desactivar Swap${NC}"  
-    echo -e "${AMARILLO_SUAVE}15. 👁️‍🗨️ Información detallada de usuario${NC}"  
-    echo -e "${AMARILLO_SUAVE}0. 🚪 Salir${NC}"  
-    echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"  
-  
+    barra_sistema
+    echo
+             echo -e "${VIOLETA}🌸✨═══ 🐾 PANELCITO VPN | SSH UWU ═══✨🌸${NC}"
+    
+    echo -e "${ROJO}➜ ${VERDE}1.${NC} ${AMARILLO_SUAVE}🆕 Crear usuario${NC}"
+    echo -e "${ROJO}➜ ${VERDE}2.${NC} ${AMARILLO_SUAVE}📋 Ver registros${NC}"
+    echo -e "${ROJO}➜ ${VERDE}3.${NC} ${AMARILLO_SUAVE}🗑️ Eliminar usuario${NC}"
+    echo -e "${ROJO}➜ ${VERDE}4.${NC} ${AMARILLO_SUAVE}📊 Información${NC}"
+    echo -e "${ROJO}➜ ${VERDE}5.${NC} ${AMARILLO_SUAVE}🟢 Verificar usuarios online${NC}"
+    echo -e "${ROJO}➜ ${VERDE}6.${NC} ${AMARILLO_SUAVE}🔒 Bloquear/Desbloquear usuario${NC}"
+    echo -e "${ROJO}➜ ${VERDE}7.${NC} ${AMARILLO_SUAVE}🆕 Crear múltiples usuarios${NC}"
+    echo -e "${ROJO}➜ ${VERDE}8.${NC} ${AMARILLO_SUAVE}📋 Mini registro${NC}"
+    echo -e "${ROJO}➜ ${VERDE}9.${NC} ${AMARILLO_SUAVE}⚙️ Activar/Desactivar limitador${NC}"
+    echo -e "${ROJO}➜ ${VERDE}10.${NC} ${AMARILLO_SUAVE}🎨 Configurar banner SSH${NC}"
+    echo -e "${ROJO}➜ ${VERDE}11.${NC} ${AMARILLO_SUAVE}🔄 Activar/Desactivar contador online${NC}"
+    echo -e "${ROJO}➜ ${VERDE}12.${NC} ${AMARILLO_SUAVE}🛬 SSH BOT${NC}"
+    echo -e "${ROJO}➜ ${VERDE}13.${NC} ${AMARILLO_SUAVE}🔄 Renovar usuario${NC}"
+    echo -e "${ROJO}➜ ${VERDE}14.${NC} ${AMARILLO_SUAVE}💾 Activar/Desactivar Swap${NC}"
+    echo -e "${ROJO}➜ ${VERDE}15.${NC} ${AMARILLO_SUAVE}👁️‍🗨️ Información detallada de usuario${NC}"
+    echo -e "${ROJO}➜ ${VERDE}0.${NC} ${AMARILLO_SUAVE} 🚪 Salir${NC}"
+    
+    echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
+    
+   
   
     # == MENU 🚫  
     while true; do  
