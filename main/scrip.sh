@@ -211,7 +211,7 @@ ssh_bot() {
                     echo \$dias_restantes
                 }
                 
-chequear_y_notificar() {
+                chequear_y_notificar() {
                     local usuario="$1"
                     local linea
                     linea=$(grep "^$usuario:" "$REGISTROS")
