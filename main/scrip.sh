@@ -165,6 +165,7 @@ ssh_bot() {
                 PASSWORD=''
                 DAYS=''
                 MOBILES=''
+                LAST_CHECK=0  # Nueva variable para chequeo periódico
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
@@ -209,7 +210,65 @@ ssh_bot() {
 
                     echo \$dias_restantes
                 }
+                
+                chequear_y_notificar() {
+                    local usuario="$1"
+                    local linea
+                    linea=$(grep "^$usuario:" "$REGISTROS")
+                    if [[ -z "$linea" ]]; then return; fi
 
+                    local moviles
+                    moviles=$(echo "$linea" | awk '{print $4}')
+                    if [[ -z "$moviles" || "$moviles" -eq 0 ]]; then return; fi
+
+                    local conexiones
+                    conexiones=$(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$")
+
+                    local ahora
+                    ahora=$(date +"%Y-%m-%d %H:%M")
+
+                    local estado_file="/tmp/estado_${usuario}.txt"
+                    local estado_previo
+                    estado_previo=$(cat "$estado_file" 2>/dev/null || echo "normal")
+
+                    local estado_nuevo
+                    if [[ "$conexiones" -gt "$moviles" ]]; then
+                        estado_nuevo="excedido"
+                    else
+                        estado_nuevo="normal"
+                    fi
+
+                    if [[ "$estado_nuevo" != "$estado_previo" ]]; then
+                        local mensaje
+
+                        if [[ "$estado_nuevo" == "excedido" ]]; then
+                            mensaje="⚠️ *OYE 😱 ${USER_NAME^^} HAY MAÑOSOS ACTIVOS* 🚨
+👤 *Usuario*: \`$usuario\`
+📱 *Problema*: Ha superado el límite de conexiones permitidas.
+✅ *Límite*: \`$moviles\` móvil(es)
+🚫 *Conexiones actuales*: \`$conexiones\`
+⏰ *Fecha y hora*: \`$ahora\`
+
+🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡"
+                        else
+                            mensaje="✅ *¡Hola $USER_NAME!*
+👤 *Usuario*: \`$usuario\`
+📱 *Estado*: Ha vuelto a su límite normal de conexiones.
+✅ *Límite*: \`$moviles\` móvil(es)
+🌟 *Conexiones actuales*: \`$conexiones\`
+⏰ *Fecha y hora*: \`$ahora\`
+
+🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos."
+                        fi
+
+                        curl -s -X POST "$URL/sendMessage" \
+                            -d chat_id="$USER_ID" \
+                            -d text="$mensaje" \
+                            -d parse_mode=Markdown >/dev/null
+
+                        echo "$estado_nuevo" > "$estado_file"
+                    fi
+                }
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
                     for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
@@ -933,6 +992,18 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                             fi
                         fi
                     done
+                    # Chequeo periódico de conexiones (cada 60 segundos)
+                    current_time=\$(date +%s)
+                    if [[ \$((current_time - LAST_CHECK)) -ge 60 ]]; then
+                        LAST_CHECK=\$current_time
+                        if [[ -f \"\$REGISTROS\" && -s \"\$REGISTROS\" ]]; then
+                            while IFS=' ' read -r user_data _; do
+                                usuario=\${user_data%%:*}
+                                chequear_y_notificar \"\$usuario\"
+                            done < \"\$REGISTROS\"
+                        fi
+                    fi
+                
                 done
             " >/dev/null 2>&1 &
             echo $! > "$PIDFILE"
