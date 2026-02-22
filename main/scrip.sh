@@ -211,60 +211,48 @@ ssh_bot() {
                     echo \$dias_restantes
                 }
                 
+# Nueva función para chequear y notificar excedentes
                 chequear_y_notificar() {
-                    local usuario="$1"
-                    local linea
-                    linea=$(grep "^$usuario:" "$REGISTROS")
-                    if [[ -z "$linea" ]]; then return; fi
+                    local usuario=\"\$1\"
+                    local linea=\$(grep \"^\$usuario:\" \"\$REGISTROS\")
+                    if [[ -z \"\$linea\" ]]; then return; fi
+                    local moviles=\$(echo \"\$linea\" | awk '{print \$4}')
+                    if [[ -z \"\$moviles\" || \"\$moviles\" -eq 0 ]]; then return; fi
 
-                    local moviles
-                    moviles=$(echo "$linea" | awk '{print $4}')
-                    if [[ -z "$moviles" || "$moviles" -eq 0 ]]; then return; fi
+                    local conexiones=\$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\")
+                    local ahora=\$(date +\"%Y-%m-%d %H:%M\")
+                    local estado_file=\"/tmp/estado_\${usuario}.txt\"
+                    local estado_previo=\$(cat \"\$estado_file\" 2>/dev/null || echo \"normal\")
 
-                    local conexiones
-                    conexiones=$(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$")
-
-                    local ahora
-                    ahora=$(date +"%Y-%m-%d %H:%M")
-
-                    local estado_file="/tmp/estado_${usuario}.txt"
-                    local estado_previo
-                    estado_previo=$(cat "$estado_file" 2>/dev/null || echo "normal")
-
-                    local estado_nuevo
-                    if [[ "$conexiones" -gt "$moviles" ]]; then
-                        estado_nuevo="excedido"
+                    if [[ \"\$conexiones\" -gt \"\$moviles\" ]]; then
+                        estado_nuevo=\"excedido\"
                     else
-                        estado_nuevo="normal"
+                        estado_nuevo=\"normal\"
                     fi
 
-                    if [[ "$estado_nuevo" != "$estado_previo" ]]; then
-                        local mensaje
-
-                        if [[ "$estado_nuevo" == "excedido" ]]; then
-                            mensaje=$'⚠️ *OYE 😱 '"${USER_NAME^^}"$' HAY MAÑOSOS ACTIVOS* 🚨\n'\
-$'👤 *Usuario*: `'"$usuario"'`\n'\
-$'📱 *Problema*: Ha superado el límite de conexiones permitidas.\n'\
-$'✅ *Límite*: `'"$moviles"'` móvil(es)\n'\
-$'🚫 *Conexiones actuales*: `'"$conexiones"'`\n'\
-$'⏰ *Fecha y hora*: `'"$ahora"'`\n\n'\
-$'🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡'
+                    if [[ \"\$estado_nuevo\" != \"\$estado_previo\" ]]; then
+                        if [[ \"\$estado_nuevo\" == \"excedido\" ]]; then
+                            mensaje=\"⚠️ *OYE 😱 \${USER_NAME^^} HAY MAÑOSOS ACTIVOS* 🚨
+👤 *Usuario*: \$usuario
+📱 *Problema*: Ha superado el límite de conexiones permitidas.
+✅ *Límite*: \$moviles móvil(es)
+🚫 *Conexiones actuales*: \$conexiones
+⏰ *Fecha y hora*: \$ahora
+🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
                         else
-                            mensaje=$'✅ *¡Hola '"$USER_NAME"'!*\n'\
-$'👤 *Usuario*: `'"$usuario"'`\n'\
-$'📱 *Estado*: Ha vuelto a su límite normal de conexiones.\n'\
-$'✅ *Límite*: `'"$moviles"'` móvil(es)\n'\
-$'🌟 *Conexiones actuales*: `'"$conexiones"'`\n'\
-$'⏰ *Fecha y hora*: `'"$ahora"'`\n\n'\
-$'🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.'
+                            mensaje=\"✅ *¡Hola \$USER_NAME!*
+👤 *Usuario*: \$usuario
+📱 *Estado*: Ha vuelto a su límite normal de conexiones.
+✅ *Límite*: \$moviles móvil(es)
+🌟 *Conexiones actuales*: \$conexiones
+⏰ *Fecha y hora*: \$ahora
+🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
                         fi
-
-                        curl -s -X POST "$URL/sendMessage" \
-                            -d chat_id="$USER_ID" \
-                            -d text="$mensaje" \
+                        curl -s -X POST \"\$URL/sendMessage\" \
+                            -d chat_id=\"$USER_ID\" \
+                            -d text=\"\$mensaje\" \
                             -d parse_mode=Markdown >/dev/null
-
-                        echo "$estado_nuevo" > "$estado_file"
+                        echo \"\$estado_nuevo\" > \"\$estado_file\"
                     fi
                 }
                 while true; do
