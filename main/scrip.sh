@@ -233,6 +233,7 @@ ssh_bot() {
                     if [[ \"\$estado_nuevo\" != \"\$estado_previo\" ]]; then
                         if [[ \"\$estado_nuevo\" == \"excedido\" ]]; then
                             mensaje=\"⚠️ *OYE 😱 ${USER_NAME} HAY MAÑOSOS ACTIVOS* 🚨
+                            
 👤 *Usuario*: \$usuario
 📱 *Problema*: Ha superado el límite de conexiones permitidas.
 ✅ *Límite*: \$moviles móvil(es)
@@ -241,7 +242,8 @@ ssh_bot() {
 
 🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
                         else
-                            mensaje=\"✅ *¡Hola ${USER_NAME} ya le di Jake 😈!*
+                            mensaje=\"✅ *¡Hola ${USER_NAME} tranki ya le di Jake 😈!*
+                            
 👤 *Usuario*: \$usuario
 📱 *Estado*: Ha vuelto a su límite normal de conexiones.
 ✅ *Límite*: \$moviles móvil(es)
