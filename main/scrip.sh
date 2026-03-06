@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 ACTIVATION_FLAG="/etc/.activated"
 BACKEND="http://102.129.137.139:8080/check.php"
 
@@ -28,6 +27,7 @@ else
   echo "✅ Activación correcta"
   sleep 1
 fi
+
 
 # === AQUÍ EMPIEZA TU SCRIPT NORMAL ===
 
@@ -165,7 +165,6 @@ ssh_bot() {
                 PASSWORD=''
                 DAYS=''
                 MOBILES=''
-                LAST_CHECK=0  # Nueva variable para chequeo periódico
 
                 calcular_dias_restantes() {
                     local fecha_expiracion=\"\$1\"
@@ -210,55 +209,7 @@ ssh_bot() {
 
                     echo \$dias_restantes
                 }
-                
-# Nueva función para chequear y notificar excedentes
-                chequear_y_notificar() {
-                    local usuario=\"\$1\"
-                    local linea=\$(grep \"^\$usuario:\" \"\$REGISTROS\")
-                    if [[ -z \"\$linea\" ]]; then return; fi
-                    local moviles=\$(echo \"\$linea\" | awk '{print \$4}')
-                    if [[ -z \"\$moviles\" || \"\$moviles\" -eq 0 ]]; then return; fi
 
-                    local conexiones=\$(ps -u \"\$usuario\" -o comm= | grep -cE \"^(sshd|dropbear)\$\")
-                    local ahora=\$(date +\"%Y-%m-%d %H:%M\")
-                    local estado_file=\"/tmp/estado_\${usuario}.txt\"
-                    local estado_previo=\$(cat \"\$estado_file\" 2>/dev/null || echo \"normal\")
-
-                    if [[ \"\$conexiones\" -gt \"\$moviles\" ]]; then
-                        estado_nuevo=\"excedido\"
-                    else
-                        estado_nuevo=\"normal\"
-                    fi
-
-                    if [[ \"\$estado_nuevo\" != \"\$estado_previo\" ]]; then
-                        if [[ \"\$estado_nuevo\" == \"excedido\" ]]; then
-                            mensaje=\"⚠️ *OYE 😱 ${USER_NAME} HAY MAÑOSOS ACTIVOS* 🚨
-                            
-👤 *Usuario*: \$usuario
-📱 *Problema*: Ha superado el límite de conexiones permitidas.
-✅ *Límite*: \$moviles móvil(es)
-🚫 *Conexiones actuales*: \$conexiones
-⏰ *Fecha y hora*: \$ahora
-
-🔐 *Acción recomendada*: Revisa las conexiones de este usuario. ¡Posible uso no autorizado detectado! 😡\"
-                        else
-                            mensaje=\"✅ *¡Hola ${USER_NAME} tranki ya le di Jake 😈!*
-                            
-👤 *Usuario*: \$usuario
-📱 *Estado*: Ha vuelto a su límite normal de conexiones.
-✅ *Límite*: \$moviles móvil(es)
-🌟 *Conexiones actuales*: \$conexiones
-⏰ *Fecha y hora*: \$ahora
-
-🎉 *Buen trabajo*: El usuario ya está dentro de los parámetros permitidos.\"
-                        fi
-                        curl -s -X POST \"\$URL/sendMessage\" \
-                            -d chat_id=\"$USER_ID\" \
-                            -d text=\"\$mensaje\" \
-                            -d parse_mode=Markdown >/dev/null
-                        echo \"\$estado_nuevo\" > \"\$estado_file\"
-                    fi
-                }
                 while true; do
                     UPDATES=\$(curl -s \"\$URL/getUpdates?offset=\$OFFSET&timeout=10\")
                     for row in \$(echo \"\$UPDATES\" | jq -c '.result[]'); do
@@ -982,18 +933,6 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
                             fi
                         fi
                     done
-                    # Chequeo periódico de conexiones (cada 60 segundos)
-                    current_time=\$(date +%s)
-                    if [[ \$((current_time - LAST_CHECK)) -ge 60 ]]; then
-                        LAST_CHECK=\$current_time
-                        if [[ -f \"\$REGISTROS\" && -s \"\$REGISTROS\" ]]; then
-                            while IFS=' ' read -r user_data _; do
-                                usuario=\${user_data%%:*}
-                                chequear_y_notificar \"\$usuario\"
-                            done < \"\$REGISTROS\"
-                        fi
-                    fi
-                
                 done
             " >/dev/null 2>&1 &
             echo $! > "$PIDFILE"
@@ -2703,6 +2642,251 @@ function configurar_banner_ssh() {
     esac
 }
 
+slowdns_panel(){
+
+BASE="/usr/local/slowdns"
+KEYDIR="$BASE/keys"
+BIN="$BASE/dns-server"
+AUTOSTART="/bin/autoboot"
+CONF="$BASE/domain"
+
+rosa='\033[1;95m'
+rosita='\033[1;38;5;213m'
+magenta='\033[1;35m'
+verde='\033[1;32m'
+rojo='\033[1;31m'
+amarillo='\033[1;33m'
+azul='\033[1;34m'
+cyan='\033[1;36m'
+blanco='\033[1;97m'
+reset='\033[0m'
+
+fix_key(){
+
+mkdir -p $KEYDIR
+
+cat <<EOF > $KEYDIR/server.key
+76e12e653cd58bf9a3f9cde0204d029e5dd1970596cafd2293f08e2626348e01
+EOF
+
+cat <<EOF > $KEYDIR/server.pub
+4aa683a10a8c4e7d44ab11e8494640ce1a8077d0f9a9f007b20437121f3e8a2d
+EOF
+
+}
+
+enable_network(){
+
+echo -e "${rosita}✨ Configurando la red con amor... 💕${reset}"
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+sysctl -p >/dev/null 2>&1
+
+IFACE=$(ip route | grep default | awk '{print $5}')
+
+iptables -t nat -C POSTROUTING -o $IFACE -j MASQUERADE 2>/dev/null || \
+iptables -t nat -A POSTROUTING -o $IFACE -j MASQUERADE
+
+iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300 2>/dev/null || \
+iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300
+
+}
+
+install_slowdns(){
+
+clear
+echo -e "${rosa}🌸💗 INSTALANDO SLOWDNS CON MUCHO AMOR 💗🌸${reset}"
+
+apt update -y
+apt install git wget curl screen iptables-persistent -y
+
+echo -e "${amarillo}Instalando GO...${reset}"
+
+cd /usr/local
+rm -rf go
+wget -q https://go.dev/dl/go1.16.6.linux-amd64.tar.gz
+tar -xzf go1.16.6.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+
+echo -e "${amarillo}Descargando DNSTT...${reset}"
+
+cd /usr/local
+rm -rf dnstt
+git clone https://www.bamsoftware.com/git/dnstt.git >/dev/null 2>&1
+cd dnstt
+git checkout v1.20210812.0 >/dev/null 2>&1
+
+echo -e "${amarillo}Compilando dns-server...${reset}"
+
+go build -o dns-server ./dnstt-server
+
+mkdir -p $BASE
+mv dns-server $BIN
+chmod +x $BIN
+
+read -p "Ingrese dominio NS: " DOMAIN
+echo $DOMAIN > $CONF
+
+echo -e "${verde}Aplicando KEY fija...${reset}"
+
+fix_key
+enable_network
+
+cat > $AUTOSTART <<EOF
+#!/bin/bash
+screen -wipe >/dev/null 2>&1
+screen -dmS slowdns $BIN -udp :5300 -privkey-file $KEYDIR/server.key $DOMAIN 127.0.0.1:22
+EOF
+
+chmod +x $AUTOSTART
+
+(crontab -l 2>/dev/null; echo "@reboot $AUTOSTART") | crontab -
+
+netfilter-persistent save >/dev/null 2>&1
+
+/bin/autoboot
+
+echo ""
+echo -e "${verde}SlowDNS instalado correctamente ✨${reset}"
+echo ""
+echo -e "${cyan}NS:${reset} $DOMAIN"
+echo ""
+echo -e "${cyan}PUBLIC KEY:${reset}"
+cat $KEYDIR/server.pub
+echo ""
+
+read -p "ENTER"
+
+}
+
+start_slowdns(){
+
+/bin/autoboot
+echo -e "${verde}🌟 SlowDNS encendido con todo el poder 💖${reset}"
+sleep 2
+
+}
+
+stop_slowdns(){
+
+screen -S slowdns -X quit 2>/dev/null
+echo -e "${rojo}🛑 SlowDNS pausado con cuidado bb 💔${reset}"
+sleep 2
+
+}
+
+status_slowdns(){
+
+clear
+
+PORT=$(ss -lunp | grep 5300)
+
+echo -e "${rosa}💿 ESTADO DE TU SLOWDNS QUEEN 💿${reset}"
+
+if [[ $PORT ]]; then
+echo -e "${verde}ON & shining ✨${reset}"
+else
+echo -e "${rojo}OFF mi amor 😔${reset}"
+fi
+
+echo ""
+screen -ls
+
+read -p "Presiona ENTER para continuar..."
+
+}
+
+show_info(){
+
+clear
+
+echo -e "${magenta}🌷 INFO COMPLETA DE TU SLOWDNS GIRL 🌷${reset}"
+
+echo ""
+echo -e "${amarillo}NS:${reset}"
+cat $CONF 2>/dev/null
+
+echo ""
+echo -e "${verde}PUBLIC KEY:${reset}"
+cat $KEYDIR/server.pub 2>/dev/null
+
+echo ""
+echo -e "${rojo}PRIVATE KEY:${reset}"
+cat $KEYDIR/server.key 2>/dev/null
+
+echo ""
+read -p "ENTER"
+
+}
+
+remove_slowdns(){
+
+screen -S slowdns -X quit 2>/dev/null
+rm -rf $BASE
+rm -f $AUTOSTART
+
+echo -e "${rojo}💔 SlowDNS se fue volando... adiós reina 😢${reset}"
+sleep 2
+
+}
+
+while true
+do
+
+clear
+
+PORT=$(ss -lunp | grep 5300)
+
+if [[ $PORT ]]; then
+STATUS="${verde}ACTIVO MI REINA 💃${reset}"
+else
+STATUS="${rojo}DETENIDO mi amor 😘${reset}"
+fi
+
+echo -e "${rosa}✨🌸═══════════════════════════════════════🌸✨${reset}"
+echo -e "${rosa}          💗 PANEL SLOWDNS PRINCESS 💗${reset}"
+echo -e "${rosa}✨🌸═══════════════════════════════════════🌸✨${reset}"
+echo ""
+echo -e "${blanco}Estado actual: ${STATUS}${reset}"
+echo ""
+echo -e "${amarillo}1 🐌 Instalar SlowDNS${reset}"
+echo -e "${amarillo}2 ✨ Iniciar${reset}"
+echo -e "${amarillo}3 🛑 Detener${reset}"
+echo -e "${amarillo}4 💿 Ver estado${reset}"
+echo -e "${amarillo}5 🔑 Ver NS + Keys${reset}"
+echo -e "${amarillo}6 🗑️ Desinstalar${reset}"
+echo -e "${amarillo}0 👑 Volver al menú principal${reset}"
+echo ""
+
+echo -ne "${rosita}Selecciona tu opción reina → ${reset}"
+read opc
+
+case $opc in
+
+1) install_slowdns ;;
+2) start_slowdns ;;
+3) stop_slowdns ;;
+4) status_slowdns ;;
+5) show_info ;;
+6) remove_slowdns ;;
+0)
+return
+;;
+*)
+echo -e "${rojo}Uy esa opción no existe bb 😅${reset}"
+sleep 1
+;;
+
+esac
+
+done
+
+}
+
 function renovar_usuario() {
     clear
     echo -e "${VIOLETA}===== 🔄 RENOVAR USUARIO 🌸 =====${NC}"
@@ -3098,6 +3282,7 @@ while true; do
     echo -e "${ROJO}➜ ${VERDE}13.${NC} ${AMARILLO_SUAVE}🔄 Renovar usuario${NC}"
     echo -e "${ROJO}➜ ${VERDE}14.${NC} ${AMARILLO_SUAVE}💾 Activar/Desactivar Swap${NC}"
     echo -e "${ROJO}➜ ${VERDE}15.${NC} ${AMARILLO_SUAVE}👁️‍🗨️ Información detallada de usuario${NC}"
+    echo -e "${ROJO}➜ ${VERDE}16.${NC} ${ROJO}🐌 SLOWDNS CARACOL${NC}"
     echo -e "${ROJO}➜ ${VERDE}0.${NC} ${AMARILLO_SUAVE} 🚪 Salir${NC}"
     
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
@@ -3115,8 +3300,8 @@ while true; do
             continue  
         fi  
   
-        # Solo permitir 0–15  
-        if [[ ! "$OPCION" =~ ^([0-9]|1[0-5])$ ]]; then  
+        # Solo permitir 0–16  
+        if [[ ! "$OPCION" =~ ^([0-9]|1[0-6])$ ]]; then  
             tput cuu1  
             tput dl1  
             continue  
@@ -3141,6 +3326,7 @@ while true; do
         13) renovar_usuario ;;  
         14) activar_desactivar_swap ;;  
         15) usuarios_ssh ;;  
+        16) slowdns_panel ;;
         0)  
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"  
             exec /bin/bash  
