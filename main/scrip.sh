@@ -3259,6 +3259,237 @@ ${LILA}-------------------------${NC}"
     read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
 }
 
+xhttp_panel() {
+
+HOT_PINK="\033[1;95m"
+CYAN="\033[1;96m"
+GREEN="\033[1;92m"
+RED="\033[1;91m"
+YELLOW="\033[1;93m"
+RESET="\033[0m"
+
+panel_installed(){
+command -v x-ui &>/dev/null
+}
+
+panel_status(){
+if systemctl is-active --quiet x-ui
+then
+STATUS="Activo 🟢"
+else
+STATUS="Inactivo 🔴"
+fi
+}
+
+get_port(){
+PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+
+if [ -z "$PORT" ]
+then
+PORT="No detectado"
+fi
+}
+
+while true
+do
+
+panel_status
+get_port
+
+clear
+
+echo -e "${HOT_PINK}"
+echo "════════════════════════════════════ 💋"
+echo "     XRAY + 3X-UI MANAGER 🌸👑"
+echo "════════════════════════════════════ 💋"
+echo -e "${RESET}"
+
+echo
+
+if [ "$STATUS" = "Activo 🟢" ]
+then
+echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
+else
+echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
+fi
+
+echo
+echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
+echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
+echo -e "${CYAN}3) Eliminar panel 😈🗑️${RESET}"
+echo -e "${CYAN}0) Salir 💔${RESET}"
+
+echo
+read -p "👑 Seleccione una opción reina → " op
+
+case "$op" in
+
+1)
+install_panel
+;;
+
+2)
+show_panel
+;;
+
+3)
+remove_panel
+;;
+
+0)
+break
+;;
+
+*)
+;;
+
+esac
+
+done
+
+}
+
+
+
+install_panel(){
+
+clear
+echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
+
+# =========================
+# DETENER PROXY MCCARTHEY
+# =========================
+PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+
+if [ ! -z "$PROXY_PID" ]; then
+echo -e "${YELLOW}Proxy MCCARTHEY detectado en puerto 80, deteniendo temporalmente...${RESET}"
+kill $PROXY_PID
+sleep 3
+fi
+
+# =========================
+# INSTALAR DEPENDENCIAS
+# =========================
+apt update -y >/dev/null 2>&1
+apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
+
+# =========================
+# INSTALAR PANEL
+# =========================
+printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
+
+echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
+
+# =========================
+# REACTIVAR PROXY MCCARTHEY
+# =========================
+if [ ! -z "$PROXY_PID" ]; then
+echo -e "${CYAN}Reactivando Proxy MCCARTHEY...${RESET}"
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+sleep 2
+fi
+
+sleep 3
+
+if panel_installed
+then
+
+USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
+PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 14)
+
+echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"
+
+HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')
+
+if [ -f /etc/x-ui/x-ui.db ]; then
+sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
+fi
+
+x-ui restart >/dev/null 2>&1
+
+sleep 3
+get_port
+
+PATHP=$(x-ui settings | awk '/webBasePath/ {print $2}')
+IP=$(curl -s https://api.ipify.org)
+
+clear
+
+echo -e "${GREEN}"
+echo "════════════════════════════════════"
+echo "       PANEL LISTO 💖"
+echo "════════════════════════════════════"
+echo -e "${RESET}"
+
+echo "Usuario: $USER"
+echo "Password: $PASS"
+echo "Puerto: $PORT"
+echo "Ruta: $PATHP"
+echo
+echo "URL DEL PANEL"
+echo "https://$IP:$PORT$PATHP"
+
+else
+
+echo -e "${RED}La instalación falló${RESET}"
+
+fi
+
+read -p "ENTER para continuar"
+return
+
+}
+
+show_panel(){
+
+clear
+
+if ! panel_installed
+then
+echo "El panel no está instalado"
+read -p "ENTER"
+return
+fi
+
+get_port
+
+PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
+IP=$(curl -s https://api.ipify.org)
+
+echo "════════════════════════════════════"
+echo "       DATOS DEL PANEL"
+echo "════════════════════════════════════"
+echo
+
+systemctl status x-ui | grep Active
+
+echo
+echo "Puerto: $PORT"
+echo "Ruta: $PATHP"
+echo
+echo "URL:"
+echo "https://$IP:$PORT$PATHP"
+
+read -p "ENTER para continuar"
+return
+
+}
+
+remove_panel(){
+
+clear
+
+echo -e "${RED}Eliminando panel...${RESET}"
+
+x-ui stop >/dev/null 2>&1
+x-ui uninstall >/dev/null 2>&1
+
+echo -e "${GREEN}Panel eliminado correctamente${RESET}"
+
+read -p "ENTER para continuar"
+return
+}
+
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
 while true; do  
@@ -3283,6 +3514,7 @@ while true; do
     echo -e "${ROJO}➜ ${VERDE}14.${NC} ${AMARILLO_SUAVE}💾 Activar/Desactivar Swap${NC}"
     echo -e "${ROJO}➜ ${VERDE}15.${NC} ${AMARILLO_SUAVE}👁️‍🗨️ Información detallada de usuario${NC}"
     echo -e "${ROJO}➜ ${VERDE}16.${NC} ${ROJO}🐌 SLOWDNS CARACOL${NC}"
+    echo -e "${ROJO}➜ ${VERDE}17.${NC} ${VIOLETA}😌 XHTTP${NC}"  
     echo -e "${ROJO}➜ ${VERDE}0.${NC} ${AMARILLO_SUAVE} 🚪 Salir${NC}"
     
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
@@ -3301,7 +3533,7 @@ while true; do
         fi  
   
         # Solo permitir 0–16  
-        if [[ ! "$OPCION" =~ ^([0-9]|1[0-6])$ ]]; then  
+        if [[ ! "$OPCION" =~ ^([0-9]|1[0-7])$ ]]; then  
             tput cuu1  
             tput dl1  
             continue  
@@ -3327,6 +3559,7 @@ while true; do
         14) activar_desactivar_swap ;;  
         15) usuarios_ssh ;;  
         16) slowdns_panel ;;
+        17) xhttp_panel ;;
         0)  
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"  
             exec /bin/bash  
