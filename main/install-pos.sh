@@ -49,11 +49,14 @@ const app=express()
 app.use(cors())
 app.use(express.json())
 
-app.use(express.static(path.join(__dirname,"main")))
+/* SERVIR POS */
+app.use(express.static(__dirname))
 
 app.get("/",(req,res)=>{
-res.sendFile(path.join(__dirname,"main/index.html"))
+res.sendFile(path.join(__dirname,"index.html"))
 })
+
+/* MYSQL */
 
 const db=mysql.createConnection({
 host:"localhost",
@@ -69,6 +72,8 @@ return
 }
 console.log("MySQL conectado")
 })
+
+/* PRODUCTOS */
 
 app.get("/api/products",(req,res)=>{
 db.query("SELECT * FROM products",(err,data)=>{
@@ -89,6 +94,15 @@ if(err)return res.send(err)
 res.json({ok:true})
 })
 
+})
+
+/* VENTAS */
+
+app.get("/api/sales",(req,res)=>{
+db.query("SELECT * FROM sales ORDER BY id DESC",(err,data)=>{
+if(err)return res.send(err)
+res.json(data)
+})
 })
 
 app.post("/api/sales",(req,res)=>{
@@ -131,6 +145,7 @@ app.listen($PORT,()=>{
 console.log("POS corriendo en puerto $PORT")
 })
 EOF
+
 
 echo "===== CREANDO BASE DE DATOS ====="
 
@@ -176,8 +191,7 @@ EOF
 
 echo "===== INICIANDO POS ====="
 
-pm2 delete pos 2>/dev/null
-pm2 start server.js --name pos
+pm2 start server.js --name pos -f
 pm2 startup
 pm2 save
 
