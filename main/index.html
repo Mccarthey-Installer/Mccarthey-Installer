@@ -1338,9 +1338,13 @@ if (dateEl) {
   })
 }
   
+
 // =========== INIT ===========
 loadProducts()
 show("pos")
+
+// sincronizar con servidor cada 3 segundos
+setInterval(loadProducts, 3000)
 </script>
 <!-- MODAL TICKET -->
 <div id="saleSummary" style="
