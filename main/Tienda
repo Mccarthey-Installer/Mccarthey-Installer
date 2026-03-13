@@ -395,20 +395,55 @@ white-space: pre;
 
 <script>
 // =========== STATE ===========
-const saved = localStorage.getItem("posData_v3")
-
-const state = saved ? JSON.parse(saved) : {
+const state = {
   products: [],
   cart: [],
   sales: []
 }
 
-
+let activeCategory = "Todos"
 let editingId = null
 let restockId = null
-let activeCategory = "Todos"
+async function loadProducts(){
 
-function save() { localStorage.setItem("posData_v3", JSON.stringify(state)) }
+  const res = await fetch("/api/products")
+  const data = await res.json()
+
+  state.products = data.map(p => ({
+    id: p.id,
+    name: p.name,
+    price: Number(p.price),
+    cost: Number(p.cost || 0),
+    stock: Number(p.stock),
+    sold: Number(p.sold || 0),
+    cat: p.cat || "General"
+  }))
+
+  await loadSales()
+
+  renderAll()
+
+}
+
+async function loadSales(){
+
+  try{
+
+    const res = await fetch("/api/sales")
+    const data = await res.json()
+
+    state.sales = data || []
+
+  }catch{
+
+    state.sales = []
+
+  }
+
+}
+
+
+
 
 // =========== SIDEBAR ===========
 function toggleMenu() {
@@ -610,7 +645,7 @@ function calculateChange() {
   }
 
 }
-function confirmSale() {
+async function confirmSale() {
 
   if (state.cart.length === 0) {
     showToast("⚠ El carrito está vacío")
@@ -623,7 +658,6 @@ function confirmSale() {
 
   const paid = Number(document.getElementById("paid").value) || 0
 
-  // 🚨 BLOQUEAR SI NO ALCANZA EL PAGO
   if (paid < total) {
     showToast("❌ Pago insuficiente")
     return
@@ -631,7 +665,6 @@ function confirmSale() {
 
   const change = paid - total
 
-  // actualizar vendidos
   state.cart.forEach(item => {
     const p = state.products.find(x => x.id === item.id)
     p.sold += item.qty
@@ -640,8 +673,8 @@ function confirmSale() {
   const now = new Date()
 
   const sale = {
-    id: Date.now(),                    // id interno único
-    num: state.sales.length + 1,       // número visible de venta
+    id: Date.now(),
+    num: state.sales.length + 1,
     date: now.toLocaleString(),
     dateKey: now.toLocaleDateString(),
     items: JSON.parse(JSON.stringify(state.cart)),
@@ -650,16 +683,21 @@ function confirmSale() {
     change
   }
 
-  state.sales.push(sale)
+  await fetch("/api/sales",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify(sale)
+  })
 
-  state.cart = []
-  document.getElementById("paid").value = ""
+  state.cart=[]
 
-  renderAll()
+  document.getElementById("paid").value=""
 
-  // ahora el número de venta es correcto
-  showToast(`✅ Venta #${sale.num} — $${total.toFixed(2)}`)
+  await loadProducts()
 
+  showToast(`✅ Venta #${sale.num}`)
   showSaleSummary(sale)
 }
 
@@ -710,31 +748,29 @@ function renderInventory() {
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:13px; color:#475569;">
 
-        <div style="font-size:11px; color:#94a3b8; font-weight:600;">PRECIO VENTA</div>
-<b style="font-family:'JetBrains Mono',monospace;">$${p.price.toFixed(2)}</b>
-        </div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:600;">PRECIO VENTA</div>
+        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.price.toFixed(2)}</b></div>
 
-        <div style="font-size:11px; color:#94a3b8; font-weight:600;">COSTO</div>
-<b style="font-family:'JetBrains Mono',monospace;">$${p.cost.toFixed(2)}</b>
-        </div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:600;">COSTO</div>
+        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.cost.toFixed(2)}</b></div>
 
         <div style="background:#f0fdf4; border-radius:8px; padding:8px;">
-          <div style="font-size:11px; color:#16a34a; font-weight:600;">GANANCIA/U</div>
-          <b style="font-family:'JetBrains Mono',monospace; color:#16a34a;">
+          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA/U</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">
             $${profit.toFixed(2)}
           </b>
         </div>
 
         <div style="background:#f0fdf4; border-radius:8px; padding:8px;">
-          <div style="font-size:11px; color:#16a34a; font-weight:600;">GANANCIA TOTAL</div>
-          <b style="font-family:'JetBrains Mono',monospace; color:#16a34a;">
+          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA TOTAL</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">
             $${totalProfit.toFixed(2)}
           </b>
         </div>
 
         <div style="background:#f8fafc; border-radius:8px; padding:8px;">
-          <div style="font-size:11px; color:#94a3b8; font-weight:600;">STOCK</div>
-          <b style="font-family:'JetBrains Mono',monospace; color:${p.stock<=5?'#dc2626':'#0f172a'};">
+          <div style="font-size:11px;color:#94a3b8;font-weight:600;">STOCK</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:${p.stock<=5?'#dc2626':'#0f172a'};">
             ${p.stock}
           </b>
         </div>
@@ -767,7 +803,6 @@ function renderInventory() {
   })
 
 }
-
 // =========== MODAL PRODUCTO ===========
 function openAddModal() {
   editingId = null
@@ -788,29 +823,60 @@ function openEditModal(id) {
   document.getElementById("modal").classList.add("show")
 }
 function closeModal() { document.getElementById("modal").classList.remove("show") }
-function saveProduct() {
+
+
+async function saveProduct(){
+
   const name = document.getElementById("m-name").value.trim()
-  if (!name) { showToast("⚠ Ingresá el nombre del producto"); return }
+
+  if(!name){
+    showToast("⚠ Ingresá el nombre")
+    return
+  }
+
   const price = parseFloat(document.getElementById("m-price").value) || 0
   const cost  = parseFloat(document.getElementById("m-cost").value) || 0
   const stock = parseInt(document.getElementById("m-stock").value) || 0
-  const cat = (
-  document.getElementById("m-cat").value.trim()
-  .toLowerCase()
-  .replace(/^\w/, c => c.toUpperCase())
-) || "General"
 
-  if (editingId) {
-    const p = state.products.find(x => x.id === editingId)
-    Object.assign(p, {name, price, cost, stock, cat})
-    showToast("✅ Producto actualizado")
-  } else {
-    state.products.push({id: Date.now(), name, price, cost, stock, sold: 0, cat})
+  const cat = (
+    document.getElementById("m-cat").value.trim()
+    .toLowerCase()
+    .replace(/^\w/, c => c.toUpperCase())
+  ) || "General"
+
+  const product = { name, price, cost, stock, cat }
+
+  if(editingId){
+
+    await fetch("/api/products/"+editingId,{
+      method:"PUT",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify(product)
+    })
+
+    showToast("✏️ Producto actualizado")
+
+  }else{
+
+    await fetch("/api/products",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify(product)
+    })
+
     showToast("✅ Producto agregado")
+
   }
+
   closeModal()
-  renderAll()
+
+  editingId = null
+
+  await loadProducts()
+
 }
+
+
 
 // =========== RESTOCK ===========
 function openRestock(id) {
@@ -822,24 +888,49 @@ function openRestock(id) {
   setTimeout(() => document.getElementById("restock-qty").focus(), 100)
 }
 function closeRestock() { document.getElementById("restockModal").classList.remove("show") }
-function confirmRestock() {
+async function confirmRestock(){
+
   const qty = parseInt(document.getElementById("restock-qty").value) || 0
-  if (qty <= 0) { showToast("⚠ Cantidad inválida"); return }
-  const p = state.products.find(x => x.id === restockId)
-  p.stock += qty
+
+  if(qty <= 0){
+    showToast("⚠ Cantidad inválida")
+    return
+  }
+
+  await fetch("/api/restock",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      id:restockId,
+      qty
+    })
+  })
+
   closeRestock()
-  renderAll()
-  showToast(`✅ +${qty} unidades agregadas a ${p.name}`)
+
+  await loadProducts()
+
+  showToast(`✅ +${qty} unidades agregadas`)
+
 }
 
 // =========== DELETE ===========
-function deleteProduct(id) {
+async function deleteProduct(id){
+
   const p = state.products.find(x => x.id === id)
-  if (!confirm(`¿Eliminar "${p.name}"?`)) return
-  state.products = state.products.filter(x => x.id !== id)
-  state.cart = state.cart.filter(x => x.id !== id)
-  renderAll()
+
+  if(!confirm(`¿Eliminar "${p.name}"?`)) return
+
+  await fetch("/api/products/"+id,{
+    method:"DELETE"
+  })
+
+  await loadProducts()
+
   showToast("🗑 Producto eliminado")
+
 }
 
 // =========== TICKET===========
@@ -1220,9 +1311,7 @@ function renderAll() {
   renderInventory()
   renderStats()
   renderSales()
-  save()
 }
-
 // =========== CLOSE MODALS ON BACKDROP ===========
 document.getElementById("modal")?.addEventListener("click", e => {
   if (e.target === document.getElementById("modal")) closeModal()
@@ -1250,7 +1339,7 @@ if (dateEl) {
 }
   
 // =========== INIT ===========
-renderAll()
+loadProducts()
 show("pos")
 </script>
 <!-- MODAL TICKET -->
