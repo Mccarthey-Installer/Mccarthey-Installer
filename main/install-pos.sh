@@ -11,16 +11,16 @@ apt update -y
 echo "===== INSTALANDO DEPENDENCIAS ====="
 apt install -y git curl mysql-server
 
-echo "===== INSTALANDO NODE 20 ====="
+echo "===== INSTALANDO NODE ====="
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install -y nodejs
 
 echo "===== INSTALANDO PM2 ====="
 npm install -g pm2
 
-echo "===== CLONANDO POS ====="
-
 mkdir -p /var/www
+
+echo "===== CLONANDO POS ====="
 
 if [ -d "$APP_DIR" ]; then
 cd $APP_DIR
@@ -32,24 +32,30 @@ fi
 
 cd $APP_DIR
 
-echo "===== INSTALANDO LIBRERIAS NODE ====="
+echo "===== INSTALANDO LIBRERIAS ====="
 npm init -y
-npm install express mysql2 cors
+npm install express mysql2 cors socket.io
 
 echo "===== CREANDO SERVER ====="
 
 cat <<EOF > server.js
+
 const express=require("express")
 const path=require("path")
 const mysql=require("mysql2")
 const cors=require("cors")
+const http=require("http")
+const {Server}=require("socket.io")
 
 const app=express()
+const server=http.createServer(app)
+const io=new Server(server)
 
 app.use(cors())
 app.use(express.json())
 
 /* SERVIR POS */
+
 app.use(express.static(__dirname))
 
 app.get("/",(req,res)=>{
@@ -67,19 +73,35 @@ database:"posdb"
 
 db.connect(err=>{
 if(err){
-console.log("Error MySQL",err)
+console.log("MYSQL ERROR",err)
 return
 }
-console.log("MySQL conectado")
+console.log("MYSQL CONECTADO")
 })
 
+/* SOCKET */
+
+io.on("connection",(socket)=>{
+console.log("cliente conectado")
+})
+
+function sync(){
+io.emit("sync")
+}
+
+/* ======================= */
 /* PRODUCTOS */
+/* ======================= */
 
 app.get("/api/products",(req,res)=>{
-db.query("SELECT * FROM products",(err,data)=>{
+
+db.query(
+"SELECT * FROM products ORDER BY id DESC",
+(err,data)=>{
 if(err)return res.send(err)
 res.json(data)
 })
+
 })
 
 app.post("/api/products",(req,res)=>{
@@ -91,18 +113,79 @@ db.query(
 [name,price,cost,stock,cat],
 (err)=>{
 if(err)return res.send(err)
+
+sync()
+
 res.json({ok:true})
 })
 
 })
 
+app.put("/api/products/:id",(req,res)=>{
+
+const id=req.params.id
+const {name,price,cost,stock,cat}=req.body
+
+db.query(
+"UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
+[name,price,cost,stock,cat,id],
+(err)=>{
+if(err)return res.send(err)
+
+sync()
+
+res.json({ok:true})
+})
+
+})
+
+app.delete("/api/products/:id",(req,res)=>{
+
+const id=req.params.id
+
+db.query(
+"DELETE FROM products WHERE id=?",
+[id],
+(err)=>{
+if(err)return res.send(err)
+
+sync()
+
+res.json({ok:true})
+})
+
+})
+
+app.post("/api/restock",(req,res)=>{
+
+const {id,qty}=req.body
+
+db.query(
+"UPDATE products SET stock=stock+? WHERE id=?",
+[qty,id],
+(err)=>{
+if(err)return res.send(err)
+
+sync()
+
+res.json({ok:true})
+})
+
+})
+
+/* ======================= */
 /* VENTAS */
+/* ======================= */
 
 app.get("/api/sales",(req,res)=>{
-db.query("SELECT * FROM sales ORDER BY id DESC",(err,data)=>{
+
+db.query(
+"SELECT * FROM sales ORDER BY id DESC",
+(err,data)=>{
 if(err)return res.send(err)
 res.json(data)
 })
+
 })
 
 app.post("/api/sales",(req,res)=>{
@@ -135,17 +218,21 @@ db.query(
 
 })
 
+sync()
+
 res.json({ok:true})
 
 })
 
 })
 
-app.listen($PORT,()=>{
-console.log("POS corriendo en puerto $PORT")
-})
-EOF
+/* SERVIDOR */
 
+server.listen($PORT,()=>{
+console.log("POS PRO corriendo en puerto $PORT")
+})
+
+EOF
 
 echo "===== CREANDO BASE DE DATOS ====="
 
@@ -191,12 +278,13 @@ EOF
 
 echo "===== INICIANDO POS ====="
 
-pm2 start server.js --name pos -f
+pm2 delete pos 2>/dev/null
+pm2 start server.js --name pos
 pm2 startup
 pm2 save
 
 echo ""
-echo "===== POS INSTALADO ====="
+echo "===== POS PRO INSTALADO ====="
 echo ""
 echo "Abre:"
 echo "http://$DOMAIN:$PORT"
