@@ -354,7 +354,7 @@ Vuelto: <b id="saleSummaryChange"></b>
 <div style="margin-top:15px;display:flex;gap:8px;position:relative;z-index:5;">
 <button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>
 <button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>
-<button onclick="closeSummary()" class="btn-confirm">Cerrar Tiket</button>
+<button onclick="closeSummary()" class="btn-confirm">Cerrar</button>
 </div>
 
 </div>
@@ -387,7 +387,7 @@ Vuelto: <b id="saleSummaryChange"></b>
         <span style="font-weight:600; color:#16a34a; font-size:14px;">Vuelto</span>
         <span id="change" style="font-weight:700; font-family:'JetBrains Mono',monospace; font-size:20px; color:#16a34a;">$0.00</span>
       </div>
-      <button onclick="confirmSale()" class="btn-confirm">✅ Confirmar Venta</button>
+      <button id="confirmSaleBtn" onclick="confirmSale()" class="btn-confirm">✅ Confirmar Venta</button>
     </div>
   </div>
 </section>
@@ -685,7 +685,7 @@ function calculateChange() {
   document.getElementById("change").textContent = `$${change.toFixed(2)}`
 
   // Botón confirmar venta
-  const btn = document.querySelector(".btn-confirm")
+  const btn = document.querySelector("#confirmSaleBtn")
 
   if (paid < total || total === 0) {
     btn.disabled = true
@@ -1438,4 +1438,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-</html>
+      </html>
