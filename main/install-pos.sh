@@ -20,7 +20,7 @@ echo "===== INSTALANDO DEPENDENCIAS ====="
 
 apt install -y git curl mysql-server
 
-echo "===== INSTALANDO NODE 20 ====="
+echo "===== INSTALANDO NODE ====="
 
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install -y nodejs
@@ -37,7 +37,7 @@ git clone $REPO pos
 
 cd $APP_DIR
 
-echo "===== INSTALANDO LIBRERIAS NODE ====="
+echo "===== INSTALANDO LIBRERIAS ====="
 
 npm init -y
 npm install express mysql2 cors
@@ -45,19 +45,19 @@ npm install express mysql2 cors
 echo "===== CREANDO SERVER ====="
 
 cat <<EOF > server.js
-const express=require("express")
-const path=require("path")
-const mysql=require("mysql2")
-const cors=require("cors")
+const express = require("express")
+const path = require("path")
+const mysql = require("mysql2")
+const cors = require("cors")
 
-const app=express()
+const app = express()
 
 app.use(cors())
 app.use(express.json())
 
 /* FRONTEND */
 
-const FRONT=path.join(__dirname,"main")
+const FRONT = path.join(__dirname,"main")
 
 app.use(express.static(FRONT))
 
@@ -67,52 +67,62 @@ res.sendFile(path.join(FRONT,"index.html"))
 
 /* MYSQL */
 
-const db=mysql.createPool({
+const db = mysql.createPool({
 host:"localhost",
 user:"posuser",
 password:"pos123",
-database:"posdb"
+database:"posdb",
+connectionLimit:10
 })
 
-/* ===== PRODUCTOS ===== */
+/* ================= PRODUCTOS ================= */
 
 app.get("/api/products",(req,res)=>{
+
 db.query("SELECT * FROM products",(err,data)=>{
-if(err)return res.status(500).json(err)
+
+if(err) return res.status(500).json([])
+
 res.json(data)
+
 })
+
 })
 
 app.post("/api/products",(req,res)=>{
-const {name,price,cost,stock,cat}=req.body
+
+const {name,price,cost,stock,cat} = req.body
 
 db.query(
 "INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
 [name,price,cost,stock,cat],
 (err)=>{
-if(err)return res.status(500).json(err)
+
+if(err) return res.status(500).json(err)
+
 res.json({ok:true})
-})
+
 })
 
-/* ===== EDITAR PRODUCTO ===== */
+})
 
 app.put("/api/products/:id",(req,res)=>{
 
-const id=req.params.id
-const {name,price,cost,stock,cat}=req.body
+const {name,price,cost,stock,cat} = req.body
+const id = req.params.id
 
 db.query(
 "UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
 [name,price,cost,stock,cat,id],
 (err)=>{
-if(err)return res.status(500).json(err)
+
+if(err) return res.status(500).json(err)
+
 res.json({ok:true})
-})
 
 })
 
-/* ===== ELIMINAR PRODUCTO ===== */
+})
 
 app.delete("/api/products/:id",(req,res)=>{
 
@@ -120,49 +130,110 @@ db.query(
 "DELETE FROM products WHERE id=?",
 [req.params.id],
 (err)=>{
-if(err)return res.status(500).json(err)
+
+if(err) return res.status(500).json(err)
+
 res.json({ok:true})
-})
 
 })
 
-/* ===== RESTOCK ===== */
+})
+
+/* ================= RESTOCK ================= */
 
 app.post("/api/restock",(req,res)=>{
 
-const {id,qty}=req.body
+const {id,qty} = req.body
 
 db.query(
-"UPDATE products SET stock=stock+? WHERE id=?",
+"UPDATE products SET stock = stock + ? WHERE id=?",
 [qty,id],
 (err)=>{
-if(err)return res.status(500).json(err)
+
+if(err) return res.status(500).json(err)
+
 res.json({ok:true})
-})
 
 })
 
-/* ===== VENTAS ===== */
+})
+
+/* ================= OBTENER VENTAS ================= */
 
 app.get("/api/sales",(req,res)=>{
 
-db.query("SELECT * FROM sales ORDER BY id DESC",(err,data)=>{
-if(err)return res.json([])
-res.json(data)
+db.query(
+"SELECT * FROM sales ORDER BY id DESC",
+(err,sales)=>{
+
+if(err) return res.json([])
+
+if(sales.length === 0) return res.json([])
+
+const ids = sales.map(s => s.id)
+
+db.query(
+"SELECT * FROM sale_items WHERE sale_id IN (?)",
+[ids],
+(err,items)=>{
+
+if(err) return res.json([])
+
+const result = sales.map(s=>{
+
+const saleItems = items
+.filter(i=>i.sale_id === s.id)
+.map(i=>({
+
+id: Number(i.product_id),
+name: i.name,
+price: Number(i.price),
+cost: Number(i.cost),
+qty: Number(i.qty)
+
+}))
+
+return {
+
+id: Number(s.id),
+num: Number(s.id),
+date: s.date,
+dateKey: s.date,
+items: saleItems,
+total: Number(s.total),
+paid: Number(s.paid),
+change: Number(s.change_amount)
+
+}
+
+})
+
+res.json(result)
+
 })
 
 })
+
+})
+
+/* ================= CREAR VENTA ================= */
 
 app.post("/api/sales",(req,res)=>{
 
-const sale=req.body
+const sale = req.body
 
 db.query(
 "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-[sale.id,sale.date,sale.total,sale.paid,sale.change],
+[
+sale.id,
+sale.date,
+sale.total,
+sale.paid,
+sale.change
+],
 (err)=>{
 
-if(err)return res.status(500).json(err)
+if(err) return res.status(500).json(err)
 
 sale.items.forEach(item=>{
 
@@ -178,9 +249,12 @@ item.qty
 ])
 
 db.query(
-"UPDATE products SET stock=stock-?, sold=sold+? WHERE id=?",
-[item.qty,item.qty,item.id]
-)
+"UPDATE products SET stock = stock - ?, sold = sold + ? WHERE id=?",
+[
+item.qty,
+item.qty,
+item.id
+])
 
 })
 
@@ -190,13 +264,14 @@ res.json({ok:true})
 
 })
 
-const PORT=$PORT
+/* ================= START ================= */
+
+const PORT = $PORT
 
 app.listen(PORT,()=>{
-console.log("POS corriendo en puerto",PORT)
+console.log("POS PRO corriendo en puerto",PORT)
 })
 EOF
-
 
 echo "===== CREANDO BASE DE DATOS ====="
 
@@ -247,8 +322,8 @@ pm2 startup
 pm2 save
 
 echo ""
-echo "===== POS INSTALADO ====="
+echo "===== POS PRO INSTALADO ====="
 echo ""
-echo "Abre:"
+echo "Abrir:"
 echo "http://$DOMAIN:$PORT"
 echo ""
