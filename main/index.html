@@ -8,21 +8,50 @@
 
 <script>
 
+/* ================= VERIFICAR TOKEN ================= */
+
 const token = localStorage.getItem("token")
 
 if(!token){
 location.href="/login.html"
 }
 
+/* validar sesión contra servidor */
+
 fetch("/api/session",{
 headers:{Authorization:token}
 })
 .then(res=>{
+
 if(res.status!==200){
 localStorage.removeItem("token")
 location.href="/login.html"
 }
+
 })
+
+/* ================= REVISIÓN AUTOMÁTICA ================= */
+
+setInterval(()=>{
+
+fetch("/api/session",{
+headers:{Authorization:localStorage.getItem("token")}
+})
+.then(res=>{
+
+if(res.status!==200){
+
+localStorage.removeItem("token")
+
+alert("Sesión expirada")
+
+location.href="/login.html"
+
+}
+
+})
+
+},60000) // cada 60 segundos
 
 </script>
 
