@@ -1,18 +1,43 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>POS Mobile Pro</title>
+
+<script>
+
+const token = localStorage.getItem("token")
+
+if(!token){
+location.href="/login.html"
+}
+
+fetch("/api/session",{
+headers:{Authorization:token}
+})
+.then(res=>{
+if(res.status!==200){
+localStorage.removeItem("token")
+location.href="/login.html"
+}
+})
+
+</script>
+
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
 <script src="https://cdn.tailwindcss.com"></script>
+
 <style>
-  :root {
-    --accent: #22c55e;
-    --accent2: #3b82f6;
-    --dark: #0f172a;
-    --sidebar-w: 260px;
-  }
+
+:root{
+--accent:#22c55e;
+--accent2:#3b82f6;
+--dark:#0f172a;
+--sidebar-w:260px;
+}
   
   #saleSummaryBox{
 font-family: monospace;
