@@ -238,6 +238,16 @@ z-index: 1;
     <button class="nav-btn" id="nav-sales" onclick="show('sales')"><span class="icon">📋</span>Ventas</button>
     <button class="nav-btn" id="nav-stats" onclick="show('stats')"><span class="icon">📊</span>Estadísticas</button>
   </nav>
+  <button class="nav-btn" onclick="backupPOS()">
+<span class="icon">💾</span>Backup
+</button>
+
+<button class="nav-btn" onclick="document.getElementById('restoreFile').click()">
+<span class="icon">♻️</span>Restaurar Backup
+</button>
+
+<input type="file" id="restoreFile" accept=".json" style="display:none"
+onchange="restorePOS(this.files[0])">
   <div style="padding:16px 20px; color:#475569; font-size:11px; font-weight:600;">POS Mobile Pro v2.0</div>
 </aside>
 
@@ -479,6 +489,47 @@ async function loadProducts(){
 
 }
 
+async function backupPOS(){
+
+const res = await fetch("/api/backup")
+const data = await res.json()
+
+const blob = new Blob(
+[JSON.stringify(data,null,2)],
+{type:"application/json"}
+)
+
+const a = document.createElement("a")
+a.href = URL.createObjectURL(blob)
+a.download = "pos-backup.json"
+a.click()
+
+showToast("✅ Backup descargado")
+
+}
+
+async function restorePOS(file){
+
+if(!file) return
+
+const text = await file.text()
+const data = JSON.parse(text)
+
+await fetch("/api/restore",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify(data)
+})
+
+showToast("♻️ Backup restaurado")
+
+setTimeout(()=>{
+location.reload()
+},1000)
+
+}
 async function loadSales(){
 
   try{
@@ -1437,4 +1488,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-  </html>
+</html>
