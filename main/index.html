@@ -733,21 +733,19 @@ async function confirmSale() {
     body:JSON.stringify(sale)
   })
 
+  // limpiar carrito
   state.cart=[]
-
   document.getElementById("paid").value=""
 
-  await loadProducts()
-
-  // Mostrar ticket
+  // 🔥 mostrar ticket primero
   showSaleSummary(sale)
 
-  // Aviso
+  // actualizar productos después
+  await loadProducts()
+
   showToast(`✅ Venta #${sale.num}`)
 
-  // 🔥 dejar listo para siguiente venta
   document.getElementById("paid").focus()
-
 }
 
 // =========== INVENTORY ===========
@@ -1034,12 +1032,20 @@ ${line}</pre>`
 $${sale.change.toFixed(2)} 🟢
 </span>`
 
+  const modal = document.getElementById("saleSummary")
 
-  document.getElementById("saleSummary").style.display = "flex"
-
+  modal.style.display = "flex"
+  modal.style.visibility = "visible"
 }
+
+
 function closeSummary(){
-document.getElementById("saleSummary").style.display="none"
+
+  const modal = document.getElementById("saleSummary")
+
+  modal.style.display="none"
+  modal.style.visibility="hidden"
+
 }
 
 function printTicket(){
@@ -1398,9 +1404,12 @@ if (dateEl) {
 loadProducts()
 show("pos")
 
-// sincronizar con servidor cada 3 segundos
-setInterval(loadProducts, 3000)
+setInterval(()=>{
+  if(document.getElementById("saleSummary").style.display!=="flex"){
+    loadProducts()
+  }
+},3000)
 </script>
 
 </body>
-  </html>
+</html>
