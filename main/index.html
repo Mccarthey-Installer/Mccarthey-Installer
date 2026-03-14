@@ -1131,9 +1131,9 @@ function renderSales(){
     acumulado += s.total
 
     const items = s.items.map(p=>{
-      const profit = (p.price - p.cost) * p.qty
-      return \`\${p.name} x\${p.qty} — Gan: $\${profit.toFixed(2)}\`
-    }).join("<br>")
+  const profit = (p.price - p.cost) * p.qty
+  return `${p.name} x${p.qty} — Gan: $${profit.toFixed(2)}`
+}).join("<br>")
 
     const profitVenta = s.items.reduce((a,p)=>{
       return a + ((p.price - p.cost) * p.qty)
@@ -1433,4 +1433,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-    </html>
+  </html>
