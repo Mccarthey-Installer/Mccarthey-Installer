@@ -5,66 +5,65 @@ REPO="https://github.com/Mccarthey-Installer/Mccarthey-Installer.git"
 APP_DIR="/var/www/pos"
 PORT="9092"
 
+echo "===== LIMPIANDO INSTALACION VIEJA ====="
+
+pm2 delete pos 2>/dev/null
+pm2 kill 2>/dev/null
+
+rm -rf $APP_DIR
+
 echo "===== ACTUALIZANDO SISTEMA ====="
+
 apt update -y
 
 echo "===== INSTALANDO DEPENDENCIAS ====="
+
 apt install -y git curl mysql-server
 
-echo "===== INSTALANDO NODE ====="
+echo "===== INSTALANDO NODE 20 ====="
+
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install -y nodejs
 
 echo "===== INSTALANDO PM2 ====="
-npm install -g pm2
 
-mkdir -p /var/www
+npm install -g pm2
 
 echo "===== CLONANDO POS ====="
 
-if [ -d "$APP_DIR" ]; then
-cd $APP_DIR
-git pull
-else
+mkdir -p /var/www
 cd /var/www
 git clone $REPO pos
-fi
 
 cd $APP_DIR
 
-echo "===== INSTALANDO LIBRERIAS ====="
+echo "===== INSTALANDO LIBRERIAS NODE ====="
+
 npm init -y
-npm install express mysql2 cors socket.io
+npm install express mysql2 cors
 
 echo "===== CREANDO SERVER ====="
 
 cat <<EOF > server.js
+const express = require("express")
+const path = require("path")
+const mysql = require("mysql2")
+const cors = require("cors")
 
-const express=require("express")
-const path=require("path")
-const mysql=require("mysql2")
-const cors=require("cors")
-const http=require("http")
-const {Server}=require("socket.io")
-
-const app=express()
-const server=http.createServer(app)
-const io=new Server(server)
+const app = express()
 
 app.use(cors())
 app.use(express.json())
 
-/* SERVIR POS */
-
+// SERVIR FRONTEND
 app.use(express.static(__dirname))
 
 app.get("/",(req,res)=>{
 res.sendFile(path.join(__dirname,"index.html"))
 })
 
-/* MYSQL */
-
-const db=mysql.createConnection({
+// MYSQL
+const db = mysql.createConnection({
 host:"localhost",
 user:"posuser",
 password:"pos123",
@@ -73,35 +72,19 @@ database:"posdb"
 
 db.connect(err=>{
 if(err){
-console.log("MYSQL ERROR",err)
+console.log("Error MySQL:",err)
 return
 }
-console.log("MYSQL CONECTADO")
+console.log("MySQL conectado")
 })
 
-/* SOCKET */
-
-io.on("connection",(socket)=>{
-console.log("cliente conectado")
-})
-
-function sync(){
-io.emit("sync")
-}
-
-/* ======================= */
 /* PRODUCTOS */
-/* ======================= */
 
 app.get("/api/products",(req,res)=>{
-
-db.query(
-"SELECT * FROM products ORDER BY id DESC",
-(err,data)=>{
+db.query("SELECT * FROM products",(err,data)=>{
 if(err)return res.send(err)
 res.json(data)
 })
-
 })
 
 app.post("/api/products",(req,res)=>{
@@ -113,48 +96,12 @@ db.query(
 [name,price,cost,stock,cat],
 (err)=>{
 if(err)return res.send(err)
-
-sync()
-
 res.json({ok:true})
 })
 
 })
 
-app.put("/api/products/:id",(req,res)=>{
-
-const id=req.params.id
-const {name,price,cost,stock,cat}=req.body
-
-db.query(
-"UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
-[name,price,cost,stock,cat,id],
-(err)=>{
-if(err)return res.send(err)
-
-sync()
-
-res.json({ok:true})
-})
-
-})
-
-app.delete("/api/products/:id",(req,res)=>{
-
-const id=req.params.id
-
-db.query(
-"DELETE FROM products WHERE id=?",
-[id],
-(err)=>{
-if(err)return res.send(err)
-
-sync()
-
-res.json({ok:true})
-})
-
-})
+/* RESTOCK */
 
 app.post("/api/restock",(req,res)=>{
 
@@ -165,27 +112,32 @@ db.query(
 [qty,id],
 (err)=>{
 if(err)return res.send(err)
-
-sync()
-
 res.json({ok:true})
 })
 
 })
 
-/* ======================= */
-/* VENTAS */
-/* ======================= */
+/* ELIMINAR PRODUCTO */
 
-app.get("/api/sales",(req,res)=>{
+app.delete("/api/products/:id",(req,res)=>{
 
 db.query(
-"SELECT * FROM sales ORDER BY id DESC",
-(err,data)=>{
+"DELETE FROM products WHERE id=?",
+[req.params.id],
+(err)=>{
+if(err)return res.send(err)
+res.json({ok:true})
+})
+
+})
+
+/* VENTAS */
+
+app.get("/api/sales",(req,res)=>{
+db.query("SELECT * FROM sales ORDER BY id DESC",(err,data)=>{
 if(err)return res.send(err)
 res.json(data)
 })
-
 })
 
 app.post("/api/sales",(req,res)=>{
@@ -196,6 +148,7 @@ db.query(
 "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
 [sale.id,sale.date,sale.total,sale.paid,sale.change],
 (err)=>{
+
 if(err)return res.send(err)
 
 sale.items.forEach(item=>{
@@ -218,21 +171,17 @@ db.query(
 
 })
 
-sync()
-
 res.json({ok:true})
 
 })
 
 })
 
-/* SERVIDOR */
-
-server.listen($PORT,()=>{
-console.log("POS PRO corriendo en puerto $PORT")
+app.listen($PORT,()=>{
+console.log("POS corriendo en puerto $PORT")
 })
-
 EOF
+
 
 echo "===== CREANDO BASE DE DATOS ====="
 
@@ -278,13 +227,12 @@ EOF
 
 echo "===== INICIANDO POS ====="
 
-pm2 delete pos 2>/dev/null
 pm2 start server.js --name pos
 pm2 startup
 pm2 save
 
 echo ""
-echo "===== POS PRO INSTALADO ====="
+echo "===== POS INSTALADO ====="
 echo ""
 echo "Abre:"
 echo "http://$DOMAIN:$PORT"
