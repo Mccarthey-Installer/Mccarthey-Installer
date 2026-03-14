@@ -92,6 +92,46 @@ res.json(data)
 })
 
 app.post("/api/products",(req,res)=>{
+/* ===== PRODUCTOS ===== */
+
+app.get("/api/products",(req,res)=>{
+db.query("SELECT * FROM products",(err,data)=>{
+if(err)return res.send(err)
+res.json(data)
+})
+})
+
+app.post("/api/products",(req,res)=>{
+const {name,price,cost,stock,cat}=req.body
+db.query(
+"INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
+[name,price,cost,stock,cat],
+(err)=>{
+if(err)return res.send(err)
+res.json({ok:true})
+}
+)
+})
+
+/* ===== ELIMINAR PRODUCTO ===== */
+
+app.delete("/api/products/:id",(req,res)=>{
+
+db.query(
+"DELETE FROM products WHERE id=?",
+[req.params.id],
+(err)=>{
+
+if(err){
+console.log(err)
+return res.status(500).json(err)
+}
+
+res.json({ok:true})
+
+})
+
+})
 
 const {name,price,cost,stock,cat}=req.body
 
