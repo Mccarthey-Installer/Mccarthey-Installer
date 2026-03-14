@@ -368,6 +368,51 @@ res.status(500).json(err)
 
 })
 
+/* ================= RESTORE ================= */
+
+app.post("/api/restore", async (req,res)=>{
+
+const data = req.body
+const conn = db.promise()
+
+try{
+
+await conn.query("DELETE FROM sale_items")
+await conn.query("DELETE FROM sales")
+await conn.query("DELETE FROM products")
+
+for(const p of data.products){
+await conn.query(
+"INSERT INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
+[p.id,p.name,p.price,p.cost,p.stock,p.sold,p.cat]
+)
+}
+
+for(const s of data.sales){
+await conn.query(
+"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
+[s.id,s.date,s.total,s.paid,s.change_amount]
+)
+}
+
+for(const i of data.sale_items){
+await conn.query(
+"INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
+[i.sale_id,i.product_id,i.name,i.price,i.cost,i.qty]
+)
+}
+
+res.json({ok:true})
+
+}catch(err){
+
+res.status(500).json(err)
+
+}
+
+})
+
+
 /* ================= START ================= */
 
 const PORT = $PORT
