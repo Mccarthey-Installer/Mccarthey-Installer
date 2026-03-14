@@ -8,6 +8,34 @@
 
 <script>
 
+/* ================= PATCH FETCH ================= */
+
+const originalFetch = window.fetch;
+
+window.fetch = function(url, options = {}){
+
+const token = localStorage.getItem("token")
+
+options.headers = {
+...(options.headers || {}),
+Authorization: token
+}
+
+return originalFetch(url, options).then(res=>{
+
+if(res.status === 401){
+
+localStorage.removeItem("token")
+location.href="/login.html"
+
+}
+
+return res
+
+})
+
+}
+
 /* ================= API WRAPPER ================= */
 
 function api(url, options = {}){
@@ -20,18 +48,7 @@ Authorization: token,
 "Content-Type": "application/json"
 }
 
-return fetch(url, options).then(res=>{
-
-if(res.status === 401){
-
-localStorage.removeItem("token")
-location.href="/login.html"
-
-}
-
-return res
-
-})
+return fetch(url, options)
 
 }
 
@@ -78,7 +95,7 @@ location.href="/login.html"
 
 })
 
-},60000) // cada 60 segundos
+},60000)
 
 </script>
 
@@ -94,13 +111,21 @@ location.href="/login.html"
 --dark:#0f172a;
 --sidebar-w:260px;
 }
-  
-  #saleSummaryBox{
+
+/* ===== FIX CSS ===== */
+
+#saleSummaryBox{
 font-family: monospace;
 overflow: hidden;
 position: relative;
 z-index: 1;
 }
+
+</style>
+
+</head>
+
+<body>
   * { box-sizing: border-box; }
   body { font-family: 'Sora', sans-serif; background: #f1f5f9; margin: 0; }
 
