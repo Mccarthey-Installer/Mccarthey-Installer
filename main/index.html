@@ -1066,13 +1066,24 @@ w.print()
 
 function shareTicket(){
 
-const text=document.getElementById("saleSummaryBox").innerText
+const text = document.getElementById("saleSummaryBox").innerText
 
 if(navigator.share){
-navigator.share({title:"Ticket de venta",text})
-}else{
+
+navigator.share({
+title:"Ticket de venta",
+text:text
+})
+.catch(()=>{
 navigator.clipboard.writeText(text)
 showToast("📋 Ticket copiado")
+})
+
+}else{
+
+navigator.clipboard.writeText(text)
+showToast("📋 Ticket copiado")
+
 }
 
 }
@@ -1408,4 +1419,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-</html>
+  </html>
