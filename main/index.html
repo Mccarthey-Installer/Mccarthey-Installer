@@ -697,12 +697,15 @@ async function confirmSale() {
 
   await loadProducts()
 
-  showToast(`✅ Venta #${sale.num}`)
+  // Mostrar ticket
   showSaleSummary(sale)
-}
 
-function money(n){
-  return "$" + Number(n).toFixed(2)
+  // Aviso
+  showToast(`✅ Venta #${sale.num}`)
+
+  // 🔥 dejar listo para siguiente venta
+  document.getElementById("paid").focus()
+
 }
 
 // =========== INVENTORY ===========
@@ -964,24 +967,34 @@ ${line}
 
   }).join("\n")
 
+
   document.getElementById("saleSummaryInfo").innerHTML =
-`Venta #${sale.num}<br>ID: ${sale.id}<br>${sale.date}`
+`Venta #${sale.num}<br>
+ID: ${sale.id}<br>
+${sale.date}`
+
 
   document.getElementById("saleSummaryItems").innerHTML =
-  `<pre>${header}${items}\n${line}</pre>`
+`<pre style="font-family:monospace">${header}${items}
+${line}</pre>`
 
-  document.getElementById("saleSummaryTotal").textContent =
-  "$" + sale.total.toFixed(2)
 
-  document.getElementById("saleSummaryPaid").textContent =
-  "$" + sale.paid.toFixed(2)
+  document.getElementById("saleSummaryTotal").innerHTML =
+`<b>$${sale.total.toFixed(2)}</b>`
+
+
+  document.getElementById("saleSummaryPaid").innerHTML =
+`<b>$${sale.paid.toFixed(2)}</b>`
+
 
   document.getElementById("saleSummaryChange").innerHTML =
-  `<span style="color:#16a34a;font-weight:700;">
-  $${sale.change.toFixed(2)} 🟢
-  </span>`
+`<span style="color:#16a34a;font-weight:700;">
+$${sale.change.toFixed(2)} 🟢
+</span>`
+
 
   document.getElementById("saleSummary").style.display = "flex"
+
 }
 function closeSummary(){
 document.getElementById("saleSummary").style.display="none"
@@ -1387,4 +1400,4 @@ Vuelto: <b id="saleSummaryChange"></b>
 </div>
 </div>
 </body>
-</html>
+  </html>
