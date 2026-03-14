@@ -17,6 +17,8 @@
   #saleSummaryBox{
 font-family: monospace;
 overflow: hidden;
+position: relative;
+z-index: 1;
 }
   * { box-sizing: border-box; }
   body { font-family: 'Sora', sans-serif; background: #f1f5f9; margin: 0; }
@@ -349,14 +351,15 @@ Pagó: <b id="saleSummaryPaid"></b><br>
 Vuelto: <b id="saleSummaryChange"></b>
 </div>
 
-<div style="margin-top:15px;display:flex;gap:8px;">
+<div style="margin-top:15px;display:flex;gap:8px;position:relative;z-index:5;">
 <button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>
 <button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>
-<button id="btnCloseTicket" class="btn-confirm">Cerrar</button>
+<button onclick="closeSummary()" class="btn-confirm">Cerrar</button>
+</div>
 
 </div>
 </div>
-</div>
+
 
 
 <!-- ========== CAJA ========== -->
@@ -1024,7 +1027,7 @@ ${sale.date}`
 
 
   document.getElementById("saleSummaryItems").innerHTML =
-`<pre style="font-family:monospace">${header}${items}
+`<pre style="font-family:monospace;overflow-x:auto;">${header}${items}
 ${line}</pre>`
 
 
@@ -1435,4 +1438,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-  </html>
+</html>
