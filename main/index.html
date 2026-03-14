@@ -1108,6 +1108,7 @@ showToast("📋 Ticket copiado")
 }
 
 // =========== SALES ===========
+// =========== SALES ===========
 function renderSales(){
 
 const container = document.getElementById("salesList")
@@ -1121,30 +1122,27 @@ No hay ventas registradas aún
 return
 }
 
-// ordenar ventas de nuevas a viejas
-const ventas = [...state.sales].reverse()
-
 let acumulado = 0
 
-ventas.forEach((s,i)=>{
+state.sales.forEach((s,i)=>{
 
 acumulado += s.total
 
 const items = s.items.map(p=>{
-  const profit = (p.price - p.cost) * p.qty
-  return `${p.name} x${p.qty} — Gan: $${profit.toFixed(2)}`
+const profit = (p.price - p.cost) * p.qty
+return `${p.name} x${p.qty} — Gan: $${profit.toFixed(2)}`
 }).join("<br>")
 
 const profitVenta = s.items.reduce((a,p)=>{
-  return a + ((p.price - p.cost) * p.qty)
+return a + ((p.price - p.cost) * p.qty)
 },0)
 
 const colors = [
-  "#dbeafe",
-  "#dcfce7",
-  "#fef9c3",
-  "#fee2e2",
-  "#e0f2fe"
+"#dbeafe",
+"#dcfce7",
+"#fef9c3",
+"#fee2e2",
+"#e0f2fe"
 ]
 
 const div = document.createElement("div")
