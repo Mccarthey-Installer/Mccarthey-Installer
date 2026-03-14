@@ -40,7 +40,7 @@ cd $APP_DIR
 echo "===== INSTALANDO LIBRERIAS ====="
 
 npm init -y
-npm install express mysql2 cors
+npm install express mysql2 cors bcrypt uuid
 
 echo "===== CREANDO SERVER ====="
 
@@ -49,6 +49,8 @@ const express = require("express")
 const path = require("path")
 const mysql = require("mysql2")
 const cors = require("cors")
+const bcrypt = require("bcrypt")
+const { v4: uuidv4 } = require("uuid")
 
 const app = express()
 
@@ -73,6 +75,82 @@ user:"posuser",
 password:"pos123",
 database:"posdb",
 connectionLimit:10
+})
+
+/* ================= LOGIN ================= */
+
+app.post("/api/login", async (req,res)=>{
+
+const {username,password} = req.body
+const conn = db.promise()
+
+try{
+
+const [admin] = await conn.query(
+"SELECT * FROM admins WHERE username=?",
+[username]
+)
+
+if(admin.length === 0){
+return res.status(401).json({error:"login"})
+}
+
+const valid = await bcrypt.compare(password,admin[0].password_hash)
+
+if(!valid){
+return res.status(401).json({error:"login"})
+}
+
+const token = uuidv4()
+
+await conn.query(
+"INSERT INTO sessions(token,admin_id) VALUES(?,?)",
+[token,admin[0].id]
+)
+
+res.json({token})
+
+}catch(err){
+res.status(500).json(err)
+}
+
+})
+
+/* SESSION CHECK */
+
+app.get("/api/session", async (req,res)=>{
+
+const token = req.headers.authorization
+
+if(!token) return res.status(401).json({})
+
+const conn = db.promise()
+
+const [s] = await conn.query(
+"SELECT * FROM sessions WHERE token=?",
+[token]
+)
+
+if(!s.length) return res.status(401).json({})
+
+res.json({ok:true})
+
+})
+
+/* LOGOUT */
+
+app.post("/api/logout", async (req,res)=>{
+
+const token = req.headers.authorization
+const conn = db.promise()
+
+await conn.query(
+"DELETE FROM sessions WHERE token=?",
+[token]
+)
+
+res.json({ok:true})
+
 })
 
 /* ================= PRODUCTOS ================= */
@@ -158,112 +236,6 @@ res.json({ok:true})
 
 })
 
-/* ================= OBTENER VENTAS ================= */
-
-app.get("/api/sales",(req,res)=>{
-
-db.query(
-"SELECT * FROM sales ORDER BY id DESC",
-(err,sales)=>{
-
-if(err) return res.json([])
-
-if(sales.length === 0) return res.json([])
-
-const ids = sales.map(s => s.id)
-
-db.query(
-"SELECT * FROM sale_items WHERE sale_id IN (?)",
-[ids],
-(err,items)=>{
-
-if(err) return res.json([])
-
-const result = sales.map(s=>{
-
-const saleItems = items
-.filter(i=>i.sale_id === s.id)
-.map(i=>({
-
-id: Number(i.product_id),
-name: i.name,
-price: Number(i.price),
-cost: Number(i.cost),
-qty: Number(i.qty)
-
-}))
-
-return {
-
-id: Number(s.id),
-num: Number(s.id),
-date: s.date,
-dateKey: s.date,
-items: saleItems,
-total: Number(s.total),
-paid: Number(s.paid),
-change: Number(s.change_amount)
-
-}
-
-})
-
-res.json(result)
-
-})
-
-})
-
-})
-
-/* ================= CREAR VENTA ================= */
-
-app.post("/api/sales",(req,res)=>{
-
-const sale = req.body
-
-db.query(
-"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-[
-sale.id,
-sale.date,
-sale.total,
-sale.paid,
-sale.change
-],
-(err)=>{
-
-if(err) return res.status(500).json(err)
-
-sale.items.forEach(item=>{
-
-db.query(
-"INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
-[
-sale.id,
-item.id,
-item.name,
-item.price,
-item.cost,
-item.qty
-])
-
-db.query(
-"UPDATE products SET stock = stock - ?, sold = sold + ? WHERE id=?",
-[
-item.qty,
-item.qty,
-item.id
-])
-
-})
-
-res.json({ok:true})
-
-})
-
-})
-
 /* ================= BACKUP ================= */
 
 app.get("/api/backup", async (req,res)=>{
@@ -283,53 +255,7 @@ sale_items:items
 })
 
 }catch(err){
-
 res.status(500).json(err)
-
-}
-
-})
-
-/* ================= RESTORE ================= */
-
-app.post("/api/restore", async (req,res)=>{
-
-const data = req.body
-const conn = db.promise()
-
-try{
-
-await conn.query("DELETE FROM sale_items")
-await conn.query("DELETE FROM sales")
-await conn.query("DELETE FROM products")
-
-for(const p of data.products){
-await conn.query(
-"INSERT INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
-[p.id,p.name,p.price,p.cost,p.stock,p.sold,p.cat]
-)
-}
-
-for(const s of data.sales){
-await conn.query(
-"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-[s.id,s.date,s.total,s.paid,s.change_amount]
-)
-}
-
-for(const i of data.sale_items){
-await conn.query(
-"INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
-[i.sale_id,i.product_id,i.name,i.price,i.cost,i.qty]
-)
-}
-
-res.json({ok:true})
-
-}catch(err){
-
-res.status(500).json(err)
-
 }
 
 })
@@ -341,6 +267,112 @@ const PORT = $PORT
 app.listen(PORT,()=>{
 console.log("POS PRO corriendo en puerto",PORT)
 })
+EOF
+
+echo "===== CREANDO LOGIN ====="
+
+cat <<'EOF' > /var/www/pos/main/login.html
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>POS PRO Login</title>
+
+<style>
+
+body{
+margin:0;
+font-family:sans-serif;
+background:#f1f5f9;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+}
+
+.card{
+background:white;
+padding:30px;
+border-radius:16px;
+width:320px;
+box-shadow:0 10px 40px rgba(0,0,0,.15);
+animation:fade .4s;
+}
+
+@keyframes fade{
+from{opacity:0;transform:translateY(20px);}
+to{opacity:1;transform:translateY(0);}
+}
+
+h1{text-align:center;margin-bottom:20px;}
+
+input{
+width:100%;
+padding:12px;
+margin-bottom:12px;
+border-radius:10px;
+border:1px solid #ddd;
+}
+
+button{
+width:100%;
+padding:12px;
+border:none;
+background:#22c55e;
+color:white;
+border-radius:10px;
+font-weight:bold;
+cursor:pointer;
+}
+
+button:hover{background:#16a34a;}
+
+</style>
+</head>
+
+<body>
+
+<div class="card">
+
+<h1>📦 POS PRO</h1>
+
+<input id="user" placeholder="👤 Usuario">
+<input id="pass" type="password" placeholder="🔒 Contraseña">
+
+<button onclick="login()">Entrar</button>
+
+</div>
+
+<script>
+
+async function login(){
+
+const username=document.getElementById("user").value
+const password=document.getElementById("pass").value
+
+const res=await fetch("/api/login",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({username,password})
+})
+
+if(res.status!==200){
+alert("Login incorrecto")
+return
+}
+
+const data=await res.json()
+
+localStorage.setItem("token",data.token)
+
+location.href="/"
+
+}
+
+</script>
+
+</body>
+</html>
 EOF
 
 echo "===== CREANDO BASE DE DATOS ====="
@@ -383,7 +415,32 @@ cost DECIMAL(10,2),
 qty INT
 );
 
+CREATE TABLE IF NOT EXISTS admins(
+id INT AUTO_INCREMENT PRIMARY KEY,
+username VARCHAR(50),
+password_hash TEXT,
+recovery_key VARCHAR(50),
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sessions(
+id INT AUTO_INCREMENT PRIMARY KEY,
+token VARCHAR(200),
+admin_id INT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 EOF
+
+echo "===== CREANDO ADMIN ====="
+
+HASH=$(node -e "require('bcrypt').hash('admin123',10).then(h=>console.log(h))")
+
+mysql posdb -e "
+INSERT IGNORE INTO admins(username,password_hash,recovery_key)
+VALUES('admin','$HASH','POS-RECOVERY-123');
+"
 
 echo "===== INICIANDO POS ====="
 
@@ -394,6 +451,10 @@ pm2 save
 echo ""
 echo "===== POS PRO INSTALADO ====="
 echo ""
+echo "Login:"
+echo "usuario: admin"
+echo "password: admin123"
+echo ""
 echo "Abrir:"
-echo "http://$DOMAIN:$PORT"
+echo "http://$DOMAIN:$PORT/login.html"
 echo ""
