@@ -351,8 +351,9 @@ Vuelto: <b id="saleSummaryChange"></b>
 
 <div style="margin-top:15px;display:flex;gap:8px;">
 <button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>
-<button onclick="alert('share click');shareTicket()" class="btn-ghost">📤 Compartir</button>
-<button onclick="alert('cerrar funciona');closeSummary()" class="btn-confirm">Cerrar</button>
+<button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>
+<button id="btnCloseTicket" class="btn-confirm">Cerrar</button>
+
 </div>
 </div>
 </div>
@@ -984,6 +985,7 @@ async function deleteProduct(id){
 }
 
 // =========== TICKET===========
+// =========== TICKET===========
 function showSaleSummary(sale){
 
   const line = "--------------------------------"
@@ -1039,18 +1041,24 @@ ${line}</pre>`
 $${sale.change.toFixed(2)} 🟢
 </span>`
 
- const modal = document.getElementById("saleSummary")
+  const modal = document.getElementById("saleSummary")
 
   modal.style.display = "flex"
+  modal.style.opacity = "1"
+  modal.style.visibility = "visible"
   modal.style.pointerEvents = "auto"
 
-} 
+}
 
+
+// FUNCIÓN PARA CERRAR
 function closeSummary(){
 
   const modal = document.getElementById("saleSummary")
 
   modal.style.display = "none"
+  modal.style.opacity = "0"
+  modal.style.visibility = "hidden"
   modal.style.pointerEvents = "none"
 
 }
@@ -1427,4 +1435,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-</html>
+  </html>
