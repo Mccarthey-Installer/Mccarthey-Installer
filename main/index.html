@@ -1032,18 +1032,19 @@ ${line}</pre>`
 $${sale.change.toFixed(2)} 🟢
 </span>`
 
-  const modal = document.getElementById("saleSummary")
+ const modal = document.getElementById("saleSummary")
 
   modal.style.display = "flex"
-  modal.style.visibility = "visible"
-}
+  modal.style.pointerEvents = "auto"
 
+} 
 
 function closeSummary(){
 
   const modal = document.getElementById("saleSummary")
 
   modal.style.display = "none"
+  modal.style.pointerEvents = "none"
 
 }
 
@@ -1403,11 +1404,8 @@ if (dateEl) {
 loadProducts()
 show("pos")
 
-setInterval(()=>{
-  if(document.getElementById("saleSummary").style.display!=="flex"){
-    loadProducts()
-  }
-},3000)
+// sincronizar con servidor cada 3 segundos
+setInterval(loadProducts, 3000)
 </script>
 
 </body>
