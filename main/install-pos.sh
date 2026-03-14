@@ -77,6 +77,56 @@ database:"posdb",
 connectionLimit:10
 })
 
+/* ================= AUTH MIDDLEWARE ================= */
+
+function auth(req,res,next){
+
+const token = req.headers.authorization
+
+if(!token){
+return res.status(401).json({})
+}
+
+db.promise()
+.query("SELECT last_activity FROM sessions WHERE token=?", [token])
+.then(([rows])=>{
+
+if(!rows.length){
+return res.status(401).json({})
+}
+
+const last = new Date(rows[0].last_activity)
+const now = new Date()
+const diff = (now - last) / 1000 / 60
+
+/* sesión expirada */
+
+if(diff > 20){
+
+return db.promise()
+.query("DELETE FROM sessions WHERE token=?", [token])
+.then(()=>{
+return res.status(401).json({})
+})
+
+}
+
+/* actualizar actividad */
+
+return db.promise()
+.query("UPDATE sessions SET last_activity=NOW() WHERE token=?", [token])
+.then(()=>{
+next()
+})
+
+})
+.catch((err)=>{
+console.error("AUTH ERROR:", err)
+return res.status(401).json({})
+})
+
+}
+
 /* ================= LOGIN ================= */
 
 app.post("/api/login", async (req,res)=>{
@@ -85,6 +135,8 @@ const {username,password} = req.body
 const conn = db.promise()
 
 try{
+
+/* buscar admin */
 
 const [admin] = await conn.query(
 "SELECT * FROM admins WHERE username=?",
@@ -95,34 +147,50 @@ if(admin.length === 0){
 return res.status(401).json({error:"login"})
 }
 
+/* verificar contraseña */
+
 const valid = await bcrypt.compare(password,admin[0].password_hash)
 
 if(!valid){
 return res.status(401).json({error:"login"})
 }
 
+/* crear token */
+
 const token = uuidv4()
 
+/* guardar sesión con actividad inicial */
+
 await conn.query(
-"INSERT INTO sessions(token,admin_id) VALUES(?,?)",
+"INSERT INTO sessions(token,admin_id,last_activity) VALUES(?,?,NOW())",
 [token,admin[0].id]
 )
+
+/* responder */
 
 res.json({token})
 
 }catch(err){
-res.status(500).json(err)
+
+console.error("LOGIN ERROR:",err)
+
+res.status(500).json({error:"server"})
+
 }
 
 })
 
-/* SESSION CHECK */
+/* ================= SESSION CHECK ================= */
 
 app.get("/api/session", async (req,res)=>{
 
+try{
+
 const token = req.headers.authorization
 
-if(!token) return res.status(401).json({})
+if(!token){
+return res.status(401).json({})
+}
 
 const conn = db.promise()
 
@@ -131,9 +199,41 @@ const [s] = await conn.query(
 [token]
 )
 
-if(!s.length) return res.status(401).json({})
+if(!s.length){
+return res.status(401).json({})
+}
+
+/* verificar expiración 20 minutos */
+
+const last = new Date(s[0].last_activity)
+const now = new Date()
+
+const diff = (now - last) / 1000 / 60
+
+if(diff > 20){
+
+await conn.query(
+"DELETE FROM sessions WHERE token=?",
+[token]
+)
+
+return res.status(401).json({})
+}
+
+/* actualizar actividad */
+
+await conn.query(
+"UPDATE sessions SET last_activity=NOW() WHERE token=?",
+[token]
+)
 
 res.json({ok:true})
+
+}catch(err){
+
+res.status(500).json(err)
+
+}
 
 })
 
@@ -155,7 +255,7 @@ res.json({ok:true})
 
 /* ================= PRODUCTOS ================= */
 
-app.get("/api/products",(req,res)=>{
+app.get("/api/products", auth, (req,res)=>{
 
 db.query("SELECT * FROM products",(err,data)=>{
 
@@ -167,7 +267,7 @@ res.json(data)
 
 })
 
-app.post("/api/products",(req,res)=>{
+app.post("/api/products", auth, (req,res)=>{
 
 const {name,price,cost,stock,cat} = req.body
 
@@ -184,7 +284,7 @@ res.json({ok:true})
 
 })
 
-app.put("/api/products/:id",(req,res)=>{
+app.put("/api/products/:id", auth, (req,res)=>{
 
 const {name,price,cost,stock,cat} = req.body
 const id = req.params.id
@@ -202,7 +302,7 @@ res.json({ok:true})
 
 })
 
-app.delete("/api/products/:id",(req,res)=>{
+app.delete("/api/products/:id", auth, (req,res)=>{
 
 db.query(
 "DELETE FROM products WHERE id=?",
@@ -219,7 +319,7 @@ res.json({ok:true})
 
 /* ================= RESTOCK ================= */
 
-app.post("/api/restock",(req,res)=>{
+app.post("/api/restock", auth, (req,res)=>{
 
 const {id,qty} = req.body
 
@@ -238,7 +338,7 @@ res.json({ok:true})
 
 /* ================= OBTENER VENTAS ================= */
 
-app.get("/api/sales",(req,res)=>{
+app.get("/api/sales", auth, (req,res)=>{
 
 db.query(
 "SELECT * FROM sales ORDER BY id DESC",
@@ -297,7 +397,7 @@ res.json(result)
 
 /* ================= CREAR VENTA ================= */
 
-app.post("/api/sales",(req,res)=>{
+app.post("/api/sales", auth, (req,res)=>{
 
 const sale=req.body
 
@@ -346,7 +446,7 @@ res.json({ok:true})
 
 /* ================= BACKUP ================= */
 
-app.get("/api/backup", async (req,res)=>{
+app.get("/api/backup", auth, async (req,res)=>{
 
 const conn = db.promise()
 
@@ -370,7 +470,7 @@ res.status(500).json(err)
 
 /* ================= RESTORE ================= */
 
-app.post("/api/restore", async (req,res)=>{
+app.post("/api/restore", auth, async (req,res)=>{
 
 const data = req.body
 const conn = db.promise()
