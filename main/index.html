@@ -917,21 +917,23 @@ async function confirmRestock(){
 }
 
 // =========== DELETE ===========
-async function deleteProduct(id){
+app.delete("/api/products/:id",(req,res)=>{
 
-  const p = state.products.find(x => x.id === id)
+db.query(
+"DELETE FROM products WHERE id=?",
+[req.params.id],
+(err)=>{
 
-  if(!confirm(`¿Eliminar "${p.name}"?`)) return
-
-  await fetch("/api/products/"+id,{
-    method:"DELETE"
-  })
-
-  await loadProducts()
-
-  showToast("🗑 Producto eliminado")
-
+if(err){
+console.log(err)
+return res.status(500).json(err)
 }
+
+res.json({ok:true})
+
+})
+
+})
 
 // =========== TICKET===========
 function showSaleSummary(sale){
