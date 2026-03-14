@@ -16,7 +16,7 @@
   
   #saleSummaryBox{
 font-family: monospace;
-white-space: pre;
+overflow: hidden;
 }
   * { box-sizing: border-box; }
   body { font-family: 'Sora', sans-serif; background: #f1f5f9; margin: 0; }
@@ -332,7 +332,16 @@ box-shadow:0 20px 60px rgba(0,0,0,.25);
 
 <div id="saleSummaryInfo" style="font-size:13px;color:#64748b;margin-bottom:10px;"></div>
 
-<div id="saleSummaryItems" style="margin-bottom:12px;line-height:1.7;font-weight:600;"></div>
+<div id="saleSummaryItems"
+style="
+margin-bottom:12px;
+line-height:1.7;
+font-weight:600;
+overflow-x:auto;
+max-width:100%;
+"></div>
+
+
 
 <div style="border-top:1px solid #e2e8f0;padding-top:10px;font-size:14px;">
 Total: <b id="saleSummaryTotal"></b><br>
@@ -1419,4 +1428,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-  </html>
+</html>
