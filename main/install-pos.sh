@@ -236,6 +236,114 @@ res.json({ok:true})
 
 })
 
+/* ================= OBTENER VENTAS ================= */
+
+app.get("/api/sales",(req,res)=>{
+
+db.query(
+"SELECT * FROM sales ORDER BY id DESC",
+(err,sales)=>{
+
+if(err) return res.json([])
+
+if(sales.length === 0) return res.json([])
+
+const ids = sales.map(s => s.id)
+
+db.query(
+"SELECT * FROM sale_items WHERE sale_id IN (?)",
+[ids],
+(err,items)=>{
+
+if(err) return res.json([])
+
+const result = sales.map(s=>{
+
+const saleItems = items
+.filter(i=>i.sale_id === s.id)
+.map(i=>({
+
+id:Number(i.product_id),
+name:i.name,
+price:Number(i.price),
+cost:Number(i.cost),
+qty:Number(i.qty)
+
+}))
+
+return{
+
+id:Number(s.id),
+num:Number(s.id),
+date:s.date,
+dateKey:s.date,
+items:saleItems,
+total:Number(s.total),
+paid:Number(s.paid),
+change:Number(s.change_amount)
+
+}
+
+})
+
+res.json(result)
+
+})
+
+})
+
+})
+
+
+/* ================= CREAR VENTA ================= */
+
+app.post("/api/sales",(req,res)=>{
+
+const sale=req.body
+
+db.query(
+"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
+[
+sale.id,
+sale.date,
+sale.total,
+sale.paid,
+sale.change
+],
+(err)=>{
+
+if(err) return res.status(500).json(err)
+
+sale.items.forEach(item=>{
+
+db.query(
+"INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
+[
+sale.id,
+item.id,
+item.name,
+item.price,
+item.cost,
+item.qty
+])
+
+db.query(
+"UPDATE products SET stock = stock - ?, sold = sold + ? WHERE id=?",
+[
+item.qty,
+item.qty,
+item.id
+])
+
+})
+
+res.json({ok:true})
+
+})
+
+})
+
+
 /* ================= BACKUP ================= */
 
 app.get("/api/backup", async (req,res)=>{
