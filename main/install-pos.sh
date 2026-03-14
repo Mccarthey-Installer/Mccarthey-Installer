@@ -45,46 +45,50 @@ npm install express mysql2 cors
 echo "===== CREANDO SERVER ====="
 
 cat <<EOF > server.js
-const express = require("express")
-const path = require("path")
-const mysql = require("mysql2")
-const cors = require("cors")
+const express=require("express")
+const path=require("path")
+const mysql=require("mysql2")
+const cors=require("cors")
 
-const app = express()
+const app=express()
 
 app.use(cors())
 app.use(express.json())
 
-// SERVIR FRONTEND
-app.use(express.static(__dirname))
+/* FRONTEND */
+
+const FRONT=path.join(__dirname,"main")
+
+app.use(express.static(FRONT))
 
 app.get("/",(req,res)=>{
-res.sendFile(path.join(__dirname,"index.html"))
+res.sendFile(path.join(FRONT,"index.html"))
 })
 
-// MYSQL
-const db = mysql.createConnection({
+/* MYSQL */
+
+const db=mysql.createPool({
 host:"localhost",
 user:"posuser",
 password:"pos123",
 database:"posdb"
 })
 
-db.connect(err=>{
-if(err){
-console.log("Error MySQL:",err)
-return
-}
-console.log("MySQL conectado")
-})
-
 /* PRODUCTOS */
 
 app.get("/api/products",(req,res)=>{
+
 db.query("SELECT * FROM products",(err,data)=>{
-if(err)return res.send(err)
+
+if(err){
+console.log(err)
+return res.status(500).json(err)
+}
+
 res.json(data)
+
 })
+
 })
 
 app.post("/api/products",(req,res)=>{
@@ -95,8 +99,53 @@ db.query(
 "INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
 [name,price,cost,stock,cat],
 (err)=>{
-if(err)return res.send(err)
+
+if(err){
+console.log(err)
+return res.status(500).json(err)
+}
+
 res.json({ok:true})
+
+})
+
+})
+
+app.put("/api/products/:id",(req,res)=>{
+
+const id=req.params.id
+const {name,price,cost,stock,cat}=req.body
+
+db.query(
+"UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
+[name,price,cost,stock,cat,id],
+(err)=>{
+
+if(err){
+console.log(err)
+return res.status(500).json(err)
+}
+
+res.json({ok:true})
+
+})
+
+})
+
+app.delete("/api/products/:id",(req,res)=>{
+
+db.query(
+"DELETE FROM products WHERE id=?",
+[req.params.id],
+(err)=>{
+
+if(err){
+console.log(err)
+return res.status(500).json(err)
+}
+
+res.json({ok:true})
+
 })
 
 })
@@ -111,22 +160,14 @@ db.query(
 "UPDATE products SET stock=stock+? WHERE id=?",
 [qty,id],
 (err)=>{
-if(err)return res.send(err)
+
+if(err){
+console.log(err)
+return res.status(500).json(err)
+}
+
 res.json({ok:true})
-})
 
-})
-
-/* ELIMINAR PRODUCTO */
-
-app.delete("/api/products/:id",(req,res)=>{
-
-db.query(
-"DELETE FROM products WHERE id=?",
-[req.params.id],
-(err)=>{
-if(err)return res.send(err)
-res.json({ok:true})
 })
 
 })
@@ -134,10 +175,18 @@ res.json({ok:true})
 /* VENTAS */
 
 app.get("/api/sales",(req,res)=>{
+
 db.query("SELECT * FROM sales ORDER BY id DESC",(err,data)=>{
-if(err)return res.send(err)
+
+if(err){
+console.log(err)
+return res.json([])
+}
+
 res.json(data)
+
 })
+
 })
 
 app.post("/api/sales",(req,res)=>{
@@ -149,7 +198,10 @@ db.query(
 [sale.id,sale.date,sale.total,sale.paid,sale.change],
 (err)=>{
 
-if(err)return res.send(err)
+if(err){
+console.log(err)
+return res.status(500).json(err)
+}
 
 sale.items.forEach(item=>{
 
@@ -177,8 +229,10 @@ res.json({ok:true})
 
 })
 
-app.listen($PORT,()=>{
-console.log("POS corriendo en puerto $PORT")
+const PORT=$PORT
+
+app.listen(PORT,()=>{
+console.log("POS corriendo en puerto",PORT)
 })
 EOF
 
