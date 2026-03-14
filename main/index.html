@@ -308,6 +308,48 @@ white-space: pre;
   </div>
 </div>
 
+<!-- MODAL TICKET -->
+<div id="saleSummary" style="
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.5);
+z-index:500;
+align-items:center;
+justify-content:center;
+">
+
+<div id="saleSummaryBox" style="
+background:#fff;
+border-radius:16px;
+padding:20px;
+width:90%;
+max-width:360px;
+box-shadow:0 20px 60px rgba(0,0,0,.25);
+">
+
+<h3 style="margin-bottom:10px;">🧾 Ticket de venta</h3>
+
+<div id="saleSummaryInfo" style="font-size:13px;color:#64748b;margin-bottom:10px;"></div>
+
+<div id="saleSummaryItems" style="margin-bottom:12px;line-height:1.7;font-weight:600;"></div>
+
+<div style="border-top:1px solid #e2e8f0;padding-top:10px;font-size:14px;">
+Total: <b id="saleSummaryTotal"></b><br>
+Pagó: <b id="saleSummaryPaid"></b><br>
+Vuelto: <b id="saleSummaryChange"></b>
+</div>
+
+<div style="margin-top:15px;display:flex;gap:8px;">
+<button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>
+<button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>
+<button onclick="closeSummary()" class="btn-confirm">Cerrar</button>
+
+</div>
+</div>
+</div>
+
+
 <!-- ========== CAJA ========== -->
 <section id="pos">
   <div class="card">
@@ -1359,45 +1401,6 @@ show("pos")
 // sincronizar con servidor cada 3 segundos
 setInterval(loadProducts, 3000)
 </script>
-<!-- MODAL TICKET -->
-<div id="saleSummary" style="
-display:none;
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.5);
-z-index:500;
-align-items:center;
-justify-content:center;
-">
 
-<div id="saleSummaryBox" style="
-background:#fff;
-border-radius:16px;
-padding:20px;
-width:90%;
-max-width:360px;
-box-shadow:0 20px 60px rgba(0,0,0,.25);
-">
-
-<h3 style="margin-bottom:10px;">🧾 Ticket de venta</h3>
-
-<div id="saleSummaryInfo" style="font-size:13px;color:#64748b;margin-bottom:10px;"></div>
-
-<div id="saleSummaryItems" style="margin-bottom:12px;line-height:1.7;font-weight:600;"></div>
-
-<div style="border-top:1px solid #e2e8f0;padding-top:10px;font-size:14px;">
-Total: <b id="saleSummaryTotal"></b><br>
-Pagó: <b id="saleSummaryPaid"></b><br>
-Vuelto: <b id="saleSummaryChange"></b>
-</div>
-
-<div style="margin-top:15px;display:flex;gap:8px;">
-<button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>
-<button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>
-<button onclick="closeSummary()" class="btn-confirm">Cerrar</button>
-</div>
-
-</div>
-</div>
 </body>
   </html>
