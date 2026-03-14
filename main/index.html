@@ -733,15 +733,14 @@ async function confirmSale() {
     body:JSON.stringify(sale)
   })
 
-  // limpiar carrito
   state.cart=[]
   document.getElementById("paid").value=""
 
-  // 🔥 mostrar ticket primero
+  // mostrar ticket
   showSaleSummary(sale)
 
-  // actualizar productos después
-  await loadProducts()
+  // actualizar productos sin bloquear interfaz
+  setTimeout(loadProducts,500)
 
   showToast(`✅ Venta #${sale.num}`)
 
