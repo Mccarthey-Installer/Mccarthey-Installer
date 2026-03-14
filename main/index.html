@@ -1108,7 +1108,6 @@ showToast("📋 Ticket copiado")
 }
 
 // =========== SALES ===========
-// =========== SALES ===========
 function renderSales(){
 
 const container = document.getElementById("salesList")
@@ -1122,11 +1121,18 @@ No hay ventas registradas aún
 return
 }
 
+// calcular acumulado desde las ventas viejas
 let acumulado = 0
-
-state.sales.forEach((s,i)=>{
-
+const ventasConAcumulado = state.sales.slice().reverse().map(s=>{
 acumulado += s.total
+return {
+...s,
+acumulado
+}
+})
+
+// ahora mostrarlas de nuevas a viejas
+ventasConAcumulado.reverse().forEach((s,i)=>{
 
 const items = s.items.map(p=>{
 const profit = (p.price - p.cost) * p.qty
@@ -1179,7 +1185,7 @@ Pagó: <b>$${Number(s.paid).toFixed(2)}</b><br>
 Vuelto: <b>$${Number(s.change).toFixed(2)}</b><br>
 
 <span style="font-weight:700;">
-Acumulado: $${acumulado.toFixed(2)}
+Acumulado: $${s.acumulado.toFixed(2)}
 </span>
 
 </div>
@@ -1431,4 +1437,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-        </html>
+  </html>
