@@ -74,82 +74,28 @@ password:"pos123",
 database:"posdb"
 })
 
-/* PRODUCTOS */
-
-app.get("/api/products",(req,res)=>{
-
-db.query("SELECT * FROM products",(err,data)=>{
-
-if(err){
-console.log(err)
-return res.status(500).json(err)
-}
-
-res.json(data)
-
-})
-
-})
-
-app.post("/api/products",(req,res)=>{
 /* ===== PRODUCTOS ===== */
 
 app.get("/api/products",(req,res)=>{
 db.query("SELECT * FROM products",(err,data)=>{
-if(err)return res.send(err)
+if(err)return res.status(500).json(err)
 res.json(data)
 })
 })
 
 app.post("/api/products",(req,res)=>{
 const {name,price,cost,stock,cat}=req.body
-db.query(
-"INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
-[name,price,cost,stock,cat],
-(err)=>{
-if(err)return res.send(err)
-res.json({ok:true})
-}
-)
-})
-
-/* ===== ELIMINAR PRODUCTO ===== */
-
-app.delete("/api/products/:id",(req,res)=>{
-
-db.query(
-"DELETE FROM products WHERE id=?",
-[req.params.id],
-(err)=>{
-
-if(err){
-console.log(err)
-return res.status(500).json(err)
-}
-
-res.json({ok:true})
-
-})
-
-})
-
-const {name,price,cost,stock,cat}=req.body
 
 db.query(
 "INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
 [name,price,cost,stock,cat],
 (err)=>{
-
-if(err){
-console.log(err)
-return res.status(500).json(err)
-}
-
+if(err)return res.status(500).json(err)
 res.json({ok:true})
-
+})
 })
 
-})
+/* ===== EDITAR PRODUCTO ===== */
 
 app.put("/api/products/:id",(req,res)=>{
 
@@ -160,17 +106,13 @@ db.query(
 "UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
 [name,price,cost,stock,cat,id],
 (err)=>{
-
-if(err){
-console.log(err)
-return res.status(500).json(err)
-}
-
+if(err)return res.status(500).json(err)
 res.json({ok:true})
-
 })
 
 })
+
+/* ===== ELIMINAR PRODUCTO ===== */
 
 app.delete("/api/products/:id",(req,res)=>{
 
@@ -178,19 +120,13 @@ db.query(
 "DELETE FROM products WHERE id=?",
 [req.params.id],
 (err)=>{
-
-if(err){
-console.log(err)
-return res.status(500).json(err)
-}
-
+if(err)return res.status(500).json(err)
 res.json({ok:true})
-
 })
 
 })
 
-/* RESTOCK */
+/* ===== RESTOCK ===== */
 
 app.post("/api/restock",(req,res)=>{
 
@@ -200,31 +136,19 @@ db.query(
 "UPDATE products SET stock=stock+? WHERE id=?",
 [qty,id],
 (err)=>{
-
-if(err){
-console.log(err)
-return res.status(500).json(err)
-}
-
+if(err)return res.status(500).json(err)
 res.json({ok:true})
-
 })
 
 })
 
-/* VENTAS */
+/* ===== VENTAS ===== */
 
 app.get("/api/sales",(req,res)=>{
 
 db.query("SELECT * FROM sales ORDER BY id DESC",(err,data)=>{
-
-if(err){
-console.log(err)
-return res.json([])
-}
-
+if(err)return res.json([])
 res.json(data)
-
 })
 
 })
@@ -238,10 +162,7 @@ db.query(
 [sale.id,sale.date,sale.total,sale.paid,sale.change],
 (err)=>{
 
-if(err){
-console.log(err)
-return res.status(500).json(err)
-}
+if(err)return res.status(500).json(err)
 
 sale.items.forEach(item=>{
 
