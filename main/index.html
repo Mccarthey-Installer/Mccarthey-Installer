@@ -1457,22 +1457,25 @@ function renderStats() {
   drawChart()
 }
 
-// =========== REINCIAR ESTADÍSTICAS ===========
-function resetStats(){
+  // =========== REINCIAR ESTADÍSTICAS ===========
+async function resetStats(){
 
-  if(!confirm("¿Reiniciar estadísticas? Las ventas se eliminarán pero el inventario seguirá igual.")) return
+if(!confirm("¿Reiniciar estadísticas? Las ventas se eliminarán pero el inventario seguirá igual.")) return
 
-  state.sales = []
+await fetch("/api/reset-stats",{
+method:"POST"
+})
 
-  state.products.forEach(p=>{
-    p.sold = 0
-  })
+state.products.forEach(p=>{
+p.sold = 0
+})
 
-  renderAll()
+renderAll()
 
-  showToast("📊 Estadísticas reiniciadas")
+showToast("📊 Estadísticas reiniciadas")
 
 }
+
 // =========== CHART ===========
 function drawChart() {
   const canvas = document.getElementById("salesChart")
