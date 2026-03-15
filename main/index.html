@@ -1588,11 +1588,20 @@ function exportCSV(){
 }
 
 // =========== CLEAR HISTORY ===========
-function clearHistory() {
-  if (!confirm("¿Eliminar todo el historial de ventas? Esta acción no se puede deshacer.")) return
-  state.sales = []
-  renderAll()
-  showToast("🗑 Historial eliminado")
+async function clearHistory(){
+
+if(!confirm("¿Eliminar todo el historial de ventas? Esta acción no se puede deshacer.")) return
+
+await fetch("/api/sales",{
+method:"DELETE"
+})
+
+state.sales=[]
+
+renderAll()
+
+showToast("🗑 Historial eliminado")
+
 }
 
 // =========== RENDER ALL ===========
@@ -1640,4 +1649,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-        </html>
+    </html>
