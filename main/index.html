@@ -1471,73 +1471,126 @@ showToast("📊 Estadísticas reiniciadas")
 }
 // =========== CHART ===========
 function drawChart() {
+
   const canvas = document.getElementById("salesChart")
   if (!canvas) return
+
   const ctx = canvas.getContext("2d")
+
   const W = canvas.offsetWidth || 300
   canvas.width = W
   canvas.height = 160
+
   const H = 160
 
   const byDay = {}
-  state.sales.forEach(s => { byDay[s.dateKey] = (byDay[s.dateKey] || 0) + s.total })
-  const labels = Object.keys(byDay).slice(-7)
+
+  // agrupar ventas por día
+  state.sales.forEach(s => {
+
+    if(!s.dateKey) return
+
+    // limpiar fecha (si viene con año o hora)
+    const clean = s.dateKey.split("/").slice(0,2).join("/")
+
+    byDay[clean] = (byDay[clean] || 0) + s.total
+
+  })
+
+  // ordenar fechas correctamente
+  const labels = Object.keys(byDay)
+    .sort((a,b)=>{
+      const [d1,m1] = a.split("/").map(Number)
+      const [d2,m2] = b.split("/").map(Number)
+      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
+    })
+    .slice(-7)
+
   const values = labels.map(k => byDay[k])
 
-  ctx.clearRect(0, 0, W, H)
+  ctx.clearRect(0,0,W,H)
 
-  if (labels.length === 0) {
+  if(labels.length === 0){
+
     ctx.fillStyle = "#94a3b8"
     ctx.font = "13px Sora, sans-serif"
     ctx.textAlign = "center"
-    ctx.fillText("Aún no hay datos para graficar", W/2, H/2)
+
+    ctx.fillText("Aún no hay datos para graficar",W/2,H/2)
+
     return
   }
 
-  const maxVal = Math.max(...values, 1)
-  const padL = 8, padR = 8, padT = 22, padB = 32
+  const maxVal = Math.max(...values,1)
+
+  const padL = 8
+  const padR = 8
+  const padT = 22
+  const padB = 32
+
   const chartW = W - padL - padR
   const chartH = H - padT - padB
-  const gap = chartW / labels.length
-  const barW = Math.min(gap * 0.55, 40)
 
-  // Grid
+  const gap = chartW / labels.length
+  const barW = Math.min(gap * 0.55,40)
+
+  // grid
   ctx.strokeStyle = "#f1f5f9"
   ctx.lineWidth = 1
-  for (let i = 1; i <= 3; i++) {
-    const y = padT + chartH - (i/3) * chartH
-    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke()
+
+  for(let i=1;i<=3;i++){
+
+    const y = padT + chartH - (i/3)*chartH
+
+    ctx.beginPath()
+    ctx.moveTo(padL,y)
+    ctx.lineTo(W-padR,y)
+    ctx.stroke()
+
   }
 
-  // Bars
-  labels.forEach((lbl, i) => {
-    const barH = Math.max((values[i] / maxVal) * chartH, 4)
-    const x = padL + i * gap + gap/2 - barW/2
+  // barras
+  labels.forEach((lbl,i)=>{
+
+    const barH = Math.max((values[i]/maxVal)*chartH,4)
+
+    const x = padL + i*gap + gap/2 - barW/2
     const y = padT + chartH - barH
 
-    const grad = ctx.createLinearGradient(0, y, 0, y + barH)
-    grad.addColorStop(0, "#3b82f6")
-    grad.addColorStop(1, "#bfdbfe")
+    const grad = ctx.createLinearGradient(0,y,0,y+barH)
+
+    grad.addColorStop(0,"#3b82f6")
+    grad.addColorStop(1,"#bfdbfe")
+
     ctx.fillStyle = grad
+
     ctx.beginPath()
-    if (ctx.roundRect) ctx.roundRect(x, y, barW, barH, 5)
-    else ctx.rect(x, y, barW, barH)
+
+    if(ctx.roundRect){
+      ctx.roundRect(x,y,barW,barH,5)
+    }else{
+      ctx.rect(x,y,barW,barH)
+    }
+
     ctx.fill()
 
-    // value
+    // valor $
     ctx.fillStyle = "#1e40af"
     ctx.font = "bold 9px JetBrains Mono, monospace"
     ctx.textAlign = "center"
-    ctx.fillText("$" + values[i].toFixed(0), x + barW/2, y - 5)
 
-    // date
+    ctx.fillText("$"+values[i].toFixed(0),x+barW/2,y-5)
+
+    // fecha limpia
     ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora, sans-serif"
     ctx.textAlign = "center"
-    ctx.fillText(lbl, x + barW/2, H - 6)
-  })
-}
 
+    ctx.fillText(lbl,x+barW/2,H-6)
+
+  })
+
+}
 // =========== EXPORT CSV ===========
 function exportCSV(){
 
@@ -1644,4 +1697,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-</html>
+  </html>
