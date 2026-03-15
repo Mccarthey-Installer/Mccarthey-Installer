@@ -394,6 +394,23 @@ res.json(result)
 
 })
 
+app.delete("/api/sales", auth, async (req,res)=>{
+
+try{
+
+await db.promise().query("DELETE FROM sale_items")
+await db.promise().query("DELETE FROM sales")
+
+res.json({ok:true})
+
+}catch(err){
+
+res.status(500).json(err)
+
+}
+
+})
+
 
 /* ================= CREAR VENTA ================= */
 
