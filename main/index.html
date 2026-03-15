@@ -933,7 +933,7 @@ async function confirmSale() {
     id: Date.now(),
     num: state.sales.length + 1,
     date: now.toLocaleString(),
-    dateKey: now.toLocaleDateString(),
+    dateKey: now.getDate() + "/" + (now.getMonth()+1),
     items: JSON.parse(JSON.stringify(state.cart)),
     total,
     paid,
@@ -1534,8 +1534,7 @@ function drawChart() {
     ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora, sans-serif"
     ctx.textAlign = "center"
-    const parts = lbl.split("/")
-    ctx.fillText((parts[0]||lbl) + "/" + (parts[1]||""), x + barW/2, H - 6)
+    ctx.fillText(lbl, x + barW/2, H - 6)
   })
 }
 
@@ -1645,4 +1644,4 @@ setInterval(loadProducts, 3000)
 </script>
 
 </body>
-    </html>
+</html>
