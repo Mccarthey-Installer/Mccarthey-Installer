@@ -1462,20 +1462,13 @@ async function resetStats(){
 
 if(!confirm("¿Reiniciar estadísticas? Las ventas se eliminarán pero el inventario seguirá igual.")) return
 
-await fetch("/api/reset-stats",{
-method:"POST"
-})
+await fetch("/api/reset-stats",{method:"POST"})
 
-state.products.forEach(p=>{
-p.sold = 0
-})
-
-renderAll()
+await loadProducts()
 
 showToast("📊 Estadísticas reiniciadas")
 
 }
-
 // =========== CHART ===========
 function drawChart() {
   const canvas = document.getElementById("salesChart")
