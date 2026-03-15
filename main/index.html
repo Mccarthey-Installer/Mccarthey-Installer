@@ -112,7 +112,17 @@ location.href="/login.html"
 --sidebar-w:260px;
 }
 
-/* ===== FIX CSS ===== */
+
+
+/* ===== BASE ===== */
+
+* { box-sizing: border-box; }
+
+body {
+font-family: 'Sora', sans-serif;
+background: #f1f5f9;
+margin: 0;
+}
 
 #saleSummaryBox{
 font-family: monospace;
@@ -121,43 +131,67 @@ position: relative;
 z-index: 1;
 }
 
-</style>
+/* ===== SIDEBAR ===== */
 
-</head>
+#sidebar {
+position: fixed;
+top: 0;
+left: 0;
+width: var(--sidebar-w);
+height: 100%;
+background: var(--dark);
+transform: translateX(calc(-1 * var(--sidebar-w)));
+transition: transform .3s cubic-bezier(.4,0,.2,1);
+z-index: 100;
+display: flex;
+flex-direction: column;
+}
 
-<body>
-  * { box-sizing: border-box; }
-  body { font-family: 'Sora', sans-serif; background: #f1f5f9; margin: 0; }
+.nav-btn{
+display:flex;
+align-items:center;
+gap:10px;
+width:100%;
+padding:10px 14px;
+background:none;
+border:none;
+color:#94a3b8;
+font-weight:600;
+cursor:pointer;
+border-radius:8px;
+transition:background .2s,color .2s;
+}
 
-  /* SIDEBAR */
-  #sidebar {
-    position: fixed; top: 0; left: 0;
-    width: var(--sidebar-w); height: 100%;
-    background: var(--dark);
-    transform: translateX(calc(-1 * var(--sidebar-w)));
-    transition: transform .3s cubic-bezier(.4,0,.2,1);
-    z-index: 100;
-    display: flex; flex-direction: column;
-  }
-  #sidebar.open { transform: translateX(0); }
-  #overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,.45); z-index: 99;
-  }
-  #overlay.show { display: block; }
+.nav-btn:hover,
+.nav-btn.active{
+background:rgba(255,255,255,.08);
+color:#fff;
+}
 
-  .nav-btn {
-    display: flex; align-items: center; gap: 12px;
-    width: 100%; text-align: left;
-    padding: 12px 20px; border-radius: 10px;
-    color: #94a3b8; font-size: 15px; font-weight: 600;
-    transition: background .2s, color .2s;
-    border: none; background: transparent; cursor: pointer;
-  }
-  .nav-btn:hover, .nav-btn.active {
-    background: rgba(255,255,255,.07); color: #fff;
-  }
-  .nav-btn .icon { font-size: 18px; width: 24px; text-align: center; }
+.nav-btn .icon{
+font-size:18px;
+width:24px;
+text-align:center;
+}
+
+#sidebar.open { 
+transform: translateX(0); 
+}
+
+#overlay{
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.45);
+z-index:99;
+transition:opacity .25s;
+opacity:0;
+}
+
+#overlay.show{
+display:block;
+opacity:1;
+}
 
   header {
     background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.08);
