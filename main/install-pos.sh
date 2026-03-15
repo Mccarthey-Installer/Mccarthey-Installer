@@ -412,6 +412,23 @@ res.status(500).json(err)
 })
 
 
+app.post("/api/reset-stats", auth, async (req,res)=>{
+
+try{
+
+await db.promise().query("UPDATE products SET sold = 0")
+
+res.json({ok:true})
+
+}catch(err){
+
+res.status(500).json(err)
+
+}
+
+})
+
+
 /* ================= CREAR VENTA ================= */
 
 app.post("/api/sales", auth, (req,res)=>{
