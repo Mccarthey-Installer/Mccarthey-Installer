@@ -418,6 +418,10 @@ try{
 
 await db.promise().query("UPDATE products SET sold = 0")
 
+await db.promise().query("DELETE FROM sale_items")
+
+await db.promise().query("DELETE FROM sales")
+
 res.json({ok:true})
 
 }catch(err){
