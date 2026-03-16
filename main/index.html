@@ -1703,7 +1703,7 @@ function drawChart() {
     ctx.font = "bold 9px JetBrains Mono, monospace"
     ctx.textAlign = "center"
 
-    ctx.fillText("$"+values[i].toFixed(0),x+barW/2,y-5)
+    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
 
     // fecha limpia
     ctx.fillStyle = "#64748b"
@@ -1788,7 +1788,7 @@ ctx.fillRect(x,y,barW,barH)
 ctx.fillStyle="#166534"
 ctx.font="bold 9px JetBrains Mono"
 ctx.textAlign="center"
-ctx.fillText("$"+values[i].toFixed(0),x+barW/2,y-5)
+ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
 
 ctx.fillStyle="#64748b"
 ctx.font="9px Sora"
