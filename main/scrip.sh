@@ -3349,7 +3349,32 @@ done
 
 }
 
+setup_ssl_renewal(){
 
+cat << 'EOF' > /root/renew_ssl.sh
+#!/bin/bash
+
+# detener proxy MCCARTHEY
+pkill -f /etc/MCCARTHEY/PDirect.py
+
+sleep 5
+
+# renovar certificado SSL
+/root/.acme.sh/acme.sh --cron
+
+sleep 5
+
+# volver a levantar proxy
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+
+EOF
+
+chmod +x /root/renew_ssl.sh
+
+# programar renovación automática diaria
+(crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
+
+}
 
 install_panel(){
 
@@ -3379,6 +3404,8 @@ apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
 printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
 
 echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
+# configurar renovación automática SSL
+setup_ssl_renewal
 
 # =========================
 # REACTIVAR PROXY MCCARTHEY
