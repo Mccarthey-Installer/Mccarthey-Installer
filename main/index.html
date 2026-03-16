@@ -689,18 +689,31 @@ Vuelto: <b id="saleSummaryChange"></b>
 
   <div id="statsPanel" class="grid grid-cols-2 gap-3" style="margin-top:16px;"></div>
 
+  <!-- GRAFICA VENTAS -->
   <div class="card" style="margin-top:4px;">
     <span style="font-weight:700; font-size:14px; color:#0f172a;">
       📈 Ventas por día
     </span>
+
     <canvas id="salesChart" style="margin-top:12px; width:100%; height:160px;"></canvas>
   </div>
 
+  <!-- GRAFICA GANANCIAS -->
+  <div class="card" style="margin-top:10px;">
+    <span style="font-weight:700;font-size:14px;color:#0f172a;">
+      💰 Ganancia por día
+    </span>
+
+    <canvas id="profitChart" style="margin-top:12px;width:100%;height:160px;"></canvas>
+  </div>
+
+  <!-- RANKING -->
   <div id="rankingList" class="card" style="margin-top:4px;"></div>
 
 </section>
 
 <script>
+
 // =========== STATE ===========
 const state = {
   products: [],
@@ -820,9 +833,14 @@ function show(id) {
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"))
   document.getElementById("nav-" + id)?.classList.add("active")
   closeSidebar()
-  if (id === "stats") setTimeout(drawChart, 50)
-}
 
+  if (id === "stats") {
+    setTimeout(() => {
+      drawChart()
+      drawProfitChart()
+    }, 50)
+  }
+}
 // =========== TOAST ===========
 function showToast(msg) {
   const t = document.getElementById("toast")
@@ -1557,7 +1575,10 @@ function renderStats() {
     })
   }
   document.getElementById("rankingList").innerHTML = rankHtml
-  drawChart()
+
+drawChart()
+drawProfitChart()
+  
 }
 
   // =========== REINCIAR ESTADÍSTICAS ===========
@@ -1694,6 +1715,88 @@ function drawChart() {
   })
 
 }
+
+function drawProfitChart(){
+
+const canvas = document.getElementById("profitChart")
+if(!canvas) return
+
+const ctx = canvas.getContext("2d")
+
+const W = canvas.offsetWidth || 300
+canvas.width = W
+canvas.height = 160
+
+const H = 160
+
+const byDay = {}
+
+state.sales.forEach(s=>{
+
+if(!s.dateKey) return
+
+const clean = s.dateKey.split("/").slice(0,2).join("/")
+
+let profit = 0
+
+s.items.forEach(p=>{
+profit += (p.price - p.cost) * p.qty
+})
+
+byDay[clean] = (byDay[clean] || 0) + profit
+
+})
+
+const labels = Object.keys(byDay)
+.sort((a,b)=>{
+const [d1,m1] = a.split("/").map(Number)
+const [d2,m2] = b.split("/").map(Number)
+return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
+})
+.slice(-7)
+const values = labels.map(k=>byDay[k])
+
+ctx.clearRect(0,0,W,H)
+
+if(labels.length===0){
+ctx.fillStyle="#94a3b8"
+ctx.font="13px Sora"
+ctx.textAlign="center"
+ctx.fillText("Sin datos",W/2,H/2)
+return
+}
+
+const maxVal = Math.max(...values,1)
+
+const padL=8,padR=8,padT=22,padB=32
+const chartW=W-padL-padR
+const chartH=H-padT-padB
+
+const gap=chartW/labels.length
+const barW=Math.min(gap*0.55,40)
+
+labels.forEach((lbl,i)=>{
+
+const barH=(values[i]/maxVal)*chartH
+
+const x=padL+i*gap+gap/2-barW/2
+const y=padT+chartH-barH
+
+ctx.fillStyle="#22c55e"
+ctx.fillRect(x,y,barW,barH)
+
+ctx.fillStyle="#166534"
+ctx.font="bold 9px JetBrains Mono"
+ctx.textAlign="center"
+ctx.fillText("$"+values[i].toFixed(0),x+barW/2,y-5)
+
+ctx.fillStyle="#64748b"
+ctx.font="9px Sora"
+ctx.fillText(lbl,x+barW/2,H-6)
+
+})
+
+}
 // =========== EXPORT CSV ===========
 function exportCSV(){
 
@@ -1817,4 +1920,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-          </html>
+  </html>
