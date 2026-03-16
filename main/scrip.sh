@@ -3354,24 +3354,38 @@ setup_ssl_renewal(){
 cat << 'EOF' > /root/renew_ssl.sh
 #!/bin/bash
 
-# detener proxy MCCARTHEY
+CERT="/root/.acme.sh/102.129.137.211_ecc/fullchain.cer"
+
+# verificar que el certificado exista
+if [ ! -f "$CERT" ]; then
+exit 0
+fi
+
+EXPIRACION=$(openssl x509 -enddate -noout -in $CERT | cut -d= -f2)
+EXPIRA_EN=$(date -d "$EXPIRACION" +%s)
+HOY=$(date +%s)
+
+DIAS=$(( ($EXPIRA_EN - $HOY) / 86400 ))
+
+# si faltan 2 días o menos, renovar
+if [ $DIAS -le 2 ]; then
+
 pkill -f /etc/MCCARTHEY/PDirect.py
+sleep 5
+
+/root/.acme.sh/acme.sh --renew -d 102.129.137.211 --force
 
 sleep 5
 
-# renovar certificado SSL
-/root/.acme.sh/acme.sh --cron
-
-sleep 5
-
-# volver a levantar proxy
 nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+
+fi
 
 EOF
 
 chmod +x /root/renew_ssl.sh
 
-# programar renovación automática diaria
+# programar revisión diaria
 (crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
 
 }
