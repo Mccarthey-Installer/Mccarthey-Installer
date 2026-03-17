@@ -1069,18 +1069,24 @@ async function confirmSale() {
     body:JSON.stringify(sale)
   })
 
-  state.cart=[]
-  document.getElementById("paid").value=""
+  // limpiar carrito
+  state.cart = []
+  document.getElementById("paid").value = ""
+
+  // 🔥🔥 CLAVE: quitar foco antes del modal
+  if (document.activeElement) {
+    document.activeElement.blur()
+  }
 
   // mostrar ticket
   showSaleSummary(sale)
 
   // actualizar productos sin bloquear interfaz
-  setTimeout(loadProducts,500)
+  setTimeout(loadProducts, 500)
 
   showToast(`✅ Venta #${sale.num}`)
 
-  document.getElementById("paid").focus()
+  // ❌ YA NO ponemos focus aquí (esto era el bug)
 }
 
 // =========== INVENTORY ===========
