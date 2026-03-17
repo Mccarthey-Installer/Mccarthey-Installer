@@ -1312,68 +1312,72 @@ async function deleteProduct(id){
 }
 
 // =========== TICKET===========
-// =========== TICKET===========
 function showSaleSummary(sale){
 
-  const line = "--------------------------------"
+  const modal = document.getElementById("saleSummary")
 
-  const header = `
+  // 🔥 limpiar antes de renderizar (evita mezcla de tickets)
+  modal.style.display = "none"
+  document.getElementById("saleSummaryItems").innerHTML = ""
+  document.getElementById("saleSummaryInfo").innerHTML = ""
+
+  setTimeout(()=>{
+
+    const line = "--------------------------------"
+
+    const header = `
 ${line}
 Producto        Unit     Total
 ${line}
 `
 
-  const items = sale.items.map(p => {
+    const items = sale.items.map(p => {
 
-    const sub = p.qty * p.price
+      const sub = p.qty * p.price
 
-    const nameRaw = p.name + " x" + p.qty
+      const nameRaw = p.name + " x" + p.qty
 
-    const name = nameRaw.length > 16
-      ? nameRaw.substring(0,13) + "..."
-      : nameRaw
+      const name = nameRaw.length > 16
+        ? nameRaw.substring(0,13) + "..."
+        : nameRaw
 
-    const nameAligned = name.padEnd(16)
+      const nameAligned = name.padEnd(16)
 
-    const unit = ("$" + p.price.toFixed(2)).padEnd(8)
+      const unit = ("$" + p.price.toFixed(2)).padEnd(8)
 
-    const total = "$" + sub.toFixed(2)
+      const total = "$" + sub.toFixed(2)
 
-    return `${nameAligned}${unit}${total}`
+      return `${nameAligned}${unit}${total}`
 
-  }).join("\n")
+    }).join("\n")
 
-
-  document.getElementById("saleSummaryInfo").innerHTML =
+    document.getElementById("saleSummaryInfo").innerHTML =
 `Venta #${sale.num}<br>
 ID: ${sale.id}<br>
 ${sale.date}`
 
-
-  document.getElementById("saleSummaryItems").innerHTML =
+    document.getElementById("saleSummaryItems").innerHTML =
 `<pre style="font-family:monospace;overflow-x:auto;">${header}${items}
 ${line}</pre>`
 
-
-  document.getElementById("saleSummaryTotal").innerHTML =
+    document.getElementById("saleSummaryTotal").innerHTML =
 `<b>$${sale.total.toFixed(2)}</b>`
 
-
-  document.getElementById("saleSummaryPaid").innerHTML =
+    document.getElementById("saleSummaryPaid").innerHTML =
 `<b>$${sale.paid.toFixed(2)}</b>`
 
-
-  document.getElementById("saleSummaryChange").innerHTML =
+    document.getElementById("saleSummaryChange").innerHTML =
 `<span style="color:#16a34a;font-weight:700;">
 $${sale.change.toFixed(2)} 🟢
 </span>`
 
-  const modal = document.getElementById("saleSummary")
+    // 🔥 mostrar modal ya limpio
+    modal.style.display = "flex"
+    modal.style.opacity = "1"
+    modal.style.visibility = "visible"
+    modal.style.pointerEvents = "auto"
 
-  modal.style.display = "flex"
-  modal.style.opacity = "1"
-  modal.style.visibility = "visible"
-  modal.style.pointerEvents = "auto"
+  },50)
 
 }
 
@@ -2015,4 +2019,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-    </html>
+</html>
