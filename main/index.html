@@ -1500,6 +1500,7 @@ div.style.padding = "16px"
 div.style.marginBottom = "14px"
 div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
 
+// 🔥 HTML SIN onclick roto
 div.innerHTML = `
 
 <div style="font-weight:700;font-size:15px;margin-bottom:4px;">
@@ -1529,16 +1530,19 @@ Acumulado: $${s.acumulado.toFixed(2)}
 </span>
 </div>
 
-<!-- 🔥 BOTÓN CORRECTO -->
 <div style="margin-top:10px;">
-  <button onclick='showClientTicket(${JSON.stringify(s)})'
-  class="btn-ghost" style="width:100%;">
+  <button class="btn-ghost" style="width:100%;">
   📄 Ver ticket
   </button>
 </div>
 
 `
 
+// 🔥 AQUÍ ESTÁ LA MAGIA (esto te arregla todo)
+const btn = div.querySelector("button")
+btn.onclick = () => showSaleSummary(s)
+
+// 👇 ahora sí lo agregás
 container.appendChild(div)
 
 })
