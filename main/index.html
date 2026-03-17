@@ -1459,9 +1459,17 @@ acumulado
 ventasConAcumulado.reverse().forEach((s,i)=>{
 
 const items = s.items.map(p=>{
+
 const profit = (p.price - p.cost) * p.qty
-return `${p.name} x${p.qty} — Gan: $${profit.toFixed(2)}`
-}).join("<br>")
+
+return `
+${p.name} x${p.qty} — Gan: $${profit.toFixed(2)}
+<br><span style="font-size:11px;color:#64748b;">
+Valor unitario: $${p.price.toFixed(2)} c/u
+</span>
+`
+
+}).join("")
 
 const profitVenta = s.items.reduce((a,p)=>{
 return a + ((p.price - p.cost) * p.qty)
