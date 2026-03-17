@@ -1383,10 +1383,15 @@ function closeSummary(){
 
   const modal = document.getElementById("saleSummary")
 
+  // ocultar bien
   modal.style.display = "none"
   modal.style.opacity = "0"
   modal.style.visibility = "hidden"
   modal.style.pointerEvents = "none"
+
+  // 🔥 limpiar contenido (esto te faltaba)
+  document.getElementById("saleSummaryItems").innerHTML = ""
+  document.getElementById("saleSummaryInfo").innerHTML = ""
 
 }
 
@@ -1542,7 +1547,6 @@ Acumulado: $${s.acumulado.toFixed(2)}
 container.appendChild(div)
 
 })
-} 
 // =========== STATS ===========
 function renderStats() {
   const totalSales = state.sales.length
@@ -1741,55 +1745,70 @@ function drawChart() {
 
 function showClientTicket(sale){
 
-  const line = "--------------------------------"
+  const modal = document.getElementById("saleSummary")
 
-  const header = `
+  // 🔥 limpiar antes de renderizar (clave para que no se trabe)
+  modal.style.display = "none"
+
+  document.getElementById("saleSummaryItems").innerHTML = ""
+  document.getElementById("saleSummaryInfo").innerHTML = ""
+
+  // pequeño delay para reiniciar bien el modal
+  setTimeout(()=>{
+
+    const line = "--------------------------------"
+
+    const header = `
 ${line}
 Producto        Unit     Total
 ${line}
 `
 
-  const items = sale.items.map(p=>{
+    const items = sale.items.map(p=>{
 
-    const sub = p.qty * p.price
+      const sub = p.qty * p.price
 
-    const nameRaw = p.name + " x" + p.qty
+      const nameRaw = p.name + " x" + p.qty
 
-    const name = nameRaw.length > 16
-      ? nameRaw.substring(0,13) + "..."
-      : nameRaw
+      const name = nameRaw.length > 16
+        ? nameRaw.substring(0,13) + "..."
+        : nameRaw
 
-    const nameAligned = name.padEnd(16)
+      const nameAligned = name.padEnd(16)
 
-    const unit = ("$" + p.price.toFixed(2)).padEnd(8)
+      const unit = ("$" + p.price.toFixed(2)).padEnd(8)
 
-    const total = "$" + sub.toFixed(2)
+      const total = "$" + sub.toFixed(2)
 
-    return `${nameAligned}${unit}${total}`
+      return `${nameAligned}${unit}${total}`
 
-  }).join("\n")
+    }).join("\n")
 
-  document.getElementById("saleSummaryInfo").innerHTML =
+    document.getElementById("saleSummaryInfo").innerHTML =
 `Venta #${sale.num}<br>
 ID: ${sale.id}<br>
 ${sale.date}`
 
-  document.getElementById("saleSummaryItems").innerHTML =
-`<pre style="font-family:monospace;">${header}${items}
+    document.getElementById("saleSummaryItems").innerHTML =
+`<pre style="font-family:monospace;overflow-x:auto;">${header}${items}
 ${line}</pre>`
 
-  document.getElementById("saleSummaryTotal").innerHTML =
+    document.getElementById("saleSummaryTotal").innerHTML =
 `<b>$${sale.total.toFixed(2)}</b>`
 
-  document.getElementById("saleSummaryPaid").innerHTML =
+    document.getElementById("saleSummaryPaid").innerHTML =
 `<b>$${sale.paid.toFixed(2)}</b>`
 
-  document.getElementById("saleSummaryChange").innerHTML =
+    document.getElementById("saleSummaryChange").innerHTML =
 `<span style="color:#16a34a;font-weight:700;">
 $${sale.change.toFixed(2)} 🟢
 </span>`
 
-  document.getElementById("saleSummary").style.display = "flex"
+    // 🔥 abrir limpio
+    modal.style.display = "flex"
+
+  },50)
+
 }
 
 function drawProfitChart(){
@@ -1996,4 +2015,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-  </html>
+    </html>
