@@ -1460,18 +1460,24 @@ ventasConAcumulado.reverse().forEach((s,i)=>{
 
 const items = s.items.map(p=>{
 
-const profit = (p.price - p.cost) * p.qty
+const unitProfit = (p.price - p.cost)
+const totalProfit = unitProfit * p.qty
+
+// lógica 🔥 o ⚠️
+const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"
 
 return `
-${p.name} x${p.qty} — Gan: $${profit.toFixed(2)}
+${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
 
 <br><span style="font-size:13px;">
 Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
 </span>
 
-<br><span style="font-size:13px;color:#16a34a;">
-Ganancia unidad: <b>$${(p.price - p.cost).toFixed(2)} c/u</b>
-</span>
+<br>
+${icon} Ganancia unidad: 
+<b style="color:#16a34a;font-size:14px;">
+$${unitProfit.toFixed(2)} c/u
+</b>
 `
 
 }).join("")
