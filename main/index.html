@@ -1464,8 +1464,13 @@ const profit = (p.price - p.cost) * p.qty
 
 return `
 ${p.name} x${p.qty} — Gan: $${profit.toFixed(2)}
-<br><span style="font-size:11px;color:#64748b;">
-Valor unitario: $${p.price.toFixed(2)} c/u
+
+<br><span style="font-size:13px;">
+Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
+</span>
+
+<br><span style="font-size:13px;color:#16a34a;">
+Ganancia unidad: <b>$${(p.price - p.cost).toFixed(2)} c/u</b>
 </span>
 `
 
