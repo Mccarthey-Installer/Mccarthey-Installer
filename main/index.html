@@ -11,7 +11,33 @@
 
 
 
+/* ================= PATCH FETCH ================= */
 
+const originalFetch = window.fetch;
+
+window.fetch = function(url, options = {}){
+
+const token = localStorage.getItem("token")
+
+options.headers = {
+...(options.headers || {}),
+Authorization: token
+}
+
+return originalFetch(url, options).then(res=>{
+
+if(res.status === 401){
+
+localStorage.removeItem("token")
+location.href="/login.html"
+
+}
+
+return res
+
+})
+
+}
 
 function showSuggestions(){
 
@@ -107,7 +133,7 @@ location.href="/login.html"
 
 /* validar sesión contra servidor */
 
-api("/api/session",{
+fetch("/api/session",{
 headers:{Authorization:token}
 })
 .then(res=>{
@@ -123,7 +149,7 @@ location.href="/login.html"
 
 setInterval(()=>{
 
-api("/api/session",{
+fetch("/api/session",{
 headers:{Authorization:localStorage.getItem("token")}
 })
 .then(res=>{
@@ -564,48 +590,22 @@ Vuelto: <b id="saleSummaryChange"></b>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <span class="sec-title">🛒 Productos</span>
 
-      <div style="position:relative; width:100%; margin-top:10px;">
+      <div style="position:relative; width:150px;">
+        <input id="searchProduct" class="input" placeholder="Buscar..." style="width:100%; padding:8px 12px;">
 
-  <span style="
-    position:absolute;
-    left:12px;
-    top:50%;
-    transform:translateY(-50%);
-    font-size:14px;
-    color:#94a3b8;
-  ">🔎</span>
-
-  <input 
-    id="searchProduct" 
-    placeholder="Buscar producto..." 
-    style="
-      width:100%;
-      padding:10px 12px 10px 34px;
-      border-radius:12px;
-      border:2px solid #e2e8f0;
-      background:#fff;
-      font-size:14px;
-      outline:none;
-    "
-  >
-
-  <div id="searchSuggestions" style="
-    position:absolute;
-    top:45px;
-    left:0;
-    right:0;
-    background:#fff;
-    border:2px solid #e2e8f0;
-    border-radius:12px;
-    display:none;
-    max-height:180px;
-    overflow:auto;
-    z-index:50;
-  "></div>
-
-</div>
-
-        
+        <div id="searchSuggestions" style="
+        position:absolute;
+        top:42px;
+        left:0;
+        right:0;
+        background:#fff;
+        border:2px solid #e2e8f0;
+        border-radius:10px;
+        display:none;
+        max-height:160px;
+        overflow:auto;
+        z-index:50;
+        "></div>
 
       </div>
 
@@ -666,6 +666,7 @@ Vuelto: <b id="saleSummaryChange"></b>
 
 <!-- ========== VENTAS ========== -->
 <section id="sales" class="hidden">
+
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
     <span class="sec-title">📋 Historial</span>
     <div style="display:flex; gap:8px;">
@@ -673,7 +674,31 @@ Vuelto: <b id="saleSummaryChange"></b>
       <button onclick="clearHistory()" class="btn-danger">Borrar</button>
     </div>
   </div>
+
+  <!-- 🔥 FILTROS (AQUÍ VA TU BLOQUE) -->
+  <div style="display:flex; gap:8px; margin-bottom:12px;">
+    <button onclick="setRange('today')" class="btn-ghost">Hoy</button>
+    <button onclick="setRange('yesterday')" class="btn-ghost">Ayer</button>
+    <button onclick="setRange('week')" class="btn-ghost">Semana</button>
+  </div>
+
+  <input 
+    id="searchSales" 
+    class="input" 
+    placeholder="🔎 Buscar producto..." 
+    style="margin-bottom:12px;"
+  >
+
+  <input 
+    type="date" 
+    id="dateFilter" 
+    class="input" 
+    style="margin-bottom:12px;"
+  >
+
+  <!-- 🔥 LISTA -->
   <div id="salesList"></div>
+
 </section>
 
 <!-- ========== ESTADÍSTICAS ========== -->
@@ -721,12 +746,18 @@ const state = {
   sales: []
 }
 
+const filters = {
+  search: "",
+  range: "today",
+  customDate: null
+}
+
 let activeCategory = "Todos"
 let editingId = null
 let restockId = null
 async function loadProducts(){
 
-  const res = await api("/api/products")
+  const res = await fetch("/api/products")
   const data = await res.json()
 
   state.products = data.map(p => ({
@@ -747,7 +778,7 @@ async function loadProducts(){
 
 async function backupPOS(){
 
-const res = await api("/api/backup")
+const res = await fetch("/api/backup")
 const data = await res.json()
 
 const blob = new Blob(
@@ -783,7 +814,7 @@ if(!file) return
 const text = await file.text()
 const data = JSON.parse(text)
 
-await api("/api/restore",{
+await fetch("/api/restore",{
 method:"POST",
 headers:{
 "Content-Type":"application/json"
@@ -802,7 +833,7 @@ async function loadSales(){
 
   try{
 
-    const res = await api("/api/sales")
+    const res = await fetch("/api/sales")
     const data = await res.json()
 
     state.sales = data || []
@@ -1054,6 +1085,7 @@ async function confirmSale() {
     id: Date.now(),
     num: state.sales.length + 1,
     date: now.toLocaleString(),
+    dateISO: new Date().toISOString()
     dateKey: now.getDate() + "/" + (now.getMonth()+1),
     items: JSON.parse(JSON.stringify(state.cart)),
     total,
@@ -1281,7 +1313,7 @@ async function confirmRestock(){
     return
   }
 
-  await api("/api/restock",{
+  await fetch("/api/restock",{
     method:"POST",
     headers:{
       "Content-Type":"application/json"
@@ -1437,51 +1469,70 @@ showToast("📋 Ticket copiado")
 
 }
 
+// =========== SALES ===========
 
-function filterSales(type){
+function setRange(type){
+  filters.range = type
+  renderSales()
+}
+
+
+function getFilteredSales(){
+
+  let sales = [...state.sales]
 
   const now = new Date()
 
-  let filtered = state.sales
-
-  if(type === "today"){
-    filtered = state.sales.filter(s=>{
-      const d = new Date(s.date)
-      return d.toDateString() === now.toDateString()
-    })
+  // 🔎 BUSCADOR
+  if(filters.search){
+    sales = sales.filter(s => 
+      s.items.some(p => 
+        p.name.toLowerCase().includes(filters.search)
+      )
+    )
   }
 
-  if(type === "yesterday"){
-    const y = new Date()
-    y.setDate(now.getDate() - 1)
+  // 📅 FILTROS DE FECHA
+  sales = sales.filter(s => {
 
-    filtered = state.sales.filter(s=>{
-      const d = new Date(s.date)
-      return d.toDateString() === y.toDateString()
-    })
-  }
+    const saleDate = new Date(s.dateISO || s.date)
 
-  if(type === "week"){
-    const weekAgo = new Date()
-    weekAgo.setDate(now.getDate() - 7)
+    if(filters.customDate){
+      const d = new Date(filters.customDate)
+      return saleDate.toDateString() === d.toDateString()
+    }
 
-    filtered = state.sales.filter(s=>{
-      const d = new Date(s.date)
-      return d >= weekAgo
-    })
-  }
+    if(filters.range === "today"){
+      return saleDate.toDateString() === now.toDateString()
+    }
 
-  renderFilteredSales(filtered)
+    if(filters.range === "yesterday"){
+      const y = new Date()
+      y.setDate(y.getDate() - 1)
+      return saleDate.toDateString() === y.toDateString()
+    }
 
+    if(filters.range === "week"){
+      const weekAgo = new Date()
+      weekAgo.setDate(now.getDate() - 7)
+      return saleDate >= weekAgo
+    }
+
+    return true
+  })
+
+  return sales
 }
 
-// =========== SALES ===========
-function renderSales(list = state.sales){
+
+function renderSales(){
 
 const container = document.getElementById("salesList")
 container.innerHTML = ""
 
-if(list.length === 0){
+const filtered = getFilteredSales()
+
+if(filtered.length === 0){
 container.innerHTML = `
 <div style="text-align:center;color:#94a3b8;padding:40px 0;">
 No hay ventas registradas aún
@@ -1491,7 +1542,7 @@ return
 
 // calcular acumulado desde las ventas viejas
 let acumulado = 0
-const ventasConAcumulado = list.slice().reverse().map(s=>{
+const ventasConAcumulado = filtered.slice().reverse().map(s=>{
 acumulado += s.total
 return {
 ...s,
@@ -1507,8 +1558,7 @@ const items = s.items.map(p=>{
 const unitProfit = (p.price - p.cost)
 const totalProfit = unitProfit * p.qty
 
-const PROFIT_THRESHOLD = 0.10
-const icon = unitProfit >= PROFIT_THRESHOLD ? "🔥" : "⚠️"
+const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"
 
 return `
 ${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
@@ -1540,13 +1590,12 @@ const colors = [
 const div = document.createElement("div")
 
 div.style.background = colors[i % colors.length]
-div.style.borderRadius = "18px"
-div.style.border = "1px solid #e2e8f0"
-div.style.backdropFilter = "blur(6px)"
+div.style.borderRadius = "14px"
 div.style.padding = "16px"
 div.style.marginBottom = "14px"
 div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
 
+// 🔥 HTML SIN onclick roto
 div.innerHTML = `
 
 <div style="font-weight:700;font-size:15px;margin-bottom:4px;">
@@ -1584,19 +1633,15 @@ Acumulado: $${s.acumulado.toFixed(2)}
 
 `
 
+// 🔥 AQUÍ ESTÁ LA MAGIA (esto te arregla todo)
 const btn = div.querySelector("button")
 btn.onclick = () => showSaleSummary(s)
 
+// 👇 ahora sí lo agregás
 container.appendChild(div)
 
 })
-}
-
-
-// =========== FILTRO LIMPIO ===========
-function renderFilteredSales(list){
-  renderSales(list)
-}
+} 
 // =========== STATS ===========
 function renderStats() {
   const totalSales = state.sales.length
@@ -2008,17 +2053,20 @@ document.getElementById("restockModal")?.addEventListener("click", e => {
 
 
 // =========== EVENTS ===========
-let searchTimeout
-
 document.getElementById("searchProduct")?.addEventListener("input", ()=>{
+  renderProducts()
+  showSuggestions()
+})
 
-  clearTimeout(searchTimeout)
+document.getElementById("searchSales")?.addEventListener("input", e=>{
+  filters.search = e.target.value.toLowerCase()
+  renderSales()
+})
 
-  searchTimeout = setTimeout(()=>{
-    renderProducts()
-    showSuggestions()
-  }, 200)
-
+document.getElementById("dateFilter")?.addEventListener("change", e=>{
+  filters.customDate = e.target.value
+  filters.range = null
+  renderSales()
 })
 
 document.getElementById("searchInventory")?.addEventListener("input", renderInventory)
