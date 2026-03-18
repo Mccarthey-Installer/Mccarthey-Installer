@@ -1545,8 +1545,6 @@ return
 // calcular acumulado desde las ventas viejas
 let acumuladoGlobal = 0
 
-let acumuladoGlobal = 0
-
 const todas = [...state.sales]
   .sort((a,b)=> new Date(a.dateISO) - new Date(b.dateISO))
   .map(s=>{
@@ -1556,12 +1554,6 @@ const todas = [...state.sales]
       acumulado: acumuladoGlobal
     }
   })
-  acumuladoGlobal += s.total
-  return {
-    ...s,
-    acumulado: acumuladoGlobal
-  }
-})
 
 const ids = new Set(filtered.map(f => f.id))
 
@@ -2123,4 +2115,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-  </html>
+        </html>
