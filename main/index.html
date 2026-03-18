@@ -1968,45 +1968,7 @@ function exportCSV(){
   let text = ""
   let acumulado = 0
 
-  // ORDENAR BIEN (viejas → nuevas)
-const ventasOrdenadas = [...state.sales].sort((a,b)=> a.id - b.id)
-
-let acumulado = 0
-
-ventasOrdenadas.forEach(s => {
-
-  acumulado += s.total
-
-  text += `Venta #${s.num}\n`
-  text += `ID: ${s.id}\n`
-  text += `${s.date}\n\n`
-
-  s.items.forEach(p => {
-
-    const unitProfit = (p.price - p.cost)
-    const totalProfit = unitProfit * p.qty
-
-    text += `• ${p.name} x${p.qty}\n`
-    text += `  Precio: $${p.price.toFixed(2)}\n`
-    text += `  Costo: $${p.cost.toFixed(2)}\n`
-    text += `  Ganancia/u: $${unitProfit.toFixed(2)}\n`
-    text += `  Ganancia total: $${totalProfit.toFixed(2)}\n\n`
-
-  })
-
-  const profitVenta = s.items.reduce((a,p)=>{
-    return a + ((p.price - p.cost) * p.qty)
-  },0)
-
-  text += `Total: $${s.total.toFixed(2)}\n`
-  text += `Ganancia: $${profitVenta.toFixed(2)}\n`
-  text += `Pagó: $${Number(s.paid).toFixed(2)}\n`
-  text += `Vuelto: $${Number(s.change).toFixed(2)}\n`
-  text += `Acumulado: $${acumulado.toFixed(2)}\n`
-
-  text += `\n--------------------------------\n\n`
-
-})
+  const ventas = [...state.sales].reverse()
 
   ventas.forEach(s => {
 
