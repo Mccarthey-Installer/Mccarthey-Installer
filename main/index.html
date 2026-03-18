@@ -1085,7 +1085,7 @@ async function confirmSale() {
     id: Date.now(),
     num: state.sales.length + 1,
     date: now.toLocaleString(),
-    dateISO: new Date().toISOString()
+    dateISO: new Date().toISOString(), 
     dateKey: now.getDate() + "/" + (now.getMonth()+1),
     items: JSON.parse(JSON.stringify(state.cart)),
     total,
@@ -1473,6 +1473,8 @@ showToast("📋 Ticket copiado")
 
 function setRange(type){
   filters.range = type
+  filters.customDate = null
+  document.getElementById("dateFilter").value = ""
   renderSales()
 }
 
@@ -1535,20 +1537,35 @@ const filtered = getFilteredSales()
 if(filtered.length === 0){
 container.innerHTML = `
 <div style="text-align:center;color:#94a3b8;padding:40px 0;">
-No hay ventas registradas aún
+No hay resultados con ese filtro
 </div>`
 return
 }
 
 // calcular acumulado desde las ventas viejas
-let acumulado = 0
-const ventasConAcumulado = filtered.slice().reverse().map(s=>{
-acumulado += s.total
-return {
-...s,
-acumulado
-}
+let acumuladoGlobal = 0
+
+let acumuladoGlobal = 0
+
+const todas = [...state.sales]
+  .sort((a,b)=> new Date(a.dateISO) - new Date(b.dateISO))
+  .map(s=>{
+    acumuladoGlobal += s.total
+    return {
+      ...s,
+      acumulado: acumuladoGlobal
+    }
+  })
+  acumuladoGlobal += s.total
+  return {
+    ...s,
+    acumulado: acumuladoGlobal
+  }
 })
+
+const ids = new Set(filtered.map(f => f.id))
+
+const ventasConAcumulado = todas.filter(s => ids.has(s.id))
 
 // ahora mostrarlas de nuevas a viejas
 ventasConAcumulado.reverse().forEach((s,i)=>{
