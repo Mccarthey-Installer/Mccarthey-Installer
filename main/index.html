@@ -1509,8 +1509,6 @@ function getFilteredSales(){
 
   let sales = [...state.sales]
 
-  const now = new Date()
-
   // 🔎 BUSCADOR
   if(filters.search){
     sales = sales.filter(s => 
@@ -1520,31 +1518,49 @@ function getFilteredSales(){
     )
   }
 
-  // 📅 FILTRO SOLO CON ISO
+  function toLocalDate(date){
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    )
+  }
+
+  const today = toLocalDate(new Date())
+
   sales = sales.filter(s => {
 
     if(!s.dateISO) return false
 
-    const saleDate = new Date(s.dateISO)
+    const saleDate = toLocalDate(new Date(s.dateISO))
 
     if(filters.customDate){
-      const d = new Date(filters.customDate)
-      return saleDate.toDateString() === d.toDateString()
+      const d = toLocalDate(new Date(filters.customDate))
+      return saleDate.getTime() === d.getTime()
     }
 
-    if(filters.range === "today"){
-      return saleDate.toDateString() === now.toDateString()
-    }
+if(filters.range === "today"){
+  return (
+    saleDate.getFullYear() === today.getFullYear() &&
+    saleDate.getMonth() === today.getMonth() &&
+    saleDate.getDate() === today.getDate()
+  )
+}
 
-    if(filters.range === "yesterday"){
-      const y = new Date()
-      y.setDate(y.getDate() - 1)
-      return saleDate.toDateString() === y.toDateString()
-    }
 
+if(filters.range === "yesterday"){
+  const y = new Date(today)
+  y.setDate(y.getDate() - 1)
+
+  return (
+    saleDate.getFullYear() === y.getFullYear() &&
+    saleDate.getMonth() === y.getMonth() &&
+    saleDate.getDate() === y.getDate()
+  )
+}
     if(filters.range === "week"){
-      const weekAgo = new Date()
-      weekAgo.setDate(now.getDate() - 7)
+      const weekAgo = new Date(today)
+      weekAgo.setDate(today.getDate() - 7)
       return saleDate >= weekAgo
     }
 
@@ -1569,11 +1585,11 @@ function renderSales(){
     return
   }
 
-  // 🔥 1. ordenar SIEMPRE
+  // 🔥 ordenar
   const ordenadas = [...state.sales]
     .sort((a,b)=> new Date(a.dateISO) - new Date(b.dateISO))
 
-  // 🔥 2. calcular acumulado GLOBAL
+  // 🔥 acumulado
   let acumulado = 0
 
   const conAcumulado = ordenadas.map(s=>{
@@ -1584,15 +1600,14 @@ function renderSales(){
     }
   })
 
-  // 🔥 3. filtrar DESPUÉS (correcto)
+  // 🔥 filtrar
   const ids = new Set(filtered.map(f=>f.id))
   const ventas = conAcumulado.filter(s => ids.has(s.id))
 
-  // 🔥 4. render (de nuevas a viejas)
-  ventas.reverse().forEach((s,i)=>{
+  // 🔥 render
+  ventas.reverse().forEach(s=>{
 
     const items = s.items.map(p=>{
-
       const unitProfit = (p.price - p.cost)
       const totalProfit = unitProfit * p.qty
 
@@ -1603,7 +1618,6 @@ function renderSales(){
       <b style="color:#16a34a;">$${unitProfit.toFixed(2)}</b>
       <br><br>
       `
-
     }).join("")
 
     const profitVenta = s.items.reduce((a,p)=>{
