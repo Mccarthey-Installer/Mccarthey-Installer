@@ -1965,72 +1965,55 @@ function exportCSV(){
     return
   }
 
-  let html = `
-  <html>
-  <head>
-    <meta charset="UTF-8">
-    <title>Historial POS</title>
-  </head>
-  <body style="font-family:sans-serif;background:#f1f5f9;padding:20px;">
-  <h2>📋 Historial de ventas</h2>
-  `
-
+  let text = ""
   let acumulado = 0
 
   const ventas = [...state.sales].reverse()
 
-  ventas.forEach(s=>{
+  ventas.forEach(s => {
 
     acumulado += s.total
 
-    const items = s.items.map(p=>{
+    text += `Venta #${s.num}\n`
+    text += `ID: ${s.id}\n`
+    text += `${s.date}\n\n`
 
-      const profit = (p.price - p.cost) * p.qty
+    // 🔥 PRODUCTOS BIEN DETALLADOS
+    s.items.forEach(p => {
 
-      return `
-      <div style="margin-bottom:6px;">
-        <b>${p.name} x${p.qty}</b><br>
-        Precio: $${p.price.toFixed(2)}<br>
-        Ganancia: <span style="color:green;">$${profit.toFixed(2)}</span>
-      </div>
-      `
+      const unitProfit = (p.price - p.cost)
+      const totalProfit = unitProfit * p.qty
 
-    }).join("")
+      text += `• ${p.name} x${p.qty}\n`
+      text += `  Precio: $${p.price.toFixed(2)}\n`
+      text += `  Costo: $${p.cost.toFixed(2)}\n`
+      text += `  Ganancia/u: $${unitProfit.toFixed(2)}\n`
+      text += `  Ganancia total: $${totalProfit.toFixed(2)}\n\n`
 
-    html += `
-    <div style="
-      background:#fff;
-      border-radius:12px;
-      padding:14px;
-      margin-bottom:14px;
-      box-shadow:0 2px 10px rgba(0,0,0,.1);
-    ">
+    })
 
-      <b>Venta #${s.num}</b><br>
-      <small>${s.date}</small><br><br>
+    const profitVenta = s.items.reduce((a,p)=>{
+      return a + ((p.price - p.cost) * p.qty)
+    },0)
 
-      ${items}
+    text += `Total: $${s.total.toFixed(2)}\n`
+    text += `Ganancia: $${profitVenta.toFixed(2)}\n`
+    text += `Pagó: $${Number(s.paid).toFixed(2)}\n`
+    text += `Vuelto: $${Number(s.change).toFixed(2)}\n`
+    text += `Acumulado: $${acumulado.toFixed(2)}\n`
 
-      <hr>
+    text += `\n--------------------------------\n\n`
 
-      Total: <b>$${s.total.toFixed(2)}</b><br>
-      Pagó: $${Number(s.paid).toFixed(2)}<br>
-      Vuelto: $${Number(s.change).toFixed(2)}<br>
-      <b>Acumulado: $${acumulado.toFixed(2)}</b>
-
-    </div>
-    `
   })
 
-  html += `</body></html>`
+  const blob = new Blob([text], {type:"text/plain;charset=utf-8"})
 
-  const blob = new Blob([html], {type:"text/html"})
   const a = document.createElement("a")
   a.href = URL.createObjectURL(blob)
-  a.download = "historial-ventas.html"
+  a.download = `historial-completo-${new Date().toLocaleDateString().replace(/\//g,"-")}.txt`
   a.click()
 
-  showToast("✅ Historial descargado bonito")
+  showToast("✅ Historial completo descargado")
 }
 
 // =========== CLEAR HISTORY ===========
