@@ -829,6 +829,8 @@ location.reload()
 },1000)
 
 }
+
+
 async function loadSales(){
 
   try{
@@ -836,7 +838,32 @@ async function loadSales(){
     const res = await fetch("/api/sales")
     const data = await res.json()
 
-    state.sales = data || []
+    state.sales = (data || []).map(s => {
+
+      // 🔥 si ya tiene ISO, usarlo
+      if(s.dateISO){
+        return s
+      }
+
+      // 🔥 convertir fecha vieja a ISO
+      if(s.date){
+
+        const parts = s.date.split(",")[0].split("/")
+
+        const day = parseInt(parts[0])
+        const month = parseInt(parts[1]) - 1
+        const year = parseInt(parts[2])
+
+        return {
+          ...s,
+          dateISO: new Date(year, month, day).toISOString()
+        }
+      }
+
+      // 🔥 si viene totalmente rota, descartar
+      return null
+
+    }).filter(Boolean)
 
   }catch{
 
@@ -845,8 +872,6 @@ async function loadSales(){
   }
 
 }
-
-
 
 
 // =========== SIDEBAR ===========
@@ -1081,17 +1106,17 @@ async function confirmSale() {
 
   const now = new Date()
 
-  const sale = {
-    id: Date.now(),
-    num: state.sales.length + 1,
-    date: now.toLocaleString(),
-    dateISO: new Date().toISOString(), 
-    dateKey: now.getDate() + "/" + (now.getMonth()+1),
-    items: JSON.parse(JSON.stringify(state.cart)),
-    total,
-    paid,
-    change
-  }
+const sale = {
+  id: Date.now(),
+  num: state.sales.length + 1,
+  dateISO: new Date().toISOString(), // 🔥 BASE REAL
+  date: new Date().toLocaleString(), // solo visual
+  dateKey: now.getDate() + "/" + (now.getMonth()+1),
+  items: JSON.parse(JSON.stringify(state.cart)),
+  total,
+  paid,
+  change
+}
 
   await fetch("/api/sales",{
     method:"POST",
@@ -1479,6 +1504,7 @@ function setRange(type){
 }
 
 
+
 function getFilteredSales(){
 
   let sales = [...state.sales]
@@ -1494,10 +1520,12 @@ function getFilteredSales(){
     )
   }
 
-  // 📅 FILTROS DE FECHA
+  // 📅 FILTRO SOLO CON ISO
   sales = sales.filter(s => {
 
-    const saleDate = new Date(s.dateISO || s.date)
+    if(!s.dateISO) return false
+
+    const saleDate = new Date(s.dateISO)
 
     if(filters.customDate){
       const d = new Date(filters.customDate)
@@ -1525,7 +1553,6 @@ function getFilteredSales(){
 
   return sales
 }
-
 
 function renderSales(){
 
