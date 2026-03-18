@@ -376,6 +376,7 @@ return{
 id:Number(s.id),
 num:Number(s.id),
 date:s.date,
+dateISO: s.date,
 dateKey:s.date,
 items:saleItems,
 total:Number(s.total),
