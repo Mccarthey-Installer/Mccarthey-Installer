@@ -1080,16 +1080,17 @@ async function confirmSale() {
 
   const now = new Date()
 
-  const sale = {
-    id: Date.now(),
-    num: state.sales.length + 1,
-    date: now.toLocaleString(),
-    dateKey: now.getDate() + "/" + (now.getMonth()+1),
-    items: JSON.parse(JSON.stringify(state.cart)),
-    total,
-    paid,
-    change
-  }
+const sale = {
+  id: Date.now(),
+  num: state.sales.length + 1,
+  date: now.toLocaleString(),
+  dateISO: now.toISOString(), // 👈 AQUÍ
+  dateKey: now.getDate() + "/" + (now.getMonth()+1),
+  items: JSON.parse(JSON.stringify(state.cart)),
+  total,
+  paid,
+  change
+}
 
   await fetch("/api/sales",{
     method:"POST",
@@ -1494,7 +1495,7 @@ function renderSales(){
 
   if(saleFilter === "today"){
     sales = sales.filter(s => {
-      const d = new Date(s.date)
+      const d = new Date(s.dateISO || s.date)
       return d.toDateString() === now.toDateString()
     })
   }
@@ -1504,23 +1505,23 @@ function renderSales(){
     y.setDate(y.getDate()-1)
 
     sales = sales.filter(s => {
-      const d = new Date(s.date)
+      const d = new Date(s.dateISO || s.date)
       return d.toDateString() === y.toDateString()
     })
   }
 
-  if(saleFilter === "week"){
-    const weekAgo = new Date()
-    weekAgo.setDate(weekAgo.getDate()-7)
+if(saleFilter === "week"){
+  const weekAgo = new Date()
+  weekAgo.setDate(weekAgo.getDate()-7)
 
-    sales = sales.filter(s => new Date(s.date) >= weekAgo)
-  }
+  sales = sales.filter(s => new Date(s.dateISO || s.date) >= weekAgo)
+}
 
   if(saleFilter === "date"){
     const val = document.getElementById("filterDate").value
     if(val){
       sales = sales.filter(s => {
-        const d = new Date(s.date)
+        const d = new Date(s.dateISO || s.date)
         return d.toISOString().slice(0,10) === val
       })
     }
@@ -1538,13 +1539,19 @@ function renderSales(){
   }
 
   // ❌ SIN RESULTADOS
-  if(sales.length === 0){
-    container.innerHTML = `
-    <div style="text-align:center;color:#94a3b8;padding:40px 0;">
-    No se encontraron ventas con ese filtro
-    </div>`
-    return
-  }
+if(sales.length === 0){
+
+  const mensaje = state.sales.length === 0
+    ? "No hay ventas registradas aún"
+    : "No se encontraron ventas con ese filtro"
+
+  container.innerHTML = `
+  <div style="text-align:center;color:#94a3b8;padding:40px 0;">
+  ${mensaje}
+  </div>`
+
+  return
+}
 
   // 💰 ACUMULADO
   let acumulado = 0
@@ -1976,7 +1983,7 @@ ctx.fillText(lbl,x+barW/2,H-6)
 // =========== EXPORT CSV ===========
 function exportCSV(){
 
-if(sales.length === 0){
+if(state.sales.length === 0){
     showToast("⚠ No hay ventas para exportar")
     return
   }
