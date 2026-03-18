@@ -1437,13 +1437,35 @@ showToast("📋 Ticket copiado")
 
 }
 
+function filtrarVentas(ventas, texto){
+
+  const palabras = texto
+    .toLowerCase()
+    .split(" ")
+    .filter(p => p.trim() !== "")
+
+  if(palabras.length === 0) return ventas
+
+  return ventas.filter(sale => {
+
+    const nombres = sale.items.map(i => i.name.toLowerCase())
+
+    return palabras.every(p =>
+      nombres.some(n => n.includes(p))
+    )
+
+  })
+
+}
 // =========== SALES ===========
 function renderSales(){
 
 const container = document.getElementById("salesList")
 container.innerHTML = ""
+const search = document.getElementById("searchSales")?.value?.toLowerCase() || ""
 
-if(state.sales.length === 0){
+const ventasFiltradas = filtrarVentas(state.sales, search)
+if(ventasFiltradas.length === 0){
 container.innerHTML = `
 <div style="text-align:center;color:#94a3b8;padding:40px 0;">
 No hay ventas registradas aún
@@ -1453,7 +1475,7 @@ return
 
 // calcular acumulado desde las ventas viejas
 let acumulado = 0
-const ventasConAcumulado = state.sales.slice().reverse().map(s=>{
+const ventasConAcumulado = ventasFiltradas.slice().reverse().map(s=>{
 acumulado += s.total
 return {
 ...s,
@@ -1970,7 +1992,7 @@ document.getElementById("searchProduct")?.addEventListener("input", ()=>{
 })
 
 document.getElementById("searchInventory")?.addEventListener("input", renderInventory)
-
+document.getElementById("searchSales")?.addEventListener("input", renderSales)
 document.getElementById("paid")?.addEventListener("input", calculateChange)
 
 // cerrar sugerencias si se hace click fuera
@@ -2006,4 +2028,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-         </html>
+  </html>
