@@ -376,7 +376,6 @@ return{
 id:Number(s.id),
 num:Number(s.id),
 date:s.date,
-dateISO:s.dateISO,
 dateKey:s.date,
 items:saleItems,
 total:Number(s.total),
@@ -441,14 +440,13 @@ app.post("/api/sales", auth, (req,res)=>{
 const sale=req.body
 
 db.query(
-"INSERT INTO sales(id,date,total,paid,change_amount,dateISO) VALUES(?,?,?,?,?,?)",
+"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
 [
 sale.id,
 sale.date,
 sale.total,
 sale.paid,
-sale.change,
-sale.dateISO
+sale.change
 ],
 (err)=>{
 
@@ -483,28 +481,28 @@ res.json({ok:true})
 
 })
 
+
 /* ================= BACKUP ================= */
 
 app.get("/api/backup", auth, async (req,res)=>{
 
-  const conn = db.promise()
+const conn = db.promise()
 
-  try{
+try{
 
-    const [products] = await conn.query("SELECT * FROM products")
-    const [sales] = await conn.query("SELECT * FROM sales")
-    const [items] = await conn.query("SELECT * FROM sale_items")
+const [products] = await conn.query("SELECT * FROM products")
+const [sales] = await conn.query("SELECT * FROM sales")
+const [items] = await conn.query("SELECT * FROM sale_items")
 
-    res.json({
-      products,
-      sales,
-      sale_items: items
-    })
+res.json({
+products,
+sales,
+sale_items:items
+})
 
-  }catch(err){
-    console.error("BACKUP ERROR:", err)
-    res.status(500).json(err)
-  }
+}catch(err){
+res.status(500).json(err)
+}
 
 })
 
@@ -512,68 +510,50 @@ app.get("/api/backup", auth, async (req,res)=>{
 
 app.post("/api/restore", auth, async (req,res)=>{
 
-  const data = req.body
-  const conn = db.promise()
+const data = req.body
+const conn = db.promise()
 
-  try{
+try{
 
-    /* ================= PRODUCTOS ================= */
+/* RESTAURAR PRODUCTOS SIN BORRAR LOS EXISTENTES */
 
-    for(const p of data.products){
+for(const p of data.products){
+await conn.query(
+"INSERT IGNORE INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
+[p.id,p.name,p.price,p.cost,p.stock,p.sold,p.cat]
+)
+}
 
-      await conn.query(
-        "INSERT IGNORE INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
-        [p.id,p.name,p.price,p.cost,p.stock,p.sold,p.cat]
-      )
+/* RESTAURAR VENTAS SIN BORRAR LAS ACTUALES */
 
-    }
+for(const s of data.sales){
+await conn.query(
+"INSERT IGNORE INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
+[s.id,s.date,s.total,s.paid,s.change_amount]
+)
+}
 
-    /* ================= VENTAS ================= */
+/* RESTAURAR ITEMS DE VENTA */
 
-    for(const s of data.sales){
+for(const i of data.sale_items){
+await conn.query(
+"INSERT IGNORE INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
+[i.sale_id,i.product_id,i.name,i.price,i.cost,i.qty]
+)
+}
 
-      // 🔥 convertir fecha si viene en ISO (por si acaso)
-      let iso = null
+res.json({ok:true})
 
-      if(s.dateISO){
-        iso = s.dateISO.replace("T"," ").split(".")[0]
-      }
+}catch(err){
 
-      await conn.query(
-        "INSERT IGNORE INTO sales(id,date,dateISO,total,paid,change_amount) VALUES(?,?,?,?,?,?)",
-        [
-          s.id,
-          s.date,
-          iso,
-          s.total,
-          s.paid,
-          s.change_amount
-        ]
-      )
+console.error("RESTORE ERROR:",err)
 
-    }
+res.status(500).json(err)
 
-    /* ================= ITEMS ================= */
-
-    for(const i of data.sale_items){
-
-      await conn.query(
-        "INSERT IGNORE INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
-        [i.sale_id,i.product_id,i.name,i.price,i.cost,i.qty]
-      )
-
-    }
-
-    res.json({ok:true})
-
-  }catch(err){
-
-    console.error("RESTORE ERROR:",err)
-    res.status(500).json(err)
-
-  }
+}
 
 })
+
 
 /* ================= START ================= */
 
@@ -715,7 +695,6 @@ cat VARCHAR(100)
 CREATE TABLE IF NOT EXISTS sales(
 id BIGINT PRIMARY KEY,
 date VARCHAR(50),
-dateISO DATETIME,
 total DECIMAL(10,2),
 paid DECIMAL(10,2),
 change_amount DECIMAL(10,2)
