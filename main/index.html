@@ -1966,14 +1966,13 @@ function exportCSV(){
   }
 
   let text = ""
-  let acumulado = 0
 
-  // ❌ QUITAMOS el reverse
+  // ✅ total global real (como en la web)
+  let acumulado = state.sales.reduce((a,b)=> a + b.total, 0)
+
   const ventas = state.sales
 
   ventas.forEach(s => {
-
-    acumulado += s.total
 
     text += `Venta #${s.num}\n`
     text += `ID: ${s.id}\n`
@@ -2000,7 +1999,12 @@ function exportCSV(){
     text += `Ganancia: $${profitVenta.toFixed(2)}\n`
     text += `Pagó: $${Number(s.paid).toFixed(2)}\n`
     text += `Vuelto: $${Number(s.change).toFixed(2)}\n`
+
+    // ✅ mostrar acumulado real tipo web
     text += `Acumulado: $${acumulado.toFixed(2)}\n`
+
+    // 🔥 clave: bajar acumulado para la siguiente venta
+    acumulado -= s.total
 
     text += `\n--------------------------------\n\n`
 
@@ -2013,24 +2017,26 @@ function exportCSV(){
 
   const a = document.createElement("a")
   a.href = URL.createObjectURL(blob)
+
+  // ✅ nombre pro con timestamp
   const now = new Date()
 
-const fecha =
-now.getFullYear() + "-" +
-String(now.getMonth()+1).padStart(2,"0") + "-" +
-String(now.getDate()).padStart(2,"0")
+  const fecha =
+  now.getFullYear() + "-" +
+  String(now.getMonth()+1).padStart(2,"0") + "-" +
+  String(now.getDate()).padStart(2,"0")
 
-const hora =
-String(now.getHours()).padStart(2,"0") + "-" +
-String(now.getMinutes()).padStart(2,"0") + "-" +
-String(now.getSeconds()).padStart(2,"0")
+  const hora =
+  String(now.getHours()).padStart(2,"0") + "-" +
+  String(now.getMinutes()).padStart(2,"0") + "-" +
+  String(now.getSeconds()).padStart(2,"0")
 
-a.download = `historial-${fecha}_${hora}.txt`
+  a.download = `historial-${fecha}_${hora}.txt`
+
   a.click()
 
   showToast("✅ Historial completo descargado")
 }
-
 // =========== CLEAR HISTORY ===========
 async function clearHistory(){
 
@@ -2110,4 +2116,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-  </html>
+        </html>
