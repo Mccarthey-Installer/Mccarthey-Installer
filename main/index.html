@@ -666,7 +666,6 @@ Vuelto: <b id="saleSummaryChange"></b>
 
 <!-- ========== VENTAS ========== -->
 <section id="sales" class="hidden">
-
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
     <span class="sec-title">📋 Historial</span>
     <div style="display:flex; gap:8px;">
@@ -674,31 +673,7 @@ Vuelto: <b id="saleSummaryChange"></b>
       <button onclick="clearHistory()" class="btn-danger">Borrar</button>
     </div>
   </div>
-
-  <!-- 🔥 FILTROS (AQUÍ VA TU BLOQUE) -->
-  <div style="display:flex; gap:8px; margin-bottom:12px;">
-    <button onclick="setRange('today')" class="btn-ghost">Hoy</button>
-    <button onclick="setRange('yesterday')" class="btn-ghost">Ayer</button>
-    <button onclick="setRange('week')" class="btn-ghost">Semana</button>
-  </div>
-
-  <input 
-    id="searchSales" 
-    class="input" 
-    placeholder="🔎 Buscar producto..." 
-    style="margin-bottom:12px;"
-  >
-
-  <input 
-    type="date" 
-    id="dateFilter" 
-    class="input" 
-    style="margin-bottom:12px;"
-  >
-
-  <!-- 🔥 LISTA -->
   <div id="salesList"></div>
-
 </section>
 
 <!-- ========== ESTADÍSTICAS ========== -->
@@ -744,12 +719,6 @@ const state = {
   products: [],
   cart: [],
   sales: []
-}
-
-const filters = {
-  search: "",
-  range: "today",
-  customDate: null
 }
 
 let activeCategory = "Todos"
@@ -829,8 +798,6 @@ location.reload()
 },1000)
 
 }
-
-
 async function loadSales(){
 
   try{
@@ -838,32 +805,7 @@ async function loadSales(){
     const res = await fetch("/api/sales")
     const data = await res.json()
 
-    state.sales = (data || []).map(s => {
-
-      // 🔥 si ya tiene ISO, usarlo
-      if(s.dateISO){
-        return s
-      }
-
-      // 🔥 convertir fecha vieja a ISO
-      if(s.date){
-
-        const parts = s.date.split(",")[0].split("/")
-
-        const day = parseInt(parts[0])
-        const month = parseInt(parts[1]) - 1
-        const year = parseInt(parts[2])
-
-        return {
-          ...s,
-          dateISO: new Date(year, month, day).toISOString()
-        }
-      }
-
-      // 🔥 si viene totalmente rota, descartar
-      return null
-
-    }).filter(Boolean)
+    state.sales = data || []
 
   }catch{
 
@@ -872,6 +814,8 @@ async function loadSales(){
   }
 
 }
+
+
 
 
 // =========== SIDEBAR ===========
@@ -1106,17 +1050,16 @@ async function confirmSale() {
 
   const now = new Date()
 
-const sale = {
-  id: Date.now(),
-  num: state.sales.length + 1,
-  dateISO: new Date().toISOString(), // 🔥 BASE REAL
-  date: new Date().toLocaleString(), // solo visual
-  dateKey: now.getDate() + "/" + (now.getMonth()+1),
-  items: JSON.parse(JSON.stringify(state.cart)),
-  total,
-  paid,
-  change
-}
+  const sale = {
+    id: Date.now(),
+    num: state.sales.length + 1,
+    date: now.toLocaleString(),
+    dateKey: now.getDate() + "/" + (now.getMonth()+1),
+    items: JSON.parse(JSON.stringify(state.cart)),
+    total,
+    paid,
+    change
+  }
 
   await fetch("/api/sales",{
     method:"POST",
@@ -1245,51 +1188,25 @@ function renderInventory() {
 
 }
 // =========== MODAL PRODUCTO ===========
-function openAddModal(){
-
+function openAddModal() {
   editingId = null
-
   document.getElementById("modal-title").textContent = "➕ Nuevo Producto"
-
-  ;["m-name","m-price","m-cost","m-stock","m-cat"]
-    .forEach(id => document.getElementById(id).value = "")
-
+  ;["m-name","m-price","m-cost","m-stock","m-cat"].forEach(id => document.getElementById(id).value = "")
   document.getElementById("modal").classList.add("show")
-
-  setTimeout(()=>{
-    document.getElementById("m-name").focus()
-  },100)
-
+  setTimeout(() => document.getElementById("m-name").focus(), 100)
 }
-
-
-function openEditModal(id){
-
+function openEditModal(id) {
   editingId = id
-
   const p = state.products.find(x => x.id === id)
-
-  if(!p){
-    showToast("❌ Producto no encontrado")
-    return
-  }
-
   document.getElementById("modal-title").textContent = "✏️ Editar producto"
-
   document.getElementById("m-name").value = p.name
   document.getElementById("m-price").value = p.price
   document.getElementById("m-cost").value = p.cost
   document.getElementById("m-stock").value = p.stock
   document.getElementById("m-cat").value = p.cat || ""
-
   document.getElementById("modal").classList.add("show")
-
 }
-
-
-function closeModal(){
-  document.getElementById("modal").classList.remove("show")
-}
+function closeModal() { document.getElementById("modal").classList.remove("show") }
 
 
 async function saveProduct(){
@@ -1307,53 +1224,42 @@ async function saveProduct(){
 
   const cat = (
     document.getElementById("m-cat").value.trim()
-      .toLowerCase()
-      .replace(/^\w/, c => c.toUpperCase())
+    .toLowerCase()
+    .replace(/^\w/, c => c.toUpperCase())
   ) || "General"
 
   const product = { name, price, cost, stock, cat }
 
-  const url = editingId
-    ? "/api/products/" + editingId
-    : "/api/products"
+  if(editingId){
 
-  const method = editingId ? "PUT" : "POST"
-
-  try{
-
-    const res = await fetch(url,{
-      method,
-      headers:{
-        "Content-Type":"application/json",
-        "Authorization": localStorage.getItem("token")
-      },
+    await fetch("/api/products/"+editingId,{
+      method:"PUT",
+      headers:{ "Content-Type":"application/json" },
       body:JSON.stringify(product)
     })
 
-    if(!res.ok){
-      throw new Error("Error en servidor")
-    }
+    showToast("✏️ Producto actualizado")
 
-    showToast(
-      editingId
-        ? "✏️ Producto actualizado"
-        : "✅ Producto agregado"
-    )
+  }else{
 
-    closeModal()
+    await fetch("/api/products",{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body:JSON.stringify(product)
+    })
 
-    editingId = null
-
-    await loadProducts()
-
-  }catch(err){
-
-    console.error(err)
-    showToast("❌ Error guardando producto")
+    showToast("✅ Producto agregado")
 
   }
 
+  closeModal()
+
+  editingId = null
+
+  await loadProducts()
+
 }
+
 
 
 // =========== RESTOCK ===========
@@ -1532,165 +1438,121 @@ showToast("📋 Ticket copiado")
 }
 
 // =========== SALES ===========
-
-function setRange(type){
-  filters.range = type
-  filters.customDate = null
-  document.getElementById("dateFilter").value = ""
-  renderSales()
-}
-
-
-
-function getFilteredSales(){
-
-  let sales = [...state.sales]
-
-  // 🔎 BUSCADOR
-  if(filters.search){
-    sales = sales.filter(s => 
-      s.items.some(p => 
-        p.name.toLowerCase().includes(filters.search)
-      )
-    )
-  }
-
-  function toLocalDate(date){
-    return new Date(
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate()
-    )
-  }
-
-  const today = toLocalDate(new Date())
-
-  sales = sales.filter(s => {
-
-    if(!s.dateISO) return false
-
-    const saleDate = toLocalDate(new Date(s.dateISO))
-
-    if(filters.customDate){
-      const d = toLocalDate(new Date(filters.customDate))
-      return saleDate.getTime() === d.getTime()
-    }
-
-if(filters.range === "today"){
-  return (
-    saleDate.getFullYear() === today.getFullYear() &&
-    saleDate.getMonth() === today.getMonth() &&
-    saleDate.getDate() === today.getDate()
-  )
-}
-
-
-if(filters.range === "yesterday"){
-  const y = new Date(today)
-  y.setDate(y.getDate() - 1)
-
-  return (
-    saleDate.getFullYear() === y.getFullYear() &&
-    saleDate.getMonth() === y.getMonth() &&
-    saleDate.getDate() === y.getDate()
-  )
-}
-    if(filters.range === "week"){
-      const weekAgo = new Date(today)
-      weekAgo.setDate(today.getDate() - 7)
-      return saleDate >= weekAgo
-    }
-
-    return true
-  })
-
-  return sales
-}
-
 function renderSales(){
 
-  const container = document.getElementById("salesList")
-  container.innerHTML = ""
+const container = document.getElementById("salesList")
+container.innerHTML = ""
 
-  const filtered = getFilteredSales()
-
-  if(filtered.length === 0){
-    container.innerHTML = `
-    <div style="text-align:center;color:#94a3b8;padding:40px 0;">
-    No hay resultados con ese filtro
-    </div>`
-    return
-  }
-
-  // 🔥 ordenar
-  const ordenadas = [...state.sales]
-    .sort((a,b)=> new Date(a.dateISO) - new Date(b.dateISO))
-
-  // 🔥 acumulado
-  let acumulado = 0
-
-  const conAcumulado = ordenadas.map(s=>{
-    acumulado += s.total
-    return {
-      ...s,
-      acumulado
-    }
-  })
-
-  // 🔥 filtrar
-  const ids = new Set(filtered.map(f=>f.id))
-  const ventas = conAcumulado.filter(s => ids.has(s.id))
-
-  // 🔥 render
-  ventas.reverse().forEach(s=>{
-
-    const items = s.items.map(p=>{
-      const unitProfit = (p.price - p.cost)
-      const totalProfit = unitProfit * p.qty
-
-      return `
-      ${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
-      <br>Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
-      <br>Ganancia unidad: 
-      <b style="color:#16a34a;">$${unitProfit.toFixed(2)}</b>
-      <br><br>
-      `
-    }).join("")
-
-    const profitVenta = s.items.reduce((a,p)=>{
-      return a + ((p.price - p.cost) * p.qty)
-    },0)
-
-    const div = document.createElement("div")
-
-    div.style.background = "#f8fafc"
-    div.style.borderRadius = "14px"
-    div.style.padding = "16px"
-    div.style.marginBottom = "14px"
-
-    div.innerHTML = `
-    <div style="font-weight:700;">Venta #${s.num}</div>
-    <div style="font-size:12px;color:#64748b;">${s.date}</div>
-
-    <div style="margin:10px 0;">${items}</div>
-
-    <div>
-    Total: <b>$${s.total.toFixed(2)}</b><br>
-    Ganancia: <b style="color:#16a34a">$${profitVenta.toFixed(2)}</b><br>
-    Acumulado: <b>$${s.acumulado.toFixed(2)}</b>
-    </div>
-
-    <button class="btn-ghost" style="margin-top:10px;width:100%;">
-    📄 Ver ticket
-    </button>
-    `
-
-    div.querySelector("button").onclick = () => showSaleSummary(s)
-
-    container.appendChild(div)
-
-  })
+if(state.sales.length === 0){
+container.innerHTML = `
+<div style="text-align:center;color:#94a3b8;padding:40px 0;">
+No hay ventas registradas aún
+</div>`
+return
 }
+
+// calcular acumulado desde las ventas viejas
+let acumulado = 0
+const ventasConAcumulado = state.sales.slice().reverse().map(s=>{
+acumulado += s.total
+return {
+...s,
+acumulado
+}
+})
+
+// ahora mostrarlas de nuevas a viejas
+ventasConAcumulado.reverse().forEach((s,i)=>{
+
+const items = s.items.map(p=>{
+
+const unitProfit = (p.price - p.cost)
+const totalProfit = unitProfit * p.qty
+
+const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"
+
+return `
+${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
+
+<br>Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
+
+<br>${icon} Ganancia unidad: 
+<b style="color:#16a34a;font-size:14px;">
+$${unitProfit.toFixed(2)} c/u
+</b>
+
+<br><br>
+`
+
+}).join("")
+
+const profitVenta = s.items.reduce((a,p)=>{
+return a + ((p.price - p.cost) * p.qty)
+},0)
+
+const colors = [
+"#dbeafe",
+"#dcfce7",
+"#fef9c3",
+"#fee2e2",
+"#e0f2fe"
+]
+
+const div = document.createElement("div")
+
+div.style.background = colors[i % colors.length]
+div.style.borderRadius = "14px"
+div.style.padding = "16px"
+div.style.marginBottom = "14px"
+div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
+
+// 🔥 HTML SIN onclick roto
+div.innerHTML = `
+
+<div style="font-weight:700;font-size:15px;margin-bottom:4px;">
+Venta #${s.num}
+</div>
+
+<div style="font-size:11px;color:#64748b;margin-bottom:6px;">
+ID: ${s.id}
+</div>
+
+<div style="font-size:12px;color:#64748b;margin-bottom:10px;">
+${s.date}
+</div>
+
+<div style="line-height:1.7;margin-bottom:12px;font-weight:600;">
+${items}
+</div>
+
+<div style="font-size:13px;line-height:1.8;">
+Total: <b>$${s.total.toFixed(2)}</b><br>
+Ganancia: <b style="color:#16a34a">$${profitVenta.toFixed(2)}</b><br>
+Pagó: <b>$${Number(s.paid).toFixed(2)}</b><br>
+Vuelto: <b>$${Number(s.change).toFixed(2)}</b><br>
+
+<span style="font-weight:700;">
+Acumulado: $${s.acumulado.toFixed(2)}
+</span>
+</div>
+
+<div style="margin-top:10px;">
+  <button class="btn-ghost" style="width:100%;">
+  📄 Ver ticket
+  </button>
+</div>
+
+`
+
+// 🔥 AQUÍ ESTÁ LA MAGIA (esto te arregla todo)
+const btn = div.querySelector("button")
+btn.onclick = () => showSaleSummary(s)
+
+// 👇 ahora sí lo agregás
+container.appendChild(div)
+
+})
+} 
 // =========== STATS ===========
 function renderStats() {
   const totalSales = state.sales.length
@@ -2107,17 +1969,6 @@ document.getElementById("searchProduct")?.addEventListener("input", ()=>{
   showSuggestions()
 })
 
-document.getElementById("searchSales")?.addEventListener("input", e=>{
-  filters.search = e.target.value.toLowerCase()
-  renderSales()
-})
-
-document.getElementById("dateFilter")?.addEventListener("change", e=>{
-  filters.customDate = e.target.value
-  filters.range = null
-  renderSales()
-})
-
 document.getElementById("searchInventory")?.addEventListener("input", renderInventory)
 
 document.getElementById("paid")?.addEventListener("input", calculateChange)
@@ -2155,4 +2006,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-  </html>
+         </html>
