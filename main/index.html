@@ -1245,25 +1245,51 @@ function renderInventory() {
 
 }
 // =========== MODAL PRODUCTO ===========
-function openAddModal() {
+function openAddModal(){
+
   editingId = null
+
   document.getElementById("modal-title").textContent = "➕ Nuevo Producto"
-  ;["m-name","m-price","m-cost","m-stock","m-cat"].forEach(id => document.getElementById(id).value = "")
+
+  ;["m-name","m-price","m-cost","m-stock","m-cat"]
+    .forEach(id => document.getElementById(id).value = "")
+
   document.getElementById("modal").classList.add("show")
-  setTimeout(() => document.getElementById("m-name").focus(), 100)
+
+  setTimeout(()=>{
+    document.getElementById("m-name").focus()
+  },100)
+
 }
-function openEditModal(id) {
+
+
+function openEditModal(id){
+
   editingId = id
+
   const p = state.products.find(x => x.id === id)
+
+  if(!p){
+    showToast("❌ Producto no encontrado")
+    return
+  }
+
   document.getElementById("modal-title").textContent = "✏️ Editar producto"
+
   document.getElementById("m-name").value = p.name
   document.getElementById("m-price").value = p.price
   document.getElementById("m-cost").value = p.cost
   document.getElementById("m-stock").value = p.stock
   document.getElementById("m-cat").value = p.cat || ""
+
   document.getElementById("modal").classList.add("show")
+
 }
-function closeModal() { document.getElementById("modal").classList.remove("show") }
+
+
+function closeModal(){
+  document.getElementById("modal").classList.remove("show")
+}
 
 
 async function saveProduct(){
@@ -1281,42 +1307,53 @@ async function saveProduct(){
 
   const cat = (
     document.getElementById("m-cat").value.trim()
-    .toLowerCase()
-    .replace(/^\w/, c => c.toUpperCase())
+      .toLowerCase()
+      .replace(/^\w/, c => c.toUpperCase())
   ) || "General"
 
   const product = { name, price, cost, stock, cat }
 
-  if(editingId){
+  const url = editingId
+    ? "/api/products/" + editingId
+    : "/api/products"
 
-    await fetch("/api/products/"+editingId,{
-      method:"PUT",
-      headers:{ "Content-Type":"application/json" },
+  const method = editingId ? "PUT" : "POST"
+
+  try{
+
+    const res = await fetch(url,{
+      method,
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization": localStorage.getItem("token")
+      },
       body:JSON.stringify(product)
     })
 
-    showToast("✏️ Producto actualizado")
+    if(!res.ok){
+      throw new Error("Error en servidor")
+    }
 
-  }else{
+    showToast(
+      editingId
+        ? "✏️ Producto actualizado"
+        : "✅ Producto agregado"
+    )
 
-    await fetch("/api/products",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify(product)
-    })
+    closeModal()
 
-    showToast("✅ Producto agregado")
+    editingId = null
+
+    await loadProducts()
+
+  }catch(err){
+
+    console.error(err)
+    showToast("❌ Error guardando producto")
 
   }
 
-  closeModal()
-
-  editingId = null
-
-  await loadProducts()
-
 }
-
 
 
 // =========== RESTOCK ===========
