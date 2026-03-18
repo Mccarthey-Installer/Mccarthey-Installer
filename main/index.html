@@ -1967,10 +1967,11 @@ function exportCSV(){
 
   let text = ""
 
-  // ✅ total global real (como en la web)
-  let acumulado = state.sales.reduce((a,b)=> a + b.total, 0)
-
+  // ✅ usar mismo orden que la web
   const ventas = state.sales
+
+  // ✅ acumulado TOTAL real (no inventado)
+  let acumulado = ventas.reduce((a,b)=> a + b.total, 0)
 
   ventas.forEach(s => {
 
@@ -2000,10 +2001,10 @@ function exportCSV(){
     text += `Pagó: $${Number(s.paid).toFixed(2)}\n`
     text += `Vuelto: $${Number(s.change).toFixed(2)}\n`
 
-    // ✅ mostrar acumulado real tipo web
+    // ✅ mostrar acumulado correcto (como web)
     text += `Acumulado: $${acumulado.toFixed(2)}\n`
 
-    // 🔥 clave: bajar acumulado para la siguiente venta
+    // 🔥 bajar acumulado para la siguiente venta
     acumulado -= s.total
 
     text += `\n--------------------------------\n\n`
@@ -2018,7 +2019,7 @@ function exportCSV(){
   const a = document.createElement("a")
   a.href = URL.createObjectURL(blob)
 
-  // ✅ nombre pro con timestamp
+  // ✅ nombre pro sin duplicados
   const now = new Date()
 
   const fecha =
@@ -2037,6 +2038,7 @@ function exportCSV(){
 
   showToast("✅ Historial completo descargado")
 }
+
 // =========== CLEAR HISTORY ===========
 async function clearHistory(){
 
@@ -2116,4 +2118,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-        </html>
+  </html>
