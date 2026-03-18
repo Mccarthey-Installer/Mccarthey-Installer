@@ -1968,7 +1968,8 @@ function exportCSV(){
   let text = ""
   let acumulado = 0
 
-  const ventas = [...state.sales].reverse()
+  // ❌ QUITAMOS el reverse
+  const ventas = state.sales
 
   ventas.forEach(s => {
 
@@ -1978,7 +1979,6 @@ function exportCSV(){
     text += `ID: ${s.id}\n`
     text += `${s.date}\n\n`
 
-    // 🔥 PRODUCTOS BIEN DETALLADOS
     s.items.forEach(p => {
 
       const unitProfit = (p.price - p.cost)
@@ -2007,9 +2007,9 @@ function exportCSV(){
   })
 
   const blob = new Blob(
-  ["\uFEFF" + text],
-  {type:"text/plain;charset=utf-8"}
-)
+    ["\uFEFF" + text],
+    {type:"text/plain;charset=utf-8"}
+  )
 
   const a = document.createElement("a")
   a.href = URL.createObjectURL(blob)
