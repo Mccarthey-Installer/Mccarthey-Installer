@@ -1496,7 +1496,11 @@ function renderSales(){
   if(saleFilter === "today"){
     sales = sales.filter(s => {
       const d = new Date(s.dateISO || s.date)
-      return d.toDateString() === now.toDateString()
+      return (
+  d.getFullYear() === now.getFullYear() &&
+  d.getMonth() === now.getMonth() &&
+  d.getDate() === now.getDate()
+)
     })
   }
 
@@ -1506,7 +1510,11 @@ function renderSales(){
 
     sales = sales.filter(s => {
       const d = new Date(s.dateISO || s.date)
-      return d.toDateString() === y.toDateString()
+      return (
+  d.getFullYear() === y.getFullYear() &&
+  d.getMonth() === y.getMonth() &&
+  d.getDate() === y.getDate()
+)
     })
   }
 
