@@ -425,6 +425,27 @@ opacity:1;
   .sale-card { background: #fff; border-radius: 12px; padding: 16px; border: 2px solid #e2e8f0; margin-bottom: 12px; }
   .alert-box { background: #fef9c3; border: 2px solid #fde047; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: #854d0e; }
 
+  /* ===== SECCIÓN DE DÍA EN HISTORIAL ===== */
+  .day-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 18px 0 10px;
+  }
+  .day-section-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .day-section-line {
+    flex: 1;
+    height: 1px;
+    background: #e2e8f0;
+  }
+
   .hamburger { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; transition: background .2s; }
   .hamburger:hover { background: #f1f5f9; }
 
@@ -777,25 +798,44 @@ let editingId = null
 let restockId = null
 
 // =========== FORMATEAR FECHA ===========
-// Acepta cualquier string de fecha (ISO, DB datetime, toLocaleString) y devuelve
-// un formato legible como "19/3/2026, 8:03:14 a. m."
 function formatDate(str){
   if(!str) return ""
-  // Si ya es un Date object lo usamos directo
   const d = new Date(str)
-  if(isNaN(d.getTime())) return str  // si no se puede parsear, mostrar tal cual
+  if(isNaN(d.getTime())) return str
   return d.toLocaleString()
 }
 
-// Extrae "día/mes" de cualquier string de fecha para las gráficas
 function getDateKey(str){
   if(!str) return null
   const d = new Date(str)
   if(!isNaN(d.getTime())){
     return d.getDate() + "/" + (d.getMonth() + 1)
   }
-  // fallback: formato viejo "19/3/2026..."
   return str.split("/").slice(0,2).join("/")
+}
+
+// =========== ETIQUETA DE SECCIÓN POR DÍA ===========
+function getDayLabel(dateStr){
+  const d = new Date(dateStr)
+  if(isNaN(d.getTime())) return "Antiguas"
+
+  const hoy = new Date()
+  const ayer = new Date(); ayer.setDate(hoy.getDate() - 1)
+
+  const toKey = x => x.getFullYear() + "-" + x.getMonth() + "-" + x.getDate()
+
+  if(toKey(d) === toKey(hoy))   return "Hoy"
+  if(toKey(d) === toKey(ayer))  return "Ayer"
+
+  // esta semana (últimos 7 días)
+  const hace7 = new Date(); hace7.setDate(hoy.getDate() - 7)
+  if(d >= hace7) return "Esta semana"
+
+  // este mes
+  if(d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear())
+    return "Este mes"
+
+  return "Más antiguas"
 }
 
 async function loadProducts(){
@@ -829,7 +869,6 @@ const blob = new Blob(
 {type:"application/json"}
 )
 
-// generar fecha y hora
 const now = new Date()
 
 const fecha =
@@ -960,7 +999,6 @@ function renderProducts() {
   filtered.forEach(p => {
     if (p.stock <= 5) lowStock.push(`${p.name} (${p.stock})`)
 
-    // calcular qty ya en carrito para este producto
     const inCart = state.cart.find(x => x.id === p.id)
     const qtyInCart = inCart ? inCart.qty : 0
     const available = p.stock - qtyInCart
@@ -996,10 +1034,7 @@ function addToCart(id, btn) {
   setTimeout(() => btn.classList.remove("pop"), 220)
 
   const p = state.products.find(x => x.id === id)
-
   const item = state.cart.find(x => x.id === id)
-
-  // 🔒 VALIDAR CONTRA STOCK REAL DEL BACKEND (sin restar nada)
   const currentQty = item ? item.qty : 0
 
   if (currentQty >= p.stock) {
@@ -1019,8 +1054,6 @@ function addToCart(id, btn) {
     })
   }
 
-  // 🔥 NO se resta p.stock — el backend es el jefe del stock real
-
   renderAll()
   saveCart()
 }
@@ -1031,7 +1064,6 @@ function changeQty(id, delta) {
   let p = state.products.find(x => x.id === id)
 
   if (delta > 0) {
-    // 🔒 validar contra stock real antes de subir qty
     if (item.qty >= p.stock) {
       showToast("⚠ Sin más stock")
       return
@@ -1091,10 +1123,8 @@ function calculateChange() {
 
   const change = Math.max(paid - total, 0)
 
-  // Mostrar vuelto
   document.getElementById("change").textContent = `$${change.toFixed(2)}`
 
-  // Botón confirmar venta
   const btn = document.querySelector("#confirmSaleBtn")
 
   if (paid < total || total === 0) {
@@ -1118,7 +1148,6 @@ async function confirmSale() {
 
   const btn = document.getElementById("confirmSaleBtn")
 
-  // 🔒 bloquear botón para evitar doble venta
   btn.disabled = true
   btn.style.opacity = "0.6"
   btn.textContent = "Procesando..."
@@ -1136,10 +1165,8 @@ async function confirmSale() {
       return
     }
 
-    // 🔒 1. SINCRONIZAR STOCK REAL
     await loadProducts()
 
-    // 🔒 2. VALIDACIÓN REAL
     for (const item of state.cart){
 
       const p = state.products.find(x => x.id === item.id)
@@ -1156,7 +1183,6 @@ async function confirmSale() {
 
     }
 
-    // 🔥 ACTUALIZAR VENDIDOS LOCAL (visual)
     state.cart.forEach(item => {
       const p = state.products.find(x => x.id === item.id)
       p.sold += item.qty
@@ -1165,24 +1191,15 @@ async function confirmSale() {
     const now = new Date()
 
     const sale = {
-      // ❌ YA NO confiamos en este ID (backend manda el real)
       id: null,
-
-      // ⚠️ opcional (solo visual)
       num: state.sales.length + 1,
-
-      // fecha legible para el ticket inmediato
       date: now.toLocaleString(),
       dateKey: now.getDate() + "/" + (now.getMonth()+1),
-
       items: JSON.parse(JSON.stringify(state.cart)),
-
       total,
       paid
-      // ❌ change ya no se manda (backend lo calcula)
     }
 
-    // 🔒 3. ENVIAR A BACKEND
     const res = await fetch("/api/sales",{
       method:"POST",
       headers:{
@@ -1198,13 +1215,9 @@ async function confirmSale() {
       return
     }
 
-    // 🔥 USAR ID REAL DEL BACKEND
     sale.id = data.id
-
-    // 🔥 calcular cambio SOLO para mostrar
     sale.change = paid - total
 
-    // 🧹 4. LIMPIAR
     state.cart = []
     document.getElementById("paid").value = ""
     localStorage.removeItem("cart")
@@ -1213,10 +1226,8 @@ async function confirmSale() {
       document.activeElement.blur()
     }
 
-    // 🔥 mostrar ticket con datos correctos
     showSaleSummary(sale)
 
-    // 🔄 refrescar productos reales
     await loadProducts()
 
     showToast(`✅ Venta realizada`)
@@ -1228,7 +1239,6 @@ async function confirmSale() {
 
   } finally {
 
-    // 🔓 desbloquear botón SIEMPRE
     btn.disabled = false
     btn.style.opacity = "1"
     btn.textContent = "✅ Confirmar Venta"
@@ -1476,7 +1486,6 @@ Producto              Unit     Total
 ${line}
 `
 
-  // 🔥 calcular ancho dinámico del nombre (clave)
   const maxNameLength = Math.max(
     ...sale.items.map(p => (p.name + " x" + p.qty).length),
     16
@@ -1485,42 +1494,33 @@ ${line}
   const items = sale.items.map(p => {
 
     const sub = p.qty * p.price
-
     const name = (p.name + " x" + p.qty).padEnd(maxNameLength)
-
     const unit = ("$" + p.price.toFixed(2)).padEnd(10)
-
     const total = "$" + sub.toFixed(2)
 
     return `${name}${unit}${total}`
 
   }).join("\n")
 
-  // ✅ formatDate garantiza fecha legible sin importar el origen
   document.getElementById("saleSummaryInfo").innerHTML =
 `Venta #${sale.num}<br>
 ID: ${sale.id}<br>
 ${formatDate(sale.date)}`
 
-
   document.getElementById("saleSummaryItems").innerHTML =
 `<pre style="font-family:monospace;overflow-x:auto;">${header}${items}
 ${line}</pre>`
 
-
   document.getElementById("saleSummaryTotal").innerHTML =
 `<b>$${sale.total.toFixed(2)}</b>`
 
-
   document.getElementById("saleSummaryPaid").innerHTML =
 `<b>$${sale.paid.toFixed(2)}</b>`
-
 
   document.getElementById("saleSummaryChange").innerHTML =
 `<span style="color:#16a34a;font-weight:700;">
 $${sale.change.toFixed(2)} 🟢
 </span>`
-
 
   const modal = document.getElementById("saleSummary")
 
@@ -1531,7 +1531,6 @@ $${sale.change.toFixed(2)} 🟢
 
 }
 
-// FUNCIÓN PARA CERRAR
 function closeSummary(){
 
   const modal = document.getElementById("saleSummary")
@@ -1604,6 +1603,7 @@ function filtrarVentas(ventas, texto){
   })
 
 }
+
 // =========== SALES ===========
 function renderSales(){
 
@@ -1612,10 +1612,10 @@ function renderSales(){
 
   const search = document.getElementById("searchSales")?.value?.toLowerCase() || ""
 
-  const ventasFiltradas = filtrarVentas(state.sales, search)
+  // 1. FILTRAR
+  const filtradas = filtrarVentas(state.sales, search)
 
-  // ===== SIN RESULTADOS =====
-  if(ventasFiltradas.length === 0){
+  if(filtradas.length === 0){
 
     const msg = search 
       ? "No se encontraron coincidencias"
@@ -1629,110 +1629,126 @@ function renderSales(){
     return
   }
 
-  // ===== CALCULAR ACUMULADO =====
-  let acumulado = 0
-
-  const ventasConAcumulado = ventasFiltradas
+  // 2. ORDENAR: más reciente arriba (sort real, no reverse)
+  const ventasOrdenadas = filtradas
     .slice()
-    .reverse()
-    .map(s=>{
-      acumulado += s.total
-      return {
-        ...s,
-        acumulado
-      }
-    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
 
-  // ===== RENDER =====
-  ventasConAcumulado.reverse().forEach((s,i)=>{
+  // 3. CALCULAR ACUMULADO sobre el orden correcto
+  // (el acumulado muestra el total vendido desde el inicio hasta esa venta)
+  const totalGeneral = ventasOrdenadas.reduce((a, s) => a + s.total, 0)
+  let acumuladoRestante = totalGeneral
 
-    const items = s.items.map(p=>{
+  const ventasConAcumulado = ventasOrdenadas.map(s => {
+    const acumulado = acumuladoRestante
+    acumuladoRestante -= s.total
+    return { ...s, acumulado }
+  })
 
-      const unitProfit = (p.price - p.cost)
-      const totalProfit = unitProfit * p.qty
+  // 4. AGRUPAR POR SECCIÓN DE DÍA
+  const ORDEN_SECCIONES = ["Hoy", "Ayer", "Esta semana", "Este mes", "Más antiguas"]
 
-      const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"
+  const grupos = {}
+  ventasConAcumulado.forEach(s => {
+    const label = getDayLabel(s.date)
+    if(!grupos[label]) grupos[label] = []
+    grupos[label].push(s)
+  })
 
-      return `
-      ${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
+  // 5. RENDER POR SECCIÓN
+  const colors = ["#dbeafe","#dcfce7","#fef9c3","#fee2e2","#e0f2fe"]
 
-      <br>Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
+  ORDEN_SECCIONES.forEach(seccion => {
 
-      <br>${icon} Ganancia unidad: 
-      <b style="color:#16a34a;font-size:14px;">
-      $${unitProfit.toFixed(2)} c/u
-      </b>
+    const ventas = grupos[seccion]
+    if(!ventas || ventas.length === 0) return
 
-      <br><br>
+    // Header de sección
+    const header = document.createElement("div")
+    header.className = "day-section-header"
+    header.innerHTML = `
+      <span class="day-section-label">${seccion}</span>
+      <div class="day-section-line"></div>
+      <span style="font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap;">${ventas.length} venta${ventas.length > 1 ? "s" : ""}</span>
+    `
+    container.appendChild(header)
+
+    // Ventas de esa sección
+    ventas.forEach((s, i) => {
+
+      const items = s.items.map(p=>{
+
+        const unitProfit = (p.price - p.cost)
+        const totalProfit = unitProfit * p.qty
+        const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"
+
+        return `
+        ${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
+        <br>Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
+        <br>${icon} Ganancia unidad: 
+        <b style="color:#16a34a;font-size:14px;">$${unitProfit.toFixed(2)} c/u</b>
+        <br><br>
+        `
+
+      }).join("")
+
+      const profitVenta = s.items.reduce((a,p)=>{
+        return a + ((p.price - p.cost) * p.qty)
+      },0)
+
+      const div = document.createElement("div")
+
+      div.style.background = colors[i % colors.length]
+      div.style.borderRadius = "14px"
+      div.style.padding = "16px"
+      div.style.marginBottom = "14px"
+      div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
+
+      div.innerHTML = `
+
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px;">
+        Venta #${s.num}
+      </div>
+
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px;">
+        ID: ${s.id}
+      </div>
+
+      <div style="font-size:12px;color:#64748b;margin-bottom:10px;">
+        ${formatDate(s.date)}
+      </div>
+
+      <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">
+        ${items}
+      </div>
+
+      <div style="font-size:13px;line-height:1.8;">
+        Total: <b>$${s.total.toFixed(2)}</b><br>
+        Ganancia: <b style="color:#16a34a">$${profitVenta.toFixed(2)}</b><br>
+        Pagó: <b>$${Number(s.paid).toFixed(2)}</b><br>
+        Vuelto: <b>$${Number(s.change).toFixed(2)}</b><br>
+        <span style="font-weight:700;">Acumulado: $${s.acumulado.toFixed(2)}</span>
+      </div>
+
+      <div style="margin-top:10px;">
+        <button class="btn-ghost" style="width:100%;">
+          📄 Ver ticket
+        </button>
+      </div>
+
       `
 
-    }).join("")
+      const btn = div.querySelector("button")
+      btn.onclick = () => showSaleSummary(s)
 
-    const profitVenta = s.items.reduce((a,p)=>{
-      return a + ((p.price - p.cost) * p.qty)
-    },0)
+      container.appendChild(div)
 
-    const colors = [
-      "#dbeafe",
-      "#dcfce7",
-      "#fef9c3",
-      "#fee2e2",
-      "#e0f2fe"
-    ]
-
-    const div = document.createElement("div")
-
-    div.style.background = colors[i % colors.length]
-    div.style.borderRadius = "14px"
-    div.style.padding = "16px"
-    div.style.marginBottom = "14px"
-    div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
-
-    div.innerHTML = `
-
-    <div style="font-weight:700;font-size:15px;margin-bottom:4px;">
-      Venta #${s.num}
-    </div>
-
-    <div style="font-size:11px;color:#64748b;margin-bottom:6px;">
-      ID: ${s.id}
-    </div>
-
-    <div style="font-size:12px;color:#64748b;margin-bottom:10px;">
-      ${formatDate(s.date)}
-    </div>
-
-    <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">
-      ${items}
-    </div>
-
-    <div style="font-size:13px;line-height:1.8;">
-      Total: <b>$${s.total.toFixed(2)}</b><br>
-      Ganancia: <b style="color:#16a34a">$${profitVenta.toFixed(2)}</b><br>
-      Pagó: <b>$${Number(s.paid).toFixed(2)}</b><br>
-      Vuelto: <b>$${Number(s.change).toFixed(2)}</b><br>
-
-      <span style="font-weight:700;">
-        Acumulado: $${s.acumulado.toFixed(2)}
-      </span>
-    </div>
-
-    <div style="margin-top:10px;">
-      <button class="btn-ghost" style="width:100%;">
-        📄 Ver ticket
-      </button>
-    </div>
-
-    `
-
-    const btn = div.querySelector("button")
-    btn.onclick = () => showSaleSummary(s)
-
-    container.appendChild(div)
+    })
 
   })
 
 }
+
 // =========== STATS ===========
 function renderStats() {
   const totalSales = state.sales.length
@@ -1822,7 +1838,6 @@ function drawChart() {
 
   const byDay = {}
 
-  // agrupar ventas por día usando getDateKey para manejar cualquier formato
   state.sales.forEach(s => {
 
     const key = getDateKey(s.date)
@@ -1832,7 +1847,6 @@ function drawChart() {
 
   })
 
-  // ordenar fechas correctamente
   const labels = Object.keys(byDay)
     .sort((a,b)=>{
       const [d1,m1] = a.split("/").map(Number)
@@ -1869,7 +1883,6 @@ function drawChart() {
   const gap = chartW / labels.length
   const barW = Math.min(gap * 0.55,40)
 
-  // grid
   ctx.strokeStyle = "#f1f5f9"
   ctx.lineWidth = 1
 
@@ -1884,7 +1897,6 @@ function drawChart() {
 
   }
 
-  // barras
   labels.forEach((lbl,i)=>{
 
     const barH = Math.max((values[i]/maxVal)*chartH,4)
@@ -1909,14 +1921,12 @@ function drawChart() {
 
     ctx.fill()
 
-    // valor $
     ctx.fillStyle = "#1e40af"
     ctx.font = "bold 9px JetBrains Mono, monospace"
     ctx.textAlign = "center"
 
     ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
 
-    // fecha limpia
     ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora, sans-serif"
     ctx.textAlign = "center"
@@ -1925,59 +1935,6 @@ function drawChart() {
 
   })
 
-}
-
-function showClientTicket(sale){
-
-  const line = "--------------------------------"
-
-  const header = `
-${line}
-Producto        Unit     Total
-${line}
-`
-
-  const items = sale.items.map(p=>{
-
-    const sub = p.qty * p.price
-
-    const nameRaw = p.name + " x" + p.qty
-
-    const name = nameRaw.length > 16
-      ? nameRaw.substring(0,13) + "..."
-      : nameRaw
-
-    const nameAligned = name.padEnd(16)
-
-    const unit = ("$" + p.price.toFixed(2)).padEnd(8)
-
-    const total = "$" + sub.toFixed(2)
-
-    return `${nameAligned}${unit}${total}`
-
-  }).join("\n")
-
-  document.getElementById("saleSummaryInfo").innerHTML =
-`Venta #${sale.num}<br>
-ID: ${sale.id}<br>
-${formatDate(sale.date)}`
-
-  document.getElementById("saleSummaryItems").innerHTML =
-`<pre style="font-family:monospace;">${header}${items}
-${line}</pre>`
-
-  document.getElementById("saleSummaryTotal").innerHTML =
-`<b>$${sale.total.toFixed(2)}</b>`
-
-  document.getElementById("saleSummaryPaid").innerHTML =
-`<b>$${sale.paid.toFixed(2)}</b>`
-
-  document.getElementById("saleSummaryChange").innerHTML =
-`<span style="color:#16a34a;font-weight:700;">
-$${sale.change.toFixed(2)} 🟢
-</span>`
-
-  document.getElementById("saleSummary").style.display = "flex"
 }
 
 function drawProfitChart(){
@@ -1995,7 +1952,6 @@ const H = 160
 
 const byDay = {}
 
-// usar getDateKey para manejar cualquier formato de fecha
 state.sales.forEach(s=>{
 
 const key = getDateKey(s.date)
@@ -2071,10 +2027,10 @@ function exportCSV(){
 
   let text = ""
 
-  // ✅ usar mismo orden que la web
   const ventas = state.sales
+    .slice()
+    .sort((a,b) => new Date(b.date) - new Date(a.date))
 
-  // ✅ acumulado TOTAL real (no inventado)
   let acumulado = ventas.reduce((a,b)=> a + b.total, 0)
 
   ventas.forEach(s => {
@@ -2104,11 +2060,8 @@ function exportCSV(){
     text += `Ganancia: $${profitVenta.toFixed(2)}\n`
     text += `Pagó: $${Number(s.paid).toFixed(2)}\n`
     text += `Vuelto: $${Number(s.change).toFixed(2)}\n`
-
-    // ✅ mostrar acumulado correcto (como web)
     text += `Acumulado: $${acumulado.toFixed(2)}\n`
 
-    // 🔥 bajar acumulado para la siguiente venta
     acumulado -= s.total
 
     text += `\n--------------------------------\n\n`
@@ -2123,7 +2076,6 @@ function exportCSV(){
   const a = document.createElement("a")
   a.href = URL.createObjectURL(blob)
 
-  // ✅ nombre pro sin duplicados
   const now = new Date()
 
   const fecha =
@@ -2216,17 +2168,16 @@ if (dateEl) {
 // =========== INIT ===========
 async function init(){
 
-  await loadProducts()   // 1. carga productos
+  await loadProducts()
 
-  loadCart()             // 2. carga carrito guardado
+  loadCart()
 
-  // 🔥 limpiar items del carrito que ya no tienen stock suficiente
   state.cart = state.cart.filter(item=>{
     const p = state.products.find(x=>x.id === item.id)
     return p && p.stock >= item.qty
   })
 
-  renderCart()           // 3. render ya limpio
+  renderCart()
 
   show("pos")
 
@@ -2239,4 +2190,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-</html>
+  </html>
