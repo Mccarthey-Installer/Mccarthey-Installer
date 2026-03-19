@@ -775,6 +775,29 @@ function loadCart(){
 let activeCategory = "Todos"
 let editingId = null
 let restockId = null
+
+// =========== FORMATEAR FECHA ===========
+// Acepta cualquier string de fecha (ISO, DB datetime, toLocaleString) y devuelve
+// un formato legible como "19/3/2026, 8:03:14 a. m."
+function formatDate(str){
+  if(!str) return ""
+  // Si ya es un Date object lo usamos directo
+  const d = new Date(str)
+  if(isNaN(d.getTime())) return str  // si no se puede parsear, mostrar tal cual
+  return d.toLocaleString()
+}
+
+// Extrae "día/mes" de cualquier string de fecha para las gráficas
+function getDateKey(str){
+  if(!str) return null
+  const d = new Date(str)
+  if(!isNaN(d.getTime())){
+    return d.getDate() + "/" + (d.getMonth() + 1)
+  }
+  // fallback: formato viejo "19/3/2026..."
+  return str.split("/").slice(0,2).join("/")
+}
+
 async function loadProducts(){
 
   const res = await fetch("/api/products")
@@ -1148,6 +1171,7 @@ async function confirmSale() {
       // ⚠️ opcional (solo visual)
       num: state.sales.length + 1,
 
+      // fecha legible para el ticket inmediato
       date: now.toLocaleString(),
       dateKey: now.getDate() + "/" + (now.getMonth()+1),
 
@@ -1472,11 +1496,11 @@ ${line}
 
   }).join("\n")
 
-
+  // ✅ formatDate garantiza fecha legible sin importar el origen
   document.getElementById("saleSummaryInfo").innerHTML =
 `Venta #${sale.num}<br>
 ID: ${sale.id}<br>
-${sale.date}`
+${formatDate(sale.date)}`
 
 
   document.getElementById("saleSummaryItems").innerHTML =
@@ -1675,7 +1699,7 @@ function renderSales(){
     </div>
 
     <div style="font-size:12px;color:#64748b;margin-bottom:10px;">
-      ${s.date}
+      ${formatDate(s.date)}
     </div>
 
     <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">
@@ -1798,15 +1822,13 @@ function drawChart() {
 
   const byDay = {}
 
-  // agrupar ventas por día
+  // agrupar ventas por día usando getDateKey para manejar cualquier formato
   state.sales.forEach(s => {
 
-    if(!s.dateKey) return
+    const key = getDateKey(s.date)
+    if(!key) return
 
-    // limpiar fecha (si viene con año o hora)
-    const clean = s.dateKey.split("/").slice(0,2).join("/")
-
-    byDay[clean] = (byDay[clean] || 0) + s.total
+    byDay[key] = (byDay[key] || 0) + s.total
 
   })
 
@@ -1938,7 +1960,7 @@ ${line}
   document.getElementById("saleSummaryInfo").innerHTML =
 `Venta #${sale.num}<br>
 ID: ${sale.id}<br>
-${sale.date}`
+${formatDate(sale.date)}`
 
   document.getElementById("saleSummaryItems").innerHTML =
 `<pre style="font-family:monospace;">${header}${items}
@@ -1973,11 +1995,11 @@ const H = 160
 
 const byDay = {}
 
+// usar getDateKey para manejar cualquier formato de fecha
 state.sales.forEach(s=>{
 
-if(!s.dateKey) return
-
-const clean = s.dateKey.split("/").slice(0,2).join("/")
+const key = getDateKey(s.date)
+if(!key) return
 
 let profit = 0
 
@@ -1985,7 +2007,7 @@ s.items.forEach(p=>{
 profit += (p.price - p.cost) * p.qty
 })
 
-byDay[clean] = (byDay[clean] || 0) + profit
+byDay[key] = (byDay[key] || 0) + profit
 
 })
 
@@ -2059,7 +2081,7 @@ function exportCSV(){
 
     text += `Venta #${s.num}\n`
     text += `ID: ${s.id}\n`
-    text += `${s.date}\n\n`
+    text += `${formatDate(s.date)}\n\n`
 
     s.items.forEach(p => {
 
@@ -2217,4 +2239,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-  </html>
+</html>
