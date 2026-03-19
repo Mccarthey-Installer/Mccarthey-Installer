@@ -44,6 +44,29 @@ cd $APP_DIR
 echo ".env" >> .gitignore 2>/dev/null
 sort -u .gitignore -o .gitignore 2>/dev/null
 
+echo "===== CREANDO package.json SI NO EXISTE ====="
+
+if [ ! -f "$APP_DIR/package.json" ]; then
+cat <<'PKGJSON' > "$APP_DIR/package.json"
+{
+  "name": "pos-pro",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mysql2": "^3.9.0",
+    "cors": "^2.8.5",
+    "bcrypt": "^5.1.0",
+    "uuid": "^9.0.0",
+    "dotenv": "^16.0.0"
+  }
+}
+PKGJSON
+echo "package.json creado"
+else
+  echo "package.json ya existe — conservado"
+fi
+
 echo "===== INSTALANDO LIBRERIAS ====="
 
 npm install
@@ -117,7 +140,6 @@ const conn = await db.promise().getConnection()
 
 try{
 
-// REPEATABLE READ garantiza snapshot real — la misma fila no cambia dentro de la transacción
 await conn.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
 await conn.beginTransaction()
 
@@ -127,7 +149,6 @@ conn.query("SELECT * FROM sales"),
 conn.query("SELECT * FROM sale_items")
 ])
 
-// schema de cada tabla (estructura + índices + constraints)
 const [[schemaProducts]] = await conn.query("SHOW CREATE TABLE products")
 const [[schemaSales]]    = await conn.query("SHOW CREATE TABLE sales")
 const [[schemaItems]]    = await conn.query("SHOW CREATE TABLE sale_items")
@@ -180,8 +201,6 @@ const last = new Date(rows[0].last_activity)
 const now = new Date()
 const diff = (now - last) / 1000 / 60
 
-/* sesión expirada */
-
 if(diff > 20){
 
 return db.promise()
@@ -191,8 +210,6 @@ return res.status(401).json({})
 })
 
 }
-
-/* actualizar actividad */
 
 return db.promise()
 .query("UPDATE sessions SET last_activity=NOW() WHERE token=?", [token])
@@ -651,7 +668,7 @@ try{
 })
 
 
-/* ================= BACKUP INTERNO (sin token, clave desde .env) ================= */
+/* ================= BACKUP INTERNO ================= */
 
 app.get("/internal/backup", async (req,res)=>{
 
@@ -675,7 +692,7 @@ res.status(500).json({error:"backup failed"})
 
 })
 
-/* ================= BACKUP PÚBLICO (con auth) ================= */
+/* ================= BACKUP PÚBLICO ================= */
 
 app.get("/api/backup", auth, async (req,res)=>{
 
@@ -695,9 +712,6 @@ res.status(500).json(err)
 
 /* ================= RESTORE ================= */
 
-/* modo=parcial (default): INSERT IGNORE, no toca lo existente      */
-/* modo=limpio:  borra ventas/items, restaura todo desde el backup  */
-
 app.post("/api/restore", auth, async (req,res)=>{
 
 const data = req.body
@@ -710,7 +724,6 @@ await conn.beginTransaction()
 
 if(modo === "limpio"){
 
-// restaurar limpio: borra ventas e items actuales, luego inserta del backup
 await conn.query("DELETE FROM sale_items")
 await conn.query("DELETE FROM sales")
 
@@ -737,7 +750,6 @@ await conn.query(
 
 }else{
 
-// restaurar parcial: solo inserta lo que no existe
 for(const p of data.products){
 await conn.query(
 "INSERT IGNORE INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
@@ -790,8 +802,6 @@ console.log("POS PRO corriendo en puerto",PORT)
 EOF
 
 echo "server.js creado"
-
-npm install dotenv 2>/dev/null
 
 else
   echo "server.js ya existe — no se sobreescribe"
@@ -1041,9 +1051,6 @@ echo "tail -f /var/log/pos-backup.log"
 echo ""
 echo "Backups en: /var/backups/pos/"
 echo ""
-echo "Restore parcial (no toca lo existente):"
-echo "POST /api/restore"
-echo ""
-echo "Restore limpio (borra ventas y restaura desde backup):"
-echo "POST /api/restore?modo=limpio"
+echo "Restore parcial: POST /api/restore"
+echo "Restore limpio:  POST /api/restore?modo=limpio"
 echo ""
