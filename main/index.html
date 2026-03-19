@@ -762,6 +762,16 @@ const state = {
   sales: []
 }
 
+function saveCart(){
+  localStorage.setItem("cart", JSON.stringify(state.cart))
+}
+
+function loadCart(){
+  const saved = localStorage.getItem("cart")
+  if(saved){
+    state.cart = JSON.parse(saved)
+  }
+}
 let activeCategory = "Todos"
 let editingId = null
 let restockId = null
@@ -983,6 +993,7 @@ function addToCart(id, btn) {
   p.stock--
 
   renderAll()
+  saveCart()
 }
 
 function changeQty(id, delta) {
@@ -999,6 +1010,7 @@ function changeQty(id, delta) {
     if (item.qty <= 0) state.cart = state.cart.filter(x => x.id !== id)
   }
   renderAll()
+  saveCart()
 }
 
 function renderCart() {
@@ -1113,6 +1125,7 @@ async function confirmSale() {
   // limpiar carrito
   state.cart = []
   document.getElementById("paid").value = ""
+  localStorage.removeItem("cart")
 
   // 🔥🔥 CLAVE: quitar foco antes del modal
   if (document.activeElement) {
@@ -2110,8 +2123,25 @@ if (dateEl) {
   
 
 // =========== INIT ===========
-loadProducts()
-show("pos")
+async function init(){
+
+  await loadProducts()   // 1. carga productos
+
+  loadCart()             // 2. carga carrito guardado
+
+  // 🔥 AQUÍ VA ESTO (justo después)
+  state.cart = state.cart.filter(item=>{
+    const p = state.products.find(x=>x.id === item.id)
+    return p && p.stock >= item.qty
+  })
+
+  renderCart()           // 3. render ya limpio
+
+  show("pos")
+
+}
+
+init()
 
 // sincronizar con servidor cada 15 segundos
 setInterval(loadProducts, 15000)
