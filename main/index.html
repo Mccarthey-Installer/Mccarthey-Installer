@@ -1148,8 +1148,8 @@ async function confirmSale() {
       // ⚠️ opcional (solo visual)
       num: state.sales.length + 1,
 
-      date: now.toLocaleString(),
-      dateKey: now.getDate() + "/" + (now.getMonth()+1),
+date: new Date().toISOString(),
+      
 
       items: JSON.parse(JSON.stringify(state.cart)),
 
@@ -2259,4 +2259,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-  </html>
+</html>
