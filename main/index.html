@@ -1094,8 +1094,29 @@ async function confirmSale() {
     return
   }
 
+  // 🔒 1. SINCRONIZAR STOCK REAL DESDE BACKEND
+  await loadProducts()
+
+  // 🔒 2. VALIDACIÓN REAL (YA CON DATOS ACTUALIZADOS)
+  for (const item of state.cart){
+
+    const p = state.products.find(x => x.id === item.id)
+
+    if(!p){
+      showToast(`❌ Producto no existe: ${item.name}`)
+      return
+    }
+
+    if(p.stock < item.qty){
+      showToast(`❌ Sin stock suficiente: ${item.name}`)
+      return
+    }
+
+  }
+
   const change = paid - total
 
+  // 🔥 3. ACTUALIZAR VENDIDOS (LOCAL)
   state.cart.forEach(item => {
     const p = state.products.find(x => x.id === item.id)
     p.sold += item.qty
@@ -1114,6 +1135,7 @@ async function confirmSale() {
     change
   }
 
+  // 🔒 4. ENVIAR VENTA AL BACKEND (AQUÍ SE DEBE DESCONTAR STOCK REAL)
   await fetch("/api/sales",{
     method:"POST",
     headers:{
@@ -1122,27 +1144,22 @@ async function confirmSale() {
     body:JSON.stringify(sale)
   })
 
-  // limpiar carrito
+  // 🧹 5. LIMPIAR TODO
   state.cart = []
   document.getElementById("paid").value = ""
   localStorage.removeItem("cart")
 
-  // 🔥🔥 CLAVE: quitar foco antes del modal
   if (document.activeElement) {
     document.activeElement.blur()
   }
 
-  // mostrar ticket
   showSaleSummary(sale)
 
-  // actualizar productos sin bloquear interfaz
-  setTimeout(loadProducts, 500)
+  // 🔄 refresco final para traer stock actualizado
+  await loadProducts()
 
   showToast(`✅ Venta #${sale.num}`)
-
-  // ❌ YA NO ponemos focus aquí (esto era el bug)
 }
-
 // =========== INVENTORY ===========
 function renderInventory() {
 
