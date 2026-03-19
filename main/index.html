@@ -1148,8 +1148,8 @@ async function confirmSale() {
       // ⚠️ opcional (solo visual)
       num: state.sales.length + 1,
 
-date: new Date().toISOString(),
-      
+      date: now.toLocaleString(),
+      dateKey: now.getDate() + "/" + (now.getMonth()+1),
 
       items: JSON.parse(JSON.stringify(state.cart)),
 
@@ -1473,10 +1473,10 @@ ${line}
   }).join("\n")
 
 
-document.getElementById("saleSummaryInfo").innerHTML =
+  document.getElementById("saleSummaryInfo").innerHTML =
 `Venta #${sale.num}<br>
 ID: ${sale.id}<br>
-${formatDate(sale.date)}`
+${sale.date}`
 
 
   document.getElementById("saleSummaryItems").innerHTML =
@@ -1580,24 +1580,6 @@ function filtrarVentas(ventas, texto){
   })
 
 }
-
-function formatDate(dateString){
-
-  const d = new Date(dateString)
-
-  return d.toLocaleString("es-SV", {
-    day: "numeric",
-    month: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true
-  })
-
-}
-
-
 // =========== SALES ===========
 function renderSales(){
 
@@ -1692,9 +1674,9 @@ function renderSales(){
       ID: ${s.id}
     </div>
 
-<div style="font-size:12px;color:#64748b;margin-bottom:10px;">
-  ${formatDate(s.date)}
-</div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:10px;">
+      ${s.date}
+    </div>
 
     <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">
       ${items}
@@ -1800,6 +1782,7 @@ await loadProducts()
 showToast("📊 Estadísticas reiniciadas")
 
 }
+// =========== CHART ===========
 function drawChart() {
 
   const canvas = document.getElementById("salesChart")
@@ -1815,43 +1798,28 @@ function drawChart() {
 
   const byDay = {}
 
-  // 🔥 AGRUPAR POR DÍA REAL (timestamp limpio)
+  // agrupar ventas por día
   state.sales.forEach(s => {
 
-    if(!s.date) return
+    if(!s.dateKey) return
 
-    const d = new Date(s.date)
+    // limpiar fecha (si viene con año o hora)
+    const clean = s.dateKey.split("/").slice(0,2).join("/")
 
-    // clave real (no string inventado)
-    const key = new Date(
-      d.getFullYear(),
-      d.getMonth(),
-      d.getDate()
-    ).getTime()
-
-    byDay[key] = (byDay[key] || 0) + s.total
+    byDay[clean] = (byDay[clean] || 0) + s.total
 
   })
 
-  // 🔥 ordenar correctamente por tiempo
-  const sortedKeys = Object.keys(byDay)
-    .map(Number)
-    .sort((a,b) => a - b)
+  // ordenar fechas correctamente
+  const labels = Object.keys(byDay)
+    .sort((a,b)=>{
+      const [d1,m1] = a.split("/").map(Number)
+      const [d2,m2] = b.split("/").map(Number)
+      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
+    })
     .slice(-7)
 
-  // 🔥 labels bonitos
-  const labels = sortedKeys.map(ts => {
-
-    const d = new Date(ts)
-
-    return d.toLocaleDateString("es-SV", {
-      day: "numeric",
-      month: "short"
-    })
-
-  })
-
-  const values = sortedKeys.map(k => byDay[k])
+  const values = labels.map(k => byDay[k])
 
   ctx.clearRect(0,0,W,H)
 
@@ -1923,17 +1891,20 @@ function drawChart() {
     ctx.fillStyle = "#1e40af"
     ctx.font = "bold 9px JetBrains Mono, monospace"
     ctx.textAlign = "center"
+
     ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
 
-    // 🔥 fecha bonita (ya limpia)
+    // fecha limpia
     ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora, sans-serif"
     ctx.textAlign = "center"
+
     ctx.fillText(lbl,x+barW/2,H-6)
 
   })
 
 }
+
 function showClientTicket(sale){
 
   const line = "--------------------------------"
@@ -1967,7 +1938,7 @@ ${line}
   document.getElementById("saleSummaryInfo").innerHTML =
 `Venta #${sale.num}<br>
 ID: ${sale.id}<br>
-${formatDate(sale.date)}``
+${sale.date}`
 
   document.getElementById("saleSummaryItems").innerHTML =
 `<pre style="font-family:monospace;">${header}${items}
@@ -1989,96 +1960,83 @@ $${sale.change.toFixed(2)} 🟢
 
 function drawProfitChart(){
 
-  const canvas = document.getElementById("profitChart")
-  if(!canvas) return
+const canvas = document.getElementById("profitChart")
+if(!canvas) return
 
-  const ctx = canvas.getContext("2d")
+const ctx = canvas.getContext("2d")
 
-  const W = canvas.offsetWidth || 300
-  canvas.width = W
-  canvas.height = 160
+const W = canvas.offsetWidth || 300
+canvas.width = W
+canvas.height = 160
 
-  const H = 160
+const H = 160
 
-  const byDay = {}
+const byDay = {}
 
-  // 🔥 AGRUPAR POR FECHA REAL (igual que ventas)
-  state.sales.forEach(s=>{
+state.sales.forEach(s=>{
 
-    if(!s.date) return
+if(!s.dateKey) return
 
-    const d = new Date(s.date)
+const clean = s.dateKey.split("/").slice(0,2).join("/")
 
-    const key = new Date(
-      d.getFullYear(),
-      d.getMonth(),
-      d.getDate()
-    ).getTime()
+let profit = 0
 
-    let profit = 0
+s.items.forEach(p=>{
+profit += (p.price - p.cost) * p.qty
+})
 
-    s.items.forEach(p=>{
-      profit += (p.price - p.cost) * p.qty
-    })
+byDay[clean] = (byDay[clean] || 0) + profit
 
-    byDay[key] = (byDay[key] || 0) + profit
+})
 
-  })
+const labels = Object.keys(byDay)
+.sort((a,b)=>{
+const [d1,m1] = a.split("/").map(Number)
+const [d2,m2] = b.split("/").map(Number)
+return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
+})
+.slice(-7)
+const values = labels.map(k=>byDay[k])
 
-  const sortedKeys = Object.keys(byDay)
-    .map(Number)
-    .sort((a,b)=>a-b)
-    .slice(-7)
+ctx.clearRect(0,0,W,H)
 
-  const labels = sortedKeys.map(ts=>{
-    const d = new Date(ts)
-    return d.toLocaleDateString("es-SV",{
-      day:"numeric",
-      month:"short"
-    })
-  })
+if(labels.length===0){
+ctx.fillStyle="#94a3b8"
+ctx.font="13px Sora"
+ctx.textAlign="center"
+ctx.fillText("Sin datos",W/2,H/2)
+return
+}
 
-  const values = sortedKeys.map(k=>byDay[k])
+const maxVal = Math.max(...values,1)
 
-  ctx.clearRect(0,0,W,H)
+const padL=8,padR=8,padT=22,padB=32
+const chartW=W-padL-padR
+const chartH=H-padT-padB
 
-  if(labels.length===0){
-    ctx.fillStyle="#94a3b8"
-    ctx.font="13px Sora"
-    ctx.textAlign="center"
-    ctx.fillText("Sin datos",W/2,H/2)
-    return
-  }
+const gap=chartW/labels.length
+const barW=Math.min(gap*0.55,40)
 
-  const maxVal = Math.max(...values,1)
+labels.forEach((lbl,i)=>{
 
-  const padL=8,padR=8,padT=22,padB=32
-  const chartW=W-padL-padR
-  const chartH=H-padT-padB
+const barH=(values[i]/maxVal)*chartH
 
-  const gap=chartW/labels.length
-  const barW=Math.min(gap*0.55,40)
+const x=padL+i*gap+gap/2-barW/2
+const y=padT+chartH-barH
 
-  labels.forEach((lbl,i)=>{
+ctx.fillStyle="#22c55e"
+ctx.fillRect(x,y,barW,barH)
 
-    const barH = Math.max((values[i]/maxVal)*chartH,4)
+ctx.fillStyle="#166534"
+ctx.font="bold 9px JetBrains Mono"
+ctx.textAlign="center"
+ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
 
-    const x=padL+i*gap+gap/2-barW/2
-    const y=padT+chartH-barH
+ctx.fillStyle="#64748b"
+ctx.font="9px Sora"
+ctx.fillText(lbl,x+barW/2,H-6)
 
-    ctx.fillStyle="#22c55e"
-    ctx.fillRect(x,y,barW,barH)
-
-    ctx.fillStyle="#166534"
-    ctx.font="bold 9px JetBrains Mono"
-    ctx.textAlign="center"
-    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
-
-    ctx.fillStyle="#64748b"
-    ctx.font="9px Sora"
-    ctx.fillText(lbl,x+barW/2,H-6)
-
-  })
+})
 
 }
 // =========== EXPORT CSV ===========
@@ -2259,4 +2217,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-</html>
+  </html>
