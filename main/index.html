@@ -1083,82 +1083,124 @@ async function confirmSale() {
     return
   }
 
-  const total = parseFloat(
-    document.getElementById("total").textContent.replace("$","")
-  )
+  const btn = document.getElementById("confirmSaleBtn")
 
-  const paid = Number(document.getElementById("paid").value) || 0
+  // 🔒 bloquear botón para evitar doble venta
+  btn.disabled = true
+  btn.style.opacity = "0.6"
+  btn.textContent = "Procesando..."
 
-  if (paid < total) {
-    showToast("❌ Pago insuficiente")
-    return
-  }
+  try {
 
-  // 🔒 1. SINCRONIZAR STOCK REAL DESDE BACKEND
-  await loadProducts()
+    const total = parseFloat(
+      document.getElementById("total").textContent.replace("$","")
+    )
 
-  // 🔒 2. VALIDACIÓN REAL (YA CON DATOS ACTUALIZADOS)
-  for (const item of state.cart){
+    const paid = Number(document.getElementById("paid").value) || 0
 
-    const p = state.products.find(x => x.id === item.id)
-
-    if(!p){
-      showToast(`❌ Producto no existe: ${item.name}`)
+    if (paid < total) {
+      showToast("❌ Pago insuficiente")
       return
     }
 
-    if(p.stock < item.qty){
-      showToast(`❌ Sin stock suficiente: ${item.name}`)
+    // 🔒 1. SINCRONIZAR STOCK REAL
+    await loadProducts()
+
+    // 🔒 2. VALIDACIÓN REAL
+    for (const item of state.cart){
+
+      const p = state.products.find(x => x.id === item.id)
+
+      if(!p){
+        showToast(`❌ Producto no existe: ${item.name}`)
+        return
+      }
+
+      if(p.stock < item.qty){
+        showToast(`❌ Sin stock suficiente: ${item.name}`)
+        return
+      }
+
+    }
+
+    // 🔥 ACTUALIZAR VENDIDOS LOCAL (visual)
+    state.cart.forEach(item => {
+      const p = state.products.find(x => x.id === item.id)
+      p.sold += item.qty
+    })
+
+    const now = new Date()
+
+    const sale = {
+      // ❌ YA NO confiamos en este ID (backend manda el real)
+      id: null,
+
+      // ⚠️ opcional (solo visual)
+      num: state.sales.length + 1,
+
+      date: now.toLocaleString(),
+      dateKey: now.getDate() + "/" + (now.getMonth()+1),
+
+      items: JSON.parse(JSON.stringify(state.cart)),
+
+      total,
+      paid
+      // ❌ change ya no se manda (backend lo calcula)
+    }
+
+    // 🔒 3. ENVIAR A BACKEND
+    const res = await fetch("/api/sales",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify(sale)
+    })
+
+    const data = await res.json()
+
+    if(!res.ok){
+      showToast(data.error || "❌ Error en venta")
       return
     }
 
+    // 🔥 USAR ID REAL DEL BACKEND
+    sale.id = data.id
+
+    // 🔥 calcular cambio SOLO para mostrar
+    sale.change = paid - total
+
+    // 🧹 4. LIMPIAR
+    state.cart = []
+    document.getElementById("paid").value = ""
+    localStorage.removeItem("cart")
+
+    if (document.activeElement) {
+      document.activeElement.blur()
+    }
+
+    // 🔥 mostrar ticket con datos correctos
+    showSaleSummary(sale)
+
+    // 🔄 refrescar productos reales
+    await loadProducts()
+
+    showToast(`✅ Venta realizada`)
+
+  } catch (err) {
+
+    console.error(err)
+    showToast("❌ Error inesperado")
+
+  } finally {
+
+    // 🔓 desbloquear botón SIEMPRE
+    btn.disabled = false
+    btn.style.opacity = "1"
+    btn.textContent = "✅ Confirmar Venta"
+
   }
 
-  const change = paid - total
-
-  // 🔥 3. ACTUALIZAR VENDIDOS (LOCAL)
-  state.cart.forEach(item => {
-    const p = state.products.find(x => x.id === item.id)
-    p.sold += item.qty
-  })
-
-  const now = new Date()
-
-  const sale = {
-    id: Date.now(),
-    num: state.sales.length + 1,
-    date: now.toLocaleString(),
-    dateKey: now.getDate() + "/" + (now.getMonth()+1),
-    items: JSON.parse(JSON.stringify(state.cart)),
-    total,
-    paid,
-    change
-  }
-
-  // 🔒 4. ENVIAR VENTA AL BACKEND (AQUÍ SE DEBE DESCONTAR STOCK REAL)
-  await fetch("/api/sales",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify(sale)
-  })
-
-  // 🧹 5. LIMPIAR TODO
-  state.cart = []
-  document.getElementById("paid").value = ""
-  localStorage.removeItem("cart")
-
-  if (document.activeElement) {
-    document.activeElement.blur()
-  }
-
-  showSaleSummary(sale)
-
-  // 🔄 refresco final para traer stock actualizado
-  await loadProducts()
-
-  showToast(`✅ Venta #${sale.num}`)
 }
 // =========== INVENTORY ===========
 function renderInventory() {
@@ -2165,4 +2207,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-      </html>
+  </html>
