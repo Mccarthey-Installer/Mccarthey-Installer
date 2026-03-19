@@ -1675,7 +1675,7 @@ function renderSales(){
     </div>
 
     <div style="font-size:12px;color:#64748b;margin-bottom:10px;">
-      ${new Date(s.date).toLocaleString("es-SV")}
+      ${s.date}
     </div>
 
     <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">
@@ -2059,7 +2059,7 @@ function exportCSV(){
 
     text += `Venta #${s.num}\n`
     text += `ID: ${s.id}\n`
-    text += `${new Date(s.date).toLocaleString("es-SV")}\n\n`
+    text += `${s.date}\n\n`
 
     s.items.forEach(p => {
 
