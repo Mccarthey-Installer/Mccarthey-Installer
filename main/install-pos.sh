@@ -435,49 +435,68 @@ res.status(500).json(err)
 
 /* ================= CREAR VENTA ================= */
 
-app.post("/api/sales", auth, (req,res)=>{
+app.post("/api/sales", auth, async (req,res)=>{
 
-const sale=req.body
+const sale = req.body
+const conn = await db.promise().getConnection()
 
-db.query(
-"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-[
-sale.id,
-sale.date,
-sale.total,
-sale.paid,
-sale.change
-],
-(err)=>{
+try{
 
-if(err) return res.status(500).json(err)
+  await conn.beginTransaction()
 
-sale.items.forEach(item=>{
+  // VALIDAR STOCK REAL + TOMAR PRECIOS DE LA BD
+  for(const item of sale.items){
 
-db.query(
-"INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
-[
-sale.id,
-item.id,
-item.name,
-item.price,
-item.cost,
-item.qty
-])
+    const [rows] = await conn.query(
+      "SELECT stock, price, cost FROM products WHERE id=? FOR UPDATE",
+      [item.id]
+    )
 
-db.query(
-"UPDATE products SET stock = stock - ?, sold = sold + ? WHERE id=?",
-[
-item.qty,
-item.qty,
-item.id
-])
+    if(rows.length === 0){
+      throw new Error("Producto no existe")
+    }
 
-})
+    if(rows[0].stock < item.qty){
+      throw new Error("Sin stock: " + item.name)
+    }
 
-res.json({ok:true})
+    const realPrice = Number(rows[0].price)
+    const realCost  = Number(rows[0].cost)
 
-})
+    // INSERTAR ITEM CON PRECIOS DE LA BD, NO DEL CLIENTE
+    await conn.query(
+      "INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
+      [sale.id, item.id, item.name, realPrice, realCost, item.qty]
+    )
+
+    await conn.query(
+      "UPDATE products SET stock = stock - ?, sold = sold + ? WHERE id=?",
+      [item.qty, item.qty, item.id]
+    )
+
+  }
+
+  // CREAR VENTA
+  await conn.query(
+    "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
+    [sale.id, sale.date, sale.total, sale.paid, sale.change]
+  )
+
+  await conn.commit()
+
+  res.json({ok:true})
+
+}catch(err){
+
+  await conn.rollback()
+
+  res.status(400).json({error:err.message})
+
+}finally{
+
+  conn.release()
+
+}
 
 })
 
