@@ -323,12 +323,27 @@ app.post("/api/restock", auth, (req,res)=>{
 
 const {id,qty} = req.body
 
+// ✅ VALIDAR ID
+if(!id){
+return res.status(400).json({error:"Producto inválido"})
+}
+
+// ✅ VALIDAR QTY POSITIVO
+if(!qty || qty <= 0){
+return res.status(400).json({error:"Cantidad inválida"})
+}
+
 db.query(
 "UPDATE products SET stock = stock + ? WHERE id=?",
 [qty,id],
-(err)=>{
+(err,result)=>{
 
 if(err) return res.status(500).json(err)
+
+// ✅ VERIFICAR QUE EL PRODUCTO REALMENTE EXISTÍA
+if(result.affectedRows === 0){
+return res.status(404).json({error:"Producto no existe"})
+}
 
 res.json({ok:true})
 
@@ -341,7 +356,7 @@ res.json({ok:true})
 app.get("/api/sales", auth, (req,res)=>{
 
 db.query(
-"SELECT * FROM sales ORDER BY id DESC",
+"SELECT * FROM sales ORDER BY date DESC",
 (err,sales)=>{
 
 if(err) return res.json([])
@@ -373,8 +388,8 @@ qty:Number(i.qty)
 
 return{
 
-id:Number(s.id),
-num:Number(s.id),
+id:s.id,
+num:s.id,
 date:s.date,
 dateKey:s.date,
 items:saleItems,
@@ -444,8 +459,48 @@ try{
 
   await conn.beginTransaction()
 
-  // VALIDAR STOCK REAL + TOMAR PRECIOS DE LA BD
+  // ✅ VALIDAR QUE VENGA UN CARRITO REAL
+  if(!Array.isArray(sale.items) || sale.items.length === 0){
+    throw new Error("Carrito vacío")
+  }
+
+  // ✅ LÍMITE DE ITEMS PARA EVITAR SATURACIÓN
+  if(sale.items.length > 100){
+    throw new Error("Demasiados productos")
+  }
+
+  // ✅ VALIDAR PAGO (tipo y valor real)
+  const paid = Number(sale.paid)
+
+  if(!paid || isNaN(paid) || paid <= 0){
+    throw new Error("Pago inválido")
+  }
+
+  // ✅ ID GENERADO EN BACKEND
+  const saleId = uuidv4()
+
+  // ✅ FECHA GENERADA EN BACKEND
+  const saleDate = new Date().toLocaleString()
+
+  // ===============================
+  // PASO 1: VALIDAR TODO ANTES DE TOCAR NADA
+  // ===============================
+
+  const itemsValidados = []
+
+  let totalReal = 0
+
   for(const item of sale.items){
+
+    // ✅ VALIDAR QUE EL ID EXISTA
+    if(!item.id){
+      throw new Error("Producto inválido")
+    }
+
+    // ✅ VALIDAR QTY POSITIVO
+    if(!item.qty || item.qty <= 0){
+      throw new Error("Cantidad inválida")
+    }
 
     const [rows] = await conn.query(
       "SELECT stock, price, cost FROM products WHERE id=? FOR UPDATE",
@@ -463,10 +518,45 @@ try{
     const realPrice = Number(rows[0].price)
     const realCost  = Number(rows[0].cost)
 
-    // INSERTAR ITEM CON PRECIOS DE LA BD, NO DEL CLIENTE
+    totalReal += realPrice * item.qty
+
+    itemsValidados.push({
+      id:    item.id,
+      name:  item.name,
+      qty:   item.qty,
+      price: realPrice,
+      cost:  realCost
+    })
+
+  }
+
+  // 🔒 REDONDEAR TOTAL
+  totalReal = Math.round(totalReal * 100) / 100
+
+  // 🔒 VALIDAR QUE EL PAGO SEA SUFICIENTE
+  if(paid < totalReal){
+    throw new Error("Pago insuficiente")
+  }
+
+  // 🔥 CAMBIO CALCULADO EN BACKEND
+  const changeReal = Math.round((paid - totalReal) * 100) / 100
+
+  // ===============================
+  // PASO 2: TODO VALIDADO → INSERTAR
+  // ===============================
+
+  // 🔥 CREAR VENTA CON ID, FECHA Y VALORES 100% DE BACKEND
+  await conn.query(
+    "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
+    [saleId, saleDate, totalReal, paid, changeReal]
+  )
+
+  // 🔥 INSERTAR ITEMS Y DESCONTAR STOCK
+  for(const item of itemsValidados){
+
     await conn.query(
       "INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
-      [sale.id, item.id, item.name, realPrice, realCost, item.qty]
+      [saleId, item.id, item.name, item.price, item.cost, item.qty]
     )
 
     await conn.query(
@@ -476,15 +566,9 @@ try{
 
   }
 
-  // CREAR VENTA
-  await conn.query(
-    "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-    [sale.id, sale.date, sale.total, sale.paid, sale.change]
-  )
-
   await conn.commit()
 
-  res.json({ok:true})
+  res.json({ok:true, id:saleId})
 
 }catch(err){
 
@@ -712,7 +796,7 @@ cat VARCHAR(100)
 );
 
 CREATE TABLE IF NOT EXISTS sales(
-id BIGINT PRIMARY KEY,
+id VARCHAR(36) PRIMARY KEY,
 date VARCHAR(50),
 total DECIMAL(10,2),
 paid DECIMAL(10,2),
@@ -721,7 +805,7 @@ change_amount DECIMAL(10,2)
 
 CREATE TABLE IF NOT EXISTS sale_items(
 id INT AUTO_INCREMENT PRIMARY KEY,
-sale_id BIGINT,
+sale_id VARCHAR(36),
 product_id INT,
 name VARCHAR(255),
 price DECIMAL(10,2),
@@ -744,6 +828,9 @@ admin_id INT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_sale_id ON sale_items(sale_id);
+CREATE INDEX idx_product_id ON sale_items(product_id);
 
 EOF
 
