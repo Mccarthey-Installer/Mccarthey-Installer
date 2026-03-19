@@ -1388,35 +1388,35 @@ async function deleteProduct(id){
 
 }
 
-// =========== TICKET===========
-// =========== TICKET===========
+
+// =========== TICKET ===========
 function showSaleSummary(sale){
 
   const line = "--------------------------------"
 
   const header = `
 ${line}
-Producto        Unit     Total
+Producto              Unit     Total
 ${line}
 `
+
+  // 🔥 calcular ancho dinámico del nombre (clave)
+  const maxNameLength = Math.max(
+    ...sale.items.map(p => (p.name + " x" + p.qty).length),
+    16
+  ) + 2
 
   const items = sale.items.map(p => {
 
     const sub = p.qty * p.price
 
-    const nameRaw = p.name + " x" + p.qty
+    const name = (p.name + " x" + p.qty).padEnd(maxNameLength)
 
-    const name = nameRaw.length > 16
-      ? nameRaw.substring(0,13) + "..."
-      : nameRaw
-
-    const nameAligned = name.padEnd(16)
-
-    const unit = ("$" + p.price.toFixed(2)).padEnd(8)
+    const unit = ("$" + p.price.toFixed(2)).padEnd(10)
 
     const total = "$" + sub.toFixed(2)
 
-    return `${nameAligned}${unit}${total}`
+    return `${name}${unit}${total}`
 
   }).join("\n")
 
@@ -1445,6 +1445,7 @@ ${line}</pre>`
 $${sale.change.toFixed(2)} 🟢
 </span>`
 
+
   const modal = document.getElementById("saleSummary")
 
   modal.style.display = "flex"
@@ -1453,7 +1454,6 @@ $${sale.change.toFixed(2)} 🟢
   modal.style.pointerEvents = "auto"
 
 }
-
 
 // FUNCIÓN PARA CERRAR
 function closeSummary(){
@@ -2165,4 +2165,4 @@ setInterval(loadProducts, 15000)
 </script>
 
 </body>
-  </html>
+      </html>
