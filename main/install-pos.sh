@@ -4,13 +4,11 @@ DOMAIN="tienda.valeentina.shop"
 REPO="https://github.com/Mccarthey-Installer/Mccarthey-Installer.git"
 APP_DIR="/var/www/pos"
 PORT="9092"
+ENV_FILE="$APP_DIR/.env"
 
-echo "===== LIMPIANDO INSTALACION VIEJA ====="
+echo "===== DETENIENDO PROCESO ANTERIOR ====="
 
 pm2 delete pos 2>/dev/null
-pm2 kill 2>/dev/null
-
-rm -rf $APP_DIR
 
 echo "===== ACTUALIZANDO SISTEMA ====="
 
@@ -29,24 +27,48 @@ echo "===== INSTALANDO PM2 ====="
 
 npm install -g pm2
 
-echo "===== CLONANDO POS ====="
+echo "===== CLONANDO O ACTUALIZANDO POS ====="
 
 mkdir -p /var/www
-cd /var/www
-git clone $REPO pos
+
+if [ ! -d "$APP_DIR" ]; then
+  cd /var/www
+  git clone $REPO pos
+else
+  cd $APP_DIR && git pull
+fi
 
 cd $APP_DIR
 
+# proteger .env del repo
+echo ".env" >> .gitignore 2>/dev/null
+sort -u .gitignore -o .gitignore 2>/dev/null
+
 echo "===== INSTALANDO LIBRERIAS ====="
 
-npm init -y
-npm install express mysql2 cors bcrypt uuid
+npm install
 
-echo "===== CREANDO SERVER ====="
+echo "===== GENERANDO SECRETO DE BACKUP (solo si no existe) ====="
+
+if [ ! -f "$ENV_FILE" ]; then
+  BACKUP_SECRET=$(openssl rand -hex 32)
+  echo "BACKUP_SECRET=$BACKUP_SECRET" > "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  echo "Secreto generado y guardado en $ENV_FILE"
+else
+  echo ".env ya existe — secreto conservado"
+  BACKUP_SECRET=$(grep BACKUP_SECRET "$ENV_FILE" | cut -d= -f2)
+fi
+
+echo "===== CREANDO SERVER (solo si no existe) ====="
+
+if [ ! -f "$APP_DIR/server.js" ]; then
 
 cat <<EOF > server.js
+require("dotenv").config()
 const express = require("express")
 const path = require("path")
+const fs = require("fs")
 const mysql = require("mysql2")
 const cors = require("cors")
 const bcrypt = require("bcrypt")
@@ -56,6 +78,16 @@ const app = express()
 
 app.use(cors())
 app.use(express.json())
+
+/* ================= LOGGER ================= */
+
+const LOG_FILE = path.join(__dirname, "errors.log")
+
+function logError(context, err){
+const line = new Date().toLocaleString("sv-SE") + " [" + context + "] " + (err.message || err) + "\n"
+console.error(line.trim())
+fs.appendFileSync(LOG_FILE, line)
+}
 
 /* FRONTEND */
 
@@ -76,6 +108,55 @@ password:"pos123",
 database:"posdb",
 connectionLimit:10
 })
+
+/* ================= HELPER: SNAPSHOT CONSISTENTE ================= */
+
+async function snapshotQuery(){
+
+const conn = await db.promise().getConnection()
+
+try{
+
+// REPEATABLE READ garantiza snapshot real — la misma fila no cambia dentro de la transacción
+await conn.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+await conn.beginTransaction()
+
+const [[products],[sales],[items]] = await Promise.all([
+conn.query("SELECT * FROM products"),
+conn.query("SELECT * FROM sales"),
+conn.query("SELECT * FROM sale_items")
+])
+
+// schema de cada tabla (estructura + índices + constraints)
+const [[schemaProducts]] = await conn.query("SHOW CREATE TABLE products")
+const [[schemaSales]]    = await conn.query("SHOW CREATE TABLE sales")
+const [[schemaItems]]    = await conn.query("SHOW CREATE TABLE sale_items")
+
+await conn.commit()
+
+return{
+products,
+sales,
+sale_items: items,
+schema:{
+products:  schemaProducts["Create Table"],
+sales:     schemaSales["Create Table"],
+sale_items:schemaItems["Create Table"]
+}
+}
+
+}catch(err){
+
+await conn.rollback()
+throw err
+
+}finally{
+
+conn.release()
+
+}
+
+}
 
 /* ================= AUTH MIDDLEWARE ================= */
 
@@ -121,7 +202,7 @@ next()
 
 })
 .catch((err)=>{
-console.error("AUTH ERROR:", err)
+logError("AUTH", err)
 return res.status(401).json({})
 })
 
@@ -136,8 +217,6 @@ const conn = db.promise()
 
 try{
 
-/* buscar admin */
-
 const [admin] = await conn.query(
 "SELECT * FROM admins WHERE username=?",
 [username]
@@ -147,33 +226,24 @@ if(admin.length === 0){
 return res.status(401).json({error:"login"})
 }
 
-/* verificar contraseña */
-
 const valid = await bcrypt.compare(password,admin[0].password_hash)
 
 if(!valid){
 return res.status(401).json({error:"login"})
 }
 
-/* crear token */
-
 const token = uuidv4()
-
-/* guardar sesión con actividad inicial */
 
 await conn.query(
 "INSERT INTO sessions(token,admin_id,last_activity) VALUES(?,?,NOW())",
 [token,admin[0].id]
 )
 
-/* responder */
-
 res.json({token})
 
 }catch(err){
 
-console.error("LOGIN ERROR:",err)
-
+logError("LOGIN", err)
 res.status(500).json({error:"server"})
 
 }
@@ -203,11 +273,8 @@ if(!s.length){
 return res.status(401).json({})
 }
 
-/* verificar expiración 20 minutos */
-
 const last = new Date(s[0].last_activity)
 const now = new Date()
-
 const diff = (now - last) / 1000 / 60
 
 if(diff > 20){
@@ -220,8 +287,6 @@ await conn.query(
 return res.status(401).json({})
 }
 
-/* actualizar actividad */
-
 await conn.query(
 "UPDATE sessions SET last_activity=NOW() WHERE token=?",
 [token]
@@ -231,7 +296,8 @@ res.json({ok:true})
 
 }catch(err){
 
-res.status(500).json(err)
+logError("SESSION", err)
+res.status(500).json({})
 
 }
 
@@ -259,7 +325,10 @@ app.get("/api/products", auth, (req,res)=>{
 
 db.query("SELECT * FROM products",(err,data)=>{
 
-if(err) return res.status(500).json([])
+if(err){
+logError("GET_PRODUCTS", err)
+return res.status(500).json([])
+}
 
 res.json(data)
 
@@ -276,7 +345,10 @@ db.query(
 [name,price,cost,stock,cat],
 (err)=>{
 
-if(err) return res.status(500).json(err)
+if(err){
+logError("CREATE_PRODUCT", err)
+return res.status(500).json(err)
+}
 
 res.json({ok:true})
 
@@ -294,7 +366,10 @@ db.query(
 [name,price,cost,stock,cat,id],
 (err)=>{
 
-if(err) return res.status(500).json(err)
+if(err){
+logError("UPDATE_PRODUCT", err)
+return res.status(500).json(err)
+}
 
 res.json({ok:true})
 
@@ -309,7 +384,10 @@ db.query(
 [req.params.id],
 (err)=>{
 
-if(err) return res.status(500).json(err)
+if(err){
+logError("DELETE_PRODUCT", err)
+return res.status(500).json(err)
+}
 
 res.json({ok:true})
 
@@ -323,12 +401,10 @@ app.post("/api/restock", auth, (req,res)=>{
 
 const {id,qty} = req.body
 
-// ✅ VALIDAR ID
 if(!id){
 return res.status(400).json({error:"Producto inválido"})
 }
 
-// ✅ VALIDAR QTY POSITIVO
 if(!qty || qty <= 0){
 return res.status(400).json({error:"Cantidad inválida"})
 }
@@ -338,9 +414,11 @@ db.query(
 [qty,id],
 (err,result)=>{
 
-if(err) return res.status(500).json(err)
+if(err){
+logError("RESTOCK", err)
+return res.status(500).json(err)
+}
 
-// ✅ VERIFICAR QUE EL PRODUCTO REALMENTE EXISTÍA
 if(result.affectedRows === 0){
 return res.status(404).json({error:"Producto no existe"})
 }
@@ -359,7 +437,10 @@ db.query(
 "SELECT * FROM sales ORDER BY date DESC",
 (err,sales)=>{
 
-if(err) return res.json([])
+if(err){
+logError("GET_SALES", err)
+return res.json([])
+}
 
 if(sales.length === 0) return res.json([])
 
@@ -370,7 +451,10 @@ db.query(
 [ids],
 (err,items)=>{
 
-if(err) return res.json([])
+if(err){
+logError("GET_SALE_ITEMS", err)
+return res.json([])
+}
 
 const result = sales.map(s=>{
 
@@ -420,6 +504,7 @@ res.json({ok:true})
 
 }catch(err){
 
+logError("DELETE_SALES", err)
 res.status(500).json(err)
 
 }
@@ -432,15 +517,14 @@ app.post("/api/reset-stats", auth, async (req,res)=>{
 try{
 
 await db.promise().query("UPDATE products SET sold = 0")
-
 await db.promise().query("DELETE FROM sale_items")
-
 await db.promise().query("DELETE FROM sales")
 
 res.json({ok:true})
 
 }catch(err){
 
+logError("RESET_STATS", err)
 res.status(500).json(err)
 
 }
@@ -459,32 +543,23 @@ try{
 
   await conn.beginTransaction()
 
-  // ✅ VALIDAR QUE VENGA UN CARRITO REAL
   if(!Array.isArray(sale.items) || sale.items.length === 0){
     throw new Error("Carrito vacío")
   }
 
-  // ✅ LÍMITE DE ITEMS PARA EVITAR SATURACIÓN
   if(sale.items.length > 100){
     throw new Error("Demasiados productos")
   }
 
-  // ✅ VALIDAR PAGO (tipo y valor real)
   const paid = Number(sale.paid)
 
   if(!paid || isNaN(paid) || paid <= 0){
     throw new Error("Pago inválido")
   }
 
-  // ✅ ID GENERADO EN BACKEND
   const saleId = uuidv4()
 
-  // ✅ FECHA GENERADA EN BACKEND
-  const saleDate = new Date().toLocaleString()
-
-  // ===============================
-  // PASO 1: VALIDAR TODO ANTES DE TOCAR NADA
-  // ===============================
+  const saleDate = new Date().toLocaleString("sv-SE").replace("T"," ")
 
   const itemsValidados = []
 
@@ -492,12 +567,10 @@ try{
 
   for(const item of sale.items){
 
-    // ✅ VALIDAR QUE EL ID EXISTA
     if(!item.id){
       throw new Error("Producto inválido")
     }
 
-    // ✅ VALIDAR QTY POSITIVO
     if(!item.qty || item.qty <= 0){
       throw new Error("Cantidad inválida")
     }
@@ -530,28 +603,19 @@ try{
 
   }
 
-  // 🔒 REDONDEAR TOTAL
   totalReal = Math.round(totalReal * 100) / 100
 
-  // 🔒 VALIDAR QUE EL PAGO SEA SUFICIENTE
   if(paid < totalReal){
     throw new Error("Pago insuficiente")
   }
 
-  // 🔥 CAMBIO CALCULADO EN BACKEND
   const changeReal = Math.round((paid - totalReal) * 100) / 100
 
-  // ===============================
-  // PASO 2: TODO VALIDADO → INSERTAR
-  // ===============================
-
-  // 🔥 CREAR VENTA CON ID, FECHA Y VALORES 100% DE BACKEND
   await conn.query(
     "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
     [saleId, saleDate, totalReal, paid, changeReal]
   )
 
-  // 🔥 INSERTAR ITEMS Y DESCONTAR STOCK
   for(const item of itemsValidados){
 
     await conn.query(
@@ -574,6 +638,8 @@ try{
 
   await conn.rollback()
 
+  logError("CREATE_SALE", err)
+
   res.status(400).json({error:err.message})
 
 }finally{
@@ -585,40 +651,68 @@ try{
 })
 
 
-/* ================= BACKUP ================= */
+/* ================= BACKUP INTERNO (sin token, clave desde .env) ================= */
 
-app.get("/api/backup", auth, async (req,res)=>{
+app.get("/internal/backup", async (req,res)=>{
 
-const conn = db.promise()
+const key = req.headers["x-backup-key"]
+
+if(!key || key !== process.env.BACKUP_SECRET){
+return res.status(403).json({error:"forbidden"})
+}
 
 try{
 
-const [products] = await conn.query("SELECT * FROM products")
-const [sales] = await conn.query("SELECT * FROM sales")
-const [items] = await conn.query("SELECT * FROM sale_items")
-
-res.json({
-products,
-sales,
-sale_items:items
-})
+const data = await snapshotQuery()
+res.json(data)
 
 }catch(err){
+
+logError("INTERNAL_BACKUP", err)
+res.status(500).json({error:"backup failed"})
+
+}
+
+})
+
+/* ================= BACKUP PÚBLICO (con auth) ================= */
+
+app.get("/api/backup", auth, async (req,res)=>{
+
+try{
+
+const data = await snapshotQuery()
+res.json(data)
+
+}catch(err){
+
+logError("BACKUP", err)
 res.status(500).json(err)
+
 }
 
 })
 
 /* ================= RESTORE ================= */
 
+/* modo=parcial (default): INSERT IGNORE, no toca lo existente      */
+/* modo=limpio:  borra ventas/items, restaura todo desde el backup  */
+
 app.post("/api/restore", auth, async (req,res)=>{
 
 const data = req.body
-const conn = db.promise()
+const modo = req.query.modo || "parcial"
+const conn = await db.promise().getConnection()
 
 try{
 
-/* RESTAURAR PRODUCTOS SIN BORRAR LOS EXISTENTES */
+await conn.beginTransaction()
+
+if(modo === "limpio"){
+
+// restaurar limpio: borra ventas e items actuales, luego inserta del backup
+await conn.query("DELETE FROM sale_items")
+await conn.query("DELETE FROM sales")
 
 for(const p of data.products){
 await conn.query(
@@ -627,7 +721,29 @@ await conn.query(
 )
 }
 
-/* RESTAURAR VENTAS SIN BORRAR LAS ACTUALES */
+for(const s of data.sales){
+await conn.query(
+"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
+[s.id,s.date,s.total,s.paid,s.change_amount]
+)
+}
+
+for(const i of data.sale_items){
+await conn.query(
+"INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
+[i.sale_id,i.product_id,i.name,i.price,i.cost,i.qty]
+)
+}
+
+}else{
+
+// restaurar parcial: solo inserta lo que no existe
+for(const p of data.products){
+await conn.query(
+"INSERT IGNORE INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
+[p.id,p.name,p.price,p.cost,p.stock,p.sold,p.cat]
+)
+}
 
 for(const s of data.sales){
 await conn.query(
@@ -636,8 +752,6 @@ await conn.query(
 )
 }
 
-/* RESTAURAR ITEMS DE VENTA */
-
 for(const i of data.sale_items){
 await conn.query(
 "INSERT IGNORE INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
@@ -645,13 +759,21 @@ await conn.query(
 )
 }
 
-res.json({ok:true})
+}
+
+await conn.commit()
+
+res.json({ok:true, modo})
 
 }catch(err){
 
-console.error("RESTORE ERROR:",err)
-
+await conn.rollback()
+logError("RESTORE", err)
 res.status(500).json(err)
+
+}finally{
+
+conn.release()
 
 }
 
@@ -667,7 +789,19 @@ console.log("POS PRO corriendo en puerto",PORT)
 })
 EOF
 
-echo "===== CREANDO LOGIN ====="
+echo "server.js creado"
+
+npm install dotenv 2>/dev/null
+
+else
+  echo "server.js ya existe — no se sobreescribe"
+fi
+
+echo "===== CREANDO LOGIN (solo si no existe) ====="
+
+if [ ! -f "$APP_DIR/main/login.html" ]; then
+
+mkdir -p $APP_DIR/main
 
 cat <<'EOF' > /var/www/pos/main/login.html
 <!DOCTYPE html>
@@ -773,6 +907,12 @@ location.href="/"
 </html>
 EOF
 
+echo "login.html creado"
+
+else
+  echo "login.html ya existe — no se sobreescribe"
+fi
+
 echo "===== CREANDO BASE DE DATOS ====="
 
 mysql -e "CREATE DATABASE IF NOT EXISTS posdb;"
@@ -795,24 +935,6 @@ sold INT DEFAULT 0,
 cat VARCHAR(100)
 );
 
-CREATE TABLE IF NOT EXISTS sales(
-id VARCHAR(36) PRIMARY KEY,
-date VARCHAR(50),
-total DECIMAL(10,2),
-paid DECIMAL(10,2),
-change_amount DECIMAL(10,2)
-);
-
-CREATE TABLE IF NOT EXISTS sale_items(
-id INT AUTO_INCREMENT PRIMARY KEY,
-sale_id VARCHAR(36),
-product_id INT,
-name VARCHAR(255),
-price DECIMAL(10,2),
-cost DECIMAL(10,2),
-qty INT
-);
-
 CREATE TABLE IF NOT EXISTS admins(
 id INT AUTO_INCREMENT PRIMARY KEY,
 username VARCHAR(50),
@@ -829,10 +951,31 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_sale_id ON sale_items(sale_id);
-CREATE INDEX idx_product_id ON sale_items(product_id);
+CREATE TABLE IF NOT EXISTS sales(
+id VARCHAR(36) PRIMARY KEY,
+date DATETIME NOT NULL,
+total DECIMAL(10,2),
+paid DECIMAL(10,2),
+change_amount DECIMAL(10,2)
+);
+
+CREATE TABLE IF NOT EXISTS sale_items(
+id INT AUTO_INCREMENT PRIMARY KEY,
+sale_id VARCHAR(36) NOT NULL,
+product_id INT,
+name VARCHAR(255),
+price DECIMAL(10,2),
+cost DECIMAL(10,2),
+qty INT,
+CONSTRAINT fk_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
+);
 
 EOF
+
+echo "===== CREANDO INDICES (ignora si ya existen) ====="
+
+mysql posdb -e "CREATE INDEX idx_product_id ON sale_items(product_id);" 2>/dev/null || true
+mysql posdb -e "CREATE INDEX idx_date ON sales(date);" 2>/dev/null || true
 
 echo "===== CREANDO ADMIN ====="
 
@@ -843,9 +986,40 @@ INSERT IGNORE INTO admins(username,password_hash,recovery_key)
 VALUES('admin','$HASH','POS-RECOVERY-123');
 "
 
+echo "===== CONFIGURANDO BACKUP AUTOMÁTICO ====="
+
+mkdir -p /var/backups/pos
+
+cat <<BACKUP_SCRIPT > /usr/local/bin/pos-backup.sh
+#!/bin/bash
+
+SECRET=\$(grep BACKUP_SECRET $ENV_FILE | cut -d= -f2)
+DEST="/var/backups/pos/backup-\$(date +%Y-%m-%d_%H-%M).json"
+
+curl -s \
+  -H "x-backup-key: \$SECRET" \
+  "http://localhost:$PORT/internal/backup" \
+  -o "\$DEST"
+
+if [ ! -s "\$DEST" ] || grep -q '"error"' "\$DEST"; then
+  rm -f "\$DEST"
+  echo "\$(date) [BACKUP] falló — archivo eliminado" >> /var/log/pos-backup.log
+else
+  sha256sum "\$DEST" > "\$DEST.sha256"
+  echo "\$(date) [BACKUP] OK: \$DEST" >> /var/log/pos-backup.log
+fi
+
+find /var/backups/pos -type f -mtime +7 -delete
+
+BACKUP_SCRIPT
+
+chmod +x /usr/local/bin/pos-backup.sh
+
+( crontab -l 2>/dev/null | grep -v "pos-backup.sh" ; echo "0 */6 * * * /usr/local/bin/pos-backup.sh" ) | crontab -
+
 echo "===== INICIANDO POS ====="
 
-pm2 start server.js --name pos
+pm2 restart pos 2>/dev/null || pm2 start server.js --name pos
 pm2 startup
 pm2 save
 
@@ -858,4 +1032,18 @@ echo "password: admin123"
 echo ""
 echo "Abrir:"
 echo "http://$DOMAIN:$PORT/login.html"
+echo ""
+echo "Logs de errores del servidor:"
+echo "tail -f $APP_DIR/errors.log"
+echo ""
+echo "Log de backups automáticos:"
+echo "tail -f /var/log/pos-backup.log"
+echo ""
+echo "Backups en: /var/backups/pos/"
+echo ""
+echo "Restore parcial (no toca lo existente):"
+echo "POST /api/restore"
+echo ""
+echo "Restore limpio (borra ventas y restaura desde backup):"
+echo "POST /api/restore?modo=limpio"
 echo ""
