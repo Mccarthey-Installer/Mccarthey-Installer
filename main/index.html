@@ -1989,85 +1989,96 @@ $${sale.change.toFixed(2)} 🟢
 
 function drawProfitChart(){
 
-const canvas = document.getElementById("profitChart")
-if(!canvas) return
+  const canvas = document.getElementById("profitChart")
+  if(!canvas) return
 
-const ctx = canvas.getContext("2d")
+  const ctx = canvas.getContext("2d")
 
-const W = canvas.offsetWidth || 300
-canvas.width = W
-canvas.height = 160
+  const W = canvas.offsetWidth || 300
+  canvas.width = W
+  canvas.height = 160
 
-const H = 160
+  const H = 160
 
-const byDay = {}
+  const byDay = {}
 
-state.sales.forEach(s=>{
+  // 🔥 AGRUPAR POR FECHA REAL (igual que ventas)
+  state.sales.forEach(s=>{
 
-if(!s.date) return
+    if(!s.date) return
 
-const d = new Date(s.date)
+    const d = new Date(s.date)
 
-const key = d.getDate() + "/" + (d.getMonth()+1)
+    const key = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate()
+    ).getTime()
 
-let profit = 0
+    let profit = 0
 
-s.items.forEach(p=>{
-profit += (p.price - p.cost) * p.qty
-})
+    s.items.forEach(p=>{
+      profit += (p.price - p.cost) * p.qty
+    })
 
-byDay[clean] = (byDay[clean] || 0) + profit
+    byDay[key] = (byDay[key] || 0) + profit
 
-})
+  })
 
-const labels = Object.keys(byDay)
-.sort((a,b)=>{
-const [d1,m1] = a.split("/").map(Number)
-const [d2,m2] = b.split("/").map(Number)
-return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
-})
-.slice(-7)
-const values = labels.map(k=>byDay[k])
+  const sortedKeys = Object.keys(byDay)
+    .map(Number)
+    .sort((a,b)=>a-b)
+    .slice(-7)
 
-ctx.clearRect(0,0,W,H)
+  const labels = sortedKeys.map(ts=>{
+    const d = new Date(ts)
+    return d.toLocaleDateString("es-SV",{
+      day:"numeric",
+      month:"short"
+    })
+  })
 
-if(labels.length===0){
-ctx.fillStyle="#94a3b8"
-ctx.font="13px Sora"
-ctx.textAlign="center"
-ctx.fillText("Sin datos",W/2,H/2)
-return
-}
+  const values = sortedKeys.map(k=>byDay[k])
 
-const maxVal = Math.max(...values,1)
+  ctx.clearRect(0,0,W,H)
 
-const padL=8,padR=8,padT=22,padB=32
-const chartW=W-padL-padR
-const chartH=H-padT-padB
+  if(labels.length===0){
+    ctx.fillStyle="#94a3b8"
+    ctx.font="13px Sora"
+    ctx.textAlign="center"
+    ctx.fillText("Sin datos",W/2,H/2)
+    return
+  }
 
-const gap=chartW/labels.length
-const barW=Math.min(gap*0.55,40)
+  const maxVal = Math.max(...values,1)
 
-labels.forEach((lbl,i)=>{
+  const padL=8,padR=8,padT=22,padB=32
+  const chartW=W-padL-padR
+  const chartH=H-padT-padB
 
-const barH=(values[i]/maxVal)*chartH
+  const gap=chartW/labels.length
+  const barW=Math.min(gap*0.55,40)
 
-const x=padL+i*gap+gap/2-barW/2
-const y=padT+chartH-barH
+  labels.forEach((lbl,i)=>{
 
-ctx.fillStyle="#22c55e"
-ctx.fillRect(x,y,barW,barH)
+    const barH = Math.max((values[i]/maxVal)*chartH,4)
 
-ctx.fillStyle="#166534"
-ctx.font="bold 9px JetBrains Mono"
-ctx.textAlign="center"
-ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
+    const x=padL+i*gap+gap/2-barW/2
+    const y=padT+chartH-barH
 
-ctx.fillStyle="#64748b"
-ctx.font="9px Sora"
-ctx.fillText(lbl,x+barW/2,H-6)
+    ctx.fillStyle="#22c55e"
+    ctx.fillRect(x,y,barW,barH)
 
-})
+    ctx.fillStyle="#166534"
+    ctx.font="bold 9px JetBrains Mono"
+    ctx.textAlign="center"
+    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
+
+    ctx.fillStyle="#64748b"
+    ctx.font="9px Sora"
+    ctx.fillText(lbl,x+barW/2,H-6)
+
+  })
 
 }
 // =========== EXPORT CSV ===========
