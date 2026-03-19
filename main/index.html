@@ -750,18 +750,10 @@ const state = {
 }
 
 // =========== SYNC STATE ===========
-// flag global para evitar ventas simultáneas (doble clic en PC)
 let saleInProgress = false
-
-// controlar si hay una carga de productos en curso
 let loadingProducts = false
-
-// timestamp del último fetch exitoso
 let lastSyncTime = null
 
-// ── DIRTY FLAGS: saber qué secciones necesitan re-render ──
-// En lugar de renderAll() (que repinta TODO siempre),
-// marcamos solo las secciones que cambiaron
 const dirty = {
   products: false,
   sales: false,
@@ -772,7 +764,6 @@ function markDirty(...sections) {
   sections.forEach(s => { dirty[s] = true })
 }
 
-// Solo re-renderiza las secciones marcadas como sucias
 function flushRender() {
   if(dirty.products || dirty.cart) {
     renderCategoryFilter()
@@ -786,22 +777,18 @@ function flushRender() {
     renderStats()
     renderSales()
   }
-  // resetear todos
   dirty.products = false
   dirty.sales = false
   dirty.cart = false
 }
 
-// ── ACTIVITY TRACKER: pausar sync si el cajero está activo ──
-// Si el usuario está escribiendo o tocando en caja, el setInterval
-// se pausa brevemente para no interrumpir ni competir con su acción
+// ── ACTIVITY TRACKER ──
 let lastUserActivity = Date.now()
 
 function trackActivity() {
   lastUserActivity = Date.now()
 }
 
-// Registrar actividad del usuario en inputs clave
 document.addEventListener("DOMContentLoaded", () => {
   const activityTargets = ["paid", "searchProduct", "searchInventory", "searchSales"]
   activityTargets.forEach(id => {
@@ -812,7 +799,6 @@ document.addEventListener("DOMContentLoaded", () => {
 })
 
 function userIsActive() {
-  // Consideramos al usuario "activo" si interactuó en los últimos 3 segundos
   return (Date.now() - lastUserActivity) < 3000
 }
 
@@ -887,7 +873,7 @@ function getDayLabel(dateStr){
   return "Más antiguas"
 }
 
-// =========== LOAD PRODUCTS (SMART SYNC — DIRTY FLAGS) ===========
+// =========== LOAD PRODUCTS ===========
 async function loadProducts(force = false){
 
   if(loadingProducts) return
@@ -901,7 +887,6 @@ async function loadProducts(force = false){
     if(!res.ok) throw new Error("HTTP " + res.status)
     const data = await res.json()
 
-    // Detectar si algo cambió realmente (evita re-render innecesario)
     const prodChanged = force || data.length !== state.products.length || data.some(p => {
       const old = state.products.find(x => x.id === p.id)
       return !old
@@ -920,10 +905,6 @@ async function loadProducts(force = false){
       cat: p.cat || "General"
     }))
 
-    // Ventas NO se recargan aquí — se manejan en confirmSale (unshift)
-    // y al entrar a la sección de ventas. Cero fetch innecesario.
-
-    // Limpiar carrito solo si el stock lo requiere
     const cartBefore = state.cart.length
     state.cart = state.cart.filter(item => {
       const p = state.products.find(x => x.id === item.id)
@@ -931,11 +912,9 @@ async function loadProducts(force = false){
     })
     const cartChanged = state.cart.length !== cartBefore
 
-    // Marcar dirty solo lo que cambió
     if(prodChanged) markDirty("products")
     if(cartChanged) markDirty("cart")
 
-    // Re-render solo si algo cambió de verdad
     if(prodChanged || cartChanged){
       flushRender()
     }
@@ -1044,22 +1023,34 @@ function closeSidebar() {
   document.getElementById("overlay").classList.remove("show")
 }
 
-function show(id) {
+// =========== SHOW (CORREGIDO) ===========
+async function show(id) {
+
   document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))
   document.getElementById(id).classList.remove("hidden")
+
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"))
   document.getElementById("nav-" + id)?.classList.add("active")
+
   closeSidebar()
-  // Al cambiar sección, forzar sync completo (PC puede tener estado viejo)
-  if(id === "inventory" || id === "sales" || id === "stats"){
+
+  if(id === "inventory" || id === "stats"){
     loadProducts(true)
   }
-  if (id === "stats") {
+
+  if(id === "sales"){
+    await loadSales()
+    markDirty("sales")
+    flushRender()
+  }
+
+  if(id === "stats"){
     setTimeout(() => {
       drawChart()
       drawProfitChart()
     }, 50)
   }
+
 }
 
 // =========== TOAST ===========
@@ -1247,10 +1238,9 @@ function calculateChange() {
   }
 }
 
-// =========== CONFIRMAR VENTA (CORREGIDO) ===========
+// =========== CONFIRMAR VENTA ===========
 async function confirmSale() {
 
-  // FIX: bloquear doble clic / doble llamada (problema grave en PC)
   if(saleInProgress) {
     showToast("⏳ Procesando venta...")
     return
@@ -1263,7 +1253,6 @@ async function confirmSale() {
 
   const btn = document.getElementById("confirmSaleBtn")
 
-  // FIX: deshabilitar botón INMEDIATAMENTE antes de cualquier await
   saleInProgress = true
   btn.disabled = true
   btn.style.opacity = "0.6"
@@ -1282,19 +1271,14 @@ async function confirmSale() {
       return
     }
 
-    // Verificar stock con datos del state (ya son frescos — loadProducts corre cada 5s
-    // y además hizo un sync al entrar a esta función si fue llamado desde confirmSale)
-    // CERO doble fetch: si el último sync fue hace menos de 8s, confiamos en el state
     const ahora = Date.now()
     const msSinceSync = lastSyncTime ? ahora - lastSyncTime.getTime() : Infinity
 
     if(msSinceSync > 8000){
-      // Solo hacemos fetch extra si el último sync fue hace más de 8 segundos
       setSyncStatus("syncing", "Verificando stock...")
       await loadProducts(true)
     }
 
-    // Validar stock contra state (siempre fresco a este punto)
     for (const item of state.cart){
       const p = state.products.find(x => x.id === item.id)
       if(!p){
@@ -1310,13 +1294,12 @@ async function confirmSale() {
       }
     }
 
-    // Construir venta con datos validados
     const now = new Date()
 
     const sale = {
       id: null,
       num: state.sales.length + 1,
-      date: now.toISOString(), // FIX: guardar como ISO para consistencia de fechas entre PC y móvil
+      date: now.toISOString(),
       dateKey: now.getDate() + "/" + (now.getMonth()+1),
       items: JSON.parse(JSON.stringify(state.cart)),
       total,
@@ -1339,11 +1322,8 @@ async function confirmSale() {
 
     sale.id = data.id
 
-    // FIX: insertar venta al inicio de state.sales inmediatamente (sin esperar fetch)
-    // así el historial se actualiza al instante en cualquier dispositivo
     state.sales.unshift(sale)
 
-    // Limpiar carrito
     state.cart = []
     document.getElementById("paid").value = ""
     localStorage.removeItem("cart")
@@ -1352,13 +1332,10 @@ async function confirmSale() {
       document.activeElement.blur()
     }
 
-    // Mostrar ticket ANTES del reload para que el usuario vea confirmación
     showSaleSummary(sale)
 
     showToast(`✅ Venta #${sale.num} realizada`)
 
-    // Recargar productos en background (stock actualizado en servidor)
-    // force=true porque acabamos de vender — queremos stock 100% real
     loadProducts(true).catch(console.error)
 
   } catch (err) {
@@ -1368,7 +1345,6 @@ async function confirmSale() {
 
   } finally {
 
-    // FIX: liberar el lock SIEMPRE, incluso si hubo error
     saleInProgress = false
     btn.disabled = false
     btn.style.opacity = "1"
@@ -1668,7 +1644,7 @@ function renderSales(){
   const ventasOrdenadas = filtradas
     .slice()
     .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 50)  // máximo 50 — no tiene sentido pintar 500 tarjetas
+    .slice(0, 50)
 
   const totalGeneral = ventasOrdenadas.reduce((a, s) => a + s.total, 0)
   let acumuladoRestante = totalGeneral
@@ -2033,7 +2009,6 @@ async function clearHistory(){
 }
 
 // =========== RENDER ALL ===========
-// Versión completa — usar cuando sabemos que todo cambió (ej: init, reset)
 function renderAll() {
   renderCategoryFilter()
   renderProducts()
@@ -2080,36 +2055,40 @@ if (dateEl) {
   })
 }
 
-// =========== INIT ===========
+// =========== INIT (CORREGIDO) ===========
 async function init(){
 
   await loadProducts()
 
+  await loadSales()
+
   loadCart()
 
-  // FIX: filtrar carrito con stock real DESPUÉS de cargar productos
+  // Filtrar carrito con stock real después de cargar productos
   state.cart = state.cart.filter(item=>{
     const p = state.products.find(x=>x.id === item.id)
     return p && p.stock >= item.qty
   })
 
+  markDirty("sales")
+  flushRender()
+
   renderCart()
+
   show("pos")
 
 }
 
 init()
 
-// Sincronizar cada 5s, pero NO si:
-// - hay una venta en curso (saleInProgress)
-// - el usuario está activo ahora mismo (evita micro-cortes en caja)
+// Sincronizar cada 5s (productos), pero no si hay venta en curso o usuario activo
 setInterval(()=>{
   if(!saleInProgress && !userIsActive()){
     loadProducts()
   }
 }, 5000)
 
-// Sincronizar inmediatamente al recuperar foco (ventana o pestaña)
+// Sincronizar al recuperar foco
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible" && !saleInProgress){
     loadProducts(true)
