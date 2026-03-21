@@ -252,10 +252,14 @@ opacity:1;
 }
 
   header {
-    background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.08);
-    padding: 14px 18px; display: flex;
-    justify-content: space-between; align-items: center;
-    position: sticky; top: 0; z-index: 50;
+    background: #fff;
+    box-shadow: 0 1px 8px rgba(0,0,0,.08);
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 50;
   }
   .logo { font-weight: 700; font-size: 18px; color: var(--dark); letter-spacing: -0.5px; }
   .logo span { color: var(--accent); }
@@ -382,22 +386,19 @@ opacity:1;
 
   /* ── SYNC INDICATOR ── */
   #syncIndicator {
-    position: fixed;
-    top: calc(env(safe-area-inset-top) + 60px);
-    right: 16px;
     background: #fff;
     border: 2px solid #e2e8f0;
     border-radius: 20px;
-    padding: 4px 12px;
+    padding: 4px 10px;
     font-size: 11px;
     font-weight: 700;
     color: #64748b;
-    z-index: 60;
     display: flex;
     align-items: center;
     gap: 5px;
     transition: all .3s;
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    box-shadow: 0 2px 6px rgba(0,0,0,.08);
+    white-space: nowrap;
   }
   #syncIndicator.syncing {
     border-color: #3b82f6;
@@ -411,6 +412,10 @@ opacity:1;
     border-color: #ef4444;
     color: #dc2626;
   }
+  @media (max-width: 480px) {
+    #syncText { display: none; }
+  }
+
   @keyframes spin { to { transform: rotate(360deg); } }
   .spin { display: inline-block; animation: spin .8s linear infinite; }
 
@@ -478,12 +483,6 @@ opacity:1;
 <!-- OVERLAY -->
 <div id="overlay" onclick="closeSidebar()"></div>
 
-<!-- SYNC INDICATOR -->
-<div id="syncIndicator">
-  <span id="syncDot">⚪</span>
-  <span id="syncText">Sincronizando...</span>
-</div>
-
 <!-- SIDEBAR -->
 <aside id="sidebar">
   <div style="padding: 22px 20px 10px; display:flex; align-items:center; gap:10px;">
@@ -509,17 +508,30 @@ opacity:1;
 
 <!-- HEADER -->
 <header>
-  <div style="display:flex; gap:12px; align-items:center;">
-    <button class="hamburger" onclick="toggleMenu()">
-      <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
-        <rect width="22" height="2.5" rx="1.25" fill="#0f172a"/>
-        <rect y="7.75" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
-        <rect y="15.5" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
-      </svg>
-    </button>
-    <span class="logo">POS <span>PRO</span></span>
+  <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+
+    <!-- IZQUIERDA -->
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button class="hamburger" onclick="toggleMenu()">
+        <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
+          <rect width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+          <rect y="7.75" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+          <rect y="15.5" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+        </svg>
+      </button>
+      <span class="logo">POS <span>PRO</span></span>
+    </div>
+
+    <!-- DERECHA -->
+    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+      <div id="syncIndicator" class="ok">
+        <span id="syncDot">🟢</span>
+        <span id="syncText">OK</span>
+      </div>
+      <span id="date" style="font-size:11px; font-weight:600; color:#64748b; white-space:nowrap;"></span>
+    </div>
+
   </div>
-  <div style="font-size:12px; font-weight:600; color:#64748b;" id="date"></div>
 </header>
 
 <!-- TOAST -->
@@ -920,7 +932,7 @@ async function loadProducts(force = false){
     }
 
     lastSyncTime = new Date()
-    setSyncStatus("ok", "Sincronizado " + lastSyncTime.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}))
+    setSyncStatus("ok", lastSyncTime.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}))
 
   } catch(err) {
 
@@ -1023,7 +1035,7 @@ function closeSidebar() {
   document.getElementById("overlay").classList.remove("show")
 }
 
-// =========== SHOW (CORREGIDO) ===========
+// =========== SHOW ===========
 async function show(id) {
 
   document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))
@@ -2055,7 +2067,7 @@ if (dateEl) {
   })
 }
 
-// =========== INIT (CORREGIDO) ===========
+// =========== INIT ===========
 async function init(){
 
   await loadProducts()
@@ -2064,7 +2076,6 @@ async function init(){
 
   loadCart()
 
-  // Filtrar carrito con stock real después de cargar productos
   state.cart = state.cart.filter(item=>{
     const p = state.products.find(x=>x.id === item.id)
     return p && p.stock >= item.qty
@@ -2098,4 +2109,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-      </html>
+</html>
