@@ -252,17 +252,48 @@ opacity:1;
 }
 
   header {
-    background: #fff;
-    box-shadow: 0 1px 8px rgba(0,0,0,.08);
-    padding: 12px 14px;
-    display: flex;
-    align-items: center;
-    position: sticky;
-    top: 0;
-    z-index: 50;
+    background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.08);
+    padding: 10px 18px; display: flex;
+    justify-content: space-between; align-items: center;
+    position: sticky; top: 0; z-index: 50;
+    gap: 10px;
   }
   .logo { font-weight: 700; font-size: 18px; color: var(--dark); letter-spacing: -0.5px; }
   .logo span { color: var(--accent); }
+
+  /* ── SYNC INDICATOR ── incrustado en el header, no flotante */
+  #syncIndicator {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    transition: all .3s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  #syncIndicator.syncing {
+    border-color: #3b82f6;
+    color: #2563eb;
+    background: #eff6ff;
+  }
+  #syncIndicator.ok {
+    border-color: #22c55e;
+    color: #16a34a;
+    background: #f0fdf4;
+  }
+  #syncIndicator.error {
+    border-color: #ef4444;
+    color: #dc2626;
+    background: #fef2f2;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { display: inline-block; animation: spin .8s linear infinite; }
 
   section { padding: 18px; }
 
@@ -384,41 +415,6 @@ opacity:1;
   }
   #toast.show { transform: translateX(-50%) translateY(0); }
 
-  /* ── SYNC INDICATOR ── */
-  #syncIndicator {
-    background: #fff;
-    border: 2px solid #e2e8f0;
-    border-radius: 20px;
-    padding: 4px 10px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #64748b;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    transition: all .3s;
-    box-shadow: 0 2px 6px rgba(0,0,0,.08);
-    white-space: nowrap;
-  }
-  #syncIndicator.syncing {
-    border-color: #3b82f6;
-    color: #2563eb;
-  }
-  #syncIndicator.ok {
-    border-color: #22c55e;
-    color: #16a34a;
-  }
-  #syncIndicator.error {
-    border-color: #ef4444;
-    color: #dc2626;
-  }
-  @media (max-width: 480px) {
-    #syncText { display: none; }
-  }
-
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .spin { display: inline-block; animation: spin .8s linear infinite; }
-
   .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
   .badge-red { background: #fee2e2; color: #dc2626; }
   .badge-green { background: #dcfce7; color: #16a34a; }
@@ -506,32 +502,26 @@ opacity:1;
   <div style="padding:16px 20px; color:#475569; font-size:11px; font-weight:600;">POS Mobile Pro v2.1</div>
 </aside>
 
-<!-- HEADER -->
+<!-- HEADER — sync indicator incrustado acá, no flotante -->
 <header>
-  <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-
-    <!-- IZQUIERDA -->
-    <div style="display:flex; align-items:center; gap:10px;">
-      <button class="hamburger" onclick="toggleMenu()">
-        <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
-          <rect width="22" height="2.5" rx="1.25" fill="#0f172a"/>
-          <rect y="7.75" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
-          <rect y="15.5" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
-        </svg>
-      </button>
-      <span class="logo">POS <span>PRO</span></span>
-    </div>
-
-    <!-- DERECHA -->
-    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-      <div id="syncIndicator" class="ok">
-        <span id="syncDot">🟢</span>
-        <span id="syncText">OK</span>
-      </div>
-      <span id="date" style="font-size:11px; font-weight:600; color:#64748b; white-space:nowrap;"></span>
-    </div>
-
+  <div style="display:flex; gap:12px; align-items:center;">
+    <button class="hamburger" onclick="toggleMenu()">
+      <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
+        <rect width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+        <rect y="7.75" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+        <rect y="15.5" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+      </svg>
+    </button>
+    <span class="logo">POS <span>PRO</span></span>
   </div>
+
+  <!-- SYNC INDICATOR: incrustado en el header, no tapa nada -->
+  <div id="syncIndicator">
+    <span id="syncDot">⚪</span>
+    <span id="syncText">Sincronizando...</span>
+  </div>
+
+  <div style="font-size:12px; font-weight:600; color:#64748b; white-space:nowrap;" id="date"></div>
 </header>
 
 <!-- TOAST -->
@@ -761,8 +751,14 @@ const state = {
   sales: []
 }
 
-// =========== SYNC STATE ===========
-let saleInProgress = false
+// =========== LOCKS (FIX: sistema controlado, no reactivo) ===========
+
+// 🔴 lock: bloqueo duro durante confirmSale. Nada pasa mientras está en true.
+let lock = false
+
+// 🟠 syncing: evita loadProducts() en paralelo (cola de uno)
+let syncing = false
+
 let loadingProducts = false
 let lastSyncTime = null
 
@@ -886,9 +882,16 @@ function getDayLabel(dateStr){
 }
 
 // =========== LOAD PRODUCTS ===========
+// 🟠 safeSync: cola de uno — si ya está syncing, no entra
 async function loadProducts(force = false){
 
-  if(loadingProducts) return
+  // 🔴 Si hay venta en curso, NO tocamos nada
+  if(lock) return
+
+  // 🟠 Si ya hay un sync corriendo, no apilamos otro
+  if(syncing) return
+
+  syncing = true
   loadingProducts = true
 
   setSyncStatus("syncing", "Sincronizando...")
@@ -898,6 +901,9 @@ async function loadProducts(force = false){
     const res = await fetch("/api/products")
     if(!res.ok) throw new Error("HTTP " + res.status)
     const data = await res.json()
+
+    // 🔴 Segunda verificación: si el lock se activó mientras esperábamos respuesta, abortamos
+    if(lock) return
 
     const prodChanged = force || data.length !== state.products.length || data.some(p => {
       const old = state.products.find(x => x.id === p.id)
@@ -932,7 +938,7 @@ async function loadProducts(force = false){
     }
 
     lastSyncTime = new Date()
-    setSyncStatus("ok", lastSyncTime.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}))
+    setSyncStatus("ok", "Sincronizado " + lastSyncTime.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}))
 
   } catch(err) {
 
@@ -941,6 +947,7 @@ async function loadProducts(force = false){
 
   } finally {
 
+    syncing = false
     loadingProducts = false
 
   }
@@ -1253,7 +1260,8 @@ function calculateChange() {
 // =========== CONFIRMAR VENTA ===========
 async function confirmSale() {
 
-  if(saleInProgress) {
+  // 🔴 Lock duro: si ya hay una venta procesándose, NO PASA nada más
+  if(lock) {
     showToast("⏳ Procesando venta...")
     return
   }
@@ -1265,7 +1273,8 @@ async function confirmSale() {
 
   const btn = document.getElementById("confirmSaleBtn")
 
-  saleInProgress = true
+  // 🔴 Activar lock: congela el sistema durante toda la transacción
+  lock = true
   btn.disabled = true
   btn.style.opacity = "0.6"
   btn.textContent = "⏳ Procesando..."
@@ -1283,14 +1292,31 @@ async function confirmSale() {
       return
     }
 
-    const ahora = Date.now()
-    const msSinceSync = lastSyncTime ? ahora - lastSyncTime.getTime() : Infinity
-
-    if(msSinceSync > 8000){
-      setSyncStatus("syncing", "Verificando stock...")
-      await loadProducts(true)
+    // Con lock activo, forzamos sync del stock antes de confirmar
+    // (loadProducts respeta el lock, así que hacemos un fetch directo aquí)
+    setSyncStatus("syncing", "Verificando stock...")
+    try {
+      const res = await fetch("/api/products")
+      if(res.ok){
+        const data = await res.json()
+        state.products = data.map(p => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          cost: Number(p.cost || 0),
+          stock: Number(p.stock),
+          sold: Number(p.sold || 0),
+          cat: p.cat || "General"
+        }))
+        lastSyncTime = new Date()
+        setSyncStatus("ok", "Stock verificado")
+      }
+    } catch(e) {
+      console.warn("No se pudo verificar stock antes de venta:", e)
+      setSyncStatus("error", "Sin conexión")
     }
 
+    // Validar stock con datos frescos
     for (const item of state.cart){
       const p = state.products.find(x => x.id === item.id)
       if(!p){
@@ -1348,6 +1374,8 @@ async function confirmSale() {
 
     showToast(`✅ Venta #${sale.num} realizada`)
 
+    // 🔴 Liberar lock ANTES de hacer el sync post-venta
+    lock = false
     loadProducts(true).catch(console.error)
 
   } catch (err) {
@@ -1357,7 +1385,8 @@ async function confirmSale() {
 
   } finally {
 
-    saleInProgress = false
+    // 🔴 Garantizamos que el lock siempre se libera, pase lo que pase
+    lock = false
     btn.disabled = false
     btn.style.opacity = "1"
     btn.textContent = "✅ Confirmar Venta"
@@ -2092,16 +2121,16 @@ async function init(){
 
 init()
 
-// Sincronizar cada 5s (productos), pero no si hay venta en curso o usuario activo
+// 🟠 Intervalo: respeta lock Y syncing — no entra si hay venta en curso
 setInterval(()=>{
-  if(!saleInProgress && !userIsActive()){
+  if(!lock && !syncing && !userIsActive()){
     loadProducts()
   }
 }, 5000)
 
-// Sincronizar al recuperar foco
+// 🔴 Al recuperar foco: solo si no hay lock activo
 document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState === "visible" && !saleInProgress){
+  if(document.visibilityState === "visible" && !lock){
     loadProducts(true)
   }
 })
