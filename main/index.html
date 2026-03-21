@@ -383,7 +383,7 @@ opacity:1;
   /* ── SYNC INDICATOR ── */
   #syncIndicator {
     position: fixed;
-    top: 70px;
+    top: calc(env(safe-area-inset-top) + 60px);
     right: 16px;
     background: #fff;
     border: 2px solid #e2e8f0;
@@ -2098,4 +2098,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-</html>
+      </html>
