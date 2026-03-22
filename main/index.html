@@ -8,11 +8,18 @@
 
 <script>
 
-/* ================= PATCH FETCH ================= */
+/* ================= PATCH FETCH — solo rutas /api/ ================= */
 
 const originalFetch = window.fetch;
 
 window.fetch = function(url, options = {}){
+
+// FIX #6: solo interceptamos nuestras rutas, no fetch externo (fonts, CDN, etc.)
+const isApiCall = typeof url === "string" && url.startsWith("/api/")
+
+if(!isApiCall){
+  return originalFetch(url, options)
+}
 
 const token = localStorage.getItem("token")
 
@@ -261,7 +268,6 @@ opacity:1;
   .logo { font-weight: 700; font-size: 18px; color: var(--dark); letter-spacing: -0.5px; }
   .logo span { color: var(--accent); }
 
-  /* ── SYNC INDICATOR ── incrustado en el header, no flotante */
   #syncIndicator {
     display: flex;
     align-items: center;
@@ -502,7 +508,6 @@ opacity:1;
   <div style="padding:16px 20px; color:#475569; font-size:11px; font-weight:600;">POS Mobile Pro v2.1</div>
 </aside>
 
-<!-- HEADER — sync indicator incrustado acá, no flotante -->
 <header>
   <div style="display:flex; gap:12px; align-items:center;">
     <button class="hamburger" onclick="toggleMenu()">
@@ -515,7 +520,6 @@ opacity:1;
     <span class="logo">POS <span>PRO</span></span>
   </div>
 
-  <!-- SYNC INDICATOR: incrustado en el header, no tapa nada -->
   <div id="syncIndicator">
     <span id="syncDot">⚪</span>
     <span id="syncText">Sincronizando...</span>
@@ -751,14 +755,9 @@ const state = {
   sales: []
 }
 
-// =========== LOCKS (FIX: sistema controlado, no reactivo) ===========
-
-// 🔴 lock: bloqueo duro durante confirmSale. Nada pasa mientras está en true.
+// =========== LOCKS ===========
 let lock = false
-
-// 🟠 syncing: evita loadProducts() en paralelo (cola de uno)
 let syncing = false
-
 let loadingProducts = false
 let lastSyncTime = null
 
@@ -882,13 +881,9 @@ function getDayLabel(dateStr){
 }
 
 // =========== LOAD PRODUCTS ===========
-// 🟠 safeSync: cola de uno — si ya está syncing, no entra
 async function loadProducts(force = false){
 
-  // 🔴 Si hay venta en curso, NO tocamos nada
   if(lock) return
-
-  // 🟠 Si ya hay un sync corriendo, no apilamos otro
   if(syncing) return
 
   syncing = true
@@ -902,7 +897,6 @@ async function loadProducts(force = false){
     if(!res.ok) throw new Error("HTTP " + res.status)
     const data = await res.json()
 
-    // 🔴 Segunda verificación: si el lock se activó mientras esperábamos respuesta, abortamos
     if(lock) return
 
     const prodChanged = force || data.length !== state.products.length || data.some(p => {
@@ -924,11 +918,28 @@ async function loadProducts(force = false){
     }))
 
     const cartBefore = state.cart.length
+    const itemsDropped = []
+
     state.cart = state.cart.filter(item => {
       const p = state.products.find(x => x.id === item.id)
-      return p && p.stock >= item.qty
+      if(!p || p.stock <= 0){
+        itemsDropped.push(`${item.name} (sin stock)`)
+        return false
+      }
+      if(p.stock < item.qty){
+        itemsDropped.push(`${item.name} (ajustado a ${p.stock})`)
+        item.qty = p.stock
+      }
+      return true
     })
     const cartChanged = state.cart.length !== cartBefore
+
+    // FIX #5: avisar si el carrito fue tocado por el sync
+    if(itemsDropped.length > 0){
+      setTimeout(()=>{
+        showToast(`⚠ Carrito ajustado: ${itemsDropped.join(", ")}`)
+      }, 400)
+    }
 
     if(prodChanged) markDirty("products")
     if(cartChanged) markDirty("cart")
@@ -1199,10 +1210,32 @@ function changeQty(id, delta) {
   saveCart()
 }
 
+// =========== FIX #4 + #5: calculateChange lee de state, no del DOM ===========
+function calculateChange() {
+  const paid = Number(document.getElementById("paid").value) || 0
+
+  // FIX #5: total calculado desde state.cart, nunca desde el DOM
+  const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
+
+  const change = Math.max(paid - total, 0)
+  document.getElementById("change").textContent = `$${change.toFixed(2)}`
+
+  const btn = document.querySelector("#confirmSaleBtn")
+
+  if (paid < total || total === 0) {
+    btn.disabled = true
+    btn.style.opacity = "0.5"
+    btn.style.cursor = "not-allowed"
+  } else {
+    btn.disabled = false
+    btn.style.opacity = "1"
+    btn.style.cursor = "pointer"
+  }
+}
+
 function renderCart() {
   const container = document.getElementById("cart")
   container.innerHTML = ""
-  let total = 0
 
   if (state.cart.length === 0) {
     container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px 0; font-size:13px;">El carrito está vacío</div>`
@@ -1210,6 +1243,8 @@ function renderCart() {
     calculateChange()
     return
   }
+
+  let total = 0
 
   state.cart.forEach(item => {
     const sub = item.qty * item.price
@@ -1232,48 +1267,36 @@ function renderCart() {
   })
 
   document.getElementById("total").textContent = `$${total.toFixed(2)}`
+
+  // calculateChange() ya lee de state.cart, no necesita el #total actualizado
   calculateChange()
 }
 
-function calculateChange() {
-  const paid = Number(document.getElementById("paid").value) || 0
-  const total = parseFloat(
-    document.getElementById("total").textContent.replace("$","")
-  ) || 0
-
-  const change = Math.max(paid - total, 0)
-  document.getElementById("change").textContent = `$${change.toFixed(2)}`
-
-  const btn = document.querySelector("#confirmSaleBtn")
-
-  if (paid < total || total === 0) {
-    btn.disabled = true
-    btn.style.opacity = "0.5"
-    btn.style.cursor = "not-allowed"
-  } else {
-    btn.disabled = false
-    btn.style.opacity = "1"
-    btn.style.cursor = "pointer"
-  }
-}
-
-// =========== CONFIRMAR VENTA ===========
+// =========== CONFIRMAR VENTA — FLUJO BLINDADO ===========
 async function confirmSale() {
 
-  // 🔴 Lock duro: si ya hay una venta procesándose, NO PASA nada más
   if(lock) {
     showToast("⏳ Procesando venta...")
     return
   }
 
+  // FIX #5: validar desde state, nunca desde la UI
   if (state.cart.length === 0) {
     showToast("⚠ El carrito está vacío")
     return
   }
 
+  // FIX #5: total desde state
+  const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
+  const paid = Number(document.getElementById("paid").value) || 0
+
+  if (paid < total) {
+    showToast("❌ Pago insuficiente")
+    return
+  }
+
   const btn = document.getElementById("confirmSaleBtn")
 
-  // 🔴 Activar lock: congela el sistema durante toda la transacción
   lock = true
   btn.disabled = true
   btn.style.opacity = "0.6"
@@ -1281,19 +1304,7 @@ async function confirmSale() {
 
   try {
 
-    const total = parseFloat(
-      document.getElementById("total").textContent.replace("$","")
-    )
-
-    const paid = Number(document.getElementById("paid").value) || 0
-
-    if (paid < total) {
-      showToast("❌ Pago insuficiente")
-      return
-    }
-
-    // Con lock activo, forzamos sync del stock antes de confirmar
-    // (loadProducts respeta el lock, así que hacemos un fetch directo aquí)
+    // Verificar stock fresco del servidor
     setSyncStatus("syncing", "Verificando stock...")
     try {
       const res = await fetch("/api/products")
@@ -1326,23 +1337,26 @@ async function confirmSale() {
       if(p.stock < item.qty){
         showToast(`❌ Sin stock: ${item.name} (disponible: ${p.stock})`)
         item.qty = p.stock
-        markDirty("cart")
+        markDirty("cart", "products")
         flushRender()
         return
       }
     }
 
+    // FIX #3: recalcular total post-validación (qty pudo ajustarse arriba)
+    const finalTotal = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
+
     const now = new Date()
 
     const sale = {
       id: null,
-      num: state.sales.length + 1,
+      num: null, // FIX #4: el backend asigna el número, no lo inventamos
       date: now.toISOString(),
       dateKey: now.getDate() + "/" + (now.getMonth()+1),
       items: JSON.parse(JSON.stringify(state.cart)),
-      total,
+      total: finalTotal,
       paid,
-      change: paid - total
+      change: paid - finalTotal
     }
 
     const res = await fetch("/api/sales",{
@@ -1359,24 +1373,27 @@ async function confirmSale() {
     }
 
     sale.id = data.id
-
+    // FIX #4: número de venta viene del backend, no lo inventamos localmente
+    sale.num = data.num || sale.num
     state.sales.unshift(sale)
 
+    // ORDEN CORRECTO:
+    // 1. Limpiar estado primero
     state.cart = []
-    document.getElementById("paid").value = ""
     localStorage.removeItem("cart")
+    document.getElementById("paid").value = ""
+    if (document.activeElement) document.activeElement.blur()
 
-    if (document.activeElement) {
-      document.activeElement.blur()
-    }
+    // 2. Renderizar con estado limpio ANTES del modal
+    markDirty("cart", "products")
+    flushRender()
 
+    // 3. Modal DESPUÉS de que la UI refleja el estado real
+    // FIX #1: NO liberamos lock aquí — finally lo hace siempre y es el único dueño
+    // loadProducts(true) se dispara desde closeSummary, no mid-transacción
     showSaleSummary(sale)
 
     showToast(`✅ Venta #${sale.num} realizada`)
-
-    // 🔴 Liberar lock ANTES de hacer el sync post-venta
-    lock = false
-    loadProducts(true).catch(console.error)
 
   } catch (err) {
 
@@ -1385,7 +1402,7 @@ async function confirmSale() {
 
   } finally {
 
-    // 🔴 Garantizamos que el lock siempre se libera, pase lo que pase
+    // Garantía: siempre se libera el lock y se restaura el botón
     lock = false
     btn.disabled = false
     btn.style.opacity = "1"
@@ -1619,18 +1636,29 @@ ${line}
 
   const modal = document.getElementById("saleSummary")
   modal.style.display = "flex"
-  modal.style.opacity = "1"
-  modal.style.visibility = "visible"
+
+  // FIX #3: bloquear interacción con el fondo mientras el ticket está abierto
+  document.body.style.pointerEvents = "none"
   modal.style.pointerEvents = "auto"
 
 }
 
+// FIX #2 + #3: closeSummary restaura UI y dispara sync post-venta
 function closeSummary(){
   const modal = document.getElementById("saleSummary")
   modal.style.display = "none"
-  modal.style.opacity = "0"
-  modal.style.visibility = "hidden"
-  modal.style.pointerEvents = "none"
+
+  // FIX #3: restaurar interacción con el resto de la app
+  document.body.style.pointerEvents = ""
+
+  // FIX #2: sync post-venta ocurre acá, no mid-transacción
+  // en este punto lock ya fue liberado por finally
+  loadProducts(true).catch(console.error)
+
+  // Render limpio con estado real
+  markDirty("cart", "products")
+  flushRender()
+  calculateChange()
 }
 
 function printTicket(){
@@ -2100,20 +2128,35 @@ if (dateEl) {
 async function init(){
 
   await loadProducts()
-
   await loadSales()
 
   loadCart()
 
+  // FIX #5: avisar al usuario si se ajustaron items del carrito, nunca silencioso
+  const cartAntes = state.cart.length
+  const itemsAjustados = []
+
   state.cart = state.cart.filter(item=>{
     const p = state.products.find(x=>x.id === item.id)
-    return p && p.stock >= item.qty
+    if(!p || p.stock <= 0){
+      itemsAjustados.push(`${item.name} (sin stock)`)
+      return false
+    }
+    if(p.stock < item.qty){
+      itemsAjustados.push(`${item.name} (ajustado a ${p.stock})`)
+      item.qty = p.stock
+    }
+    return true
   })
 
-  markDirty("sales")
-  flushRender()
+  if(itemsAjustados.length > 0){
+    setTimeout(()=>{
+      showToast(`⚠ Carrito ajustado: ${itemsAjustados.join(", ")}`)
+    }, 800)
+  }
 
-  renderCart()
+  markDirty("cart", "sales")
+  flushRender()
 
   show("pos")
 
@@ -2121,14 +2164,14 @@ async function init(){
 
 init()
 
-// 🟠 Intervalo: respeta lock Y syncing — no entra si hay venta en curso
 setInterval(()=>{
-  if(!lock && !syncing && !userIsActive()){
+  // FIX #2: no sincronizar si hay venta en curso O si el ticket está visible
+  const ticketAbierto = document.getElementById("saleSummary")?.style.display === "flex"
+  if(!lock && !syncing && !userIsActive() && !ticketAbierto){
     loadProducts()
   }
 }, 5000)
 
-// 🔴 Al recuperar foco: solo si no hay lock activo
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible" && !lock){
     loadProducts(true)
