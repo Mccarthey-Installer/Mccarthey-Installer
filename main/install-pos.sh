@@ -40,7 +40,6 @@ fi
 
 cd $APP_DIR
 
-# proteger .env del repo
 echo ".env" >> .gitignore 2>/dev/null
 sort -u .gitignore -o .gitignore 2>/dev/null
 
@@ -85,9 +84,6 @@ fi
 
 echo "===== ESCRIBIENDO SERVER.JS (siempre sobreescribe) ====="
 
-# FIX: server.js se reescribe siempre — sin esta línea el script es mentiroso:
-# ejecutás install.sh, cambiaste código, y el servidor sigue corriendo el viejo.
-# El .env y los datos de DB se conservan intactos.
 rm -f "$APP_DIR/server.js"
 
 cat <<'SERVEREOF' > "$APP_DIR/server.js"
@@ -556,10 +552,6 @@ try{
 
   const changeReal = Math.round((paid - totalReal) * 100) / 100
 
-  // FIX: número correlativo via tabla de secuencia.
-  // INSERT en sequence_sales es atómico a nivel motor — InnoDB garantiza
-  // que LAST_INSERT_ID() es exclusivo por conexión, sin bloquear sales.
-  // Dos ventas simultáneas obtienen IDs distintos sin esperar una a la otra.
   await conn.query("INSERT INTO sequence_sales(dummy) VALUES (1)")
   const [[seqRow]] = await conn.query("SELECT LAST_INSERT_ID() AS num")
   const nextNum = seqRow.num
@@ -739,100 +731,34 @@ cat <<'EOF' > /var/www/pos/main/login.html
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>POS PRO Login</title>
-
 <style>
-
-body{
-margin:0;
-font-family:sans-serif;
-background:#f1f5f9;
-display:flex;
-justify-content:center;
-align-items:center;
-height:100vh;
-}
-
-.card{
-background:white;
-padding:30px;
-border-radius:16px;
-width:320px;
-box-shadow:0 10px 40px rgba(0,0,0,.15);
-animation:fade .4s;
-}
-
-@keyframes fade{
-from{opacity:0;transform:translateY(20px);}
-to{opacity:1;transform:translateY(0);}
-}
-
+body{margin:0;font-family:sans-serif;background:#f1f5f9;display:flex;justify-content:center;align-items:center;height:100vh;}
+.card{background:white;padding:30px;border-radius:16px;width:320px;box-shadow:0 10px 40px rgba(0,0,0,.15);animation:fade .4s;}
+@keyframes fade{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
 h1{text-align:center;margin-bottom:20px;}
-
-input{
-width:100%;
-padding:12px;
-margin-bottom:12px;
-border-radius:10px;
-border:1px solid #ddd;
-}
-
-button{
-width:100%;
-padding:12px;
-border:none;
-background:#22c55e;
-color:white;
-border-radius:10px;
-font-weight:bold;
-cursor:pointer;
-}
-
+input{width:100%;padding:12px;margin-bottom:12px;border-radius:10px;border:1px solid #ddd;}
+button{width:100%;padding:12px;border:none;background:#22c55e;color:white;border-radius:10px;font-weight:bold;cursor:pointer;}
 button:hover{background:#16a34a;}
-
 </style>
 </head>
-
 <body>
-
 <div class="card">
-
 <h1>📦 POS PRO</h1>
-
 <input id="user" placeholder="👤 Usuario">
 <input id="pass" type="password" placeholder="🔒 Contraseña">
-
 <button onclick="login()">Entrar</button>
-
 </div>
-
 <script>
-
 async function login(){
-
 const username=document.getElementById("user").value
 const password=document.getElementById("pass").value
-
-const res=await fetch("/api/login",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({username,password})
-})
-
-if(res.status!==200){
-alert("Login incorrecto")
-return
-}
-
+const res=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})})
+if(res.status!==200){alert("Login incorrecto");return}
 const data=await res.json()
-
 localStorage.setItem("token",data.token)
-
 location.href="/"
-
 }
-
 </script>
-
 </body>
 </html>
 EOF
@@ -842,6 +768,10 @@ echo "login.html creado"
 else
   echo "login.html ya existe — conservado"
 fi
+
+# ===========================================================
+# ===== BASE DE DATOS: TABLAS BASE + SISTEMA DE MIGRACIONES
+# ===========================================================
 
 echo "===== CREANDO BASE DE DATOS ====="
 
@@ -853,76 +783,135 @@ GRANT ALL PRIVILEGES ON posdb.* TO 'posuser'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 
+# ─── TABLAS BASE (estructura mínima, nunca tocan datos) ───────────────────────
+
 mysql posdb <<EOF
 
 CREATE TABLE IF NOT EXISTS products(
-id INT AUTO_INCREMENT PRIMARY KEY,
-name VARCHAR(100),
-price DECIMAL(10,2),
-cost DECIMAL(10,2),
-stock INT,
-sold INT DEFAULT 0,
-cat VARCHAR(100)
+  id    INT AUTO_INCREMENT PRIMARY KEY,
+  name  VARCHAR(100),
+  price DECIMAL(10,2),
+  cost  DECIMAL(10,2),
+  stock INT,
+  sold  INT DEFAULT 0,
+  cat   VARCHAR(100)
 );
 
 CREATE TABLE IF NOT EXISTS admins(
-id INT AUTO_INCREMENT PRIMARY KEY,
-username VARCHAR(50),
-password_hash TEXT,
-recovery_key VARCHAR(50),
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  username      VARCHAR(50),
+  password_hash TEXT,
+  recovery_key  VARCHAR(50),
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS sessions(
-id INT AUTO_INCREMENT PRIMARY KEY,
-token VARCHAR(200),
-admin_id INT,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  token         VARCHAR(200),
+  admin_id      INT,
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- sales.num es INT simple — la secuencia la maneja sequence_sales
 CREATE TABLE IF NOT EXISTS sales(
-id VARCHAR(36) PRIMARY KEY,
-num INT NOT NULL DEFAULT 0,
-date DATETIME NOT NULL,
-total DECIMAL(10,2),
-paid DECIMAL(10,2),
-change_amount DECIMAL(10,2),
-KEY idx_num (num)
+  id            VARCHAR(36) PRIMARY KEY,
+  num           INT NOT NULL DEFAULT 0,
+  date          DATETIME NOT NULL,
+  total         DECIMAL(10,2),
+  paid          DECIMAL(10,2),
+  change_amount DECIMAL(10,2)
 );
 
 CREATE TABLE IF NOT EXISTS sale_items(
-id INT AUTO_INCREMENT PRIMARY KEY,
-sale_id VARCHAR(36) NOT NULL,
-product_id INT,
-name VARCHAR(255),
-price DECIMAL(10,2),
-cost DECIMAL(10,2),
-qty INT,
-CONSTRAINT fk_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  sale_id    VARCHAR(36) NOT NULL,
+  product_id INT,
+  name       VARCHAR(255),
+  price      DECIMAL(10,2),
+  cost       DECIMAL(10,2),
+  qty        INT,
+  CONSTRAINT fk_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
 );
 
--- Tabla de secuencia: INSERT atómico + LAST_INSERT_ID() sin bloquear sales.
--- AUTO_INCREMENT aquí es la PK real, así que InnoDB lo maneja correctamente.
--- Dos conexiones simultáneas nunca obtienen el mismo ID.
 CREATE TABLE IF NOT EXISTS sequence_sales(
-id INT AUTO_INCREMENT PRIMARY KEY,
-dummy TINYINT NOT NULL DEFAULT 1
+  id    INT AUTO_INCREMENT PRIMARY KEY,
+  dummy TINYINT NOT NULL DEFAULT 1
+);
+
+-- ─── TABLA DE CONTROL DE MIGRACIONES ─────────────────────────────────────────
+-- Cada migración se registra aquí con su nombre único.
+-- Si el nombre ya existe → ya se ejecutó → se salta.
+-- Si no existe → se ejecuta y se registra.
+-- Nunca se ejecuta dos veces la misma migración, en ningún servidor.
+
+CREATE TABLE IF NOT EXISTS migrations(
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  name        VARCHAR(100) UNIQUE NOT NULL,
+  executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 EOF
 
-# MIGRACIÓN para servidores con versiones anteriores de la tabla sales
-mysql posdb -e "ALTER TABLE sales DROP INDEX idx_num;" 2>/dev/null || true
-mysql posdb -e "ALTER TABLE sales MODIFY COLUMN num INT NOT NULL DEFAULT 0;" 2>/dev/null || true
-mysql posdb -e "CREATE INDEX idx_num ON sales(num);" 2>/dev/null || true
-mysql posdb -e "ALTER TABLE sales ADD COLUMN IF NOT EXISTS num INT NOT NULL DEFAULT 0;" 2>/dev/null || true
+# ─── FUNCIÓN HELPER: run_migration ────────────────────────────────────────────
+#
+#   Uso: run_migration "nombre_unico" "SQL A EJECUTAR"
+#
+#   - Consulta la tabla migrations por el nombre
+#   - Si ya existe → "ya aplicada" → no toca nada
+#   - Si no existe → ejecuta el SQL → registra en migrations
+#
+#   Regla: el nombre es permanente. Una vez ejecutado, ese nombre
+#   queda grabado para siempre. Si necesitás hacer algo diferente,
+#   creás una migración NUEVA con un nombre NUEVO.
 
-echo "===== CREANDO INDICES (ignora si ya existen) ====="
+run_migration() {
+  local NAME="$1"
+  local SQL="$2"
 
-mysql posdb -e "CREATE INDEX idx_product_id ON sale_items(product_id);" 2>/dev/null || true
-mysql posdb -e "CREATE INDEX idx_date ON sales(date);" 2>/dev/null || true
+  local EXISTS
+  EXISTS=$(mysql posdb -sN -e "SELECT COUNT(*) FROM migrations WHERE name='$NAME'" 2>/dev/null)
+
+  if [ "$EXISTS" -eq "0" ]; then
+    echo "  → Ejecutando migración: $NAME"
+    mysql posdb -e "$SQL"
+    mysql posdb -e "INSERT INTO migrations(name) VALUES('$NAME')"
+    echo "  ✓ Migración aplicada: $NAME"
+  else
+    echo "  · Migración ya aplicada: $NAME"
+  fi
+}
+
+# ─── MIGRACIONES ──────────────────────────────────────────────────────────────
+#
+# REGLA DE ORO: nunca editás una migración existente.
+# Si necesitás cambiar algo → nueva migración, nombre nuevo.
+#
+# Formato de nombre: "v{numero}_{descripcion_snake_case}"
+# Ejemplo:           "v1_add_num_to_sales"
+
+echo "===== MIGRACIONES ====="
+
+# v1 — índice correlativo en ventas
+run_migration "v1_sales_add_idx_num" \
+  "ALTER TABLE sales ADD INDEX idx_num (num);"
+
+# v2 — índice de fecha en ventas
+run_migration "v2_sales_add_idx_date" \
+  "ALTER TABLE sales ADD INDEX idx_date (date);"
+
+# v3 — índice de product_id en items
+run_migration "v3_sale_items_add_idx_product_id" \
+  "ALTER TABLE sale_items ADD INDEX idx_product_id (product_id);"
+
+# Agregá aquí futuras migraciones sin tocar las de arriba:
+#
+# run_migration "v4_products_add_barcode" \
+#   "ALTER TABLE products ADD COLUMN barcode VARCHAR(50) NULL;"
+#
+# run_migration "v5_sales_add_discount" \
+#   "ALTER TABLE sales ADD COLUMN discount DECIMAL(10,2) NOT NULL DEFAULT 0;"
+
+echo "===== FIN DE MIGRACIONES ====="
 
 echo "===== CREANDO ADMIN ====="
 
@@ -974,17 +963,20 @@ echo ""
 echo "===== POS PRO INSTALADO ====="
 echo ""
 echo "Login:"
-echo "usuario: admin"
-echo "password: admin123"
+echo "  usuario:  admin"
+echo "  password: admin123"
 echo ""
 echo "Abrir:"
-echo "http://$DOMAIN:$PORT/login.html"
+echo "  http://$DOMAIN:$PORT/login.html"
+echo ""
+echo "Migraciones aplicadas:"
+mysql posdb -e "SELECT id, name, executed_at FROM migrations ORDER BY id;"
 echo ""
 echo "Logs de errores del servidor:"
-echo "tail -f $APP_DIR/errors.log"
+echo "  tail -f $APP_DIR/errors.log"
 echo ""
 echo "Log de backups automáticos:"
-echo "tail -f /var/log/pos-backup.log"
+echo "  tail -f /var/log/pos-backup.log"
 echo ""
 echo "Backups en: /var/backups/pos/"
 echo ""
