@@ -87,7 +87,11 @@ echo "===== CREANDO SERVER (solo si no existe) ====="
 
 if [ ! -f "$APP_DIR/server.js" ]; then
 
-cat <<EOF > server.js
+# FIX: heredoc con delimitador entre comillas para que bash NO expanda
+# variables de JavaScript ($item, $s, etc.). Solo PORT se inyecta antes
+# con sed una vez que el archivo ya está escrito.
+
+cat <<'SERVEREOF' > server.js
 require("dotenv").config()
 const express = require("express")
 const path = require("path")
@@ -490,7 +494,8 @@ qty:Number(i.qty)
 return{
 
 id:s.id,
-num:s.id,
+// FIX #2: s.num es el número correlativo real, no el UUID
+num:Number(s.num),
 date:s.date,
 dateKey:s.date,
 items:saleItems,
@@ -647,9 +652,15 @@ try{
 
   }
 
+  // FIX #3: leer el num autogenerado y devolverlo al frontend
+  const [[numRow]] = await conn.query(
+    "SELECT num FROM sales WHERE id=?",
+    [saleId]
+  )
+
   await conn.commit()
 
-  res.json({ok:true, id:saleId})
+  res.json({ok:true, id:saleId, num:numRow.num})
 
 }catch(err){
 
@@ -794,12 +805,16 @@ conn.release()
 
 /* ================= START ================= */
 
-const PORT = $PORT
+const PORT = __PORT_PLACEHOLDER__
 
 app.listen(PORT,()=>{
 console.log("POS PRO corriendo en puerto",PORT)
 })
-EOF
+SERVEREOF
+
+# Inyectar el puerto real ahora que el archivo ya está escrito
+# (evita mezclar variables bash dentro del heredoc de JS)
+sed -i "s/__PORT_PLACEHOLDER__/$PORT/" server.js
 
 echo "server.js creado"
 
@@ -961,12 +976,16 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- FIX #1: columna num AUTO_INCREMENT para número correlativo de venta
+-- MySQL requiere un KEY sobre la columna AUTO_INCREMENT secundaria
 CREATE TABLE IF NOT EXISTS sales(
 id VARCHAR(36) PRIMARY KEY,
+num INT NOT NULL AUTO_INCREMENT,
 date DATETIME NOT NULL,
 total DECIMAL(10,2),
 paid DECIMAL(10,2),
-change_amount DECIMAL(10,2)
+change_amount DECIMAL(10,2),
+KEY idx_num (num)
 );
 
 CREATE TABLE IF NOT EXISTS sale_items(
@@ -981,6 +1000,14 @@ CONSTRAINT fk_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
 );
 
 EOF
+
+# FIX #1 (migración): si la tabla sales ya existía sin la columna num,
+# agregarla ahora sin romper datos históricos
+mysql posdb -e "
+  ALTER TABLE sales
+  ADD COLUMN IF NOT EXISTS num INT NOT NULL AUTO_INCREMENT,
+  ADD KEY IF NOT EXISTS idx_num (num);
+" 2>/dev/null || true
 
 echo "===== CREANDO INDICES (ignora si ya existen) ====="
 
