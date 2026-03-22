@@ -84,9 +84,6 @@ GRANT ALL PRIVILEGES ON posdb.* TO 'posuser'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 
-# ─── TABLAS BASE ────────────────────────────────────────────────────────────
-# Solo crea la tabla si NO existe — nunca toca datos existentes
-
 mysql posdb <<'EOF'
 
 CREATE TABLE IF NOT EXISTS products(
@@ -140,31 +137,15 @@ CREATE TABLE IF NOT EXISTS sale_items(
 EOF
 
 # ===========================================================
-# ===== SCHEMA GUARDIAN — BASH (solo columnas no-PK)
+# ===== SCHEMA GUARDIAN — BASH
 # ===========================================================
-#
-# FIX #1: Ya NO toca columnas PRIMARY KEY (id).
-#         MySQL no permite ADD COLUMN sobre una PK existente.
-#         La PK solo se define en CREATE TABLE arriba.
-#
-# FIX #2: ensure_column ahora valida también el DATA_TYPE.
-#         Si el tipo no coincide → lo reporta (no lo corrige
-#         automáticamente para no romper datos, pero lo loguea
-#         claramente para intervención manual).
-#
-# Regla:
-#   columna no existe → la crea
-#   columna existe, tipo correcto → pasa de largo
-#   columna existe, tipo DIFERENTE → alerta visible, NO toca datos
-#   columna es PK (id) → la ignora completamente
 
 ensure_column() {
   local TABLE="$1"
   local COLUMN="$2"
   local DEFINITION="$3"
-  local EXPECTED_TYPE="$4"   # solo el tipo base, ej: "varchar", "int", "decimal", "timestamp"
+  local EXPECTED_TYPE="$4"
 
-  # Nunca tocar PKs — FIX #1
   if [ "$COLUMN" = "id" ]; then
     echo "  · Saltando PK: $TABLE.$COLUMN (definida solo en CREATE TABLE)"
     return
@@ -186,7 +167,6 @@ ensure_column() {
       echo "  ✗ ERROR al crear: $TABLE.$COLUMN — revisar manualmente"
     fi
   else
-    # FIX #2: Si se pasó tipo esperado, validar que coincida
     if [ -n "$EXPECTED_TYPE" ]; then
       local ACTUAL_TYPE
       ACTUAL_TYPE=$(mysql posdb -sN -e "
@@ -199,7 +179,6 @@ ensure_column() {
       if [ "$ACTUAL_TYPE" != "$EXPECTED_TYPE" ]; then
         echo "  ⚠️  ALERTA TIPO: $TABLE.$COLUMN existe como '$ACTUAL_TYPE' (esperado: '$EXPECTED_TYPE')"
         echo "  ⚠️  No se modifica automáticamente para proteger datos — revisión manual requerida"
-        # Loguear en archivo también
         echo "$(date) [SCHEMA_ALERT] $TABLE.$COLUMN tipo='$ACTUAL_TYPE' esperado='$EXPECTED_TYPE'" >> /var/log/pos-schema.log
       else
         echo "  · OK: $TABLE.$COLUMN ($ACTUAL_TYPE)"
@@ -237,8 +216,6 @@ ensure_index() {
 
 echo "===== SCHEMA GUARDIAN (bash) ====="
 
-# ─── products ─────────────────────────────────────────────
-# FIX #1: "id" ya no se pasa a ensure_column
 ensure_column "products" "name"  "VARCHAR(100)"           "varchar"
 ensure_column "products" "price" "DECIMAL(10,2)"          "decimal"
 ensure_column "products" "cost"  "DECIMAL(10,2)"          "decimal"
@@ -246,26 +223,22 @@ ensure_column "products" "stock" "INT DEFAULT 0"          "int"
 ensure_column "products" "sold"  "INT DEFAULT 0"          "int"
 ensure_column "products" "cat"   "VARCHAR(100)"           "varchar"
 
-# ─── admins ───────────────────────────────────────────────
 ensure_column "admins" "username"      "VARCHAR(50)"      "varchar"
 ensure_column "admins" "password_hash" "TEXT"             "text"
 ensure_column "admins" "recovery_key"  "VARCHAR(50)"      "varchar"
 ensure_column "admins" "created_at"    "TIMESTAMP DEFAULT CURRENT_TIMESTAMP" "timestamp"
 
-# ─── sessions ─────────────────────────────────────────────
 ensure_column "sessions" "token"         "VARCHAR(200)"   "varchar"
 ensure_column "sessions" "admin_id"      "INT"            "int"
 ensure_column "sessions" "created_at"    "TIMESTAMP DEFAULT CURRENT_TIMESTAMP" "timestamp"
 ensure_column "sessions" "last_activity" "TIMESTAMP DEFAULT CURRENT_TIMESTAMP" "timestamp"
 
-# ─── sales ────────────────────────────────────────────────
 ensure_column "sales" "num"           "INT NOT NULL AUTO_INCREMENT UNIQUE" "int"
 ensure_column "sales" "date"          "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP" "datetime"
 ensure_column "sales" "total"         "DECIMAL(10,2)"            "decimal"
 ensure_column "sales" "paid"          "DECIMAL(10,2)"            "decimal"
 ensure_column "sales" "change_amount" "DECIMAL(10,2)"            "decimal"
 
-# ─── sale_items ───────────────────────────────────────────
 ensure_column "sale_items" "sale_id"    "VARCHAR(36) NOT NULL"   "varchar"
 ensure_column "sale_items" "product_id" "INT"                    "int"
 ensure_column "sale_items" "name"       "VARCHAR(255)"           "varchar"
@@ -273,7 +246,6 @@ ensure_column "sale_items" "price"      "DECIMAL(10,2)"          "decimal"
 ensure_column "sale_items" "cost"       "DECIMAL(10,2)"          "decimal"
 ensure_column "sale_items" "qty"        "INT"                    "int"
 
-# ─── Índices ──────────────────────────────────────────────
 ensure_index "sales"      "idx_num"        "(num)"
 ensure_index "sales"      "idx_date"       "(date)"
 ensure_index "sale_items" "idx_product_id" "(product_id)"
@@ -323,8 +295,8 @@ app.use(express.json())
 
 /* ─── LOGGER ────────────────────────────────────────────────────────────── */
 
-const LOG_FILE     = path.join(__dirname, "errors.log")
-const LOG_MAX_BYTES = 5 * 1024 * 1024   // 5 MB — FIX #5: no crecer infinito
+const LOG_FILE      = path.join(__dirname, "errors.log")
+const LOG_MAX_BYTES = 5 * 1024 * 1024
 
 function rotateLogs() {
   try {
@@ -334,7 +306,7 @@ function rotateLogs() {
       if (fs.existsSync(archived)) fs.unlinkSync(archived)
       fs.renameSync(LOG_FILE, archived)
     }
-  } catch (_) { /* primera vez que no existe el archivo */ }
+  } catch (_) {}
 }
 
 function logError(ctx, err) {
@@ -360,24 +332,96 @@ const db = mysql.createPool({
   connectionLimit: 10
 })
 
+/* =========================================================
+   🛡️  VALIDACIÓN DE PRODUCTOS
+   ---------------------------------------------------------
+   Reglas:
+   · name    → string, 1–100 chars, no solo espacios
+   · price   → número >= 0, máx 999999.99
+   · cost    → número >= 0, máx 999999.99
+   · stock   → entero >= 0, máx 999999
+   · cat     → string, 1–60 chars, NO puede ser solo números
+               (evita que manden "50" como categoría)
+               Solo letras, espacios, guiones, tildes
+   ========================================================= */
+
+const CAT_INVALID_PATTERN = /^\d+$/ // rechaza strings puramente numéricos: "50", "123"
+const CAT_VALID_PATTERN   = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ0-9 \-_&/]+$/ // letras, nums mezclados, espacios, guion
+
+function validateProduct(body) {
+  const errors = []
+
+  /* ── nombre ── */
+  if (typeof body.name !== "string" || body.name.trim().length === 0) {
+    errors.push("name: es requerido y debe ser texto")
+  } else if (body.name.trim().length > 100) {
+    errors.push("name: máximo 100 caracteres")
+  }
+
+  /* ── precio ── */
+  const price = Number(body.price)
+  if (isNaN(price) || price < 0) {
+    errors.push("price: debe ser un número >= 0")
+  } else if (price > 999999.99) {
+    errors.push("price: valor demasiado alto (máx 999999.99)")
+  }
+
+  /* ── costo ── */
+  const cost = Number(body.cost)
+  if (isNaN(cost) || cost < 0) {
+    errors.push("cost: debe ser un número >= 0")
+  } else if (cost > 999999.99) {
+    errors.push("cost: valor demasiado alto (máx 999999.99)")
+  }
+
+  /* ── stock ── */
+  const stock = Number(body.stock)
+  if (!Number.isInteger(stock) || stock < 0) {
+    errors.push("stock: debe ser un entero >= 0")
+  } else if (stock > 999999) {
+    errors.push("stock: valor demasiado alto (máx 999999)")
+  }
+
+  /* ── categoría ── */
+  const rawCat = typeof body.cat === "string" ? body.cat.trim() : ""
+
+  if (rawCat.length === 0) {
+    // cat vacía → se normalizará a "General" más abajo (no es error)
+  } else if (rawCat.length > 60) {
+    errors.push("cat: máximo 60 caracteres")
+  } else if (CAT_INVALID_PATTERN.test(rawCat)) {
+    // ES SOLO NÚMEROS → rechazar con mensaje claro
+    errors.push(`cat: "${rawCat}" no es una categoría válida — no puede ser solo números`)
+  } else if (!CAT_VALID_PATTERN.test(rawCat)) {
+    errors.push(`cat: "${rawCat}" contiene caracteres no permitidos`)
+  }
+
+  return errors
+}
+
+/* Normaliza y devuelve el objeto producto limpio */
+function sanitizeProduct(body) {
+  const rawCat = typeof body.cat === "string" ? body.cat.trim() : ""
+
+  // Capitaliza la primera letra de cada palabra, resto en minúsculas
+  const normalizedCat = rawCat.length > 0
+    ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    : "General"
+
+  return {
+    name:  body.name.trim(),
+    price: Math.round(Number(body.price) * 100) / 100,
+    cost:  Math.round(Number(body.cost)  * 100) / 100,
+    stock: Math.floor(Number(body.stock)),
+    cat:   normalizedCat
+  }
+}
+
 /* ─── SCHEMA GUARDIAN ───────────────────────────────────────────────────── */
-/*
-   FIX #1: "id" (PK) ya NO se toca aquí.
-           MySQL no permite ADD COLUMN de una PK existente.
-           La PK viene del CREATE TABLE inicial.
-
-   FIX #2: Ahora valida DATA_TYPE de cada columna.
-           Si existe pero con tipo incorrecto → logea alerta clara,
-           NO modifica automáticamente (protege datos reales).
-
-   FIX #3: Se ejecuta al arranque Y cada 5 min (setInterval).
-           Si alguien rompe la DB en vivo → se detecta y autocorrige.
-*/
 
 const REQUIRED_SCHEMA = {
   products: {
     columns: [
-      // FIX #1: sin "id" — la PK no se toca desde aquí
       { name: "name",  def: "VARCHAR(100)",  type: "varchar"   },
       { name: "price", def: "DECIMAL(10,2)", type: "decimal"   },
       { name: "cost",  def: "DECIMAL(10,2)", type: "decimal"   },
@@ -434,14 +478,12 @@ const REQUIRED_SCHEMA = {
 }
 
 async function validateSchema() {
-  const conn    = db.promise()
-  const fixed   = []   // columnas/índices autocorregidos
-  const ok      = []   // columnas verificadas y correctas
-  const alerts  = []   // tipo incorrecto — requiere revisión manual
+  const conn   = db.promise()
+  const fixed  = []
+  const ok     = []
+  const alerts = []
 
   for (const [table, spec] of Object.entries(REQUIRED_SCHEMA)) {
-
-    /* ── columnas ── */
     const [existingCols] = await conn.query(
       `SELECT COLUMN_NAME, LOWER(DATA_TYPE) AS data_type
        FROM INFORMATION_SCHEMA.COLUMNS
@@ -452,7 +494,6 @@ async function validateSchema() {
 
     for (const col of spec.columns) {
       if (!colMap.has(col.name)) {
-        // No existe → crear
         try {
           await conn.query(
             `ALTER TABLE \`${table}\` ADD COLUMN \`${col.name}\` ${col.def}`
@@ -462,10 +503,8 @@ async function validateSchema() {
           logError("SCHEMA_GUARDIAN", `No pude agregar ${table}.${col.name}: ${e.message}`)
         }
       } else {
-        // FIX #2: Existe → validar tipo
         const actualType = colMap.get(col.name)
         if (col.type && actualType !== col.type) {
-          // Tipo incorrecto — ALERTA pero NO modificar automáticamente
           const alertMsg = `TIPO INCORRECTO ${table}.${col.name}: actual='${actualType}' esperado='${col.type}'`
           alerts.push(alertMsg)
           logError("SCHEMA_TYPE_ALERT", alertMsg + " — requiere revisión manual")
@@ -475,7 +514,6 @@ async function validateSchema() {
       }
     }
 
-    /* ── índices ── */
     const [existingIdx] = await conn.query(
       `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
        WHERE TABLE_SCHEMA = 'posdb' AND TABLE_NAME = ?
@@ -498,28 +536,15 @@ async function validateSchema() {
     }
   }
 
-  // FIX #3: si hay alertas de tipo → schema corrupto → NO arrancar
-  if (fixed.length > 0) {
-    logInfo("SCHEMA_GUARDIAN", `✓ Autocorregido: ${fixed.join(", ")}`)
-  }
-  if (alerts.length > 0) {
-    logError("SCHEMA_GUARDIAN", `⚠ Alertas de tipo (revisar manualmente): ${alerts.join(" | ")}`)
-  }
-  if (fixed.length === 0 && alerts.length === 0) {
+  if (fixed.length > 0)  logInfo("SCHEMA_GUARDIAN", `✓ Autocorregido: ${fixed.join(", ")}`)
+  if (alerts.length > 0) logError("SCHEMA_GUARDIAN", `⚠ Alertas de tipo: ${alerts.join(" | ")}`)
+  if (fixed.length === 0 && alerts.length === 0)
     logInfo("SCHEMA_GUARDIAN", `✓ Todo OK — ${ok.length} columnas verificadas`)
-  }
 
   return { fixed, alerts, ok }
 }
 
 /* ─── RATE LIMITS ───────────────────────────────────────────────────────── */
-/*
-   Dos capas:
-   - generalLimiter: protege TODO /api → 200 req/15min por IP
-     cubre /api/register, /api/recovery, cualquier endpoint futuro
-   - loginLimiter: solo /api/login → 10 intentos/15min
-     más estricto porque es el vector de brute force principal
-*/
 
 const generalLimiter = rateLimit({
   windowMs:        15 * 60 * 1000,
@@ -641,25 +666,54 @@ app.get("/api/products", auth, (req, res) => {
   })
 })
 
+/* =========================================================
+   POST /api/products — CREAR producto con validación
+   ========================================================= */
 app.post("/api/products", auth, (req, res) => {
-  const { name, price, cost, stock, cat } = req.body
+  // 1. Validar
+  const errors = validateProduct(req.body)
+  if (errors.length > 0) {
+    logError("CREATE_PRODUCT_VALIDATION", errors.join(" | "))
+    return res.status(400).json({ error: "Datos inválidos", details: errors })
+  }
+
+  // 2. Sanitizar
+  const p = sanitizeProduct(req.body)
+
+  // 3. Insertar limpio
   db.query(
     "INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
-    [name, price, cost, stock, cat],
+    [p.name, p.price, p.cost, p.stock, p.cat],
     (err) => {
-      if (err) { logError("CREATE_PRODUCT", err); return res.status(500).json(err) }
+      if (err) { logError("CREATE_PRODUCT", err); return res.status(500).json({ error: "Error interno" }) }
+      logInfo("CREATE_PRODUCT", `Creado: "${p.name}" cat="${p.cat}" price=${p.price}`)
       res.json({ ok: true })
     }
   )
 })
 
+/* =========================================================
+   PUT /api/products/:id — EDITAR producto con validación
+   ========================================================= */
 app.put("/api/products/:id", auth, (req, res) => {
-  const { name, price, cost, stock, cat } = req.body
+  // 1. Validar
+  const errors = validateProduct(req.body)
+  if (errors.length > 0) {
+    logError("UPDATE_PRODUCT_VALIDATION", `id=${req.params.id} — ` + errors.join(" | "))
+    return res.status(400).json({ error: "Datos inválidos", details: errors })
+  }
+
+  // 2. Sanitizar
+  const p = sanitizeProduct(req.body)
+
+  // 3. Actualizar limpio
   db.query(
     "UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
-    [name, price, cost, stock, cat, req.params.id],
-    (err) => {
-      if (err) { logError("UPDATE_PRODUCT", err); return res.status(500).json(err) }
+    [p.name, p.price, p.cost, p.stock, p.cat, req.params.id],
+    (err, result) => {
+      if (err)                        { logError("UPDATE_PRODUCT", err); return res.status(500).json({ error: "Error interno" }) }
+      if (result.affectedRows === 0)  { return res.status(404).json({ error: "Producto no encontrado" }) }
+      logInfo("UPDATE_PRODUCT", `Actualizado id=${req.params.id}: "${p.name}" cat="${p.cat}"`)
       res.json({ ok: true })
     }
   )
@@ -681,6 +735,7 @@ app.post("/api/restock", auth, (req, res) => {
   const { id, qty } = req.body
   if (!id)              return res.status(400).json({ error: "Producto inválido" })
   if (!qty || qty <= 0) return res.status(400).json({ error: "Cantidad inválida" })
+  if (qty > 999999)     return res.status(400).json({ error: "Cantidad demasiado alta" })
 
   db.query(
     "UPDATE products SET stock = stock + ? WHERE id=?", [qty, id],
@@ -776,7 +831,7 @@ app.post("/api/sales", auth, async (req, res) => {
     let totalReal   = 0
 
     for (const item of sale.items) {
-      if (!item.id)                throw new Error("Producto inválido")
+      if (!item.id)                   throw new Error("Producto inválido")
       if (!item.qty || item.qty <= 0) throw new Error("Cantidad inválida")
 
       const [rows] = await conn.query(
@@ -800,7 +855,6 @@ app.post("/api/sales", auth, async (req, res) => {
       "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
       [saleId, saleDate, totalReal, paid, changeReal]
     )
-    // FIX #2: insertId es el AUTO_INCREMENT de num — sin SELECT extra
     const nextNum = insertResult.insertId
 
     for (const item of validated) {
@@ -808,9 +862,6 @@ app.post("/api/sales", auth, async (req, res) => {
         "INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
         [saleId, item.id, item.name, item.price, item.cost, item.qty]
       )
-      // FIX #5: stock >= qty ya fue verificado con FOR UPDATE arriba.
-      // Doble-check post-UPDATE: si affectedRows = 0 algo muy raro pasó
-      // (producto borrado entre el FOR UPDATE y el UPDATE) → rollback.
       const [upd] = await conn.query(
         "UPDATE products SET stock = stock - ?, sold = sold + ? WHERE id=? AND stock >= ?",
         [item.qty, item.qty, item.id, item.qty]
@@ -959,12 +1010,6 @@ app.post("/api/restore", auth, async (req, res) => {
 })
 
 /* ─── HEALTH ENDPOINT ───────────────────────────────────────────────────── */
-/*
-   FIX nivel dios: /internal/health
-   Verifica DB activa + schema en buen estado.
-   Retorna { ok, db, schema: { fixed, alerts, ok_count } }
-   Útil para monitoreo externo (uptime robots, etc.)
-*/
 
 app.get("/internal/health", async (req, res) => {
   const key = req.headers["x-backup-key"]
@@ -992,17 +1037,9 @@ app.get("/internal/health", async (req, res) => {
 })
 
 /* ─── ARRANQUE ──────────────────────────────────────────────────────────── */
-/*
-   FIX #3: validateSchema corre al arranque Y cada 5 minutos.
-   Si alguien rompe la DB mientras el server está vivo → se detecta
-   y autocorrige en el próximo ciclo sin necesidad de reiniciar.
-*/
 
 validateSchema()
   .then((result) => {
-    // FIX #3: schema corrupto = NO arrancar
-    // Columnas con tipo incorrecto en producción pueden romper silenciosamente.
-    // Es mejor un arranque fallido visible que un sistema que corre y explota después.
     if (result.alerts.length > 0) {
       logError("STARTUP", `Schema corrupto — ${result.alerts.length} alerta(s) crítica(s). Corregir manualmente antes de arrancar.`)
       logError("STARTUP", result.alerts.join(" | "))
@@ -1013,7 +1050,6 @@ validateSchema()
       logInfo("STARTUP", `POS PRO corriendo en puerto ${PORT}`)
     })
 
-    // vigilancia periódica del schema — cada 5 minutos
     setInterval(() => {
       validateSchema()
         .then(r => {
@@ -1107,11 +1143,6 @@ curl -s \
   "http://localhost:$PORT/internal/backup" \
   -o "\$DEST"
 
-# FIX #4: validación en 3 capas
-# 1. archivo existe y no está vacío
-# 2. no contiene clave "error" de respuesta fallida del server
-# 3. JSON válido y parseable (jq empty)
-
 FAIL=0
 
 if [ ! -s "\$DEST" ]; then
@@ -1148,28 +1179,27 @@ pm2 startup
 pm2 save
 
 echo ""
-echo "╔══════════════════════════════════════════════════╗"
-echo "║             POS PRO INSTALADO ✓                  ║"
-echo "╠══════════════════════════════════════════════════╣"
-echo "║  usuario:  admin                                 ║"
-echo "║  password: admin123                              ║"
-echo "╠══════════════════════════════════════════════════╣"
+echo "╔══════════════════════════════════════════════════════════╗"
+echo "║             POS PRO INSTALADO ✓                          ║"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║  usuario:  admin                                         ║"
+echo "║  password: admin123                                      ║"
+echo "╠══════════════════════════════════════════════════════════╣"
 echo "║  URL:  http://$DOMAIN:$PORT/login.html"
-echo "╠══════════════════════════════════════════════════╣"
-echo "║  ENDPOINTS INTERNOS (requieren x-backup-key):   ║"
-echo "║    /internal/backup  → snapshot completo         ║"
-echo "║    /internal/health  → estado DB + schema        ║"
-echo "╠══════════════════════════════════════════════════╣"
-echo "║  CAMBIOS v4:                                     ║"
-echo "║    ✓ sales: id=PK uuid, num=AI con UNIQUE KEY    ║"
-echo "║    ✓ insertId en lugar de SELECT post-insert     ║"
-echo "║    ✓ rate limit global /api + login estricto     ║"
-echo "║    ✓ backup valida JSON con jq (3 capas)         ║"
-echo "║    ✓ UPDATE stock con AND stock>=qty + check     ║"
-echo "╚══════════════════════════════════════════════════╝"
-echo ""
-echo "Estructura final de la tabla sales:"
-mysql posdb -e "DESCRIBE sales;"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║  VALIDACIÓN DE PRODUCTOS (nuevo):                        ║"
+echo "║    ✓ name  → texto no vacío, máx 100 chars               ║"
+echo "║    ✓ price → número >= 0                                 ║"
+echo "║    ✓ cost  → número >= 0                                 ║"
+echo "║    ✓ stock → entero >= 0                                 ║"
+echo "║    ✓ cat   → NO acepta solo números (ej: '50' rechazado) ║"
+echo "║    ✓ cat   → normalizada: primera letra mayúscula        ║"
+echo "║    ✓ cat vacía → se guarda como 'General'                ║"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║  ENDPOINTS INTERNOS (requieren x-backup-key):            ║"
+echo "║    /internal/backup  → snapshot completo                 ║"
+echo "║    /internal/health  → estado DB + schema                ║"
+echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 echo "Logs del servidor:   tail -f $APP_DIR/errors.log"
 echo "Alertas de schema:   tail -f /var/log/pos-schema.log"
