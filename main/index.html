@@ -15,7 +15,8 @@
 ───────────────────────────────────────────────── */
 function api(url, options = {}) {
   const token = localStorage.getItem("token")
-  return fetch(url, {
+
+  return fetch("http://tienda.valeentina.shop:9092" + url, {
     ...options,
     headers: {
       ...(options.headers || {}),
