@@ -14,7 +14,6 @@ const originalFetch = window.fetch;
 
 window.fetch = function(url, options = {}){
 
-// FIX #6: solo interceptamos nuestras rutas, no fetch externo (fonts, CDN, etc.)
 const isApiCall = typeof url === "string" && url.startsWith("/api/")
 
 if(!isApiCall){
@@ -880,6 +879,14 @@ function getDayLabel(dateStr){
   return "Más antiguas"
 }
 
+// =========== HELPER: label seguro para num ===========
+// Nunca muestra "null" ni "undefined" en la UI
+function saleNumLabel(num){
+  return (num != null && num !== "" && !isNaN(Number(num)))
+    ? "#" + Number(num)
+    : "(sin número)"
+}
+
 // =========== LOAD PRODUCTS ===========
 async function loadProducts(force = false){
 
@@ -934,7 +941,6 @@ async function loadProducts(force = false){
     })
     const cartChanged = state.cart.length !== cartBefore
 
-    // FIX #5: avisar si el carrito fue tocado por el sync
     if(itemsDropped.length > 0){
       setTimeout(()=>{
         showToast(`⚠ Carrito ajustado: ${itemsDropped.join(", ")}`)
@@ -1210,13 +1216,9 @@ function changeQty(id, delta) {
   saveCart()
 }
 
-// =========== FIX #4 + #5: calculateChange lee de state, no del DOM ===========
 function calculateChange() {
   const paid = Number(document.getElementById("paid").value) || 0
-
-  // FIX #5: total calculado desde state.cart, nunca desde el DOM
   const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
-
   const change = Math.max(paid - total, 0)
   document.getElementById("change").textContent = `$${change.toFixed(2)}`
 
@@ -1267,8 +1269,6 @@ function renderCart() {
   })
 
   document.getElementById("total").textContent = `$${total.toFixed(2)}`
-
-  // calculateChange() ya lee de state.cart, no necesita el #total actualizado
   calculateChange()
 }
 
@@ -1280,13 +1280,11 @@ async function confirmSale() {
     return
   }
 
-  // FIX #5: validar desde state, nunca desde la UI
   if (state.cart.length === 0) {
     showToast("⚠ El carrito está vacío")
     return
   }
 
-  // FIX #5: total desde state
   const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
   const paid = Number(document.getElementById("paid").value) || 0
 
@@ -1304,7 +1302,6 @@ async function confirmSale() {
 
   try {
 
-    // Verificar stock fresco del servidor
     setSyncStatus("syncing", "Verificando stock...")
     try {
       const res = await fetch("/api/products")
@@ -1327,7 +1324,6 @@ async function confirmSale() {
       setSyncStatus("error", "Sin conexión")
     }
 
-    // Validar stock con datos frescos
     for (const item of state.cart){
       const p = state.products.find(x => x.id === item.id)
       if(!p){
@@ -1343,14 +1339,14 @@ async function confirmSale() {
       }
     }
 
-    // FIX #3: recalcular total post-validación (qty pudo ajustarse arriba)
     const finalTotal = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
 
     const now = new Date()
 
+    // num empieza en null — el backend es el único que lo asigna
     const sale = {
       id: null,
-      num: null, // FIX #4: el backend asigna el número, no lo inventamos
+      num: null,
       date: now.toISOString(),
       dateKey: now.getDate() + "/" + (now.getMonth()+1),
       items: JSON.parse(JSON.stringify(state.cart)),
@@ -1372,28 +1368,32 @@ async function confirmSale() {
       return
     }
 
-    sale.id = data.id
-    // FIX #4: número de venta viene del backend, no lo inventamos localmente
-    sale.num = data.num || sale.num
+    // FIX: asignar id y num desde la respuesta del backend SIN fallback silencioso
+    // Si el backend no manda num, data.num es undefined → sale.num queda null
+    // y saleNumLabel() lo muestra como "(sin número)" en lugar de "null"
+    sale.id  = data.id
+    sale.num = data.num != null ? Number(data.num) : null
+
+    // Si num sigue null acá, el servidor viejo está corriendo → avisar en consola
+    if(sale.num == null){
+      console.warn("⚠ El backend no devolvió num. Verificá que server.js esté actualizado y reiniciá pm2.")
+    }
+
     state.sales.unshift(sale)
 
-    // ORDEN CORRECTO:
-    // 1. Limpiar estado primero
+    // 1. Limpiar estado
     state.cart = []
     localStorage.removeItem("cart")
     document.getElementById("paid").value = ""
     if (document.activeElement) document.activeElement.blur()
 
-    // 2. Renderizar con estado limpio ANTES del modal
+    // 2. Render con estado limpio ANTES del modal
     markDirty("cart", "products")
     flushRender()
 
-    // 3. Modal DESPUÉS de que la UI refleja el estado real
-    // FIX #1: NO liberamos lock aquí — finally lo hace siempre y es el único dueño
-    // loadProducts(true) se dispara desde closeSummary, no mid-transacción
+    // 3. Modal y toast DESPUÉS — con datos reales del backend ya asignados
     showSaleSummary(sale)
-
-    showToast(`✅ Venta #${sale.num} realizada`)
+    showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`)
 
   } catch (err) {
 
@@ -1402,7 +1402,6 @@ async function confirmSale() {
 
   } finally {
 
-    // Garantía: siempre se libera el lock y se restaura el botón
     lock = false
     btn.disabled = false
     btn.style.opacity = "1"
@@ -1623,8 +1622,9 @@ ${line}
     return `${name}${unit}${total}`
   }).join("\n")
 
+  // FIX: saleNumLabel() garantiza que nunca se muestre "null" ni "undefined"
   document.getElementById("saleSummaryInfo").innerHTML =
-    `Venta #${sale.num}<br>ID: ${sale.id}<br>${formatDate(sale.date)}`
+    `Venta ${saleNumLabel(sale.num)}<br>ID: ${sale.id}<br>${formatDate(sale.date)}`
 
   document.getElementById("saleSummaryItems").innerHTML =
     `<pre style="font-family:monospace;overflow-x:auto;">${header}${items}\n${line}</pre>`
@@ -1637,25 +1637,19 @@ ${line}
   const modal = document.getElementById("saleSummary")
   modal.style.display = "flex"
 
-  // FIX #3: bloquear interacción con el fondo mientras el ticket está abierto
   document.body.style.pointerEvents = "none"
   modal.style.pointerEvents = "auto"
 
 }
 
-// FIX #2 + #3: closeSummary restaura UI y dispara sync post-venta
 function closeSummary(){
   const modal = document.getElementById("saleSummary")
   modal.style.display = "none"
 
-  // FIX #3: restaurar interacción con el resto de la app
   document.body.style.pointerEvents = ""
 
-  // FIX #2: sync post-venta ocurre acá, no mid-transacción
-  // en este punto lock ya fue liberado por finally
   loadProducts(true).catch(console.error)
 
-  // Render limpio con estado real
   markDirty("cart", "products")
   flushRender()
   calculateChange()
@@ -1774,8 +1768,9 @@ function renderSales(){
       div.style.marginBottom = "14px"
       div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
 
+      // FIX: saleNumLabel() en el historial también
       div.innerHTML = `
-        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Venta #${s.num}</div>
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Venta ${saleNumLabel(s.num)}</div>
         <div style="font-size:11px;color:#64748b;margin-bottom:6px;">ID: ${s.id}</div>
         <div style="font-size:12px;color:#64748b;margin-bottom:10px;">${formatDate(s.date)}</div>
         <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">${items}</div>
@@ -2028,7 +2023,8 @@ function exportCSV(){
   let acumulado = ventas.reduce((a,b)=> a + b.total, 0)
 
   ventas.forEach(s => {
-    text += `Venta #${s.num}\n`
+    // FIX: saleNumLabel() en el CSV también
+    text += `Venta ${saleNumLabel(s.num)}\n`
     text += `ID: ${s.id}\n`
     text += `${formatDate(s.date)}\n\n`
 
@@ -2132,8 +2128,6 @@ async function init(){
 
   loadCart()
 
-  // FIX #5: avisar al usuario si se ajustaron items del carrito, nunca silencioso
-  const cartAntes = state.cart.length
   const itemsAjustados = []
 
   state.cart = state.cart.filter(item=>{
@@ -2165,7 +2159,6 @@ async function init(){
 init()
 
 setInterval(()=>{
-  // FIX #2: no sincronizar si hay venta en curso O si el ticket está visible
   const ticketAbierto = document.getElementById("saleSummary")?.style.display === "flex"
   if(!lock && !syncing && !userIsActive() && !ticketAbierto){
     loadProducts()
