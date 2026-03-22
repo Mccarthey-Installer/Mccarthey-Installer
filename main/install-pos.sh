@@ -83,15 +83,14 @@ else
   BACKUP_SECRET=$(grep BACKUP_SECRET "$ENV_FILE" | cut -d= -f2)
 fi
 
-echo "===== CREANDO SERVER (solo si no existe) ====="
+echo "===== ESCRIBIENDO SERVER.JS (siempre sobreescribe) ====="
 
-if [ ! -f "$APP_DIR/server.js" ]; then
+# FIX: server.js se reescribe siempre — sin esta línea el script es mentiroso:
+# ejecutás install.sh, cambiaste código, y el servidor sigue corriendo el viejo.
+# El .env y los datos de DB se conservan intactos.
+rm -f "$APP_DIR/server.js"
 
-# FIX: heredoc con delimitador entre comillas para que bash NO expanda
-# variables de JavaScript ($item, $s, etc.). Solo PORT se inyecta antes
-# con sed una vez que el archivo ya está escrito.
-
-cat <<'SERVEREOF' > server.js
+cat <<'SERVEREOF' > "$APP_DIR/server.js"
 require("dotenv").config()
 const express = require("express")
 const path = require("path")
@@ -171,14 +170,10 @@ sale_items:schemaItems["Create Table"]
 }
 
 }catch(err){
-
 await conn.rollback()
 throw err
-
 }finally{
-
 conn.release()
-
 }
 
 }
@@ -206,20 +201,14 @@ const now = new Date()
 const diff = (now - last) / 1000 / 60
 
 if(diff > 20){
-
 return db.promise()
 .query("DELETE FROM sessions WHERE token=?", [token])
-.then(()=>{
-return res.status(401).json({})
-})
-
+.then(()=>{ return res.status(401).json({}) })
 }
 
 return db.promise()
 .query("UPDATE sessions SET last_activity=NOW() WHERE token=?", [token])
-.then(()=>{
-next()
-})
+.then(()=>{ next() })
 
 })
 .catch((err)=>{
@@ -263,10 +252,8 @@ await conn.query(
 res.json({token})
 
 }catch(err){
-
 logError("LOGIN", err)
 res.status(500).json({error:"server"})
-
 }
 
 })
@@ -299,12 +286,7 @@ const now = new Date()
 const diff = (now - last) / 1000 / 60
 
 if(diff > 20){
-
-await conn.query(
-"DELETE FROM sessions WHERE token=?",
-[token]
-)
-
+await conn.query("DELETE FROM sessions WHERE token=?", [token])
 return res.status(401).json({})
 }
 
@@ -316,10 +298,8 @@ await conn.query(
 res.json({ok:true})
 
 }catch(err){
-
 logError("SESSION", err)
 res.status(500).json({})
-
 }
 
 })
@@ -327,93 +307,64 @@ res.status(500).json({})
 /* LOGOUT */
 
 app.post("/api/logout", async (req,res)=>{
-
 const token = req.headers.authorization
 const conn = db.promise()
-
-await conn.query(
-"DELETE FROM sessions WHERE token=?",
-[token]
-)
-
+await conn.query("DELETE FROM sessions WHERE token=?", [token])
 res.json({ok:true})
-
 })
 
 /* ================= PRODUCTOS ================= */
 
 app.get("/api/products", auth, (req,res)=>{
-
 db.query("SELECT * FROM products",(err,data)=>{
-
 if(err){
 logError("GET_PRODUCTS", err)
 return res.status(500).json([])
 }
-
 res.json(data)
-
 })
-
 })
 
 app.post("/api/products", auth, (req,res)=>{
-
 const {name,price,cost,stock,cat} = req.body
-
 db.query(
 "INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
 [name,price,cost,stock,cat],
 (err)=>{
-
 if(err){
 logError("CREATE_PRODUCT", err)
 return res.status(500).json(err)
 }
-
 res.json({ok:true})
-
 })
-
 })
 
 app.put("/api/products/:id", auth, (req,res)=>{
-
 const {name,price,cost,stock,cat} = req.body
 const id = req.params.id
-
 db.query(
 "UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
 [name,price,cost,stock,cat,id],
 (err)=>{
-
 if(err){
 logError("UPDATE_PRODUCT", err)
 return res.status(500).json(err)
 }
-
 res.json({ok:true})
-
 })
-
 })
 
 app.delete("/api/products/:id", auth, (req,res)=>{
-
 db.query(
 "DELETE FROM products WHERE id=?",
 [req.params.id],
 (err)=>{
-
 if(err){
 logError("DELETE_PRODUCT", err)
 return res.status(500).json(err)
 }
-
 res.json({ok:true})
-
 })
-
 })
 
 /* ================= RESTOCK ================= */
@@ -434,18 +385,14 @@ db.query(
 "UPDATE products SET stock = stock + ? WHERE id=?",
 [qty,id],
 (err,result)=>{
-
 if(err){
 logError("RESTOCK", err)
 return res.status(500).json(err)
 }
-
 if(result.affectedRows === 0){
 return res.status(404).json({error:"Producto no existe"})
 }
-
 res.json({ok:true})
-
 })
 
 })
@@ -455,7 +402,7 @@ res.json({ok:true})
 app.get("/api/sales", auth, (req,res)=>{
 
 db.query(
-"SELECT * FROM sales ORDER BY date DESC",
+"SELECT * FROM sales ORDER BY num DESC",
 (err,sales)=>{
 
 if(err){
@@ -482,19 +429,15 @@ const result = sales.map(s=>{
 const saleItems = items
 .filter(i=>i.sale_id === s.id)
 .map(i=>({
-
 id:Number(i.product_id),
 name:i.name,
 price:Number(i.price),
 cost:Number(i.cost),
 qty:Number(i.qty)
-
 }))
 
 return{
-
 id:s.id,
-// FIX #2: s.num es el número correlativo real, no el UUID
 num:Number(s.num),
 date:s.date,
 dateKey:s.date,
@@ -502,7 +445,6 @@ items:saleItems,
 total:Number(s.total),
 paid:Number(s.paid),
 change:Number(s.change_amount)
-
 }
 
 })
@@ -516,43 +458,27 @@ res.json(result)
 })
 
 app.delete("/api/sales", auth, async (req,res)=>{
-
 try{
-
 await db.promise().query("DELETE FROM sale_items")
 await db.promise().query("DELETE FROM sales")
-
 res.json({ok:true})
-
 }catch(err){
-
 logError("DELETE_SALES", err)
 res.status(500).json(err)
-
 }
-
 })
 
-
 app.post("/api/reset-stats", auth, async (req,res)=>{
-
 try{
-
 await db.promise().query("UPDATE products SET sold = 0")
 await db.promise().query("DELETE FROM sale_items")
 await db.promise().query("DELETE FROM sales")
-
 res.json({ok:true})
-
 }catch(err){
-
 logError("RESET_STATS", err)
 res.status(500).json(err)
-
 }
-
 })
-
 
 /* ================= CREAR VENTA ================= */
 
@@ -580,11 +506,8 @@ try{
   }
 
   const saleId = uuidv4()
-
   const saleDate = new Date().toLocaleString("sv-SE").replace("T"," ")
-
   const itemsValidados = []
-
   let totalReal = 0
 
   for(const item of sale.items){
@@ -633,9 +556,17 @@ try{
 
   const changeReal = Math.round((paid - totalReal) * 100) / 100
 
+  // FIX: número correlativo via tabla de secuencia.
+  // INSERT en sequence_sales es atómico a nivel motor — InnoDB garantiza
+  // que LAST_INSERT_ID() es exclusivo por conexión, sin bloquear sales.
+  // Dos ventas simultáneas obtienen IDs distintos sin esperar una a la otra.
+  await conn.query("INSERT INTO sequence_sales(dummy) VALUES (1)")
+  const [[seqRow]] = await conn.query("SELECT LAST_INSERT_ID() AS num")
+  const nextNum = seqRow.num
+
   await conn.query(
-    "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-    [saleId, saleDate, totalReal, paid, changeReal]
+    "INSERT INTO sales(id,num,date,total,paid,change_amount) VALUES(?,?,?,?,?,?)",
+    [saleId, nextNum, saleDate, totalReal, paid, changeReal]
   )
 
   for(const item of itemsValidados){
@@ -652,22 +583,14 @@ try{
 
   }
 
-  // FIX #3: leer el num autogenerado y devolverlo al frontend
-  const [[numRow]] = await conn.query(
-    "SELECT num FROM sales WHERE id=?",
-    [saleId]
-  )
-
   await conn.commit()
 
-  res.json({ok:true, id:saleId, num:numRow.num})
+  res.json({ok:true, id:saleId, num:nextNum})
 
 }catch(err){
 
   await conn.rollback()
-
   logError("CREATE_SALE", err)
-
   res.status(400).json({error:err.message})
 
 }finally{
@@ -677,7 +600,6 @@ try{
 }
 
 })
-
 
 /* ================= BACKUP INTERNO ================= */
 
@@ -690,15 +612,11 @@ return res.status(403).json({error:"forbidden"})
 }
 
 try{
-
 const data = await snapshotQuery()
 res.json(data)
-
 }catch(err){
-
 logError("INTERNAL_BACKUP", err)
 res.status(500).json({error:"backup failed"})
-
 }
 
 })
@@ -706,19 +624,13 @@ res.status(500).json({error:"backup failed"})
 /* ================= BACKUP PÚBLICO ================= */
 
 app.get("/api/backup", auth, async (req,res)=>{
-
 try{
-
 const data = await snapshotQuery()
 res.json(data)
-
 }catch(err){
-
 logError("BACKUP", err)
 res.status(500).json(err)
-
 }
-
 })
 
 /* ================= RESTORE ================= */
@@ -747,8 +659,8 @@ await conn.query(
 
 for(const s of data.sales){
 await conn.query(
-"INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-[s.id,s.date,s.total,s.paid,s.change_amount]
+"INSERT INTO sales(id,num,date,total,paid,change_amount) VALUES(?,?,?,?,?,?)",
+[s.id,s.num,s.date,s.total,s.paid,s.change_amount]
 )
 }
 
@@ -770,8 +682,8 @@ await conn.query(
 
 for(const s of data.sales){
 await conn.query(
-"INSERT IGNORE INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
-[s.id,s.date,s.total,s.paid,s.change_amount]
+"INSERT IGNORE INTO sales(id,num,date,total,paid,change_amount) VALUES(?,?,?,?,?,?)",
+[s.id,s.num,s.date,s.total,s.paid,s.change_amount]
 )
 }
 
@@ -802,7 +714,6 @@ conn.release()
 
 })
 
-
 /* ================= START ================= */
 
 const PORT = __PORT_PLACEHOLDER__
@@ -812,15 +723,9 @@ console.log("POS PRO corriendo en puerto",PORT)
 })
 SERVEREOF
 
-# Inyectar el puerto real ahora que el archivo ya está escrito
-# (evita mezclar variables bash dentro del heredoc de JS)
-sed -i "s/__PORT_PLACEHOLDER__/$PORT/" server.js
+sed -i "s/__PORT_PLACEHOLDER__/$PORT/" "$APP_DIR/server.js"
 
-echo "server.js creado"
-
-else
-  echo "server.js ya existe — no se sobreescribe"
-fi
+echo "server.js escrito"
 
 echo "===== CREANDO LOGIN (solo si no existe) ====="
 
@@ -935,7 +840,7 @@ EOF
 echo "login.html creado"
 
 else
-  echo "login.html ya existe — no se sobreescribe"
+  echo "login.html ya existe — conservado"
 fi
 
 echo "===== CREANDO BASE DE DATOS ====="
@@ -976,11 +881,10 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- FIX #1: columna num AUTO_INCREMENT para número correlativo de venta
--- MySQL requiere un KEY sobre la columna AUTO_INCREMENT secundaria
+-- sales.num es INT simple — la secuencia la maneja sequence_sales
 CREATE TABLE IF NOT EXISTS sales(
 id VARCHAR(36) PRIMARY KEY,
-num INT NOT NULL AUTO_INCREMENT,
+num INT NOT NULL DEFAULT 0,
 date DATETIME NOT NULL,
 total DECIMAL(10,2),
 paid DECIMAL(10,2),
@@ -999,15 +903,21 @@ qty INT,
 CONSTRAINT fk_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
 );
 
+-- Tabla de secuencia: INSERT atómico + LAST_INSERT_ID() sin bloquear sales.
+-- AUTO_INCREMENT aquí es la PK real, así que InnoDB lo maneja correctamente.
+-- Dos conexiones simultáneas nunca obtienen el mismo ID.
+CREATE TABLE IF NOT EXISTS sequence_sales(
+id INT AUTO_INCREMENT PRIMARY KEY,
+dummy TINYINT NOT NULL DEFAULT 1
+);
+
 EOF
 
-# FIX #1 (migración): si la tabla sales ya existía sin la columna num,
-# agregarla ahora sin romper datos históricos
-mysql posdb -e "
-  ALTER TABLE sales
-  ADD COLUMN IF NOT EXISTS num INT NOT NULL AUTO_INCREMENT,
-  ADD KEY IF NOT EXISTS idx_num (num);
-" 2>/dev/null || true
+# MIGRACIÓN para servidores con versiones anteriores de la tabla sales
+mysql posdb -e "ALTER TABLE sales DROP INDEX idx_num;" 2>/dev/null || true
+mysql posdb -e "ALTER TABLE sales MODIFY COLUMN num INT NOT NULL DEFAULT 0;" 2>/dev/null || true
+mysql posdb -e "CREATE INDEX idx_num ON sales(num);" 2>/dev/null || true
+mysql posdb -e "ALTER TABLE sales ADD COLUMN IF NOT EXISTS num INT NOT NULL DEFAULT 0;" 2>/dev/null || true
 
 echo "===== CREANDO INDICES (ignora si ya existen) ====="
 
