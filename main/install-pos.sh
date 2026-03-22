@@ -58,6 +58,7 @@ fi
 
 echo "===== INSTALANDO LIBRERIAS ====="
 npm install
+npm install express-rate-limit
 
 echo "===== GENERANDO SECRETO DE BACKUP (solo si no existe) ====="
 if [ ! -f "$ENV_FILE" ]; then
