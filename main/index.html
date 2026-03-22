@@ -8,40 +8,62 @@
 
 <script>
 
-/* ================= PATCH FETCH — solo rutas /api/ ================= */
-
-const originalFetch = window.fetch;
-
-window.fetch = function(url, options = {}){
-
-const isApiCall = typeof url === "string" && url.startsWith("/api/")
-
-if(!isApiCall){
-  return originalFetch(url, options)
+/* ─────────────────────────────────────────────────
+   API — único punto de entrada.
+   El backend guarda el token UUID crudo en DB y lo
+   compara directamente con req.headers.authorization.
+   NO usar Bearer prefix — el server no lo stripea.
+───────────────────────────────────────────────── */
+function api(url, options = {}) {
+  const token = localStorage.getItem("token")
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      "Authorization": token,
+      "Content-Type": "application/json"
+    }
+  }).then(res => {
+    if (res.status === 401) {
+      localStorage.removeItem("token")
+      location.href = "/login.html"
+    }
+    return res
+  })
 }
 
-const token = localStorage.getItem("token")
+/* ─────────────────────────────────────────────────
+   VERIFICAR TOKEN al cargar
+───────────────────────────────────────────────── */
+;(function checkToken(){
+  const token = localStorage.getItem("token")
+  if (!token) { location.href = "/login.html"; return }
+  api("/api/session").then(res => {
+    if (res.status !== 200) {
+      localStorage.removeItem("token")
+      location.href = "/login.html"
+    }
+  })
+})()
 
-options.headers = {
-...(options.headers || {}),
-Authorization: token
-}
+/* ─────────────────────────────────────────────────
+   REVISIÓN DE SESIÓN — cada 3 minutos (no 60s)
+   Sin spam al servidor.
+───────────────────────────────────────────────── */
+setInterval(() => {
+  api("/api/session").then(res => {
+    if (res.status !== 200) {
+      localStorage.removeItem("token")
+      alert("Sesión expirada")
+      location.href = "/login.html"
+    }
+  })
+}, 3 * 60 * 1000)
 
-return originalFetch(url, options).then(res=>{
-
-if(res.status === 401){
-
-localStorage.removeItem("token")
-location.href="/login.html"
-
-}
-
-return res
-
-})
-
-}
-
+/* ─────────────────────────────────────────────────
+   SEARCH SUGGESTIONS (necesita state, se inicializa
+   después de que el body carga)
+───────────────────────────────────────────────── */
 function showSuggestions(){
 
   const input = document.getElementById("searchProduct")
@@ -86,16 +108,11 @@ function showSuggestions(){
 `
 
     row.onclick = () => {
-
       addToCart(p.id,{classList:{add(){},remove(){}}})
-
       input.value=""
-
       box.style.display="none"
       box.innerHTML=""
-
       input.focus()
-
     }
 
     box.appendChild(row)
@@ -105,69 +122,6 @@ function showSuggestions(){
   box.style.display="block"
 
 }
-
-/* ================= API WRAPPER ================= */
-
-function api(url, options = {}){
-
-const token = localStorage.getItem("token")
-
-options.headers = {
-...(options.headers || {}),
-Authorization: token,
-"Content-Type": "application/json"
-}
-
-return fetch(url, options)
-
-}
-
-/* ================= VERIFICAR TOKEN ================= */
-
-const token = localStorage.getItem("token")
-
-if(!token){
-location.href="/login.html"
-}
-
-/* validar sesión contra servidor */
-
-fetch("/api/session",{
-headers:{Authorization:token}
-})
-.then(res=>{
-
-if(res.status!==200){
-localStorage.removeItem("token")
-location.href="/login.html"
-}
-
-})
-
-/* ================= REVISIÓN AUTOMÁTICA ================= */
-
-setInterval(()=>{
-
-fetch("/api/session",{
-headers:{Authorization:localStorage.getItem("token")}
-})
-.then(res=>{
-
-if(res.status!==200){
-
-localStorage.removeItem("token")
-
-alert("Sesión expirada")
-
-location.href="/login.html"
-
-}
-
-})
-
-},60000)
-
-</script>
 
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
@@ -209,6 +163,7 @@ transition: transform .3s cubic-bezier(.4,0,.2,1);
 z-index: 100;
 display: flex;
 flex-direction: column;
+flex-shrink: 0;
 }
 
 .nav-btn{
@@ -311,10 +266,17 @@ opacity:1;
   .product-card {
     border-radius: 12px; padding: 14px;
     border: 2px solid #e2e8f0;
-    transition: border-color .2s, box-shadow .2s;
+    transition: border-color .2s, box-shadow .2s, transform .15s;
     background: #fff;
+    display: flex;
+    flex-direction: column;
+    min-height: 140px;
   }
-  .product-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(34,197,94,.15); }
+  .product-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 6px 20px rgba(34,197,94,.18);
+    transform: translateY(-2px);
+  }
 
   .btn-add {
     background: var(--accent); color: #fff;
@@ -428,6 +390,12 @@ opacity:1;
   .stat-card { border-radius: 12px; padding: 14px; }
   .stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
 
+  #statsPanel {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
   .cat-btn {
     padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
     border: 2px solid #e2e8f0; background: #fff; cursor: pointer; color: #475569;
@@ -438,8 +406,36 @@ opacity:1;
   .cats-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
   .cats-scroll::-webkit-scrollbar { display: none; }
 
-  .sec-title { font-size: 17px; font-weight: 700; color: #0f172a; }
-  .cat-chip { background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .sec-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.4px;
+  }
+  .cat-chip {
+    background: #f1f5f9; color: #475569;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+    opacity: 0.75;
+  }
+
+  /* Jerarquía visual dentro de product-card */
+  .product-card { gap: 6px; }
+
+  .product-card .product-name {
+    font-weight: 700;
+    font-size: 14px;
+    color: #0f172a;
+    line-height: 1.3;
+  }
+
+  .product-card .product-price {
+    font-size: 17px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    color: #0f172a;
+    letter-spacing: -0.5px;
+  }
 
   .inv-card {
     background: #fff; border-radius: 12px; padding: 14px;
@@ -477,12 +473,268 @@ opacity:1;
 
   @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
   .pop { animation: pop .2s; }
+
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE LAYOUT — PC / TABLET / MOBILE
+   Sin !important — la cascada hace el trabajo.
+   Base → 640px → 860px → 1024px → 1280px → 1500px
+═══════════════════════════════════════════════ */
+
+/* ── APP SHELL ── */
+#app-shell {
+  display: flex;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+/* En PC: grid real con columna reservada para sidebar */
+@media (min-width: 1024px) {
+  #app-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+  }
+}
+
+#main-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sections tienen max-width para no estirarse en pantallas XL */
+section {
+  width: 100%;
+  max-width: 1440px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+/* ── GRID DE PRODUCTOS: auto-fit inteligente ── */
+/* 140px por card → más columnas en laptop que con 180px.
+   El navegador calcula: móvil 2 → tablet 3-4 → laptop 5-6 → monitor 7+ */
+#productList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  grid-auto-rows: 1fr;
+}
+
+/* ────────────────────────────────────────
+   580px — tablet pequeña
+──────────────────────────────────────── */
+@media (min-width: 580px) {
+  section { padding: 20px 22px; }
+
+  .card {
+    padding: 20px;
+    border-radius: 18px;
+    margin-bottom: 18px;
+    box-shadow: 0 3px 16px rgba(0,0,0,.07);
+  }
+
+  .product-card { padding: 16px; }
+  #productList { gap: 14px; }
+}
+
+/* ────────────────────────────────────────
+   860px — tablet grande
+──────────────────────────────────────── */
+@media (min-width: 860px) {
+  section { padding: 24px 28px; }
+
+  .card {
+    padding: 24px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+  }
+
+  .product-card { padding: 18px; }
+  #productList { gap: 16px; }
+
+  /* Inventario en 2 cols */
+  #inventoryList {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  #inventoryList .inv-card { margin-bottom: 0; }
+
+  /* Sales en 2 cols */
+  #salesList {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  #salesList .day-section-header { grid-column: 1 / -1; }
+
+  /* Stats 3 cols */
+  #statsPanel { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ────────────────────────────────────────
+   1024px — laptop/desktop
+   Sidebar pasa de overlay a elemento del flujo.
+   Comportamiento cambia, no solo tamaño.
+──────────────────────────────────────── */
+@media (min-width: 1024px) {
+
+  #sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    transform: none;
+    transition: none;
+    flex-shrink: 0;
+    z-index: 10;
+    overflow-y: auto;
+  }
+
+  #overlay { display: none; pointer-events: none; }
+  .hamburger { display: none; }
+
+  header { padding: 14px 36px; }
+
+  section { padding: 36px 56px; }
+
+  .card {
+    padding: 34px;
+    border-radius: 22px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.07);
+  }
+
+  .product-card { padding: 24px; border-radius: 16px; min-height: 190px; gap: 10px; }
+  .product-card .btn-add { padding: 10px; font-size: 14px; margin-top: 14px; }
+  #productList { gap: 20px; }
+
+  /* POS: productos (2fr) | carrito (1fr flexible) */
+  #pos {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 28px;
+    align-items: start;
+  }
+  #pos > .card:last-child {
+    position: sticky;
+    top: 84px;
+  }
+
+  /* Stats 6 cols */
+  #statsPanel {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 16px;
+  }
+  .stat-card { padding: 18px; }
+  .stat-value { font-size: 24px; }
+
+  /* Charts lado a lado */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .charts-row .card { margin-bottom: 0; }
+}
+
+/* ────────────────────────────────────────
+   1280px — pantalla grande
+   Más espacio para productos, carrito proporcional
+──────────────────────────────────────── */
+@media (min-width: 1280px) {
+  section { padding: 40px 56px; }
+
+  #productList { gap: 20px; }
+
+  /* 3fr productos vs 1.2fr carrito */
+  #pos {
+    grid-template-columns: 3fr 1.2fr;
+    gap: 32px;
+  }
+
+  #inventoryList {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  #salesList {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ────────────────────────────────────────
+   1400px — monitor grande
+   Máxima expansión: productos dominan,
+   carrito compacto, grid más agresivo.
+──────────────────────────────────────── */
+@media (min-width: 1400px) {
+  /* minmax más pequeño → más columnas en monitor grande */
+  #productList {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 22px;
+  }
+
+  /* Productos toman casi todo el ancho */
+  #pos {
+    grid-template-columns: 3.5fr 1fr;
+    gap: 36px;
+  }
+
+  section { padding: 44px 64px; }
+}
+
+/* ────────────────────────────────────────
+   DETALLES PRO: hover fino, sombras
+──────────────────────────────────────── */
+
+.btn-add:hover { background: #16a34a; }
+
+.btn-primary:hover { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,.35); }
+
+.btn-ghost:hover { border-color: #64748b; color: #0f172a; background: #f8fafc; }
+
+
+/* Input con glow más elegante */
+.input:focus {
+  border-color: var(--accent2);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+}
+
+/* Stat cards con hover */
+.stat-card {
+  transition: transform .2s, box-shadow .2s;
+  cursor: default;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.1);
+}
+
+/* Inv card con hover */
+.inv-card:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 4px 16px rgba(0,0,0,.08);
+}
+.inv-card.best:hover { border-color: var(--accent); }
+
+/* Nav btn con transición en sidebar */
+.nav-btn { transition: background .15s, color .15s, padding-left .2s; }
+.nav-btn:hover { padding-left: 18px; }
+.nav-btn.active { padding-left: 18px; }
+
 </style>
 </head>
 <body>
 
 <!-- OVERLAY -->
 <div id="overlay" onclick="closeSidebar()"></div>
+
+<!-- APP SHELL -->
+<div id="app-shell">
 
 <!-- SIDEBAR -->
 <aside id="sidebar">
@@ -506,6 +758,9 @@ opacity:1;
   onchange="restorePOS(this.files[0])">
   <div style="padding:16px 20px; color:#475569; font-size:11px; font-weight:600;">POS Mobile Pro v2.1</div>
 </aside>
+
+<!-- MAIN CONTENT -->
+<div id="main-content">
 
 <header>
   <div style="display:flex; gap:12px; align-items:center;">
@@ -646,7 +901,7 @@ Vuelto: <b id="saleSummaryChange"></b>
     </div>
     <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>
     <div id="lowStockAlert"></div>
-    <div id="productList" class="grid grid-cols-2 gap-3"></div>
+    <div id="productList"></div>
   </div>
 
   <div class="card">
@@ -733,60 +988,253 @@ Vuelto: <b id="saleSummaryChange"></b>
       Reiniciar
     </button>
   </div>
-  <div id="statsPanel" class="grid grid-cols-2 gap-3" style="margin-top:16px;"></div>
-  <div class="card" style="margin-top:4px;">
-    <span style="font-weight:700; font-size:14px; color:#0f172a;">📈 Ventas por día</span>
-    <canvas id="salesChart" style="margin-top:12px; width:100%; height:160px;"></canvas>
-  </div>
-  <div class="card" style="margin-top:10px;">
-    <span style="font-weight:700;font-size:14px;color:#0f172a;">💰 Ganancia por día</span>
-    <canvas id="profitChart" style="margin-top:12px;width:100%;height:160px;"></canvas>
+  <div id="statsPanel" style="margin-top:16px;"></div>
+  <div class="charts-row">
+    <div class="card" style="margin-top:4px;">
+      <span style="font-weight:700; font-size:14px; color:#0f172a;">📈 Ventas por día</span>
+      <canvas id="salesChart" style="margin-top:12px; width:100%; height:160px;"></canvas>
+    </div>
+    <div class="card" style="margin-top:4px;">
+      <span style="font-weight:700;font-size:14px;color:#0f172a;">💰 Ganancia por día</span>
+      <canvas id="profitChart" style="margin-top:12px;width:100%;height:160px;"></canvas>
+    </div>
   </div>
   <div id="rankingList" class="card" style="margin-top:4px;"></div>
 </section>
 
+</div><!-- /main-content -->
+</div><!-- /app-shell -->
+
 <script>
 
-// =========== STATE ===========
+
+// ═══════════════════════════════════════════════════════════
+//  STORE — único punto de mutación del estado
+//
+//  Reglas:
+//   1. Nadie toca state directamente — solo store.commit()
+//   2. Cada mutación queda en store.history (últimas 50)
+//   3. store.rollback() revierte la última mutación
+//   4. En dev (localhost) el state expuesto es un Proxy
+//      que grita en consola si alguien intenta escribir directo
+// ═══════════════════════════════════════════════════════════
+
+const store = (() => {
+
+  const _state = {
+    products: [],
+    cart:     [],
+    sales:    []
+  }
+
+  // Historial de mutaciones — deep clone real con structuredClone
+  const _history = []
+  const MAX_HISTORY = 50
+
+  // Suscriptores — se notifican automáticamente después de cada commit
+  const _listeners = []
+
+  function subscribe(fn) {
+    _listeners.push(fn)
+    // Devuelve unsubscribe
+    return () => {
+      const i = _listeners.indexOf(fn)
+      if (i > -1) _listeners.splice(i, 1)
+    }
+  }
+
+  function _notify() {
+    const snapshot = {
+      products: _state.products.slice(),
+      cart:     _state.cart.slice(),
+      sales:    _state.sales.slice()
+    }
+    _listeners.forEach(fn => {
+      try { fn(snapshot) } catch(e) { console.error("[Store] Error en suscriptor:", e) }
+    })
+  }
+
+  const _mutations = {
+
+    SET_PRODUCTS(state, products) {
+      return { products: products.map(p => Object.freeze({ ...p })) }
+    },
+
+    SET_SALES(state, sales) {
+      return { sales: [...sales] }
+    },
+
+    PREPEND_SALE(state, sale) {
+      return { sales: [sale, ...state.sales] }
+    },
+
+    CLEAR_SALES(state) {
+      return { sales: [] }
+    },
+
+    SET_CART(state, cart) {
+      return { cart: [...cart] }
+    },
+
+    CLEAR_CART(state) {
+      return { cart: [] }
+    },
+
+    CART_ADD(state, product) {
+      const existing = state.cart.find(x => x.id === product.id)
+      if (existing) {
+        return {
+          cart: state.cart.map(x =>
+            x.id === product.id ? { ...x, qty: x.qty + 1 } : x
+          )
+        }
+      }
+      return {
+        cart: [...state.cart, { ...product, qty: 1 }]
+      }
+    },
+
+    CART_CHANGE_QTY(state, { id, delta }) {
+      const item = state.cart.find(x => x.id === id)
+      if (!item) return {}
+      const newQty = item.qty + delta
+      if (newQty <= 0) {
+        return { cart: state.cart.filter(x => x.id !== id) }
+      }
+      return {
+        cart: state.cart.map(x =>
+          x.id === id ? { ...x, qty: newQty } : x
+        )
+      }
+    },
+
+    CART_CLAMP(state, { id, max }) {
+      return {
+        cart: state.cart.map(x =>
+          x.id === id ? { ...x, qty: Math.min(x.qty, max) } : x
+        ).filter(x => x.qty > 0)
+      }
+    },
+
+    CART_REMOVE(state, id) {
+      return { cart: state.cart.filter(x => x.id !== id) }
+    }
+
+  }
+
+  function commit(type, payload) {
+    if (!_mutations[type]) {
+      console.error(`[Store] Mutación desconocida: "${type}"`)
+      return
+    }
+
+    // Deep clone real antes de mutar — historial confiable
+    const snapshot = structuredClone(_state)
+
+    const patch = _mutations[type](_state, payload)
+    Object.assign(_state, patch)
+
+    _history.push({ type, payload, snapshot, ts: Date.now() })
+    if (_history.length > MAX_HISTORY) _history.shift()
+
+    if (window.__POS_DEV__) {
+      console.log(`[Store ✔] ${type}`, payload ?? "", "→", { ..._state })
+    }
+
+    // Notificar suscriptores automáticamente — sin markDirty manual
+    _notify()
+  }
+
+  function rollback() {
+    const last = _history.pop()
+    if (!last) { console.warn("[Store] Nada que revertir"); return }
+    Object.assign(_state, last.snapshot)
+    console.warn(`[Store ↩] Rollback de ${last.type}`)
+    _notify()
+  }
+
+  function get() {
+    return {
+      products: _state.products.slice(),
+      cart:     _state.cart.slice(),
+      sales:    _state.sales.slice()
+    }
+  }
+
+  function getProducts() { return _state.products.slice() }
+  function getCart()     { return _state.cart.slice() }
+  function getSales()    { return _state.sales.slice() }
+  function getHistory()  { return _history.slice() }
+
+  const _devProxy = typeof Proxy !== "undefined"
+    ? new Proxy(_state, {
+        set(target, key, value) {
+          console.error(
+            `[Store] ⚠ Mutación directa bloqueada: state.${String(key)} = ...`,
+            "\nUsá store.commit() en su lugar."
+          )
+          return false
+        }
+      })
+    : _state
+
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    window.__POS_DEV__ = true
+    window.state = _devProxy
+    window.store = { commit, rollback, get, getHistory, subscribe }
+    console.info("[Store] 🛡 Modo dev activo — mutaciones directas bloqueadas.")
+  }
+
+  return { commit, rollback, get, getProducts, getCart, getSales, getHistory, subscribe }
+
+})()
+
+// Alias de lectura — el resto del código lee de acá sin cambios
+// IMPORTANTE: solo lectura. Mutaciones → store.commit()
 const state = {
-  products: [],
-  cart: [],
-  sales: []
+  get products() { return store.getProducts() },
+  get cart()     { return store.getCart() },
+  get sales()    { return store.getSales() }
 }
+
+
+// =========== RENDER REACTIVO ===========
+// El store avisa solo. No más markDirty/flushRender manual.
+// Cada commit → _notify() → este suscriptor decide qué renderizar.
+
+let _prevState = { products: [], cart: [], sales: [] }
+
+store.subscribe(function(next) {
+  const productsChanged = next.products !== _prevState.products
+  const cartChanged     = next.cart     !== _prevState.cart
+  const salesChanged    = next.sales    !== _prevState.sales
+
+  if (productsChanged || cartChanged) {
+    renderCategoryFilter()
+    renderProducts()
+  }
+  if (cartChanged) {
+    renderCart()
+  }
+  if (productsChanged || salesChanged) {
+    renderInventory()
+    renderStats()
+    renderSales()
+  }
+
+  _prevState = next
+})
+
+// Compat: flushRender y markDirty ya no hacen nada — el store notifica solo.
+// Se mantienen como no-ops para no romper llamadas existentes durante la transición.
+function markDirty() {}
+function flushRender() {}
 
 // =========== LOCKS ===========
 let lock = false
 let syncing = false
 let loadingProducts = false
 let lastSyncTime = null
-
-const dirty = {
-  products: false,
-  sales: false,
-  cart: false
-}
-
-function markDirty(...sections) {
-  sections.forEach(s => { dirty[s] = true })
-}
-
-function flushRender() {
-  if(dirty.products || dirty.cart) {
-    renderCategoryFilter()
-    renderProducts()
-  }
-  if(dirty.cart) {
-    renderCart()
-  }
-  if(dirty.products || dirty.sales) {
-    renderInventory()
-    renderStats()
-    renderSales()
-  }
-  dirty.products = false
-  dirty.sales = false
-  dirty.cart = false
-}
 
 // ── ACTIVITY TRACKER ──
 let lastUserActivity = Date.now()
@@ -828,9 +1276,9 @@ function loadCart(){
   const saved = localStorage.getItem("cart")
   if(saved){
     try {
-      state.cart = JSON.parse(saved)
+      store.commit("SET_CART", JSON.parse(saved))
     } catch {
-      state.cart = []
+      store.commit("CLEAR_CART")
     }
   }
 }
@@ -880,7 +1328,6 @@ function getDayLabel(dateStr){
 }
 
 // =========== HELPER: label seguro para num ===========
-// Nunca muestra "null" ni "undefined" en la UI
 function saleNumLabel(num){
   return (num != null && num !== "" && !isNaN(Number(num)))
     ? "#" + Number(num)
@@ -900,13 +1347,23 @@ async function loadProducts(force = false){
 
   try {
 
-    const res = await fetch("/api/products")
+    const res = await api("/api/products")
     if(!res.ok) throw new Error("HTTP " + res.status)
     const data = await res.json()
 
     if(lock) return
 
-    const prodChanged = force || data.length !== state.products.length || data.some(p => {
+    // Validación básica — datos corruptos del backend no pasan
+    if (!Array.isArray(data)) throw new Error("Respuesta inesperada del servidor")
+    const validData = data.filter(p => {
+      if (!p.id || !p.name) {
+        console.warn("[loadProducts] Producto inválido ignorado:", p)
+        return false
+      }
+      return true
+    })
+
+    const prodChanged = force || validData.length !== state.products.length || validData.some(p => {
       const old = state.products.find(x => x.id === p.id)
       return !old
         || Number(p.stock) !== old.stock
@@ -914,7 +1371,7 @@ async function loadProducts(force = false){
         || Number(p.price) !== old.price
     })
 
-    state.products = data.map(p => ({
+    store.commit("SET_PRODUCTS", validData.map(p => ({
       id: p.id,
       name: p.name,
       price: Number(p.price),
@@ -922,24 +1379,31 @@ async function loadProducts(force = false){
       stock: Number(p.stock),
       sold: Number(p.sold || 0),
       cat: p.cat || "General"
-    }))
+    })))
 
+    // Ajustar carrito según stock actualizado
     const cartBefore = state.cart.length
     const itemsDropped = []
+    const cartActual = state.cart
 
-    state.cart = state.cart.filter(item => {
+    const cartFiltrado = cartActual.filter(item => {
       const p = state.products.find(x => x.id === item.id)
       if(!p || p.stock <= 0){
         itemsDropped.push(`${item.name} (sin stock)`)
         return false
       }
+      return true
+    }).map(item => {
+      const p = state.products.find(x => x.id === item.id)
       if(p.stock < item.qty){
         itemsDropped.push(`${item.name} (ajustado a ${p.stock})`)
-        item.qty = p.stock
+        return { ...item, qty: p.stock }
       }
-      return true
+      return item
     })
-    const cartChanged = state.cart.length !== cartBefore
+
+    store.commit("SET_CART", cartFiltrado)
+    const cartChanged = cartFiltrado.length !== cartBefore
 
     if(itemsDropped.length > 0){
       setTimeout(()=>{
@@ -973,7 +1437,7 @@ async function loadProducts(force = false){
 
 async function backupPOS(){
 
-  const res = await fetch("/api/backup")
+  const res = await api("/api/backup")
   const data = await res.json()
 
   const blob = new Blob(
@@ -1007,7 +1471,7 @@ async function restorePOS(file){
   const text = await file.text()
   const data = JSON.parse(text)
 
-  await fetch("/api/restore",{
+  await api("/api/restore",{
     method:"POST",
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify(data)
@@ -1023,10 +1487,10 @@ async function loadSales(){
 
   try{
 
-    const res = await fetch("/api/sales")
+    const res = await api("/api/sales")
     const data = await res.json()
 
-    state.sales = (data || []).map(s => {
+    store.commit("SET_SALES", (data || []).map(s => {
       let d = new Date(s.date)
       if(isNaN(d.getTime()) && typeof s.date === "string"){
         const parts = s.date.split(",")
@@ -1038,11 +1502,11 @@ async function loadSales(){
         }
       }
       return { ...s, date: d.toISOString() }
-    })
+    }))
 
   }catch{
 
-    state.sales = []
+    store.commit("CLEAR_SALES")
 
   }
 
@@ -1129,7 +1593,7 @@ function renderProducts() {
   })
 
   if (filtered.length === 0) {
-    container.innerHTML = `<div style="grid-column:span 2; text-align:center; color:#94a3b8; padding:24px; font-size:13px;">Sin productos</div>`
+    container.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:#94a3b8; padding:24px; font-size:13px;">Sin productos</div>`
   }
 
   filtered.forEach(p => {
@@ -1143,10 +1607,10 @@ function renderProducts() {
     const card = document.createElement("div")
     card.className = "product-card"
     card.innerHTML = `
-      <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:#0f172a;">${p.name}</div>
+      <div class="product-name">${p.name}</div>
       <span class="cat-chip">${p.cat || "General"}</span>
-      <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-        <b style="font-size:15px; font-family:'JetBrains Mono',monospace; color:#0f172a;">$${p.price.toFixed(2)}</b>
+      <div style="margin-top:auto; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
+        <span class="product-price">$${p.price.toFixed(2)}</span>
         <span class="${p.stock <= 5 && p.stock > 0 ? 'badge badge-red' : p.stock <= 0 ? 'badge badge-red' : 'badge badge-green'}">${p.stock}</span>
       </div>
       <button onclick="addToCart(${p.id},this)" class="btn-add" ${oos ? 'disabled' : ''}>
@@ -1178,17 +1642,9 @@ function addToCart(id, btn) {
     return
   }
 
-  if (item) {
-    item.qty++
-  } else {
-    state.cart.push({
-      id: p.id,
-      name: p.name,
-      price: p.price,
-      cost: p.cost,
-      qty: 1
-    })
-  }
+  store.commit("CART_ADD", {
+    id: p.id, name: p.name, price: p.price, cost: p.cost
+  })
 
   markDirty("cart", "products")
   flushRender()
@@ -1196,20 +1652,16 @@ function addToCart(id, btn) {
 }
 
 function changeQty(id, delta) {
-  let item = state.cart.find(x => x.id === id)
+  const item = state.cart.find(x => x.id === id)
   if (!item) return
-  let p = state.products.find(x => x.id === id)
+  const p = state.products.find(x => x.id === id)
 
-  if (delta > 0) {
-    if (item.qty >= p.stock) {
-      showToast("⚠ Sin más stock")
-      return
-    }
-    item.qty++
-  } else {
-    item.qty--
-    if (item.qty <= 0) state.cart = state.cart.filter(x => x.id !== id)
+  if (delta > 0 && item.qty >= p.stock) {
+    showToast("⚠ Sin más stock")
+    return
   }
+
+  store.commit("CART_CHANGE_QTY", { id, delta })
 
   markDirty("cart", "products")
   flushRender()
@@ -1272,7 +1724,7 @@ function renderCart() {
   calculateChange()
 }
 
-// =========== CONFIRMAR VENTA — FLUJO BLINDADO ===========
+// =========== CONFIRMAR VENTA ===========
 async function confirmSale() {
 
   if(lock) {
@@ -1304,10 +1756,10 @@ async function confirmSale() {
 
     setSyncStatus("syncing", "Verificando stock...")
     try {
-      const res = await fetch("/api/products")
+      const res = await api("/api/products")
       if(res.ok){
         const data = await res.json()
-        state.products = data.map(p => ({
+        store.commit("SET_PRODUCTS", data.map(p => ({
           id: p.id,
           name: p.name,
           price: Number(p.price),
@@ -1315,7 +1767,7 @@ async function confirmSale() {
           stock: Number(p.stock),
           sold: Number(p.sold || 0),
           cat: p.cat || "General"
-        }))
+        })))
         lastSyncTime = new Date()
         setSyncStatus("ok", "Stock verificado")
       }
@@ -1332,7 +1784,7 @@ async function confirmSale() {
       }
       if(p.stock < item.qty){
         showToast(`❌ Sin stock: ${item.name} (disponible: ${p.stock})`)
-        item.qty = p.stock
+        store.commit("CART_CLAMP", { id: item.id, max: p.stock })
         markDirty("cart", "products")
         flushRender()
         return
@@ -1343,7 +1795,6 @@ async function confirmSale() {
 
     const now = new Date()
 
-    // num empieza en null — el backend es el único que lo asigna
     const sale = {
       id: null,
       num: null,
@@ -1355,7 +1806,7 @@ async function confirmSale() {
       change: paid - finalTotal
     }
 
-    const res = await fetch("/api/sales",{
+    const res = await api("/api/sales",{
       method:"POST",
       headers:{ "Content-Type":"application/json" },
       body:JSON.stringify(sale)
@@ -1368,30 +1819,22 @@ async function confirmSale() {
       return
     }
 
-    // FIX: asignar id y num desde la respuesta del backend SIN fallback silencioso
-    // Si el backend no manda num, data.num es undefined → sale.num queda null
-    // y saleNumLabel() lo muestra como "(sin número)" en lugar de "null"
     sale.id  = data.id
     sale.num = data.num != null ? Number(data.num) : null
 
-    // Si num sigue null acá, el servidor viejo está corriendo → avisar en consola
     if(sale.num == null){
-      console.warn("⚠ El backend no devolvió num. Verificá que server.js esté actualizado y reiniciá pm2.")
+      console.warn("⚠ El backend no devolvió num.")
     }
 
-    state.sales.unshift(sale)
-
-    // 1. Limpiar estado
-    state.cart = []
+    store.commit("PREPEND_SALE", sale)
+    store.commit("CLEAR_CART")
     localStorage.removeItem("cart")
     document.getElementById("paid").value = ""
     if (document.activeElement) document.activeElement.blur()
 
-    // 2. Render con estado limpio ANTES del modal
     markDirty("cart", "products")
     flushRender()
 
-    // 3. Modal y toast DESPUÉS — con datos reales del backend ya asignados
     showSaleSummary(sale)
     showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`)
 
@@ -1529,14 +1972,14 @@ async function saveProduct(){
   const product = { name, price, cost, stock, cat }
 
   if(editingId){
-    await fetch("/api/products/"+editingId,{
+    await api("/api/products/"+editingId,{
       method:"PUT",
       headers:{ "Content-Type":"application/json" },
       body:JSON.stringify(product)
     })
     showToast("✏️ Producto actualizado")
   }else{
-    await fetch("/api/products",{
+    await api("/api/products",{
       method:"POST",
       headers:{ "Content-Type":"application/json" },
       body:JSON.stringify(product)
@@ -1571,7 +2014,7 @@ async function confirmRestock(){
     return
   }
 
-  await fetch("/api/restock",{
+  await api("/api/restock",{
     method:"POST",
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify({ id:restockId, qty })
@@ -1590,7 +2033,7 @@ async function deleteProduct(id){
 
   if(!confirm(`¿Eliminar "${p.name}"?`)) return
 
-  await fetch("/api/products/"+id,{ method:"DELETE" })
+  await api("/api/products/"+id,{ method:"DELETE" })
 
   await loadProducts()
 
@@ -1622,7 +2065,6 @@ ${line}
     return `${name}${unit}${total}`
   }).join("\n")
 
-  // FIX: saleNumLabel() garantiza que nunca se muestre "null" ni "undefined"
   document.getElementById("saleSummaryInfo").innerHTML =
     `Venta ${saleNumLabel(sale.num)}<br>ID: ${sale.id}<br>${formatDate(sale.date)}`
 
@@ -1768,7 +2210,6 @@ function renderSales(){
       div.style.marginBottom = "14px"
       div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
 
-      // FIX: saleNumLabel() en el historial también
       div.innerHTML = `
         <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Venta ${saleNumLabel(s.num)}</div>
         <div style="font-size:11px;color:#64748b;margin-bottom:6px;">ID: ${s.id}</div>
@@ -1858,7 +2299,7 @@ function renderStats() {
 
 async function resetStats(){
   if(!confirm("¿Reiniciar estadísticas? Las ventas se eliminarán pero el inventario seguirá igual.")) return
-  await fetch("/api/reset-stats",{method:"POST"})
+  await api("/api/reset-stats",{method:"POST"})
   await loadProducts()
   showToast("📊 Estadísticas reiniciadas")
 }
@@ -2023,7 +2464,6 @@ function exportCSV(){
   let acumulado = ventas.reduce((a,b)=> a + b.total, 0)
 
   ventas.forEach(s => {
-    // FIX: saleNumLabel() en el CSV también
     text += `Venta ${saleNumLabel(s.num)}\n`
     text += `ID: ${s.id}\n`
     text += `${formatDate(s.date)}\n\n`
@@ -2067,8 +2507,8 @@ function exportCSV(){
 // =========== CLEAR HISTORY ===========
 async function clearHistory(){
   if(!confirm("¿Eliminar todo el historial de ventas? Esta acción no se puede deshacer.")) return
-  await fetch("/api/sales",{ method:"DELETE" })
-  state.sales = []
+  await api("/api/sales",{ method:"DELETE" })
+  store.commit("CLEAR_SALES")
   renderAll()
   showToast("🗑 Historial eliminado")
 }
@@ -2129,19 +2569,24 @@ async function init(){
   loadCart()
 
   const itemsAjustados = []
+  const cartActual = store.getCart()
 
-  state.cart = state.cart.filter(item=>{
-    const p = state.products.find(x=>x.id === item.id)
+  const cartFiltrado = cartActual.filter(item => {
+    const p = store.getProducts().find(x => x.id === item.id)
     if(!p || p.stock <= 0){
       itemsAjustados.push(`${item.name} (sin stock)`)
       return false
     }
     if(p.stock < item.qty){
       itemsAjustados.push(`${item.name} (ajustado a ${p.stock})`)
-      item.qty = p.stock
+      item = { ...item, qty: p.stock }
     }
     return true
   })
+
+  if(cartFiltrado.length !== cartActual.length) {
+    store.commit("SET_CART", cartFiltrado)
+  }
 
   if(itemsAjustados.length > 0){
     setTimeout(()=>{
@@ -2158,16 +2603,27 @@ async function init(){
 
 init()
 
+/* Polling de productos — 15s, no 5s.
+   Solo refresca si no hay venta en proceso y el ticket está cerrado. */
 setInterval(()=>{
   const ticketAbierto = document.getElementById("saleSummary")?.style.display === "flex"
   if(!lock && !syncing && !userIsActive() && !ticketAbierto){
     loadProducts()
   }
-}, 5000)
+}, 15000)
 
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible" && !lock){
     loadProducts(true)
+  }
+})
+
+/* En PC el sidebar vive ahí — si el usuario redimensiona desde móvil
+   (donde quedó abierto), se limpia automáticamente. */
+window.addEventListener("resize", () => {
+  if (window.innerWidth >= 1024) {
+    document.getElementById("sidebar").classList.remove("open")
+    document.getElementById("overlay").classList.remove("show")
   }
 })
 
