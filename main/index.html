@@ -10,9 +10,8 @@
 
 /* ─────────────────────────────────────────────────
    API — único punto de entrada.
-   El backend guarda el token UUID crudo en DB y lo
-   compara directamente con req.headers.authorization.
-   NO usar Bearer prefix — el server no lo stripea.
+   Rutas relativas → Nginx las proxea a :9092.
+   Sin CORS, sin puerto expuesto al navegador.
 ───────────────────────────────────────────────── */
 function api(url, options = {}) {
   const token = localStorage.getItem("token")
@@ -20,7 +19,7 @@ function api(url, options = {}) {
     ...options,
     headers: {
       ...(options.headers || {}),
-      "Authorization": token,
+      "Authorization": token || "",
       "Content-Type": "application/json"
     }
   }).then(res => {
