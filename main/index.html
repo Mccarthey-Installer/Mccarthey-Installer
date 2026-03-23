@@ -1,2688 +1,3198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
 
-<!DOCTYPE html>  
-<html lang="es">  
-<head>  
-  
-<meta charset="UTF-8">  
-<meta name="viewport" content="width=device-width, initial-scale=1.0">  
-<title>POS Mobile Pro</title>  
-  
-<script>  
-  
-/* ================= PATCH FETCH — solo rutas /api/ ================= */  
-  
-const originalFetch = window.fetch;  
-  
-window.fetch = function(url, options = {}){  
-  
-const isApiCall = typeof url === "string" && url.startsWith("/api/")  
-  
-if(!isApiCall){  
-  return originalFetch(url, options)  
-}  
-  
-const token = localStorage.getItem("token")  
-  
-options.headers = {  
-...(options.headers || {}),  
-Authorization: token  
-}  
-  
-return originalFetch(url, options).then(res=>{  
-  
-if(res.status === 401){  
-  
-localStorage.removeItem("token")  
-location.href="/login.html"  
-  
-}  
-  
-return res  
-  
-})  
-  
-}  
-  
-function showSuggestions(){  
-  
-  const input = document.getElementById("searchProduct")  
-  if(!input) return  
-  
-  const search = input.value.toLowerCase().trim()  
-  
-  const box = document.getElementById("searchSuggestions")  
-  
-  if(!search){  
-    box.style.display="none"  
-    box.innerHTML=""  
-    return  
-  }  
-  
-  const results = state.products  
-  .filter(p => p.name.toLowerCase().includes(search))  
-  .slice(0,5)  
-  
-  if(results.length === 0){  
-    box.style.display="none"  
-    box.innerHTML=""  
-    return  
-  }  
-  
-  box.innerHTML=""  
-  
-  results.forEach(p=>{  
-  
-    const row = document.createElement("div")  
-  
-    row.style.padding="8px 10px"  
-    row.style.cursor="pointer"  
-    row.style.display="flex"  
-    row.style.justifyContent="space-between"  
-    row.style.fontSize="13px"  
-    row.style.borderBottom="1px solid #f1f5f9"  
-  
-    row.innerHTML = `  
-<span>${p.name}</span>  
-<b>$${p.price.toFixed(2)}</b>  
-`  
-  
-    row.onclick = () => {  
-  
-      addToCart(p.id,{classList:{add(){},remove(){}}})  
-  
-      input.value=""  
-  
-      box.style.display="none"  
-      box.innerHTML=""  
-  
-      input.focus()  
-  
-    }  
-  
-    box.appendChild(row)  
-  
-  })  
-  
-  box.style.display="block"  
-  
-}  
-  
-/* ================= API WRAPPER ================= */  
-  
-async function api(url, options = {}){  
-  
-  const token = localStorage.getItem("token")  
-  
-  options.headers = {  
-    ...(options.headers || {}),  
-    Authorization: token,  
-    "Content-Type": "application/json"  
-  }  
-  
-  const res = await fetch(url, options)  
-  
-  let data = {}  
-  try {  
-    data = await res.json()  
-  } catch(_) {}  
-  
-  if(!res.ok){  
-    const msg = data?.details  
-      ? data.details.join(" · ")  
-      : (data?.error || "Error del servidor")  
-    throw new Error(msg)  
-  }  
-  
-  return data  
-}  
-  
-/* ================= VERIFICAR TOKEN ================= */  
-  
-const token = localStorage.getItem("token")  
-  
-if(!token){  
-location.href="/login.html"  
-}  
-  
-fetch("/api/session",{  
-headers:{Authorization:token}  
-})  
-.then(res=>{  
-  
-if(res.status!==200){  
-localStorage.removeItem("token")  
-location.href="/login.html"  
-}  
-  
-})  
-  
-/* ================= REVISIÓN AUTOMÁTICA ================= */  
-  
-setInterval(()=>{  
-  
-fetch("/api/session",{  
-headers:{Authorization:localStorage.getItem("token")}  
-})  
-.then(res=>{  
-  
-if(res.status!==200){  
-  
-localStorage.removeItem("token")  
-  
-alert("Sesión expirada")  
-  
-location.href="/login.html"  
-  
-}  
-  
-})  
-  
-},60000)  
-  
-</script>  
-  
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">  
-  
-<script src="https://cdn.tailwindcss.com"></script>  
-  
-<style>  
-  
-:root{  
---accent:#22c55e;  
---accent2:#3b82f6;  
---dark:#0f172a;  
---sidebar-w:260px;  
-}  
-  
-* { box-sizing: border-box; }  
-  
-body {  
-font-family: 'Sora', sans-serif;  
-background: #f1f5f9;  
-margin: 0;  
-}  
-  
-#sidebar {  
-  position: fixed;  
-  top: 0;  
-  left: 0;  
-  width: var(--sidebar-w);  
-  height: 100%;  
-  background: var(--dark);  
-  transform: translateX(calc(-1 * var(--sidebar-w)));  
-  transition: transform .3s cubic-bezier(.4,0,.2,1);  
-  z-index: 100;  
-  display: flex;  
-  flex-direction: column;  
-}  
-  
-@media (min-width: 1024px) {  
-  #sidebar {  
-    transform: translateX(0) !important;  
-    box-shadow: 4px 0 24px rgba(0,0,0,.18);  
-  }  
-  
-  .hamburger {  
-    display: none !important;  
-  }  
-  
-  #overlay {  
-    display: none !important;  
-  }  
-  
-  header {  
-    margin-left: var(--sidebar-w);  
-  }  
-  
-  section {  
-    margin-left: var(--sidebar-w);  
-  }  
-}  
-  
-.nav-btn{  
-display:flex;  
-align-items:center;  
-gap:10px;  
-width:100%;  
-padding:10px 14px;  
-background:none;  
-border:none;  
-color:#94a3b8;  
-font-weight:600;  
-cursor:pointer;  
-border-radius:8px;  
-transition:background .2s,color .2s;  
-}  
-  
-.nav-btn:hover,  
-.nav-btn.active{  
-background:rgba(255,255,255,.08);  
-color:#fff;  
-}  
-  
-.nav-btn .icon{  
-font-size:18px;  
-width:24px;  
-text-align:center;  
-}  
-  
-#sidebar.open {   
-transform: translateX(0);   
-}  
-  
-#overlay{  
-display:none;  
-position:fixed;  
-inset:0;  
-background:rgba(0,0,0,.45);  
-z-index:99;  
-transition:opacity .25s;  
-opacity:0;  
-}  
-  
-#overlay.show{  
-display:block;  
-opacity:1;  
-}  
-  
-header {  
-  background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.08);  
-  padding: 10px 18px; display: flex;  
-  justify-content: space-between; align-items: center;  
-  position: sticky; top: 0; z-index: 50;  
-  gap: 10px;  
-}  
-  
-@media (min-width: 1024px) {  
-  header {  
-    padding: 14px 32px;  
-  }  
-}  
-  
-.logo { font-weight: 700; font-size: 18px; color: var(--dark); letter-spacing: -0.5px; }  
-.logo span { color: var(--accent); }  
-  
-#syncIndicator {  
-  display: flex;  
-  align-items: center;  
-  gap: 5px;  
-  background: #f8fafc;  
-  border: 2px solid #e2e8f0;  
-  border-radius: 20px;  
-  padding: 4px 10px;  
-  font-size: 11px;  
-  font-weight: 700;  
-  color: #64748b;  
-  transition: all .3s;  
-  white-space: nowrap;  
-  flex-shrink: 0;  
-}  
-#syncIndicator.syncing {  
-  border-color: #3b82f6;  
-  color: #2563eb;  
-  background: #eff6ff;  
-}  
-#syncIndicator.ok {  
-  border-color: #22c55e;  
-  color: #16a34a;  
-  background: #f0fdf4;  
-}  
-#syncIndicator.error {  
-  border-color: #ef4444;  
-  color: #dc2626;  
-  background: #fef2f2;  
-}  
-@keyframes spin { to { transform: rotate(360deg); } }  
-.spin { display: inline-block; animation: spin .8s linear infinite; }  
-  
-section {  
-  padding: 18px;  
-}  
-  
-@media (min-width: 768px) {  
-  section {  
-    padding: 22px 24px;  
-  }  
-}  
-  
-@media (min-width: 1024px) {  
-  section {  
-    padding: 28px 36px;  
-    max-width: 1600px;  
-  }  
-}  
-  
-.card {  
-  background: #fff; border-radius: 14px;  
-  box-shadow: 0 2px 12px rgba(0,0,0,.06);  
-  padding: 16px; margin-bottom: 16px;  
-}  
-  
-@media (min-width: 1024px) {  
-  .card {  
-    padding: 24px;  
-    border-radius: 18px;  
-    margin-bottom: 22px;  
-  }  
-}  
-  
-#productList {  
-  display: grid !important;  
-  grid-template-columns: repeat(2, 1fr);  
-  gap: 12px;  
-}  
-  
-@media (min-width: 640px) {  
-  #productList {  
-    grid-template-columns: repeat(3, 1fr);  
-    gap: 14px;  
-  }  
-}  
-  
-@media (min-width: 1024px) {  
-  #productList {  
-    grid-template-columns: repeat(4, 1fr);  
-    gap: 18px;  
-  }  
-}  
-  
-@media (min-width: 1280px) {  
-  #productList {  
-    grid-template-columns: repeat(5, 1fr);  
-  }  
-}  
-  
-@media (min-width: 1600px) {  
-  #productList {  
-    grid-template-columns: repeat(6, 1fr);  
-  }  
-}  
-  
-.product-card {  
-  border-radius: 12px; padding: 14px;  
-  border: 2px solid #e2e8f0;  
-  transition: border-color .2s, box-shadow .2s;  
-  background: #fff;  
-}  
-  
-@media (min-width: 1024px) {  
-  .product-card {  
-    padding: 18px;  
-    border-radius: 16px;  
-  }  
-  
-  .product-card .btn-add {  
-    padding: 10px;  
-    font-size: 14px;  
-    margin-top: 14px;  
-  }  
-}  
-  
-.product-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(34,197,94,.15); }  
-  
-@media (min-width: 1024px) {  
-  #pos {  
-    display: grid;  
-    grid-template-columns: 1fr 380px;  
-    gap: 24px;  
-    align-items: start;  
-  }  
-  
-  #pos > .card:last-child {  
-    position: sticky;  
-    top: 78px;  
-  }  
-}  
-  
-@media (min-width: 1280px) {  
-  #pos {  
-    grid-template-columns: 1fr 420px;  
-  }  
-}  
-  
-@media (min-width: 1024px) {  
-  #inventoryList {  
-    display: grid;  
-    grid-template-columns: repeat(2, 1fr);  
-    gap: 18px;  
-  }  
-  
-  #inventoryList .inv-card {  
-    margin-bottom: 0;  
-  }  
-}  
-  
-@media (min-width: 1280px) {  
-  #inventoryList {  
-    grid-template-columns: repeat(3, 1fr);  
-  }  
-}  
-  
-/* ── STATS PANEL — 2 col mobile, 3 col tablet, 6 col desktop ── */  
-#statsPanel {  
-  display: grid;  
-  grid-template-columns: repeat(2, 1fr);  
-  gap: 10px;  
-  margin-top: 16px;  
-}  
-  
-@media (min-width: 640px) {  
-  #statsPanel {  
-    grid-template-columns: repeat(3, 1fr);  
-    gap: 12px;  
-  }  
-}  
-  
-@media (min-width: 1024px) {  
-  #statsPanel {  
-    grid-template-columns: repeat(3, 1fr);  
-    gap: 14px;  
-  }  
-}  
-  
-@media (min-width: 1280px) {  
-  #statsPanel {  
-    grid-template-columns: repeat(6, 1fr);  
-  }  
-}  
-  
-/* ── SUMMARY PANEL (financiero real) ── */  
-#summaryPanel {  
-  display: grid;  
-  grid-template-columns: repeat(2, 1fr);  
-  gap: 10px;  
-  margin-top: 16px;  
-}  
-  
-@media (min-width: 640px) {  
-  #summaryPanel {  
-    grid-template-columns: repeat(4, 1fr);  
-    gap: 12px;  
-  }  
-}  
-  
-@media (min-width: 1024px) {  
-  #stats .card:has(#salesChart),  
-  #stats .card:has(#profitChart) {  
-    display: inline-block;  
-    width: calc(50% - 11px);  
-    vertical-align: top;  
-  }  
-  
-  #stats .card:has(#salesChart) {  
-    margin-right: 12px;  
-  }  
-}  
-  
-#saleSummaryBox{  
-font-family: monospace;  
-overflow: hidden;  
-position: relative;  
-z-index: 1;  
-}  
-  
-.btn-add {  
-  background: var(--accent); color: #fff;  
-  width: 100%; padding: 8px; border-radius: 8px;  
-  border: none; cursor: pointer; font-weight: 600; font-size: 13px;  
-  margin-top: 10px; transition: background .2s, transform .1s;  
-  font-family: 'Sora', sans-serif;  
-}  
-.btn-add:active { transform: scale(.96); }  
-.btn-add:disabled { background: #94a3b8; cursor: not-allowed; }  
-  
-.cart-row {  
-  display: grid; grid-template-columns: 1fr auto auto;  
-  gap: 8px; align-items: center; padding: 10px 0;  
-  border-bottom: 1px solid #f1f5f9;  
-}  
-.qty-btn {  
-  width: 30px; height: 30px; border-radius: 8px; border: 2px solid #e2e8f0;  
-  background: #fff; cursor: pointer; font-size: 17px; font-weight: 700;  
-  display: flex; align-items: center; justify-content: center;  
-  transition: background .15s; line-height: 1;  
-  font-family: 'Sora', sans-serif;  
-}  
-.qty-btn:hover { background: #f1f5f9; }  
-.qty-display {  
-  font-family: 'JetBrains Mono', monospace; font-weight: 700;  
-  min-width: 28px; text-align: center; font-size: 15px;  
-}  
-  
-.btn-primary {  
-  background: var(--accent2); color: #fff;  
-  padding: 12px 20px; border-radius: 10px; border: none;  
-  cursor: pointer; font-weight: 700; font-size: 15px;  
-  transition: background .2s, transform .1s; width: 100%;  
-  font-family: 'Sora', sans-serif;  
-}  
-.btn-primary:hover { background: #2563eb; }  
-.btn-primary:active { transform: scale(.98); }  
-  
-.btn-confirm {  
-  background: linear-gradient(135deg, #22c55e, #16a34a);  
-  color: #fff; padding: 14px 20px; border-radius: 12px; border: none;  
-  cursor: pointer; font-weight: 700; font-size: 16px;  
-  transition: opacity .2s, transform .1s; width: 100%;  
-  box-shadow: 0 4px 14px rgba(34,197,94,.3);  
-  font-family: 'Sora', sans-serif;  
-}  
-.btn-confirm:hover { opacity: .9; }  
-.btn-confirm:active { transform: scale(.98); }  
-  
-.btn-danger {  
-  background: #ef4444; color: #fff;  
-  padding: 8px 14px; border-radius: 8px; border: none;  
-  cursor: pointer; font-weight: 600; font-size: 13px;  
-  transition: background .2s; font-family: 'Sora', sans-serif;  
-}  
-.btn-danger:hover { background: #dc2626; }  
-  
-.btn-ghost {  
-  background: transparent; border: 2px solid #e2e8f0; color: #475569;  
-  padding: 8px 14px; border-radius: 8px; cursor: pointer;  
-  font-weight: 600; font-size: 13px; transition: border-color .2s, color .2s;  
-  font-family: 'Sora', sans-serif;  
-}  
-.btn-ghost:hover { border-color: #94a3b8; color: #0f172a; }  
-  
-.input {  
-  border: 2px solid #e2e8f0; border-radius: 10px;  
-  padding: 10px 14px; font-size: 14px; width: 100%;  
-  font-family: 'Sora', sans-serif; color: #0f172a;  
-  transition: border-color .2s; outline: none;  
-}  
-.input:focus { border-color: var(--accent2); }  
-  
-#modal {  
-  display: none; position: fixed; inset: 0;  
-  background: rgba(0,0,0,.5); z-index: 200;  
-  align-items: center; justify-content: center; padding: 16px;  
-}  
-#modal.show { display: flex; }  
-#modal-box {  
-  background: #fff; border-radius: 20px; padding: 24px;  
-  width: 100%; max-width: 420px;  
-  box-shadow: 0 20px 60px rgba(0,0,0,.25);  
-  animation: slideUp .25s ease;  
-}  
-@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }  
-.modal-label { font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block; letter-spacing: 0.3px; text-transform: uppercase; }  
-  
-#restockModal {  
-  display: none; position: fixed; inset: 0;  
-  background: rgba(0,0,0,.5); z-index: 200;  
-  align-items: center; justify-content: center; padding: 16px;  
-}  
-#restockModal.show { display: flex; }  
-  
-#toast {  
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);  
-  background: #0f172a; color: #fff; padding: 12px 22px; border-radius: 30px;  
-  font-weight: 600; font-size: 14px; z-index: 300;  
-  transition: transform .3s cubic-bezier(.4,0,.2,1);  
-  white-space: nowrap; max-width: 90vw; text-align: center;  
-}  
-#toast.show { transform: translateX(-50%) translateY(0); }  
-#toast.toast-error { background: #dc2626; }  
-#toast.toast-ok   { background: #16a34a; }  
-  
-@media (min-width: 1024px) {  
-  #toast {  
-    left: calc(var(--sidebar-w) + 50%);  
-    transform: translateX(-50%) translateY(80px);  
-  }  
-  #toast.show {  
-    transform: translateX(-50%) translateY(0);  
-  }  
-}  
-  
-.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }  
-.badge-red { background: #fee2e2; color: #dc2626; }  
-.badge-green { background: #dcfce7; color: #16a34a; }  
-.badge-blue { background: #dbeafe; color: #2563eb; }  
-  
-.stat-card { border-radius: 12px; padding: 14px; }  
-.stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }  
-  
-@media (min-width: 1024px) {  
-  .stat-card { padding: 18px; border-radius: 14px; }  
-  .stat-value { font-size: 24px; }  
-}  
-  
-.cat-btn {  
-  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;  
-  border: 2px solid #e2e8f0; background: #fff; cursor: pointer; color: #475569;  
-  transition: all .2s; white-space: nowrap; font-family: 'Sora', sans-serif;  
-}  
-.cat-btn.active { background: var(--dark); border-color: var(--dark); color: #fff; }  
-  
-.cats-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }  
-.cats-scroll::-webkit-scrollbar { display: none; }  
-  
-.sec-title { font-size: 17px; font-weight: 700; color: #0f172a; }  
-  
-@media (min-width: 1024px) {  
-  .sec-title { font-size: 20px; }  
-}  
-  
-.cat-chip { background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }  
-  
-.inv-card {  
-  background: #fff; border-radius: 12px; padding: 14px;  
-  border: 2px solid #e2e8f0; transition: border-color .2s;  
-  margin-bottom: 12px;  
-}  
-  
-@media (min-width: 1024px) {  
-  .inv-card {  
-    padding: 20px;  
-    border-radius: 16px;  
-  }  
-}  
-  
-.inv-card.best { border-color: var(--accent) !important; background: #f0fdf4; }  
-.inv-card.zero { border-color: #fca5a5 !important; background: #fff8f8; }  
-  
-.sale-card { background: #fff; border-radius: 12px; padding: 16px; border: 2px solid #e2e8f0; margin-bottom: 12px; }  
-.alert-box { background: #fef9c3; border: 2px solid #fde047; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: #854d0e; }  
-  
-.day-section-header {  
-  display: flex;  
-  align-items: center;  
-  gap: 10px;  
-  margin: 18px 0 10px;  
-}  
-.day-section-label {  
-  font-size: 12px;  
-  font-weight: 700;  
-  color: #64748b;  
-  text-transform: uppercase;  
-  letter-spacing: 0.5px;  
-  white-space: nowrap;  
-}  
-.day-section-line {  
-  flex: 1;  
-  height: 1px;  
-  background: #e2e8f0;  
-}  
-  
-.hamburger { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; transition: background .2s; }  
-.hamburger:hover { background: #f1f5f9; }  
-  
-@keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }  
-.pop { animation: pop .2s; }  
-  
-.btn-loading {  
-  opacity: 0.7;  
-  cursor: not-allowed !important;  
-  pointer-events: none;  
-}  
-  
-/* ── SUMMARY LOADING SKELETON ── */  
-.skeleton {  
-  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);  
-  background-size: 200% 100%;  
-  animation: shimmer 1.2s infinite;  
-  border-radius: 8px;  
-}  
-@keyframes shimmer {  
-  0% { background-position: 200% 0; }  
-  100% { background-position: -200% 0; }  
-}  
-  
-</style>  
-</head>  
-<body>  
-  
-<!-- OVERLAY -->  
-<div id="overlay" onclick="closeSidebar()"></div>  
-  
-<!-- SIDEBAR -->  
-<aside id="sidebar">  
-  <div style="padding: 22px 20px 10px; display:flex; align-items:center; gap:10px;">  
-    <div style="background:var(--accent); border-radius:8px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:16px;">🏪</div>  
-    <span style="font-weight:700; font-size:18px; color:#fff;">POS <span style="color:var(--accent);">PRO</span></span>  
-  </div>  
-  <nav style="padding:12px; flex:1; display:flex; flex-direction:column; gap:4px;">  
-    <button class="nav-btn active" id="nav-pos" onclick="show('pos')"><span class="icon">🛒</span>Caja</button>  
-    <button class="nav-btn" id="nav-inventory" onclick="show('inventory')"><span class="icon">📦</span>Inventario</button>  
-    <button class="nav-btn" id="nav-sales" onclick="show('sales')"><span class="icon">📋</span>Ventas</button>  
-    <button class="nav-btn" id="nav-stats" onclick="show('stats')"><span class="icon">📊</span>Estadísticas</button>  
-  </nav>  
-  <button class="nav-btn" onclick="backupPOS()">  
-    <span class="icon">💾</span>Backup  
-  </button>  
-  <button class="nav-btn" onclick="document.getElementById('restoreFile').click()">  
-    <span class="icon">♻️</span>Restaurar Backup  
-  </button>  
-  <input type="file" id="restoreFile" accept=".json" style="display:none"  
-  onchange="restorePOS(this.files[0])">  
-  <div style="padding:16px 20px; color:#475569; font-size:11px; font-weight:600;">POS Mobile Pro v2.2</div>  
-</aside>  
-  
-<header>  
-  <div style="display:flex; gap:12px; align-items:center;">  
-    <button class="hamburger" onclick="toggleMenu()">  
-      <svg width="22" height="18" viewBox="0 0 22 18" fill="none">  
-        <rect width="22" height="2.5" rx="1.25" fill="#0f172a"/>  
-        <rect y="7.75" width="22" height="2.5" rx="1.25" fill="#0f172a"/>  
-        <rect y="15.5" width="22" height="2.5" rx="1.25" fill="#0f172a"/>  
-      </svg>  
-    </button>  
-    <span class="logo">POS <span>PRO</span></span>  
-  </div>  
-  
-  <div id="syncIndicator">  
-    <span id="syncDot">⚪</span>  
-    <span id="syncText">Sincronizando...</span>  
-  </div>  
-  
-  <div style="font-size:12px; font-weight:600; color:#64748b; white-space:nowrap;" id="date"></div>  
-</header>  
-  
-<!-- TOAST -->  
-<div id="toast"></div>  
-  
-<!-- MODAL PRODUCTO -->  
-<div id="modal">  
-  <div id="modal-box">  
-    <h3 id="modal-title" style="font-size:17px; font-weight:700; margin-bottom:20px; color:#0f172a;"></h3>  
-    <div style="display:flex; flex-direction:column; gap:14px;">  
-      <div>  
-        <label class="modal-label">Nombre</label>  
-        <input id="m-name" class="input" placeholder="Ej: Coca Cola">  
-      </div>  
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">  
-        <div>  
-          <label class="modal-label">Precio venta ($)</label>  
-          <input id="m-price" class="input" type="number" min="0" step="0.01" placeholder="0.00">  
-        </div>  
-        <div>  
-          <label class="modal-label">Costo compra ($)</label>  
-          <input id="m-cost" class="input" type="number" min="0" step="0.01" placeholder="0.00">  
-        </div>  
-      </div>  
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">  
-        <div>  
-          <label class="modal-label">Stock inicial</label>  
-          <input id="m-stock" class="input" type="number" min="0" placeholder="0">  
-        </div>  
-        <div>  
-          <label class="modal-label">Categoría</label>  
-          <input id="m-cat" class="input" placeholder="Ej: Bebidas">  
-        </div>  
-      </div>  
-    </div>  
-    <div id="modal-error" style="  
-      display:none;  
-      background:#fef2f2;  
-      border:2px solid #fca5a5;  
-      border-radius:8px;  
-      padding:10px 14px;  
-      margin-top:14px;  
-      font-size:12px;  
-      font-weight:600;  
-      color:#dc2626;  
-      line-height:1.6;  
-    "></div>  
-    <div style="display:flex; gap:10px; margin-top:16px;">  
-      <button class="btn-ghost" onclick="closeModal()" style="flex:1;">Cancelar</button>  
-      <button id="saveBtn" class="btn-primary" onclick="saveProduct()" style="flex:2;">Guardar</button>  
-    </div>  
-  </div>  
-</div>  
-  
-<!-- MODAL RESTOCK -->  
-<div id="restockModal">  
-  <div style="background:#fff; border-radius:20px; padding:24px; width:100%; max-width:340px; box-shadow:0 20px 60px rgba(0,0,0,.25); animation:slideUp .25s ease;">  
-    <h3 style="font-size:16px; font-weight:700; margin-bottom:16px; color:#0f172a;">📦 Agregar stock</h3>  
-    <p style="font-size:14px; color:#475569; margin-bottom:14px;">Producto: <b id="restock-name" style="color:var(--accent);"></b></p>  
-    <label class="modal-label">Cantidad a agregar</label>  
-    <input id="restock-qty" class="input" type="number" min="1" placeholder="Ej: 50" style="margin-bottom:16px;">  
-    <div style="display:flex; gap:10px;">  
-      <button class="btn-ghost" onclick="closeRestock()" style="flex:1;">Cancelar</button>  
-      <button id="restockBtn" class="btn-primary" onclick="confirmRestock()" style="flex:2;">+ Agregar</button>  
-    </div>  
-  </div>  
-</div>  
-  
-<!-- MODAL TICKET -->  
-<div id="saleSummary" style="  
-display:none;  
-position:fixed;  
-inset:0;  
-background:rgba(0,0,0,.5);  
-z-index:500;  
-align-items:center;  
-justify-content:center;  
-">  
-<div id="saleSummaryBox" style="  
-background:#fff;  
-border-radius:16px;  
-padding:20px;  
-width:90%;  
-max-width:360px;  
-box-shadow:0 20px 60px rgba(0,0,0,.25);  
-">  
-<h3 style="margin-bottom:10px;">🧾 Ticket de venta</h3>  
-<div id="saleSummaryInfo" style="font-size:13px;color:#64748b;margin-bottom:10px;"></div>  
-<div id="saleSummaryItems"  
-style="  
-margin-bottom:12px;  
-line-height:1.7;  
-font-weight:600;  
-overflow-x:auto;  
-max-width:100%;  
-"></div>  
-<div style="border-top:1px solid #e2e8f0;padding-top:10px;font-size:14px;">  
-Total: <b id="saleSummaryTotal"></b><br>  
-Pagó: <b id="saleSummaryPaid"></b><br>  
-Vuelto: <b id="saleSummaryChange"></b>  
-</div>  
-<div style="margin-top:15px;display:flex;gap:8px;position:relative;z-index:5;">  
-<button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>  
-<button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>  
-<button onclick="closeSummary()" class="btn-confirm">Cerrar</button>  
-</div>  
-</div>  
-</div>  
-  
-<!-- ========== CAJA ========== -->  
-<section id="pos">  
-  <div class="card">  
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">  
-      <span class="sec-title">🛒 Productos</span>  
-      <div style="position:relative; width:150px;">  
-        <input id="searchProduct" class="input" placeholder="Buscar..." style="width:100%; padding:8px 12px;">  
-        <div id="searchSuggestions" style="  
-        position:absolute;  
-        top:42px;  
-        left:0;  
-        right:0;  
-        background:#fff;  
-        border:2px solid #e2e8f0;  
-        border-radius:10px;  
-        display:none;  
-        max-height:160px;  
-        overflow:auto;  
-        z-index:50;  
-        "></div>  
-      </div>  
-    </div>  
-    <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>  
-    <div id="lowStockAlert"></div>  
-    <div id="productList" class="grid grid-cols-2 gap-3"></div>  
-  </div>  
-  
-  <div class="card">  
-    <span class="sec-title">🧾 Carrito</span>  
-    <div id="cart" style="margin-top:10px; min-height:48px;"></div>  
-  
-    <div style="margin-top:12px; border-top:2px solid #f1f5f9; padding-top:14px;">  
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">  
-        <span style="font-weight:600; color:#64748b;">Total</span>  
-        <span id="total" style="font-size:26px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#0f172a;">$0.00</span>  
-      </div>  
-      <input id="paid" type="number" class="input" placeholder="💵 Monto que paga el cliente..." style="margin-bottom:10px;">  
-      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f0fdf4; border-radius:10px; margin-bottom:14px;">  
-        <span style="font-weight:600; color:#16a34a; font-size:14px;">Vuelto</span>  
-        <span id="change" style="font-weight:700; font-family:'JetBrains Mono',monospace; font-size:20px; color:#16a34a;">$0.00</span>  
-      </div>  
-      <button id="confirmSaleBtn" onclick="confirmSale()" class="btn-confirm">  
-        ✅ Confirmar Venta  
-      </button>  
-    </div>  
-  </div>  
-</section>  
-  
-<!-- ========== INVENTARIO ========== -->  
-<section id="inventory" class="hidden">  
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">  
-    <span class="sec-title">📦 Inventario</span>  
-    <button onclick="openAddModal()" class="btn-primary" style="width:auto; padding:10px 18px;">+ Nuevo</button>  
-  </div>  
-  <input   
-    id="searchInventory"  
-    class="input"  
-    placeholder="🔎 Buscar producto..."  
-    style="margin-bottom:16px;"  
-  >  
-  <div id="inventoryList"></div>  
-</section>  
-  
-<!-- ========== VENTAS ========== -->  
-<section id="sales" class="hidden">  
-  <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:16px;">  
-    <div style="display:flex; justify-content:space-between; align-items:center;">  
-      <span class="sec-title">📋 Historial</span>  
-      <div style="display:flex; gap:8px;">  
-        <button onclick="exportCSV()" class="btn-ghost">⬇ CSV</button>  
-        <button onclick="clearHistory()" class="btn-danger">Borrar</button>  
-      </div>  
-    </div>  
-    <div style="position:relative;">  
-      <input   
-        id="searchSales"  
-        class="input"  
-        placeholder="Buscar ventas (ej: pepsi churro arroz)"  
-        style="  
-          padding-left:40px;  
-          background:#fff;  
-          border:2px solid #e2e8f0;  
-          transition:all .2s;  
-        "  
-        onfocus="this.style.borderColor='#3b82f6'"  
-        onblur="this.style.borderColor='#e2e8f0'"  
-      >  
-      <span style="  
-        position:absolute;  
-        left:12px;  
-        top:50%;  
-        transform:translateY(-50%);  
-        font-size:14px;  
-        color:#94a3b8;  
-        pointer-events:none;  
-      ">  
-        🔍  
-      </span>  
-    </div>  
-  </div>  
-  <div id="salesList"></div>  
-</section>  
-  
-<!-- ========== ESTADÍSTICAS ========== -->  
-<section id="stats" class="hidden">  
-  
-  <div style="display:flex; justify-content:space-between; align-items:center;">  
-    <span class="sec-title">📊 Estadísticas</span>  
-    <button onclick="resetStats()" class="btn-danger" style="width:auto;">  
-      Reiniciar  
-    </button>  
-  </div>  
-  
-  <!-- ── PANEL OPERATIVO (local, desde products + sales) ── -->  
-  <div id="statsPanel"></div>  
-  
-  <!-- ── SEPARADOR FINANCIERO REAL ── -->  
-  <div style="display:flex; align-items:center; gap:10px; margin: 20px 0 4px;">  
-    <span style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">💰 Finanzas reales</span>  
-    <div style="flex:1; height:1px; background:#e2e8f0;"></div>  
-    <span id="summaryFilterLabel" style="font-size:11px; color:#94a3b8; font-weight:600;"></span>  
-  </div>  
-  
-  <!-- ── SUMMARY PANEL (desde /api/summary, incluye gastos) ── -->  
-  <div id="summaryPanel"></div>  
-  
-  <!-- ── GRÁFICAS ── -->  
-  <div class="card" style="margin-top:4px;">  
-    <span style="font-weight:700; font-size:14px; color:#0f172a;">📈 Ventas por día</span>  
-    <canvas id="salesChart" style="margin-top:12px; width:100%; height:160px;"></canvas>  
-  </div>  
-  <div class="card" style="margin-top:10px;">  
-    <span style="font-weight:700;font-size:14px;color:#0f172a;">💰 Ganancia por día</span>  
-    <canvas id="profitChart" style="margin-top:12px;width:100%;height:160px;"></canvas>  
-  </div>  
-  
-  <!-- ── RANKING + GASTOS POR CATEGORÍA ── -->  
-  <div id="rankingList" class="card" style="margin-top:4px;"></div>  
-  
-</section>  
-  
-<script>  
-  
-// =========== STATE ===========  
-const state = {  
-  products: [],  
-  cart: [],  
-  sales: [],  
-  summary: null   // ← datos de /api/summary: { sales, costs, expenses, profit, expenses_by_category[] }  
-}  
-  
-// =========== LOCKS ===========  
-let lock = false  
-let syncing = false  
-let loadingProducts = false  
-let lastSyncTime = null  
-  
-const dirty = {  
-  products: false,  
-  sales: false,  
-  cart: false  
-}  
-  
-function markDirty(...sections) {  
-  sections.forEach(s => { dirty[s] = true })  
-}  
-  
-function flushRender() {  
-  if(dirty.products || dirty.cart) {  
-    renderCategoryFilter()  
-    renderProducts()  
-  }  
-  if(dirty.cart) {  
-    renderCart()  
-  }  
-  if(dirty.products || dirty.sales) {  
-    renderInventory()  
-    renderStats()  
-    renderSales()  
-  }  
-  dirty.products = false  
-  dirty.sales = false  
-  dirty.cart = false  
-}  
-  
-// ── ACTIVITY TRACKER ──  
-let lastUserActivity = Date.now()  
-  
-function trackActivity() {  
-  lastUserActivity = Date.now()  
-}  
-  
-document.addEventListener("DOMContentLoaded", () => {  
-  const activityTargets = ["paid", "searchProduct", "searchInventory", "searchSales"]  
-  activityTargets.forEach(id => {  
-    document.getElementById(id)?.addEventListener("input", trackActivity)  
-    document.getElementById(id)?.addEventListener("focus", trackActivity)  
-  })  
-  document.addEventListener("click", trackActivity)  
-})  
-  
-function userIsActive() {  
-  return (Date.now() - lastUserActivity) < 3000  
-}  
-  
-function setSyncStatus(status, msg) {  
-  const el = document.getElementById("syncIndicator")  
-  const dot = document.getElementById("syncDot")  
-  const text = document.getElementById("syncText")  
-  el.className = ""  
-  el.classList.add(status)  
-  text.textContent = msg  
-  if (status === "syncing") dot.innerHTML = '<span class="spin">🔄</span>'  
-  else if (status === "ok") dot.textContent = "🟢"  
-  else dot.textContent = "🔴"  
-}  
-  
-function saveCart(){  
-  localStorage.setItem("cart", JSON.stringify(state.cart))  
-}  
-  
-function loadCart(){  
-  const saved = localStorage.getItem("cart")  
-  if(saved){  
-    try {  
-      state.cart = JSON.parse(saved)  
-    } catch {  
-      state.cart = []  
-    }  
-  }  
-}  
-  
-let activeCategory = "Todos"  
-let editingId = null  
-let restockId = null  
-  
-// =========== TOAST ===========  
-function showToast(msg, type = "default") {  
-  const t = document.getElementById("toast")  
-  t.textContent = msg  
-  t.className = ""  
-  if(type === "error") t.classList.add("toast-error")  
-  else if(type === "ok") t.classList.add("toast-ok")  
-  t.classList.add("show")  
-  setTimeout(() => t.classList.remove("show"), 2800)  
-}  
-  
-// =========== FORMATEAR FECHA ===========  
-function formatDate(str){  
-  if(!str) return ""  
-  const d = new Date(str)  
-  if(isNaN(d.getTime())) return str  
-  const day = d.getDate()  
-  const month = d.getMonth()+1  
-  const year = d.getFullYear()  
-  let hours = d.getHours()  
-  const minutes = String(d.getMinutes()).padStart(2,"0")  
-  const ampm = hours >= 12 ? "pm" : "am"  
-  hours = hours % 12  
-  if(hours === 0) hours = 12  
-  return `${day}/${month}/${year}, ${hours}:${minutes} ${ampm}`  
-}  
-  
-function getDateKey(str){  
-  if(!str) return null  
-  const d = new Date(str)  
-  if(!isNaN(d.getTime())){  
-    return d.getDate() + "/" + (d.getMonth() + 1)  
-  }  
-  return str.split("/").slice(0,2).join("/")  
-}  
-  
-function getDayLabel(dateStr){  
-  const d = new Date(dateStr)  
-  if(isNaN(d.getTime())) return "Antiguas"  
-  const hoy = new Date()  
-  const ayer = new Date(); ayer.setDate(hoy.getDate() - 1)  
-  const toKey = x => x.getFullYear() + "-" + x.getMonth() + "-" + x.getDate()  
-  if(toKey(d) === toKey(hoy))   return "Hoy"  
-  if(toKey(d) === toKey(ayer))  return "Ayer"  
-  const hace7 = new Date(); hace7.setDate(hoy.getDate() - 7)  
-  if(d >= hace7) return "Esta semana"  
-  if(d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear())  
-    return "Este mes"  
-  return "Más antiguas"  
-}  
-  
-function saleNumLabel(num){  
-  return (num != null && num !== "" && !isNaN(Number(num)))  
-    ? "#" + Number(num)  
-    : "(sin número)"  
-}  
-  
-// =========== LOAD PRODUCTS ===========  
-async function loadProducts(force = false){  
-  
-  if(lock) return  
-  if(syncing) return  
-  
-  syncing = true  
-  loadingProducts = true  
-  
-  setSyncStatus("syncing", "Sincronizando...")  
-  
-  try {  
-  
-    const res = await fetch("/api/products")  
-    if(!res.ok) throw new Error("HTTP " + res.status)  
-    const data = await res.json()  
-  
-    if(lock) return  
-  
-    const prodChanged = force || data.length !== state.products.length || data.some(p => {  
-      const old = state.products.find(x => x.id === p.id)  
-      return !old  
-        || Number(p.stock) !== old.stock  
-        || Number(p.sold)  !== old.sold  
-        || Number(p.price) !== old.price  
-    })  
-  
-    state.products = data.map(p => ({  
-      id: p.id,  
-      name: p.name,  
-      price: Number(p.price),  
-      cost: Number(p.cost || 0),  
-      stock: Number(p.stock),  
-      sold: Number(p.sold || 0),  
-      cat: p.cat || "General"  
-    }))  
-  
-    const cartBefore = state.cart.length  
-    const itemsDropped = []  
-  
-    state.cart = state.cart.filter(item => {  
-      const p = state.products.find(x => x.id === item.id)  
-      if(!p || p.stock <= 0){  
-        itemsDropped.push(`${item.name} (sin stock)`)  
-        return false  
-      }  
-      if(p.stock < item.qty){  
-        itemsDropped.push(`${item.name} (ajustado a ${p.stock})`)  
-        item.qty = p.stock  
-      }  
-      return true  
-    })  
-    const cartChanged = state.cart.length !== cartBefore  
-  
-    if(itemsDropped.length > 0){  
-      setTimeout(()=>{  
-        showToast(`⚠ Carrito ajustado: ${itemsDropped.join(", ")}`)  
-      }, 400)  
-    }  
-  
-    if(prodChanged) markDirty("products")  
-    if(cartChanged) markDirty("cart")  
-  
-    if(prodChanged || cartChanged){  
-      flushRender()  
-    }  
-  
-    lastSyncTime = new Date()  
-    setSyncStatus("ok", "Sincronizado " + lastSyncTime.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}))  
-  
-  } catch(err) {  
-  
-    console.error("Error cargando productos:", err)  
-    setSyncStatus("error", "Sin conexión")  
-  
-  } finally {  
-  
-    syncing = false  
-    loadingProducts = false  
-  
-  }  
-  
-}  
-  
-// =========================================================  
-// LOAD SUMMARY — /api/summary  
-// Llama al backend y guarda en state.summary  
-// Solo se llama cuando el usuario abre la sección stats  
-// =========================================================  
-async function loadSummary(){  
-  
-  // muestra estado de carga en el panel  
-  const panel = document.getElementById("summaryPanel")  
-  if(panel){  
-    panel.innerHTML = `  
-      <div class="stat-card skeleton" style="height:72px;"></div>  
-      <div class="stat-card skeleton" style="height:72px;"></div>  
-      <div class="stat-card skeleton" style="height:72px;"></div>  
-      <div class="stat-card skeleton" style="height:72px;"></div>  
-    `  
-  }  
-  
-  try {  
-  
-    const data = await api("/api/summary")  
-    state.summary = data  
-  
-  } catch(err) {  
-  
-    console.error("Error cargando summary:", err)  
-    state.summary = null  
-  
-  }  
-  
-}  
-  
-// =========== BACKUP ===========  
-async function backupPOS(){  
-  
-  try {  
-  
-    const data = await api("/api/backup")  
-  
-    const blob = new Blob(  
-      [JSON.stringify(data,null,2)],  
-      {type:"application/json"}  
-    )  
-  
-    const now = new Date()  
-    const fecha =  
-      now.getFullYear() + "-" +  
-      String(now.getMonth()+1).padStart(2,"0") + "-" +  
-      String(now.getDate()).padStart(2,"0") + "_" +  
-      String(now.getHours()).padStart(2,"0") + "-" +  
-      String(now.getMinutes()).padStart(2,"0") + "-" +  
-      String(now.getSeconds()).padStart(2,"0")  
-  
-    const a = document.createElement("a")  
-    a.href = URL.createObjectURL(blob)  
-    a.download = "pos-backup_" + fecha + ".json"  
-    a.click()  
-  
-    showToast("✅ Backup descargado", "ok")  
-  
-  } catch(err) {  
-  
-    console.error("Error en backup:", err)  
-    showToast("❌ Error al generar backup: " + err.message, "error")  
-  
-  }  
-  
-}  
-  
-// =========== RESTORE ===========  
-async function restorePOS(file){  
-  
-  if(!file) return  
-  
-  let data  
-  try {  
-    const text = await file.text()  
-    data = JSON.parse(text)  
-  } catch(_) {  
-    showToast("❌ El archivo no es un JSON válido", "error")  
-    return  
-  }  
-  
-  try {  
-  
-    await api("/api/restore",{  
-      method:"POST",  
-      body:JSON.stringify(data)  
-    })  
-  
-    showToast("♻️ Backup restaurado correctamente", "ok")  
-  
-    setTimeout(()=>{ location.reload() },1200)  
-  
-  } catch(err) {  
-  
-    console.error("Error en restore:", err)  
-    showToast("❌ Error al restaurar: " + err.message, "error")  
-  
-  }  
-  
-}  
-  
-async function loadSales(){  
-  
-  try{  
-  
-    const res = await fetch("/api/sales")  
-    const data = await res.json()  
-  
-    state.sales = (data || []).map(s => {  
-      let d = new Date(s.date)  
-      if(isNaN(d.getTime()) && typeof s.date === "string"){  
-        const parts = s.date.split(",")  
-        if(parts.length){  
-          const fecha = parts[0].trim().split("/")  
-          if(fecha.length === 3){  
-            d = new Date(fecha[2], fecha[1]-1, fecha[0])  
-          }  
-        }  
-      }  
-      return { ...s, date: d.toISOString() }  
-    })  
-  
-  }catch{  
-  
-    state.sales = []  
-  
-  }  
-  
-}  
-  
-// =========== SIDEBAR ===========  
-function toggleMenu() {  
-  if(window.innerWidth >= 1024) return  
-  document.getElementById("sidebar").classList.toggle("open")  
-  document.getElementById("overlay").classList.toggle("show")  
-}  
-  
-function closeSidebar() {  
-  if(window.innerWidth >= 1024) return  
-  document.getElementById("sidebar").classList.remove("open")  
-  document.getElementById("overlay").classList.remove("show")  
-}  
-  
-// =========== SHOW ===========  
-async function show(id) {  
-  
-  document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))  
-  document.getElementById(id).classList.remove("hidden")  
-  
-  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"))  
-  document.getElementById("nav-" + id)?.classList.add("active")  
-  
-  closeSidebar()  
-  
-  if(id === "inventory" || id === "stats"){  
-    loadProducts(true)  
-  }  
-  
-  if(id === "sales"){  
-    await loadSales()  
-    markDirty("sales")  
-    flushRender()  
-  }  
-  
-  if(id === "stats"){  
-    // 1. carga summary del servidor (con gastos reales)  
-    await loadSummary()  
-    // 2. renderiza stats completo (incluye summary ya disponible)  
-    renderStats()  
-    // 3. gráficas después del render  
-    setTimeout(() => {  
-      drawChart()  
-      drawProfitChart()  
-    }, 50)  
-  }  
-  
-}  
-  
-// =========== CATEGORIES ===========  
-function getCategories() {  
-  const cats = [...new Set(state.products.map(p => p.cat || "General"))]  
-  return ["Todos", ...cats]  
-}  
-  
-function renderCategoryFilter() {  
-  const container = document.getElementById("catFilter")  
-  container.innerHTML = ""  
-  getCategories().forEach(cat => {  
-    const btn = document.createElement("button")  
-    btn.className = "cat-btn" + (cat === activeCategory ? " active" : "")  
-    btn.textContent = cat  
-    btn.onclick = () => { activeCategory = cat; renderProducts() }  
-    container.appendChild(btn)  
-  })  
-}  
-  
-// =========== PRODUCTS ===========  
-function renderProducts() {  
-  const search = document.getElementById("searchProduct").value.toLowerCase()  
-  const container = document.getElementById("productList")  
-  container.innerHTML = ""  
-  let lowStock = []  
-  
-  const filtered = state.products.filter(p => {  
-    const matchSearch = p.name.toLowerCase().includes(search)  
-    const matchCat = activeCategory === "Todos" || (p.cat || "General") === activeCategory  
-    return matchSearch && matchCat  
-  })  
-  
-  if (filtered.length === 0) {  
-    container.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:#94a3b8; padding:24px; font-size:13px;">Sin productos</div>`  
-  }  
-  
-  filtered.forEach(p => {  
-    if (p.stock <= 5) lowStock.push(`${p.name} (${p.stock})`)  
-  
-    const inCart = state.cart.find(x => x.id === p.id)  
-    const qtyInCart = inCart ? inCart.qty : 0  
-    const available = p.stock - qtyInCart  
-    const oos = available <= 0  
-  
-    const card = document.createElement("div")  
-    card.className = "product-card"  
-    card.innerHTML = `  
-      <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:#0f172a;">${p.name}</div>  
-      <span class="cat-chip">${p.cat || "General"}</span>  
-      <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">  
-        <b style="font-size:15px; font-family:'JetBrains Mono',monospace; color:#0f172a;">$${p.price.toFixed(2)}</b>  
-        <span class="${p.stock <= 5 && p.stock > 0 ? 'badge badge-red' : p.stock <= 0 ? 'badge badge-red' : 'badge badge-green'}">${p.stock}</span>  
-      </div>  
-      <button onclick="addToCart(${p.id},this)" class="btn-add" ${oos ? 'disabled' : ''}>  
-        ${oos ? 'Sin stock' : '+ Agregar'}  
-      </button>  
-    `  
-    container.appendChild(card)  
-  })  
-  
-  const alertBox = document.getElementById("lowStockAlert")  
-  alertBox.innerHTML = lowStock.length  
-    ? `<div class="alert-box">⚠ Stock bajo: ${lowStock.join(" · ")}</div>` : ""  
-  
-  renderCategoryFilter()  
-}  
-  
-// =========== CART ===========  
-function addToCart(id, btn) {  
-  
-  btn.classList.add("pop")  
-  setTimeout(() => btn.classList.remove("pop"), 220)  
-  
-  const p = state.products.find(x => x.id === id)  
-  const item = state.cart.find(x => x.id === id)  
-  const currentQty = item ? item.qty : 0  
-  
-  if (currentQty >= p.stock) {  
-    showToast("⚠ No hay suficiente stock")  
-    return  
-  }  
-  
-  if (item) {  
-    item.qty++  
-  } else {  
-    state.cart.push({  
-      id: p.id,  
-      name: p.name,  
-      price: p.price,  
-      cost: p.cost,  
-      qty: 1  
-    })  
-  }  
-  
-  markDirty("cart", "products")  
-  flushRender()  
-  saveCart()  
-}  
-  
-function changeQty(id, delta) {  
-  let item = state.cart.find(x => x.id === id)  
-  if (!item) return  
-  let p = state.products.find(x => x.id === id)  
-  
-  if (delta > 0) {  
-    if (item.qty >= p.stock) {  
-      showToast("⚠ Sin más stock")  
-      return  
-    }  
-    item.qty++  
-  } else {  
-    item.qty--  
-    if (item.qty <= 0) state.cart = state.cart.filter(x => x.id !== id)  
-  }  
-  
-  markDirty("cart", "products")  
-  flushRender()  
-  saveCart()  
-}  
-  
-function calculateChange() {  
-  const paid = Number(document.getElementById("paid").value) || 0  
-  const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)  
-  const change = Math.max(paid - total, 0)  
-  document.getElementById("change").textContent = `$${change.toFixed(2)}`  
-  
-  const btn = document.querySelector("#confirmSaleBtn")  
-  
-  if (paid < total || total === 0) {  
-    btn.disabled = true  
-    btn.style.opacity = "0.5"  
-    btn.style.cursor = "not-allowed"  
-  } else {  
-    btn.disabled = false  
-    btn.style.opacity = "1"  
-    btn.style.cursor = "pointer"  
-  }  
-}  
-  
-function renderCart() {  
-  const container = document.getElementById("cart")  
-  container.innerHTML = ""  
-  
-  if (state.cart.length === 0) {  
-    container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px 0; font-size:13px;">El carrito está vacío</div>`  
-    document.getElementById("total").textContent = "$0.00"  
-    calculateChange()  
-    return  
-  }  
-  
-  let total = 0  
-  
-  state.cart.forEach(item => {  
-    const sub = item.qty * item.price  
-    total += sub  
-    const row = document.createElement("div")  
-    row.className = "cart-row"  
-    row.innerHTML = `  
-      <div>  
-        <div style="font-size:14px; font-weight:600; color:#0f172a;">${item.name}</div>  
-        <div style="font-size:11px; color:#94a3b8; font-family:'JetBrains Mono',monospace;">$${item.price.toFixed(2)} × ${item.qty}</div>  
-      </div>  
-      <div style="display:flex; align-items:center; gap:6px;">  
-        <button class="qty-btn" onclick="changeQty(${item.id},-1)">−</button>  
-        <span class="qty-display">${item.qty}</span>  
-        <button class="qty-btn" onclick="changeQty(${item.id},1)">+</button>  
-      </div>  
-      <span style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; min-width:56px; text-align:right; color:#0f172a;">$${sub.toFixed(2)}</span>  
-    `  
-    container.appendChild(row)  
-  })  
-  
-  document.getElementById("total").textContent = `$${total.toFixed(2)}`  
-  calculateChange()  
-}  
-  
-// =========== CONFIRMAR VENTA ===========  
-async function confirmSale() {  
-  
-  if(lock) {  
-    showToast("⏳ Procesando venta...")  
-    return  
-  }  
-  
-  if (state.cart.length === 0) {  
-    showToast("⚠ El carrito está vacío")  
-    return  
-  }  
-  
-  const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)  
-  const paid = Number(document.getElementById("paid").value) || 0  
-  
-  if (paid < total) {  
-    showToast("❌ Pago insuficiente")  
-    return  
-  }  
-  
-  const btn = document.getElementById("confirmSaleBtn")  
-  
-  lock = true  
-  btn.disabled = true  
-  btn.style.opacity = "0.6"  
-  btn.textContent = "⏳ Procesando..."  
-  
-  try {  
-  
-    setSyncStatus("syncing", "Verificando stock...")  
-    try {  
-      const res = await fetch("/api/products")  
-      if(res.ok){  
-        const data = await res.json()  
-        state.products = data.map(p => ({  
-          id: p.id,  
-          name: p.name,  
-          price: Number(p.price),  
-          cost: Number(p.cost || 0),  
-          stock: Number(p.stock),  
-          sold: Number(p.sold || 0),  
-          cat: p.cat || "General"  
-        }))  
-        lastSyncTime = new Date()  
-        setSyncStatus("ok", "Stock verificado")  
-      }  
-    } catch(e) {  
-      console.warn("No se pudo verificar stock antes de venta:", e)  
-      setSyncStatus("error", "Sin conexión")  
-    }  
-  
-    for (const item of state.cart){  
-      const p = state.products.find(x => x.id === item.id)  
-      if(!p){  
-        showToast(`❌ Producto no existe: ${item.name}`, "error")  
-        return  
-      }  
-      if(p.stock < item.qty){  
-        showToast(`❌ Sin stock: ${item.name} (disponible: ${p.stock})`, "error")  
-        item.qty = p.stock  
-        markDirty("cart", "products")  
-        flushRender()  
-        return  
-      }  
-    }  
-  
-    const finalTotal = state.cart.reduce((a, item) => a + item.price * item.qty, 0)  
-  
-    const now = new Date()  
-  
-    const sale = {  
-      id: null,  
-      num: null,  
-      date: now.toISOString(),  
-      dateKey: now.getDate() + "/" + (now.getMonth()+1),  
-      items: JSON.parse(JSON.stringify(state.cart)),  
-      total: finalTotal,  
-      paid,  
-      change: paid - finalTotal  
-    }  
-  
-    const data = await api("/api/sales",{  
-      method:"POST",  
-      body:JSON.stringify(sale)  
-    })  
-  
-    sale.id  = data.id  
-    sale.num = data.num != null ? Number(data.num) : null  
-  
-    if(sale.num == null){  
-      console.warn("⚠ El backend no devolvió num.")  
-    }  
-  
-    state.sales.unshift(sale)  
-  
-    state.cart = []  
-    localStorage.removeItem("cart")  
-    document.getElementById("paid").value = ""  
-    if (document.activeElement) document.activeElement.blur()  
-  
-    markDirty("cart", "products")  
-    flushRender()  
-  
-    showSaleSummary(sale)  
-    showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`, "ok")  
-  
-  } catch (err) {  
-  
-    console.error(err)  
-    showToast("❌ " + err.message, "error")  
-  
-  } finally {  
-  
-    lock = false  
-    btn.disabled = false  
-    btn.style.opacity = "1"  
-    btn.textContent = "✅ Confirmar Venta"  
-    calculateChange()  
-  
-  }  
-  
-}  
-  
-// =========== INVENTORY ===========  
-function renderInventory() {  
-  
-  const container = document.getElementById("inventoryList")  
-  container.innerHTML = ""  
-  
-  const search = document.getElementById("searchInventory")?.value?.toLowerCase() || ""  
-  
-  const filtered = state.products.filter(p =>  
-    p.name.toLowerCase().includes(search)  
-  )  
-  
-  const best = [...state.products]  
-    .sort((a,b) => (b.sold*(b.price-b.cost)) - (a.sold*(a.price-a.cost)))[0]  
-  
-  filtered.forEach(p => {  
-  
-    const profit = p.price - p.cost  
-    const totalProfit = p.sold * profit  
-  
-    const isBest = best && p.id === best.id && totalProfit > 0  
-    const isZero = p.sold === 0  
-  
-    const card = document.createElement("div")  
-    card.className = "inv-card" + (isBest ? " best" : isZero ? " zero" : "")  
-  
-    card.innerHTML = `  
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">  
-        <div>  
-          <span style="font-weight:700; font-size:15px;">  
-            ${isBest ? "🥇 " : ""}${p.name}  
-          </span>  
-          <span class="cat-chip" style="margin-left:8px;">${p.cat || "General"}</span>  
-        </div>  
-        ${isZero  
-          ? '<span class="badge badge-red">Sin ventas</span>'  
-          : `<span class="badge badge-green">${p.sold} vendidos</span>`  
-        }  
-      </div>  
-  
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:13px; color:#475569;">  
-        <div style="font-size:11px;color:#94a3b8;font-weight:600;">PRECIO VENTA</div>  
-        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.price.toFixed(2)}</b></div>  
-        <div style="font-size:11px;color:#94a3b8;font-weight:600;">COSTO</div>  
-        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.cost.toFixed(2)}</b></div>  
-        <div style="background:#f0fdf4; border-radius:8px; padding:8px;">  
-          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA/U</div>  
-          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">$${profit.toFixed(2)}</b>  
-        </div>  
-        <div style="background:#f0fdf4; border-radius:8px; padding:8px;">  
-          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA TOTAL</div>  
-          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">$${totalProfit.toFixed(2)}</b>  
-        </div>  
-        <div style="background:#f8fafc; border-radius:8px; padding:8px;">  
-          <div style="font-size:11px;color:#94a3b8;font-weight:600;">STOCK</div>  
-          <b style="font-family:'JetBrains Mono',monospace;color:${p.stock<=5?'#dc2626':'#0f172a'};">${p.stock}</b>  
-        </div>  
-      </div>  
-  
-      <div style="display:flex; gap:8px; margin-top:10px;">  
-        <button onclick="openEditModal(${p.id})" class="btn-ghost" style="flex:1;">✏️ Editar</button>  
-        <button onclick="openRestock(${p.id})" class="btn-ghost" style="flex:1; border-color:#22c55e; color:#16a34a;">+ Stock</button>  
-        <button onclick="deleteProduct(${p.id})" class="btn-danger">🗑</button>  
-      </div>  
-    `  
-  
-    container.appendChild(card)  
-  
-  })  
-  
-}  
-  
-// =========== MODAL PRODUCTO ===========  
-function openAddModal() {  
-  editingId = null  
-  document.getElementById("modal-title").textContent = "➕ Nuevo Producto"  
-  ;["m-name","m-price","m-cost","m-stock","m-cat"].forEach(id => document.getElementById(id).value = "")  
-  clearModalError()  
-  document.getElementById("modal").classList.add("show")  
-  setTimeout(() => document.getElementById("m-name").focus(), 100)  
-}  
-  
-function openEditModal(id) {  
-  editingId = id  
-  const p = state.products.find(x => x.id === id)  
-  document.getElementById("modal-title").textContent = "✏️ Editar producto"  
-  document.getElementById("m-name").value = p.name  
-  document.getElementById("m-price").value = p.price  
-  document.getElementById("m-cost").value = p.cost  
-  document.getElementById("m-stock").value = p.stock  
-  document.getElementById("m-cat").value = p.cat || ""  
-  clearModalError()  
-  document.getElementById("modal").classList.add("show")  
-}  
-  
-function closeModal() {  
-  document.getElementById("modal").classList.remove("show")  
-  clearModalError()  
-}  
-  
-function showModalError(msg) {  
-  const el = document.getElementById("modal-error")  
-  el.textContent = msg  
-  el.style.display = "block"  
-}  
-  
-function clearModalError() {  
-  const el = document.getElementById("modal-error")  
-  if(el){  
-    el.style.display = "none"  
-    el.textContent = ""  
-  }  
-}  
-  
-async function saveProduct(){  
-  
-  const name = document.getElementById("m-name").value.trim()  
-  
-  if(!name){  
-    showToast("⚠ Ingresá el nombre")  
-    return  
-  }  
-  
-  const price = parseFloat(document.getElementById("m-price").value) || 0  
-  const cost  = parseFloat(document.getElementById("m-cost").value) || 0  
-  const stock = parseInt(document.getElementById("m-stock").value) || 0  
-  
-  const cat = (  
-    document.getElementById("m-cat").value.trim()  
-    .toLowerCase()  
-    .replace(/^\w/, c => c.toUpperCase())  
-  ) || "General"  
-  
-  const product = { name, price, cost, stock, cat }  
-  
-  const saveBtn = document.getElementById("saveBtn")  
-  const originalText = saveBtn.textContent  
-  
-  saveBtn.textContent = "⏳ Guardando..."  
-  saveBtn.classList.add("btn-loading")  
-  clearModalError()  
-  
-  try {  
-  
-    if(editingId){  
-      await api("/api/products/"+editingId,{  
-        method:"PUT",  
-        body:JSON.stringify(product)  
-      })  
-      showToast("✏️ Producto actualizado", "ok")  
-    } else {  
-      await api("/api/products",{  
-        method:"POST",  
-        body:JSON.stringify(product)  
-      })  
-      showToast("✅ Producto agregado", "ok")  
-    }  
-  
-    closeModal()  
-    editingId = null  
-    await loadProducts()  
-  
-  } catch(err) {  
-  
-    showModalError("❌ " + err.message)  
-    console.error("Error guardando producto:", err)  
-  
-  } finally {  
-  
-    saveBtn.textContent = originalText  
-    saveBtn.classList.remove("btn-loading")  
-  
-  }  
-  
-}  
-  
-// =========== RESTOCK ===========  
-function openRestock(id) {  
-  restockId = id  
-  const p = state.products.find(x => x.id === id)  
-  document.getElementById("restock-name").textContent = p.name  
-  document.getElementById("restock-qty").value = ""  
-  document.getElementById("restockModal").classList.add("show")  
-  setTimeout(() => document.getElementById("restock-qty").focus(), 100)  
-}  
-  
-function closeRestock() { document.getElementById("restockModal").classList.remove("show") }  
-  
-async function confirmRestock(){  
-  
-  const qty = parseInt(document.getElementById("restock-qty").value) || 0  
-  
-  if(qty <= 0){  
-    showToast("⚠ Cantidad inválida")  
-    return  
-  }  
-  
-  const restockBtn = document.getElementById("restockBtn")  
-  restockBtn.textContent = "⏳ Agregando..."  
-  restockBtn.classList.add("btn-loading")  
-  
-  try {  
-  
-    await api("/api/restock",{  
-      method:"POST",  
-      body:JSON.stringify({ id:restockId, qty })  
-    })  
-  
-    closeRestock()  
-    await loadProducts()  
-    showToast(`✅ +${qty} unidades agregadas`, "ok")  
-  
-  } catch(err) {  
-  
-    showToast("❌ " + err.message, "error")  
-    console.error("Error en restock:", err)  
-  
-  } finally {  
-  
-    restockBtn.textContent = "+ Agregar"  
-    restockBtn.classList.remove("btn-loading")  
-  
-  }  
-  
-}  
-  
-async function deleteProduct(id){  
-  
-  const p = state.products.find(x => x.id === id)  
-  
-  if(!confirm(`¿Eliminar "${p.name}"?`)) return  
-  
-  try {  
-  
-    const res = await fetch("/api/products/"+id,{ method:"DELETE" })  
-  
-    if(!res.ok){  
-      let data = {}  
-      try { data = await res.json() } catch(_){}  
-      throw new Error(data.error || "Error al eliminar")  
-    }  
-  
-    await loadProducts()  
-    showToast("🗑 Producto eliminado", "ok")  
-  
-  } catch(err) {  
-  
-    showToast("❌ " + err.message, "error")  
-    console.error("Error eliminando producto:", err)  
-  
-  }  
-  
-}  
-  
-// =========== TICKET ===========  
-function showSaleSummary(sale){  
-  
-  const line = "--------------------------------"  
-  
-  const header = `  
-${line}  
-Producto              Unit     Total  
-${line}  
-`  
-  
-  const maxNameLength = Math.max(  
-    ...sale.items.map(p => (p.name + " x" + p.qty).length),  
-    16  
-  ) + 2  
-  
-  const items = sale.items.map(p => {  
-    const sub = p.qty * p.price  
-    const name = (p.name + " x" + p.qty).padEnd(maxNameLength)  
-    const unit = ("$" + p.price.toFixed(2)).padEnd(10)  
-    const total = "$" + sub.toFixed(2)  
-    return `${name}${unit}${total}`  
-  }).join("\n")  
-  
-  document.getElementById("saleSummaryInfo").innerHTML =  
-    `Venta ${saleNumLabel(sale.num)}<br>ID: ${sale.id}<br>${formatDate(sale.date)}`  
-  
-  document.getElementById("saleSummaryItems").innerHTML =  
-    `<pre style="font-family:monospace;overflow-x:auto;">${header}${items}\n${line}</pre>`  
-  
-  document.getElementById("saleSummaryTotal").innerHTML = `<b>$${sale.total.toFixed(2)}</b>`  
-  document.getElementById("saleSummaryPaid").innerHTML = `<b>$${sale.paid.toFixed(2)}</b>`  
-  document.getElementById("saleSummaryChange").innerHTML =  
-    `<span style="color:#16a34a;font-weight:700;">$${sale.change.toFixed(2)} 🟢</span>`  
-  
-  const modal = document.getElementById("saleSummary")  
-  modal.style.display = "flex"  
-  
-  document.body.style.pointerEvents = "none"  
-  modal.style.pointerEvents = "auto"  
-  
-}  
-  
-function closeSummary(){  
-  const modal = document.getElementById("saleSummary")  
-  modal.style.display = "none"  
-  
-  document.body.style.pointerEvents = ""  
-  
-  loadProducts(true).catch(console.error)  
-  
-  markDirty("cart", "products")  
-  flushRender()  
-  calculateChange()  
-}  
-  
-function printTicket(){  
-  const content = document.getElementById("saleSummaryBox").innerHTML  
-  const w = window.open("")  
-  w.document.write(`<html><body style="font-family:monospace;padding:20px">${content}</body></html>`)  
-  w.document.close()  
-  w.print()  
-}  
-  
-function shareTicket(){  
-  const text = document.getElementById("saleSummaryBox").innerText  
-  if(navigator.share){  
-    navigator.share({ title:"Ticket de venta", text })  
-    .catch(()=>{  
-      navigator.clipboard.writeText(text)  
-      showToast("📋 Ticket copiado")  
-    })  
-  }else{  
-    navigator.clipboard.writeText(text)  
-    showToast("📋 Ticket copiado")  
-  }  
-}  
-  
-function filtrarVentas(ventas, texto){  
-  const palabras = texto.toLowerCase().split(" ").filter(p => p.trim() !== "")  
-  if(palabras.length === 0) return ventas  
-  return ventas.filter(sale => {  
-    const nombres = sale.items.map(i => i.name.toLowerCase())  
-    return palabras.every(p => nombres.some(n => n.includes(p)))  
-  })  
-}  
-  
-// =========== SALES ===========  
-function renderSales(){  
-  
-  const container = document.getElementById("salesList")  
-  container.innerHTML = ""  
-  
-  const search = document.getElementById("searchSales")?.value?.toLowerCase() || ""  
-  
-  const filtradas = filtrarVentas(state.sales, search)  
-  
-  if(filtradas.length === 0){  
-    const msg = search  
-      ? "No se encontraron coincidencias"  
-      : "No hay ventas registradas aún"  
-    container.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:40px 0;">${msg}</div>`  
-    return  
-  }  
-  
-  const ventasOrdenadas = filtradas  
-    .slice()  
-    .sort((a, b) => new Date(b.date) - new Date(a.date))  
-    .slice(0, 50)  
-  
-  const totalGeneral = ventasOrdenadas.reduce((a, s) => a + s.total, 0)  
-  let acumuladoRestante = totalGeneral  
-  
-  const ventasConAcumulado = ventasOrdenadas.map(s => {  
-    const acumulado = acumuladoRestante  
-    acumuladoRestante -= s.total  
-    return { ...s, acumulado }  
-  })  
-  
-  const ORDEN_SECCIONES = ["Hoy", "Ayer", "Esta semana", "Este mes", "Más antiguas"]  
-  
-  const grupos = {}  
-  ventasConAcumulado.forEach(s => {  
-    const label = getDayLabel(s.date)  
-    if(!grupos[label]) grupos[label] = []  
-    grupos[label].push(s)  
-  })  
-  
-  const colors = ["#dbeafe","#dcfce7","#fef9c3","#fee2e2","#e0f2fe"]  
-  
-  ORDEN_SECCIONES.forEach(seccion => {  
-  
-    const ventas = grupos[seccion]  
-    if(!ventas || ventas.length === 0) return  
-  
-    const header = document.createElement("div")  
-    header.className = "day-section-header"  
-    header.innerHTML = `  
-      <span class="day-section-label">${seccion}</span>  
-      <div class="day-section-line"></div>  
-      <span style="font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap;">${ventas.length} venta${ventas.length > 1 ? "s" : ""}</span>  
-    `  
-    container.appendChild(header)  
-  
-    ventas.forEach((s, i) => {  
-  
-      const items = s.items.map(p=>{  
-        const unitProfit = (p.price - p.cost)  
-        const totalProfit = unitProfit * p.qty  
-        const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"  
-        return `  
-          ${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}  
-          <br>Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>  
-          <br>${icon} Ganancia unidad: <b style="color:#16a34a;font-size:14px;">$${unitProfit.toFixed(2)} c/u</b>  
-          <br><br>  
-        `  
-      }).join("")  
-  
-      const profitVenta = s.items.reduce((a,p)=>{  
-        return a + ((p.price - p.cost) * p.qty)  
-      },0)  
-  
-      const div = document.createElement("div")  
-      div.style.background = colors[i % colors.length]  
-      div.style.borderRadius = "14px"  
-      div.style.padding = "16px"  
-      div.style.marginBottom = "14px"  
-      div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"  
-  
-      div.innerHTML = `  
-        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Venta ${saleNumLabel(s.num)}</div>  
-        <div style="font-size:11px;color:#64748b;margin-bottom:6px;">ID: ${s.id}</div>  
-        <div style="font-size:12px;color:#64748b;margin-bottom:10px;">${formatDate(s.date)}</div>  
-        <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">${items}</div>  
-        <div style="font-size:13px;line-height:1.8;">  
-          Total: <b>$${s.total.toFixed(2)}</b><br>  
-          Ganancia: <b style="color:#16a34a">$${profitVenta.toFixed(2)}</b><br>  
-          Pagó: <b>$${Number(s.paid).toFixed(2)}</b><br>  
-          Vuelto: <b>$${Number(s.change).toFixed(2)}</b><br>  
-          <span style="font-weight:700;">Acumulado: $${s.acumulado.toFixed(2)}</span>  
-        </div>  
-        <div style="margin-top:10px;">  
-          <button class="btn-ghost" style="width:100%;">📄 Ver ticket</button>  
-        </div>  
-      `  
-  
-      const btn = div.querySelector("button")  
-      btn.onclick = () => showSaleSummary(s)  
-  
-      container.appendChild(div)  
-  
-    })  
-  
-  })  
-  
-}  
-  
-// =========================================================  
-// renderStats — PANEL OPERATIVO + SUMMARY FINANCIERO  
-// ---------------------------------------------------------  
-// Flujo:  
-//   1. statsPanel  → datos locales (products + sales)  
-//   2. summaryPanel → datos de /api/summary (ya en state.summary)  
-//   3. gráficas  
-//   4. rankingList → top ventas + gastos por categoría  
-// =========================================================  
-function renderStats() {  
-  
-  // ── 1. PANEL OPERATIVO (sin cambios respecto al original) ──  
-  const totalSales    = state.sales.length  
-  const ingresos      = state.sales.reduce((a,b) => a + b.total, 0)  
-  const totalProfit   = state.products.reduce((a,p) => a + p.sold*(p.price-p.cost), 0)  
-  const sorted        = [...state.products].sort((a,b) => b.sold - a.sold)  
-  const mostSold      = sorted.find(p => p.sold > 0)  
-  const mostProfit    = [...state.products]  
-    .sort((a,b) => (b.sold*(b.price-b.cost)) - (a.sold*(a.price-a.cost)))  
-    .find(p => p.sold > 0)  
-  const lowStock      = state.products.filter(p => p.stock <= 5).length  
-  
-  document.getElementById("statsPanel").innerHTML = `  
-    <div class="stat-card" style="background:#dbeafe;">  
-      <div style="font-size:11px; color:#1d4ed8; font-weight:700; letter-spacing:0.5px;">VENTAS</div>  
-      <div class="stat-value" style="color:#1e40af;">${totalSales}</div>  
-    </div>  
-    <div class="stat-card" style="background:#dcfce7;">  
-      <div style="font-size:11px; color:#15803d; font-weight:700; letter-spacing:0.5px;">INGRESOS</div>  
-      <div class="stat-value" style="color:#166534;">$${ingresos.toFixed(2)}</div>  
-    </div>  
-    <div class="stat-card" style="background:#fef9c3;">  
-      <div style="font-size:11px; color:#a16207; font-weight:700; letter-spacing:0.5px;">MÁS VENDIDO</div>  
-      <div style="font-size:15px; font-weight:700; color:#92400e; margin-top:4px;">${mostSold ? mostSold.name : "—"}</div>  
-    </div>  
-    <div class="stat-card" style="background:#f3e8ff;">  
-      <div style="font-size:11px; color:#7c3aed; font-weight:700; letter-spacing:0.5px;">MÁS GANANCIA</div>  
-      <div style="font-size:15px; font-weight:700; color:#6d28d9; margin-top:4px;">${mostProfit ? mostProfit.name : "—"}</div>  
-    </div>  
-    <div class="stat-card" style="background:#d1fae5;">  
-      <div style="font-size:11px; color:#065f46; font-weight:700; letter-spacing:0.5px;">GANANCIA BRUTA</div>  
-      <div class="stat-value" style="color:#064e3b;">$${totalProfit.toFixed(2)}</div>  
-    </div>  
-    <div class="stat-card" style="background:${lowStock > 0 ? '#fee2e2' : '#f0fdf4'};">  
-      <div style="font-size:11px; color:${lowStock > 0 ? '#b91c1c' : '#15803d'}; font-weight:700; letter-spacing:0.5px;">STOCK BAJO</div>  
-      <div class="stat-value" style="color:${lowStock > 0 ? '#991b1b' : '#166534'};">${lowStock}</div>  
-    </div>  
-  `  
-  
-  // ── 2. SUMMARY FINANCIERO REAL (desde /api/summary) ──  
-  const s = state.summary  
-  const panel = document.getElementById("summaryPanel")  
-  const filterLabel = document.getElementById("summaryFilterLabel")  
-  
-  if(filterLabel){  
-    filterLabel.textContent = s?.filter?.desde  
-      ? `${s.filter.desde}${s.filter.hasta ? " → " + s.filter.hasta : ""}`  
-      : "Histórico completo"  
-  }  
-  
-  if(!s){  
-    // error al cargar o aún no disponible  
-    panel.innerHTML = `  
-      <div style="grid-column:1/-1; background:#fef2f2; border:2px solid #fca5a5; border-radius:12px; padding:14px; font-size:13px; color:#dc2626; font-weight:600; text-align:center;">  
-        ⚠ No se pudo cargar el resumen financiero  
-      </div>  
-    `  
-  } else {  
-  
-    // determina color de ganancia (verde si > 0, rojo si < 0)  
-    const profitColor  = s.profit >= 0 ? "#064e3b" : "#991b1b"  
-    const profitBg     = s.profit >= 0 ? "#dcfce7"  : "#fee2e2"  
-    const profitIcon   = s.profit >= 0 ? "💰"        : "📉"  
-  
-    panel.innerHTML = `  
-      <div class="stat-card" style="background:#ecfeff;">  
-        <div style="font-size:11px; color:#0891b2; font-weight:700; letter-spacing:0.5px;">TOTAL VENDIDO</div>  
-        <div class="stat-value" style="color:#0e7490;">$${s.sales.toFixed(2)}</div>  
-      </div>  
-      <div class="stat-card" style="background:#fff7ed;">  
-        <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">COSTO MERCADERÍA</div>  
-        <div class="stat-value" style="color:#9a3412;">$${s.costs.toFixed(2)}</div>  
-      </div>  
-      <div class="stat-card" style="background:#fef3c7;">  
-        <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">GASTOS OPERATIVOS</div>  
-        <div class="stat-value" style="color:#78350f;">$${s.expenses.toFixed(2)}</div>  
-      </div>  
-      <div class="stat-card" style="background:${profitBg}; border: 2px solid ${s.profit >= 0 ? '#86efac' : '#fca5a5'};">  
-        <div style="font-size:11px; color:${profitColor}; font-weight:700; letter-spacing:0.5px;">${profitIcon} GANANCIA REAL</div>  
-        <div class="stat-value" style="color:${profitColor};">$${s.profit.toFixed(2)}</div>  
-      </div>  
-    `  
-  }  
-  
-  // ── 3. RANKING + GASTOS POR CATEGORÍA ──  
-  const withSales = sorted.filter(p => p.sold > 0)  
-  const medals = ["🥇","🥈","🥉"]  
-  
-  let rankHtml = `<span style="font-weight:700; font-size:15px; margin-bottom:12px; display:block;">🏆 Ranking de ventas</span>`  
-  
-  if (withSales.length === 0) {  
-    rankHtml += `<div style="text-align:center; color:#94a3b8; font-size:13px; padding:12px 0;">Aún no hay ventas registradas</div>`  
-  } else {  
-    withSales.forEach((p, i) => {  
-      rankHtml += `  
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f1f5f9;">  
-          <span style="font-weight:600; color:#0f172a; font-size:14px;">${medals[i] || (i+1)+"."} ${p.name}</span>  
-          <span class="badge badge-blue">${p.sold} vendidos</span>  
-        </div>`  
-    })  
-  }  
-  
-  // gastos por categoría — solo si el summary está disponible y tiene datos  
-  if(s && s.expenses_by_category && s.expenses_by_category.length > 0){  
-    rankHtml += `  
-      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">  
-        <span style="font-weight:700; font-size:14px; color:#0f172a; display:block; margin-bottom:10px;">💸 Gastos por categoría</span>  
-        ${s.expenses_by_category.map(e => `  
-          <div style="  
-            display:flex;  
-            justify-content:space-between;  
-            align-items:center;  
-            padding:8px 10px;  
-            background:#fef9c3;  
-            border-radius:8px;  
-            margin-bottom:6px;  
-          ">  
-            <span style="font-size:13px; font-weight:600; color:#92400e;">${e.category}</span>  
-            <b style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#78350f;">$${e.total.toFixed(2)}</b>  
-          </div>  
-        `).join("")}  
-      </div>  
-    `  
-  } else if(s && s.expenses_by_category && s.expenses_by_category.length === 0) {  
-    rankHtml += `  
-      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">  
-        <span style="font-weight:700; font-size:14px; color:#0f172a; display:block; margin-bottom:8px;">💸 Gastos por categoría</span>  
-        <div style="text-align:center; color:#94a3b8; font-size:13px; padding:8px 0;">Sin gastos registrados</div>  
-      </div>  
-    `  
-  }  
-  
-  document.getElementById("rankingList").innerHTML = rankHtml  
-  
-  drawChart()  
-  drawProfitChart()  
-}  
-  
-// =========== RESET STATS ===========  
-async function resetStats(){  
-  if(!confirm("¿Reiniciar estadísticas? Las ventas se eliminarán pero el inventario seguirá igual.")) return  
-  
-  try {  
-  
-    await api("/api/reset-stats",{method:"POST"})  
-    await loadProducts()  
-    state.summary = null  
-    showToast("📊 Estadísticas reiniciadas", "ok")  
-    renderStats()  
-  
-  } catch(err) {  
-  
-    showToast("❌ Error al reiniciar: " + err.message, "error")  
-    console.error(err)  
-  
-  }  
-  
-}  
-  
-// =========== CLEAR HISTORY ===========  
-async function clearHistory(){  
-  if(!confirm("¿Eliminar todo el historial de ventas? Esta acción no se puede deshacer.")) return  
-  
-  try {  
-  
-    await api("/api/sales",{ method:"DELETE" })  
-    state.sales = []  
-    renderAll()  
-    showToast("🗑 Historial eliminado", "ok")  
-  
-  } catch(err) {  
-  
-    showToast("❌ Error al borrar: " + err.message, "error")  
-    console.error(err)  
-  
-  }  
-  
-}  
-  
-// =========== CHART ===========  
-function drawChart() {  
-  
-  const canvas = document.getElementById("salesChart")  
-  if (!canvas) return  
-  
-  const ctx = canvas.getContext("2d")  
-  const W = canvas.offsetWidth || 300  
-  canvas.width = W  
-  canvas.height = 160  
-  const H = 160  
-  
-  const byDay = {}  
-  
-  state.sales.forEach(s => {  
-    const key = getDateKey(s.date)  
-    if(!key) return  
-    byDay[key] = (byDay[key] || 0) + s.total  
-  })  
-  
-  const labels = Object.keys(byDay)  
-    .sort((a,b)=>{  
-      const [d1,m1] = a.split("/").map(Number)  
-      const [d2,m2] = b.split("/").map(Number)  
-      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)  
-    })  
-    .slice(-7)  
-  
-  const values = labels.map(k => byDay[k])  
-  
-  ctx.clearRect(0,0,W,H)  
-  
-  if(labels.length === 0){  
-    ctx.fillStyle = "#94a3b8"  
-    ctx.font = "13px Sora, sans-serif"  
-    ctx.textAlign = "center"  
-    ctx.fillText("Aún no hay datos para graficar",W/2,H/2)  
-    return  
-  }  
-  
-  const maxVal = Math.max(...values,1)  
-  const padL = 8, padR = 8, padT = 22, padB = 32  
-  const chartW = W - padL - padR  
-  const chartH = H - padT - padB  
-  const gap = chartW / labels.length  
-  const barW = Math.min(gap * 0.55,40)  
-  
-  ctx.strokeStyle = "#f1f5f9"  
-  ctx.lineWidth = 1  
-  for(let i=1;i<=3;i++){  
-    const y = padT + chartH - (i/3)*chartH  
-    ctx.beginPath()  
-    ctx.moveTo(padL,y)  
-    ctx.lineTo(W-padR,y)  
-    ctx.stroke()  
-  }  
-  
-  labels.forEach((lbl,i)=>{  
-    const barH = Math.max((values[i]/maxVal)*chartH,4)  
-    const x = padL + i*gap + gap/2 - barW/2  
-    const y = padT + chartH - barH  
-  
-    const grad = ctx.createLinearGradient(0,y,0,y+barH)  
-    grad.addColorStop(0,"#3b82f6")  
-    grad.addColorStop(1,"#bfdbfe")  
-    ctx.fillStyle = grad  
-    ctx.beginPath()  
-    if(ctx.roundRect){ ctx.roundRect(x,y,barW,barH,5) }  
-    else { ctx.rect(x,y,barW,barH) }  
-    ctx.fill()  
-  
-    ctx.fillStyle = "#1e40af"  
-    ctx.font = "bold 9px JetBrains Mono, monospace"  
-    ctx.textAlign = "center"  
-    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)  
-  
-    ctx.fillStyle = "#64748b"  
-    ctx.font = "9px Sora, sans-serif"  
-    ctx.textAlign = "center"  
-    ctx.fillText(lbl,x+barW/2,H-6)  
-  })  
-}  
-  
-function drawProfitChart(){  
-  
-  const canvas = document.getElementById("profitChart")  
-  if(!canvas) return  
-  
-  const ctx = canvas.getContext("2d")  
-  const W = canvas.offsetWidth || 300  
-  canvas.width = W  
-  canvas.height = 160  
-  const H = 160  
-  
-  const byDay = {}  
-  
-  state.sales.forEach(s=>{  
-    const key = getDateKey(s.date)  
-    if(!key) return  
-    let profit = 0  
-    s.items.forEach(p=>{ profit += (p.price - p.cost) * p.qty })  
-    byDay[key] = (byDay[key] || 0) + profit  
-  })  
-  
-  const labels = Object.keys(byDay)  
-    .sort((a,b)=>{  
-      const [d1,m1] = a.split("/").map(Number)  
-      const [d2,m2] = b.split("/").map(Number)  
-      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)  
-    })  
-    .slice(-7)  
-  
-  const values = labels.map(k=>byDay[k])  
-  
-  ctx.clearRect(0,0,W,H)  
-  
-  if(labels.length===0){  
-    ctx.fillStyle="#94a3b8"  
-    ctx.font="13px Sora"  
-    ctx.textAlign="center"  
-    ctx.fillText("Sin datos",W/2,H/2)  
-    return  
-  }  
-  
-  const maxVal = Math.max(...values,1)  
-  const padL=8,padR=8,padT=22,padB=32  
-  const chartW=W-padL-padR  
-  const chartH=H-padT-padB  
-  const gap=chartW/labels.length  
-  const barW=Math.min(gap*0.55,40)  
-  
-  labels.forEach((lbl,i)=>{  
-    const barH=(values[i]/maxVal)*chartH  
-    const x=padL+i*gap+gap/2-barW/2  
-    const y=padT+chartH-barH  
-    ctx.fillStyle="#22c55e"  
-    ctx.fillRect(x,y,barW,barH)  
-    ctx.fillStyle="#166534"  
-    ctx.font="bold 9px JetBrains Mono"  
-    ctx.textAlign="center"  
-    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)  
-    ctx.fillStyle="#64748b"  
-    ctx.font="9px Sora"  
-    ctx.fillText(lbl,x+barW/2,H-6)  
-  })  
-}  
-  
-// =========== EXPORT CSV ===========  
-function exportCSV(){  
-  
-  if(state.sales.length === 0){  
-    showToast("⚠ No hay ventas")  
-    return  
-  }  
-  
-  let text = ""  
-  const ventas = state.sales.slice().sort((a,b) => new Date(b.date) - new Date(a.date))  
-  let acumulado = ventas.reduce((a,b)=> a + b.total, 0)  
-  
-  ventas.forEach(s => {  
-    text += `Venta ${saleNumLabel(s.num)}\n`  
-    text += `ID: ${s.id}\n`  
-    text += `${formatDate(s.date)}\n\n`  
-  
-    s.items.forEach(p => {  
-      const unitProfit = (p.price - p.cost)  
-      const totalProfit = unitProfit * p.qty  
-      text += `• ${p.name} x${p.qty}\n`  
-      text += `  Precio: $${p.price.toFixed(2)}\n`  
-      text += `  Costo: $${p.cost.toFixed(2)}\n`  
-      text += `  Ganancia/u: $${unitProfit.toFixed(2)}\n`  
-      text += `  Ganancia total: $${totalProfit.toFixed(2)}\n\n`  
-    })  
-  
-    const profitVenta = s.items.reduce((a,p)=>{ return a + ((p.price - p.cost) * p.qty) },0)  
-  
-    text += `Total: $${s.total.toFixed(2)}\n`  
-    text += `Ganancia: $${profitVenta.toFixed(2)}\n`  
-    text += `Pagó: $${Number(s.paid).toFixed(2)}\n`  
-    text += `Vuelto: $${Number(s.change).toFixed(2)}\n`  
-    text += `Acumulado: $${acumulado.toFixed(2)}\n`  
-  
-    acumulado -= s.total  
-    text += `\n--------------------------------\n\n`  
-  })  
-  
-  const blob = new Blob(["\uFEFF" + text],{type:"text/plain;charset=utf-8"})  
-  const a = document.createElement("a")  
-  a.href = URL.createObjectURL(blob)  
-  
-  const now = new Date()  
-  const fecha = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0")  
-  const hora = String(now.getHours()).padStart(2,"0") + "-" + String(now.getMinutes()).padStart(2,"0") + "-" + String(now.getSeconds()).padStart(2,"0")  
-  
-  a.download = `historial-${fecha}_${hora}.txt`  
-  a.click()  
-  
-  showToast("✅ Historial completo descargado", "ok")  
-}  
-  
-// =========== RENDER ALL ===========  
-function renderAll() {  
-  renderCategoryFilter()  
-  renderProducts()  
-  renderCart()  
-  renderInventory()  
-  renderStats()  
-  renderSales()  
-}  
-  
-// =========== CLOSE MODALS ON BACKDROP ===========  
-document.getElementById("modal")?.addEventListener("click", e => {  
-  if (e.target === document.getElementById("modal")) closeModal()  
-})  
-  
-document.getElementById("restockModal")?.addEventListener("click", e => {  
-  if (e.target === document.getElementById("restockModal")) closeRestock()  
-})  
-  
-// =========== EVENTS ===========  
-document.getElementById("searchProduct")?.addEventListener("input", ()=>{  
-  renderProducts()  
-  showSuggestions()  
-})  
-  
-document.getElementById("searchInventory")?.addEventListener("input", renderInventory)  
-document.getElementById("searchSales")?.addEventListener("input", renderSales)  
-document.getElementById("paid")?.addEventListener("input", calculateChange)  
-  
-document.addEventListener("click", e => {  
-  const box = document.getElementById("searchSuggestions")  
-  const input = document.getElementById("searchProduct")  
-  if(!box || !input) return  
-  if(!box.contains(e.target) && e.target !== input){  
-    box.style.display="none"  
-  }  
-})  
-  
-const dateEl = document.getElementById("date")  
-if (dateEl) {  
-  dateEl.textContent = new Date().toLocaleDateString("es", {  
-    weekday: "short",  
-    day: "2-digit",  
-    month: "short"  
-  })  
-}  
-  
-// =========== INIT ===========  
-async function init(){  
-  
-  await loadProducts()  
-  await loadSales()  
-  
-  loadCart()  
-  
-  const itemsAjustados = []  
-  
-  state.cart = state.cart.filter(item=>{  
-    const p = state.products.find(x=>x.id === item.id)  
-    if(!p || p.stock <= 0){  
-      itemsAjustados.push(`${item.name} (sin stock)`)  
-      return false  
-    }  
-    if(p.stock < item.qty){  
-      itemsAjustados.push(`${item.name} (ajustado a ${p.stock})`)  
-      item.qty = p.stock  
-    }  
-    return true  
-  })  
-  
-  if(itemsAjustados.length > 0){  
-    setTimeout(()=>{  
-      showToast(`⚠ Carrito ajustado: ${itemsAjustados.join(", ")}`)  
-    }, 800)  
-  }  
-  
-  markDirty("cart", "sales")  
-  flushRender()  
-  
-  show("pos")  
-  
-}  
-  
-init()  
-  
-setInterval(()=>{  
-  const ticketAbierto = document.getElementById("saleSummary")?.style.display === "flex"  
-  if(!lock && !syncing && !userIsActive() && !ticketAbierto){  
-    loadProducts()  
-  }  
-}, 5000)  
-  
-document.addEventListener("visibilitychange", ()=>{  
-  if(document.visibilityState === "visible" && !lock){  
-    loadProducts(true)  
-  }  
-})  
-  
-</script>  
-  
-</body>  
-</html> 
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POS Mobile Pro</title>
+
+<script>
+
+/* ================= PATCH FETCH — solo rutas /api/ ================= */
+
+const originalFetch = window.fetch;
+
+window.fetch = function(url, options = {}){
+
+const isApiCall = typeof url === "string" && url.startsWith("/api/")
+
+if(!isApiCall){
+  return originalFetch(url, options)
+}
+
+const token = localStorage.getItem("token")
+
+options.headers = {
+...(options.headers || {}),
+Authorization: token
+}
+
+return originalFetch(url, options).then(res=>{
+
+if(res.status === 401){
+
+localStorage.removeItem("token")
+location.href="/login.html"
+
+}
+
+return res
+
+})
+
+}
+
+function showSuggestions(){
+
+  const input = document.getElementById("searchProduct")
+  if(!input) return
+
+  const search = input.value.toLowerCase().trim()
+
+  const box = document.getElementById("searchSuggestions")
+
+  if(!search){
+    box.style.display="none"
+    box.innerHTML=""
+    return
+  }
+
+  const results = state.products
+  .filter(p => p.name.toLowerCase().includes(search))
+  .slice(0,5)
+
+  if(results.length === 0){
+    box.style.display="none"
+    box.innerHTML=""
+    return
+  }
+
+  box.innerHTML=""
+
+  results.forEach(p=>{
+
+    const row = document.createElement("div")
+
+    row.style.padding="8px 10px"
+    row.style.cursor="pointer"
+    row.style.display="flex"
+    row.style.justifyContent="space-between"
+    row.style.fontSize="13px"
+    row.style.borderBottom="1px solid #f1f5f9"
+
+    row.innerHTML = `
+<span>${p.name}</span>
+<b>$${p.price.toFixed(2)}</b>
+`
+
+    row.onclick = () => {
+
+      addToCart(p.id,{classList:{add(){},remove(){}}})
+
+      input.value=""
+
+      box.style.display="none"
+      box.innerHTML=""
+
+      input.focus()
+
+    }
+
+    box.appendChild(row)
+
+  })
+
+  box.style.display="block"
+
+}
+
+/* ================= API WRAPPER ================= */
+
+async function api(url, options = {}){
+
+  const token = localStorage.getItem("token")
+
+  options.headers = {
+    ...(options.headers || {}),
+    Authorization: token,
+    "Content-Type": "application/json"
+  }
+
+  const res = await fetch(url, options)
+
+  let data = {}
+  try {
+    data = await res.json()
+  } catch(_) {}
+
+  if(!res.ok){
+    const msg = data?.details
+      ? data.details.join(" · ")
+      : (data?.error || "Error del servidor")
+    throw new Error(msg)
+  }
+
+  return data
+}
+
+/* ================= VERIFICAR TOKEN ================= */
+
+const token = localStorage.getItem("token")
+
+if(!token){
+location.href="/login.html"
+}
+
+fetch("/api/session",{
+headers:{Authorization:token}
+})
+.then(res=>{
+
+if(res.status!==200){
+localStorage.removeItem("token")
+location.href="/login.html"
+}
+
+})
+
+/* ================= REVISIÓN AUTOMÁTICA ================= */
+
+setInterval(()=>{
+
+fetch("/api/session",{
+headers:{Authorization:localStorage.getItem("token")}
+})
+.then(res=>{
+
+if(res.status!==200){
+
+localStorage.removeItem("token")
+
+alert("Sesión expirada")
+
+location.href="/login.html"
+
+}
+
+})
+
+},60000)
+
+</script>
+
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+
+:root{
+--accent:#22c55e;
+--accent2:#3b82f6;
+--dark:#0f172a;
+--sidebar-w:260px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+font-family: 'Sora', sans-serif;
+background: #f1f5f9;
+margin: 0;
+}
+
+#sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--sidebar-w);
+  height: 100%;
+  background: var(--dark);
+  transform: translateX(calc(-1 * var(--sidebar-w)));
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+@media (min-width: 1024px) {
+  #sidebar {
+    transform: translateX(0) !important;
+    box-shadow: 4px 0 24px rgba(0,0,0,.18);
+  }
+
+  .hamburger {
+    display: none !important;
+  }
+
+  #overlay {
+    display: none !important;
+  }
+
+  header {
+    margin-left: var(--sidebar-w);
+  }
+
+  section {
+    margin-left: var(--sidebar-w);
+  }
+}
+
+.nav-btn{
+display:flex;
+align-items:center;
+gap:10px;
+width:100%;
+padding:10px 14px;
+background:none;
+border:none;
+color:#94a3b8;
+font-weight:600;
+cursor:pointer;
+border-radius:8px;
+transition:background .2s,color .2s;
+}
+
+.nav-btn:hover,
+.nav-btn.active{
+background:rgba(255,255,255,.08);
+color:#fff;
+}
+
+.nav-btn .icon{
+font-size:18px;
+width:24px;
+text-align:center;
+}
+
+#sidebar.open {
+transform: translateX(0);
+}
+
+#overlay{
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.45);
+z-index:99;
+transition:opacity .25s;
+opacity:0;
+}
+
+#overlay.show{
+display:block;
+opacity:1;
+}
+
+header {
+  background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.08);
+  padding: 10px 18px; display: flex;
+  justify-content: space-between; align-items: center;
+  position: sticky; top: 0; z-index: 50;
+  gap: 10px;
+}
+
+@media (min-width: 1024px) {
+  header {
+    padding: 14px 32px;
+  }
+}
+
+.logo { font-weight: 700; font-size: 18px; color: var(--dark); letter-spacing: -0.5px; }
+.logo span { color: var(--accent); }
+
+#syncIndicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  transition: all .3s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#syncIndicator.syncing {
+  border-color: #3b82f6;
+  color: #2563eb;
+  background: #eff6ff;
+}
+#syncIndicator.ok {
+  border-color: #22c55e;
+  color: #16a34a;
+  background: #f0fdf4;
+}
+#syncIndicator.error {
+  border-color: #ef4444;
+  color: #dc2626;
+  background: #fef2f2;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { display: inline-block; animation: spin .8s linear infinite; }
+
+section {
+  padding: 18px;
+}
+
+@media (min-width: 768px) {
+  section {
+    padding: 22px 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  section {
+    padding: 28px 36px;
+    max-width: 1600px;
+  }
+}
+
+.card {
+  background: #fff; border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.06);
+  padding: 16px; margin-bottom: 16px;
+}
+
+@media (min-width: 1024px) {
+  .card {
+    padding: 24px;
+    border-radius: 18px;
+    margin-bottom: 22px;
+  }
+}
+
+#productList {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  #productList {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (min-width: 1024px) {
+  #productList {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+  }
+}
+
+@media (min-width: 1280px) {
+  #productList {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (min-width: 1600px) {
+  #productList {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+.product-card {
+  border-radius: 12px; padding: 14px;
+  border: 2px solid #e2e8f0;
+  transition: border-color .2s, box-shadow .2s;
+  background: #fff;
+}
+
+@media (min-width: 1024px) {
+  .product-card {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .product-card .btn-add {
+    padding: 10px;
+    font-size: 14px;
+    margin-top: 14px;
+  }
+}
+
+.product-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(34,197,94,.15); }
+
+@media (min-width: 1024px) {
+  #pos {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  #pos > .card:last-child {
+    position: sticky;
+    top: 78px;
+  }
+}
+
+@media (min-width: 1280px) {
+  #pos {
+    grid-template-columns: 1fr 420px;
+  }
+}
+
+@media (min-width: 1024px) {
+  #inventoryList {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+
+  #inventoryList .inv-card {
+    margin-bottom: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  #inventoryList {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ── STATS PANEL — 2 col mobile, 3 col tablet, 6 col desktop ── */
+#statsPanel {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+@media (min-width: 640px) {
+  #statsPanel {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  #statsPanel {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (min-width: 1280px) {
+  #statsPanel {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* ── SUMMARY PANEL (financiero real) ── */
+#summaryPanel {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* La tarjeta de ganancia real ocupa toda la fila siempre */
+#summaryPanel .profit-full {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 640px) {
+  #summaryPanel {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  #stats .card:has(#salesChart),
+  #stats .card:has(#profitChart) {
+    display: inline-block;
+    width: calc(50% - 11px);
+    vertical-align: top;
+  }
+
+  #stats .card:has(#salesChart) {
+    margin-right: 12px;
+  }
+}
+
+#saleSummaryBox{
+font-family: monospace;
+overflow: hidden;
+position: relative;
+z-index: 1;
+}
+
+.btn-add {
+  background: var(--accent); color: #fff;
+  width: 100%; padding: 8px; border-radius: 8px;
+  border: none; cursor: pointer; font-weight: 600; font-size: 13px;
+  margin-top: 10px; transition: background .2s, transform .1s;
+  font-family: 'Sora', sans-serif;
+}
+.btn-add:active { transform: scale(.96); }
+.btn-add:disabled { background: #94a3b8; cursor: not-allowed; }
+
+.cart-row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 8px; align-items: center; padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.qty-btn {
+  width: 30px; height: 30px; border-radius: 8px; border: 2px solid #e2e8f0;
+  background: #fff; cursor: pointer; font-size: 17px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s; line-height: 1;
+  font-family: 'Sora', sans-serif;
+}
+.qty-btn:hover { background: #f1f5f9; }
+.qty-display {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+  min-width: 28px; text-align: center; font-size: 15px;
+}
+
+.btn-primary {
+  background: var(--accent2); color: #fff;
+  padding: 12px 20px; border-radius: 10px; border: none;
+  cursor: pointer; font-weight: 700; font-size: 15px;
+  transition: background .2s, transform .1s; width: 100%;
+  font-family: 'Sora', sans-serif;
+}
+.btn-primary:hover { background: #2563eb; }
+.btn-primary:active { transform: scale(.98); }
+
+.btn-confirm {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff; padding: 14px 20px; border-radius: 12px; border: none;
+  cursor: pointer; font-weight: 700; font-size: 16px;
+  transition: opacity .2s, transform .1s; width: 100%;
+  box-shadow: 0 4px 14px rgba(34,197,94,.3);
+  font-family: 'Sora', sans-serif;
+}
+.btn-confirm:hover { opacity: .9; }
+.btn-confirm:active { transform: scale(.98); }
+
+.btn-danger {
+  background: #ef4444; color: #fff;
+  padding: 8px 14px; border-radius: 8px; border: none;
+  cursor: pointer; font-weight: 600; font-size: 13px;
+  transition: background .2s; font-family: 'Sora', sans-serif;
+}
+.btn-danger:hover { background: #dc2626; }
+
+.btn-ghost {
+  background: transparent; border: 2px solid #e2e8f0; color: #475569;
+  padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  font-weight: 600; font-size: 13px; transition: border-color .2s, color .2s;
+  font-family: 'Sora', sans-serif;
+}
+.btn-ghost:hover { border-color: #94a3b8; color: #0f172a; }
+
+.input {
+  border: 2px solid #e2e8f0; border-radius: 10px;
+  padding: 10px 14px; font-size: 14px; width: 100%;
+  font-family: 'Sora', sans-serif; color: #0f172a;
+  transition: border-color .2s; outline: none;
+}
+.input:focus { border-color: var(--accent2); }
+
+#modal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.5); z-index: 200;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#modal.show { display: flex; }
+#modal-box {
+  background: #fff; border-radius: 20px; padding: 24px;
+  width: 100%; max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-label { font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block; letter-spacing: 0.3px; text-transform: uppercase; }
+
+#restockModal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.5); z-index: 200;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#restockModal.show { display: flex; }
+
+/* ── EXPENSE MODAL ── */
+#expenseModal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.5); z-index: 200;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#expenseModal.show { display: flex; }
+#expenseModal-box {
+  background: #fff; border-radius: 20px; padding: 24px;
+  width: 100%; max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  animation: slideUp .25s ease;
+}
+
+/* ── EXPENSE CARDS ── */
+.expense-card {
+  background: #fff;
+  border-radius: 14px;
+  border: 2px solid #e2e8f0;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: border-color .2s, box-shadow .2s;
+}
+.expense-card:hover {
+  border-color: #fbbf24;
+  box-shadow: 0 4px 16px rgba(251,191,36,.12);
+}
+
+/* ── EXPENSE FILTER TABS ── */
+.exp-tab {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  border: 2px solid #e2e8f0; background: #fff; cursor: pointer; color: #475569;
+  transition: all .2s; white-space: nowrap; font-family: 'Sora', sans-serif;
+}
+.exp-tab.active { background: #f59e0b; border-color: #f59e0b; color: #fff; }
+
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: #0f172a; color: #fff; padding: 12px 22px; border-radius: 30px;
+  font-weight: 600; font-size: 14px; z-index: 300;
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  white-space: nowrap; max-width: 90vw; text-align: center;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.toast-error { background: #dc2626; }
+#toast.toast-ok   { background: #16a34a; }
+
+@media (min-width: 1024px) {
+  #toast {
+    left: calc(var(--sidebar-w) + 50%);
+    transform: translateX(-50%) translateY(80px);
+  }
+  #toast.show {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.badge-red { background: #fee2e2; color: #dc2626; }
+.badge-green { background: #dcfce7; color: #16a34a; }
+.badge-blue { background: #dbeafe; color: #2563eb; }
+.badge-yellow { background: #fef3c7; color: #92400e; }
+
+.stat-card { border-radius: 12px; padding: 14px; }
+.stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+@media (min-width: 1024px) {
+  .stat-card { padding: 18px; border-radius: 14px; }
+  .stat-value { font-size: 24px; }
+}
+
+.cat-btn {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  border: 2px solid #e2e8f0; background: #fff; cursor: pointer; color: #475569;
+  transition: all .2s; white-space: nowrap; font-family: 'Sora', sans-serif;
+}
+.cat-btn.active { background: var(--dark); border-color: var(--dark); color: #fff; }
+
+.cats-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.cats-scroll::-webkit-scrollbar { display: none; }
+
+.sec-title { font-size: 17px; font-weight: 700; color: #0f172a; }
+
+@media (min-width: 1024px) {
+  .sec-title { font-size: 20px; }
+}
+
+.cat-chip { background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+
+.inv-card {
+  background: #fff; border-radius: 12px; padding: 14px;
+  border: 2px solid #e2e8f0; transition: border-color .2s;
+  margin-bottom: 12px;
+}
+
+@media (min-width: 1024px) {
+  .inv-card {
+    padding: 20px;
+    border-radius: 16px;
+  }
+}
+
+.inv-card.best { border-color: var(--accent) !important; background: #f0fdf4; }
+.inv-card.zero { border-color: #fca5a5 !important; background: #fff8f8; }
+
+.sale-card { background: #fff; border-radius: 12px; padding: 16px; border: 2px solid #e2e8f0; margin-bottom: 12px; }
+.alert-box { background: #fef9c3; border: 2px solid #fde047; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: #854d0e; }
+
+.day-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 10px;
+}
+.day-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.day-section-line {
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.hamburger { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; transition: background .2s; }
+.hamburger:hover { background: #f1f5f9; }
+
+@keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
+.pop { animation: pop .2s; }
+
+.btn-loading {
+  opacity: 0.7;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+/* ── SUMMARY LOADING SKELETON ── */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── NAV DIVIDER ── */
+.nav-divider {
+  height: 1px;
+  background: rgba(255,255,255,.08);
+  margin: 6px 14px;
+}
+
+</style>
+</head>
+<body>
+
+<!-- OVERLAY -->
+<div id="overlay" onclick="closeSidebar()"></div>
+
+<!-- SIDEBAR -->
+<aside id="sidebar">
+  <div style="padding: 22px 20px 10px; display:flex; align-items:center; gap:10px;">
+    <div style="background:var(--accent); border-radius:8px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:16px;">🏪</div>
+    <span style="font-weight:700; font-size:18px; color:#fff;">POS <span style="color:var(--accent);">PRO</span></span>
+  </div>
+  <nav style="padding:12px; flex:1; display:flex; flex-direction:column; gap:4px;">
+    <button class="nav-btn active" id="nav-pos" onclick="show('pos')"><span class="icon">🛒</span>Caja</button>
+    <button class="nav-btn" id="nav-inventory" onclick="show('inventory')"><span class="icon">📦</span>Inventario</button>
+    <button class="nav-btn" id="nav-sales" onclick="show('sales')"><span class="icon">📋</span>Ventas</button>
+    <button class="nav-btn" id="nav-stats" onclick="show('stats')"><span class="icon">📊</span>Estadísticas</button>
+    <div class="nav-divider"></div>
+    <button class="nav-btn" id="nav-expenses" onclick="show('expenses')"><span class="icon">💸</span>Gastos</button>
+  </nav>
+  <button class="nav-btn" onclick="backupPOS()">
+    <span class="icon">💾</span>Backup
+  </button>
+  <button class="nav-btn" onclick="document.getElementById('restoreFile').click()">
+    <span class="icon">♻️</span>Restaurar Backup
+  </button>
+  <input type="file" id="restoreFile" accept=".json" style="display:none"
+  onchange="restorePOS(this.files[0])">
+  <div style="padding:16px 20px; color:#475569; font-size:11px; font-weight:600;">POS Mobile Pro v2.3</div>
+</aside>
+
+<header>
+  <div style="display:flex; gap:12px; align-items:center;">
+    <button class="hamburger" onclick="toggleMenu()">
+      <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
+        <rect width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+        <rect y="7.75" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+        <rect y="15.5" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+      </svg>
+    </button>
+    <span class="logo">POS <span>PRO</span></span>
+  </div>
+
+  <div id="syncIndicator">
+    <span id="syncDot">⚪</span>
+    <span id="syncText">Sincronizando...</span>
+  </div>
+
+  <div style="font-size:12px; font-weight:600; color:#64748b; white-space:nowrap;" id="date"></div>
+</header>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- MODAL PRODUCTO -->
+<div id="modal">
+  <div id="modal-box">
+    <h3 id="modal-title" style="font-size:17px; font-weight:700; margin-bottom:20px; color:#0f172a;"></h3>
+    <div style="display:flex; flex-direction:column; gap:14px;">
+      <div>
+        <label class="modal-label">Nombre</label>
+        <input id="m-name" class="input" placeholder="Ej: Coca Cola">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label class="modal-label">Precio venta ($)</label>
+          <input id="m-price" class="input" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div>
+          <label class="modal-label">Costo compra ($)</label>
+          <input id="m-cost" class="input" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label class="modal-label">Stock inicial</label>
+          <input id="m-stock" class="input" type="number" min="0" placeholder="0">
+        </div>
+        <div>
+          <label class="modal-label">Categoría</label>
+          <input id="m-cat" class="input" placeholder="Ej: Bebidas">
+        </div>
+      </div>
+    </div>
+    <div id="modal-error" style="
+      display:none;
+      background:#fef2f2;
+      border:2px solid #fca5a5;
+      border-radius:8px;
+      padding:10px 14px;
+      margin-top:14px;
+      font-size:12px;
+      font-weight:600;
+      color:#dc2626;
+      line-height:1.6;
+    "></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn-ghost" onclick="closeModal()" style="flex:1;">Cancelar</button>
+      <button id="saveBtn" class="btn-primary" onclick="saveProduct()" style="flex:2;">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RESTOCK -->
+<div id="restockModal">
+  <div style="background:#fff; border-radius:20px; padding:24px; width:100%; max-width:340px; box-shadow:0 20px 60px rgba(0,0,0,.25); animation:slideUp .25s ease;">
+    <h3 style="font-size:16px; font-weight:700; margin-bottom:16px; color:#0f172a;">📦 Agregar stock</h3>
+    <p style="font-size:14px; color:#475569; margin-bottom:14px;">Producto: <b id="restock-name" style="color:var(--accent);"></b></p>
+    <label class="modal-label">Cantidad a agregar</label>
+    <input id="restock-qty" class="input" type="number" min="1" placeholder="Ej: 50" style="margin-bottom:16px;">
+    <div style="display:flex; gap:10px;">
+      <button class="btn-ghost" onclick="closeRestock()" style="flex:1;">Cancelar</button>
+      <button id="restockBtn" class="btn-primary" onclick="confirmRestock()" style="flex:2;">+ Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GASTO (crear / editar) -->
+<div id="expenseModal">
+  <div id="expenseModal-box">
+    <h3 id="expenseModal-title" style="font-size:17px; font-weight:700; margin-bottom:20px; color:#0f172a;">💸 Nuevo Gasto</h3>
+    <div style="display:flex; flex-direction:column; gap:14px;">
+      <div>
+        <label class="modal-label">Descripción</label>
+        <input id="e-desc" class="input" placeholder="Ej: Pago de luz">
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div>
+          <label class="modal-label">Monto ($)</label>
+          <input id="e-amount" class="input" type="number" min="0.01" step="0.01" placeholder="0.00">
+        </div>
+        <div>
+          <label class="modal-label">Categoría</label>
+          <input id="e-cat" class="input" placeholder="Ej: Servicios">
+        </div>
+      </div>
+    </div>
+    <div id="expense-error" style="
+      display:none;
+      background:#fef2f2;
+      border:2px solid #fca5a5;
+      border-radius:8px;
+      padding:10px 14px;
+      margin-top:14px;
+      font-size:12px;
+      font-weight:600;
+      color:#dc2626;
+      line-height:1.6;
+    "></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button class="btn-ghost" onclick="closeExpenseModal()" style="flex:1;">Cancelar</button>
+      <button id="saveExpenseBtn" class="btn-primary" onclick="saveExpense()" style="flex:2; background:#f59e0b;">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL TICKET -->
+<div id="saleSummary" style="
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.5);
+z-index:500;
+align-items:center;
+justify-content:center;
+">
+<div id="saleSummaryBox" style="
+background:#fff;
+border-radius:16px;
+padding:20px;
+width:90%;
+max-width:360px;
+box-shadow:0 20px 60px rgba(0,0,0,.25);
+">
+<h3 style="margin-bottom:10px;">🧾 Ticket de venta</h3>
+<div id="saleSummaryInfo" style="font-size:13px;color:#64748b;margin-bottom:10px;"></div>
+<div id="saleSummaryItems"
+style="
+margin-bottom:12px;
+line-height:1.7;
+font-weight:600;
+overflow-x:auto;
+max-width:100%;
+"></div>
+<div style="border-top:1px solid #e2e8f0;padding-top:10px;font-size:14px;">
+Total: <b id="saleSummaryTotal"></b><br>
+Pagó: <b id="saleSummaryPaid"></b><br>
+Vuelto: <b id="saleSummaryChange"></b>
+</div>
+<div style="margin-top:15px;display:flex;gap:8px;position:relative;z-index:5;">
+<button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>
+<button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>
+<button onclick="closeSummary()" class="btn-confirm">Cerrar</button>
+</div>
+</div>
+</div>
+
+<!-- ========== CAJA ========== -->
+<section id="pos">
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <span class="sec-title">🛒 Productos</span>
+      <div style="position:relative; width:150px;">
+        <input id="searchProduct" class="input" placeholder="Buscar..." style="width:100%; padding:8px 12px;">
+        <div id="searchSuggestions" style="
+        position:absolute;
+        top:42px;
+        left:0;
+        right:0;
+        background:#fff;
+        border:2px solid #e2e8f0;
+        border-radius:10px;
+        display:none;
+        max-height:160px;
+        overflow:auto;
+        z-index:50;
+        "></div>
+      </div>
+    </div>
+    <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>
+    <div id="lowStockAlert"></div>
+    <div id="productList" class="grid grid-cols-2 gap-3"></div>
+  </div>
+
+  <div class="card">
+    <span class="sec-title">🧾 Carrito</span>
+    <div id="cart" style="margin-top:10px; min-height:48px;"></div>
+
+    <div style="margin-top:12px; border-top:2px solid #f1f5f9; padding-top:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span style="font-weight:600; color:#64748b;">Total</span>
+        <span id="total" style="font-size:26px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#0f172a;">$0.00</span>
+      </div>
+      <input id="paid" type="number" class="input" placeholder="💵 Monto que paga el cliente..." style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f0fdf4; border-radius:10px; margin-bottom:14px;">
+        <span style="font-weight:600; color:#16a34a; font-size:14px;">Vuelto</span>
+        <span id="change" style="font-weight:700; font-family:'JetBrains Mono',monospace; font-size:20px; color:#16a34a;">$0.00</span>
+      </div>
+      <button id="confirmSaleBtn" onclick="confirmSale()" class="btn-confirm">
+        ✅ Confirmar Venta
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ========== INVENTARIO ========== -->
+<section id="inventory" class="hidden">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <span class="sec-title">📦 Inventario</span>
+    <button onclick="openAddModal()" class="btn-primary" style="width:auto; padding:10px 18px;">+ Nuevo</button>
+  </div>
+  <input
+    id="searchInventory"
+    class="input"
+    placeholder="🔎 Buscar producto..."
+    style="margin-bottom:16px;"
+  >
+  <div id="inventoryList"></div>
+</section>
+
+<!-- ========== VENTAS ========== -->
+<section id="sales" class="hidden">
+  <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="sec-title">📋 Historial</span>
+      <div style="display:flex; gap:8px;">
+        <button onclick="exportCSV()" class="btn-ghost">⬇ CSV</button>
+        <button onclick="clearHistory()" class="btn-danger">Borrar</button>
+      </div>
+    </div>
+    <div style="position:relative;">
+      <input
+        id="searchSales"
+        class="input"
+        placeholder="Buscar ventas (ej: pepsi churro arroz)"
+        style="
+          padding-left:40px;
+          background:#fff;
+          border:2px solid #e2e8f0;
+          transition:all .2s;
+        "
+        onfocus="this.style.borderColor='#3b82f6'"
+        onblur="this.style.borderColor='#e2e8f0'"
+      >
+      <span style="
+        position:absolute;
+        left:12px;
+        top:50%;
+        transform:translateY(-50%);
+        font-size:14px;
+        color:#94a3b8;
+        pointer-events:none;
+      ">
+        🔍
+      </span>
+    </div>
+  </div>
+  <div id="salesList"></div>
+</section>
+
+<!-- ========== ESTADÍSTICAS ========== -->
+<section id="stats" class="hidden">
+
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <span class="sec-title">📊 Estadísticas</span>
+    <button onclick="resetStats()" class="btn-danger" style="width:auto;">
+      Reiniciar
+    </button>
+  </div>
+
+  <!-- ── PANEL OPERATIVO (local, desde products + sales) ── -->
+  <div id="statsPanel"></div>
+
+  <!-- ── SEPARADOR FINANCIERO REAL ── -->
+  <div style="display:flex; align-items:center; gap:10px; margin: 20px 0 4px;">
+    <span style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">💰 Finanzas reales</span>
+    <div style="flex:1; height:1px; background:#e2e8f0;"></div>
+    <span id="summaryFilterLabel" style="font-size:11px; color:#94a3b8; font-weight:600;"></span>
+  </div>
+
+  <!-- ── SUMMARY PANEL (desde /api/summary, incluye gastos) ── -->
+  <div id="summaryPanel"></div>
+
+  <!-- ── GRÁFICAS ── -->
+  <div class="card" style="margin-top:4px;">
+    <span style="font-weight:700; font-size:14px; color:#0f172a;">📈 Ventas por día</span>
+    <canvas id="salesChart" style="margin-top:12px; width:100%; height:160px;"></canvas>
+  </div>
+  <div class="card" style="margin-top:10px;">
+    <span style="font-weight:700;font-size:14px;color:#0f172a;">💰 Ganancia por día</span>
+    <canvas id="profitChart" style="margin-top:12px;width:100%;height:160px;"></canvas>
+  </div>
+
+  <!-- ── RANKING + GASTOS POR CATEGORÍA ── -->
+  <div id="rankingList" class="card" style="margin-top:4px;"></div>
+
+</section>
+
+<!-- ========== GASTOS ========== -->
+<section id="expenses" class="hidden">
+
+  <!-- Cabecera -->
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <span class="sec-title">💸 Gastos</span>
+    <button onclick="openExpenseModal()" class="btn-primary" style="width:auto; padding:10px 18px; background:#f59e0b;">+ Nuevo</button>
+  </div>
+
+  <!-- Resumen rápido -->
+  <div id="expensesSummaryBar" style="
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:10px;
+    margin-bottom:16px;
+  "></div>
+
+  <!-- Filtro por categoría -->
+  <div class="cats-scroll" id="expenseCatFilter" style="margin-bottom:14px;"></div>
+
+  <!-- Buscador -->
+  <div style="position:relative; margin-bottom:16px;">
+    <input
+      id="searchExpenses"
+      class="input"
+      placeholder="🔎 Buscar gasto..."
+      style="padding-left:40px;"
+    >
+    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; pointer-events:none;">🔍</span>
+  </div>
+
+  <!-- Lista -->
+  <div id="expensesList"></div>
+
+</section>
+
+<script>
+
+// =========== STATE ===========
+const state = {
+  products: [],
+  cart: [],
+  sales: [],
+  expenses: [],
+  summary: null   // ← datos de /api/summary: { sales, costs, expenses, profit, expenses_by_category[] }
+}
+
+// =========== LOCKS ===========
+let lock = false
+let syncing = false
+let loadingProducts = false
+let lastSyncTime = null
+let savingExpense = false   // ← bloquea doble submit en gastos
+
+const dirty = {
+  products: false,
+  sales: false,
+  cart: false
+}
+
+function markDirty(...sections) {
+  sections.forEach(s => { dirty[s] = true })
+}
+
+function flushRender() {
+  if(dirty.products || dirty.cart) {
+    renderCategoryFilter()
+    renderProducts()
+  }
+  if(dirty.cart) {
+    renderCart()
+  }
+  if(dirty.products || dirty.sales) {
+    renderInventory()
+    renderStats()
+    renderSales()
+  }
+  dirty.products = false
+  dirty.sales = false
+  dirty.cart = false
+}
+
+// ── ACTIVITY TRACKER ──
+let lastUserActivity = Date.now()
+
+function trackActivity() {
+  lastUserActivity = Date.now()
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const activityTargets = ["paid", "searchProduct", "searchInventory", "searchSales", "searchExpenses"]
+  activityTargets.forEach(id => {
+    document.getElementById(id)?.addEventListener("input", trackActivity)
+    document.getElementById(id)?.addEventListener("focus", trackActivity)
+  })
+  document.addEventListener("click", trackActivity)
+})
+
+function userIsActive() {
+  return (Date.now() - lastUserActivity) < 3000
+}
+
+function setSyncStatus(status, msg) {
+  const el = document.getElementById("syncIndicator")
+  const dot = document.getElementById("syncDot")
+  const text = document.getElementById("syncText")
+  el.className = ""
+  el.classList.add(status)
+  text.textContent = msg
+  if (status === "syncing") dot.innerHTML = '<span class="spin">🔄</span>'
+  else if (status === "ok") dot.textContent = "🟢"
+  else dot.textContent = "🔴"
+}
+
+function saveCart(){
+  localStorage.setItem("cart", JSON.stringify(state.cart))
+}
+
+function loadCart(){
+  const saved = localStorage.getItem("cart")
+  if(saved){
+    try {
+      state.cart = JSON.parse(saved)
+    } catch {
+      state.cart = []
+    }
+  }
+}
+
+let activeCategory = "Todos"
+let activeCatExpense = "Todos"
+let editingId = null
+let restockId = null
+let editingExpenseId = null
+
+// =========== TOAST ===========
+function showToast(msg, type = "default") {
+  const t = document.getElementById("toast")
+  t.textContent = msg
+  t.className = ""
+  if(type === "error") t.classList.add("toast-error")
+  else if(type === "ok") t.classList.add("toast-ok")
+  t.classList.add("show")
+  setTimeout(() => t.classList.remove("show"), 2800)
+}
+
+// =========== FORMATEAR FECHA ===========
+function formatDate(str){
+  if(!str) return ""
+  const d = new Date(str)
+  if(isNaN(d.getTime())) return str
+  const day = d.getDate()
+  const month = d.getMonth()+1
+  const year = d.getFullYear()
+  let hours = d.getHours()
+  const minutes = String(d.getMinutes()).padStart(2,"0")
+  const ampm = hours >= 12 ? "pm" : "am"
+  hours = hours % 12
+  if(hours === 0) hours = 12
+  return `${day}/${month}/${year}, ${hours}:${minutes} ${ampm}`
+}
+
+function getDateKey(str){
+  if(!str) return null
+  const d = new Date(str)
+  if(!isNaN(d.getTime())){
+    return d.getDate() + "/" + (d.getMonth() + 1)
+  }
+  return str.split("/").slice(0,2).join("/")
+}
+
+function getDayLabel(dateStr){
+  const d = new Date(dateStr)
+  if(isNaN(d.getTime())) return "Antiguas"
+  const hoy = new Date()
+  const ayer = new Date(); ayer.setDate(hoy.getDate() - 1)
+  const toKey = x => x.getFullYear() + "-" + x.getMonth() + "-" + x.getDate()
+  if(toKey(d) === toKey(hoy))   return "Hoy"
+  if(toKey(d) === toKey(ayer))  return "Ayer"
+  const hace7 = new Date(); hace7.setDate(hoy.getDate() - 7)
+  if(d >= hace7) return "Esta semana"
+  if(d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear())
+    return "Este mes"
+  return "Más antiguas"
+}
+
+function saleNumLabel(num){
+  return (num != null && num !== "" && !isNaN(Number(num)))
+    ? "#" + Number(num)
+    : "(sin número)"
+}
+
+// =========== LOAD PRODUCTS ===========
+async function loadProducts(force = false){
+
+  if(lock) return
+  if(syncing) return
+
+  syncing = true
+  loadingProducts = true
+
+  setSyncStatus("syncing", "Sincronizando...")
+
+  try {
+
+    const res = await fetch("/api/products")
+    if(!res.ok) throw new Error("HTTP " + res.status)
+    const data = await res.json()
+
+    if(lock) return
+
+    const prodChanged = force || data.length !== state.products.length || data.some(p => {
+      const old = state.products.find(x => x.id === p.id)
+      return !old
+        || Number(p.stock) !== old.stock
+        || Number(p.sold)  !== old.sold
+        || Number(p.price) !== old.price
+    })
+
+    state.products = data.map(p => ({
+      id: p.id,
+      name: p.name,
+      price: Number(p.price),
+      cost: Number(p.cost || 0),
+      stock: Number(p.stock),
+      sold: Number(p.sold || 0),
+      cat: p.cat || "General"
+    }))
+
+    const cartBefore = state.cart.length
+    const itemsDropped = []
+
+    state.cart = state.cart.filter(item => {
+      const p = state.products.find(x => x.id === item.id)
+      if(!p || p.stock <= 0){
+        itemsDropped.push(`${item.name} (sin stock)`)
+        return false
+      }
+      if(p.stock < item.qty){
+        itemsDropped.push(`${item.name} (ajustado a ${p.stock})`)
+        item.qty = p.stock
+      }
+      return true
+    })
+    const cartChanged = state.cart.length !== cartBefore
+
+    if(itemsDropped.length > 0){
+      setTimeout(()=>{
+        showToast(`⚠ Carrito ajustado: ${itemsDropped.join(", ")}`)
+      }, 400)
+    }
+
+    if(prodChanged) markDirty("products")
+    if(cartChanged) markDirty("cart")
+
+    if(prodChanged || cartChanged){
+      flushRender()
+    }
+
+    lastSyncTime = new Date()
+    setSyncStatus("ok", "Sincronizado " + lastSyncTime.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}))
+
+  } catch(err) {
+
+    console.error("Error cargando productos:", err)
+    setSyncStatus("error", "Sin conexión")
+
+  } finally {
+
+    syncing = false
+    loadingProducts = false
+
+  }
+
+}
+
+// =========================================================
+// LOAD SUMMARY — /api/summary
+// Si falla → calcula local como fallback (ventas - costos - gastos)
+// =========================================================
+async function loadSummary(){
+
+  const panel = document.getElementById("summaryPanel")
+  if(panel){
+    panel.innerHTML = `
+      <div class="stat-card skeleton" style="height:72px;"></div>
+      <div class="stat-card skeleton" style="height:72px;"></div>
+      <div class="stat-card skeleton" style="height:72px;"></div>
+      <div class="stat-card skeleton" style="height:72px;"></div>
+    `
+  }
+
+  try {
+
+    const data = await api("/api/summary")
+    state.summary = data
+    state.summary._source = "api"
+
+  } catch(err) {
+
+    console.error("Error cargando summary — usando fallback local:", err)
+
+    // ── FALLBACK LOCAL ──
+    // Ventas: desde state.sales
+    const salesTotal = state.sales.reduce((a, s) => a + Number(s.total), 0)
+    // Costos: desde sale_items dentro de state.sales
+    const costsTotal = state.sales.reduce((a, s) => {
+      return a + (s.items || []).reduce((b, item) => b + (Number(item.cost || 0) * Number(item.qty)), 0)
+    }, 0)
+    // Gastos: desde state.expenses (si ya se cargaron)
+    const expensesTotal = state.expenses.reduce((a, e) => a + Number(e.amount), 0)
+    const profit = salesTotal - costsTotal - expensesTotal
+
+    // Gastos por categoría local
+    const byCatMap = {}
+    state.expenses.forEach(e => {
+      const c = e.category || "General"
+      byCatMap[c] = (byCatMap[c] || 0) + Number(e.amount)
+    })
+    const expenses_by_category = Object.entries(byCatMap)
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total)
+
+    state.summary = {
+      sales:    salesTotal,
+      costs:    costsTotal,
+      expenses: expensesTotal,
+      profit,
+      expenses_by_category,
+      filter: { desde: null, hasta: null },
+      _source: "local"   // ← marca: datos aproximados, no del servidor
+    }
+
+  }
+
+}
+
+// =========================================================
+// EXPENSES — LOAD, RENDER, CRUD
+// =========================================================
+
+async function loadExpenses(){
+
+  try {
+
+    const data = await api("/api/expenses")
+    state.expenses = Array.isArray(data) ? data : []
+    renderExpenses()
+
+  } catch(err) {
+
+    console.error("Error cargando gastos:", err)
+    state.expenses = []
+    renderExpenses()
+
+  }
+
+}
+
+function getExpenseCategories(){
+  const cats = [...new Set(state.expenses.map(e => e.category || "General"))]
+  return ["Todos", ...cats.sort()]
+}
+
+function renderExpenseCatFilter(){
+  const container = document.getElementById("expenseCatFilter")
+  if(!container) return
+  container.innerHTML = ""
+  getExpenseCategories().forEach(cat => {
+    const btn = document.createElement("button")
+    btn.className = "exp-tab" + (cat === activeCatExpense ? " active" : "")
+    btn.textContent = cat
+    btn.onclick = () => { activeCatExpense = cat; renderExpenses() }
+    container.appendChild(btn)
+  })
+}
+
+function renderExpensesSummaryBar(){
+  const bar = document.getElementById("expensesSummaryBar")
+  if(!bar) return
+
+  const total = state.expenses.reduce((a, e) => a + Number(e.amount), 0)
+
+  // Gasto este mes
+  const now = new Date()
+  const thisMes = state.expenses
+    .filter(e => {
+      const d = new Date(e.created_at)
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+    })
+    .reduce((a, e) => a + Number(e.amount), 0)
+
+  // Categoría con más gasto
+  const byCat = {}
+  state.expenses.forEach(e => {
+    const c = e.category || "General"
+    byCat[c] = (byCat[c] || 0) + Number(e.amount)
+  })
+  const topCat = Object.entries(byCat).sort((a,b) => b[1]-a[1])[0]
+
+  bar.innerHTML = `
+    <div class="stat-card" style="background:#fef3c7;">
+      <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">TOTAL GASTOS</div>
+      <div class="stat-value" style="color:#78350f;">$${total.toFixed(2)}</div>
+    </div>
+    <div class="stat-card" style="background:#fff7ed;">
+      <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">ESTE MES</div>
+      <div class="stat-value" style="color:#9a3412;">$${thisMes.toFixed(2)}</div>
+    </div>
+    <div class="stat-card" style="background:#fef9c3;">
+      <div style="font-size:11px; color:#a16207; font-weight:700; letter-spacing:0.5px;">MAYOR CATEGORÍA</div>
+      <div style="font-size:14px; font-weight:700; color:#92400e; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${topCat ? topCat[0] : "—"}</div>
+      ${topCat ? `<div style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; color:#78350f;">$${topCat[1].toFixed(2)}</div>` : ""}
+    </div>
+  `
+}
+
+function renderExpenses(){
+
+  renderExpenseCatFilter()
+  renderExpensesSummaryBar()
+
+  const container = document.getElementById("expensesList")
+  if(!container) return
+  container.innerHTML = ""
+
+  const search = (document.getElementById("searchExpenses")?.value || "").toLowerCase().trim()
+
+  let filtered = state.expenses.filter(e => {
+    const matchCat = activeCatExpense === "Todos" || (e.category || "General") === activeCatExpense
+    const matchSearch = !search
+      || (e.description || "").toLowerCase().includes(search)
+      || (e.category || "").toLowerCase().includes(search)
+    return matchCat && matchSearch
+  })
+
+  if(filtered.length === 0){
+    container.innerHTML = `
+      <div style="text-align:center; padding:48px 0; color:#94a3b8;">
+        <div style="font-size:36px; margin-bottom:12px;">💸</div>
+        <div style="font-size:14px; font-weight:600;">Sin gastos registrados</div>
+        <div style="font-size:12px; margin-top:4px;">Presioná "+ Nuevo" para agregar uno</div>
+      </div>
+    `
+    return
+  }
+
+  // Agrupar por día
+  const ORDEN = ["Hoy", "Ayer", "Esta semana", "Este mes", "Más antiguas"]
+  const grupos = {}
+  filtered.forEach(e => {
+    const label = getDayLabel(e.created_at)
+    if(!grupos[label]) grupos[label] = []
+    grupos[label].push(e)
+  })
+
+  ORDEN.forEach(seccion => {
+    const gastos = grupos[seccion]
+    if(!gastos || gastos.length === 0) return
+
+    const subtotal = gastos.reduce((a, e) => a + Number(e.amount), 0)
+
+    const header = document.createElement("div")
+    header.className = "day-section-header"
+    header.innerHTML = `
+      <span class="day-section-label">${seccion}</span>
+      <div class="day-section-line"></div>
+      <span style="font-size:11px; color:#f59e0b; font-weight:700; white-space:nowrap;">$${subtotal.toFixed(2)}</span>
+    `
+    container.appendChild(header)
+
+    gastos.forEach(e => {
+
+      const card = document.createElement("div")
+      card.className = "expense-card"
+
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:700; font-size:15px; color:#0f172a; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+              ${e.description || "Sin descripción"}
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="badge badge-yellow">${e.category || "General"}</span>
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">${formatDate(e.created_at)}</span>
+            </div>
+          </div>
+          <div style="text-align:right; flex-shrink:0;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; color:#d97706;">
+              $${Number(e.amount).toFixed(2)}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="btn-ghost" style="flex:1; font-size:12px;" onclick="openEditExpenseModal(${e.id})">✏️ Editar</button>
+          <button class="btn-danger" style="font-size:12px;" onclick="deleteExpense(${e.id})">🗑</button>
+        </div>
+      `
+
+      container.appendChild(card)
+
+    })
+  })
+
+}
+
+// ── MODAL CREATE ──
+function openExpenseModal(){
+  editingExpenseId = null
+  document.getElementById("expenseModal-title").textContent = "💸 Nuevo Gasto"
+  document.getElementById("e-desc").value = ""
+  document.getElementById("e-amount").value = ""
+  document.getElementById("e-cat").value = ""
+  clearExpenseError()
+  document.getElementById("expenseModal").classList.add("show")
+  setTimeout(() => document.getElementById("e-desc").focus(), 100)
+}
+
+// ── MODAL EDIT ──
+function openEditExpenseModal(id){
+  const e = state.expenses.find(x => x.id === id)
+  if(!e) return
+  editingExpenseId = id
+  document.getElementById("expenseModal-title").textContent = "✏️ Editar Gasto"
+  document.getElementById("e-desc").value = e.description || ""
+  document.getElementById("e-amount").value = e.amount
+  document.getElementById("e-cat").value = e.category || ""
+  clearExpenseError()
+  document.getElementById("expenseModal").classList.add("show")
+  setTimeout(() => document.getElementById("e-amount").focus(), 100)
+}
+
+function closeExpenseModal(){
+  document.getElementById("expenseModal").classList.remove("show")
+  editingExpenseId = null
+  clearExpenseError()
+}
+
+function showExpenseError(msg){
+  const el = document.getElementById("expense-error")
+  el.textContent = msg
+  el.style.display = "block"
+}
+
+function clearExpenseError(){
+  const el = document.getElementById("expense-error")
+  if(el){ el.style.display = "none"; el.textContent = "" }
+}
+
+async function saveExpense(){
+
+  // ── PRIORIDAD 5: bloqueo de doble submit ──
+  if(savingExpense) return
+  savingExpense = true
+
+  const description = document.getElementById("e-desc").value.trim()
+  const amount      = parseFloat(document.getElementById("e-amount").value)
+  const category    = document.getElementById("e-cat").value.trim()
+
+  // Validación en frontend
+  if(!description){
+    showExpenseError("❌ La descripción es requerida")
+    savingExpense = false
+    return
+  }
+  if(isNaN(amount) || amount <= 0){
+    showExpenseError("❌ El monto debe ser un número mayor a 0")
+    savingExpense = false
+    return
+  }
+  if(amount > 999999){
+    showExpenseError("❌ El monto es demasiado alto")
+    savingExpense = false
+    return
+  }
+
+  const payload = { description, amount, category: category || "General" }
+
+  const btn = document.getElementById("saveExpenseBtn")
+  const original = btn.textContent
+  btn.textContent = "⏳ Guardando..."
+  btn.classList.add("btn-loading")
+  clearExpenseError()
+
+  try {
+
+    if(editingExpenseId){
+      await api("/api/expenses/" + editingExpenseId, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      })
+      showToast("✏️ Gasto actualizado", "ok")
+    } else {
+      await api("/api/expenses", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+      showToast("💸 Gasto guardado", "ok")
+    }
+
+    closeExpenseModal()
+
+    // ── PRIORIDAD 1: sincronización real ──
+    // Recargamos gastos + summary juntos para que las finanzas sean consistentes
+    await loadExpenses()
+    await loadSummary()
+    // Si stats está visible, actualizarlo en vivo
+    if(!document.getElementById("stats").classList.contains("hidden")){
+      renderStats()
+    }
+
+  } catch(err) {
+
+    showExpenseError("❌ " + err.message)
+    console.error("Error guardando gasto:", err)
+
+  } finally {
+
+    btn.textContent = original
+    btn.classList.remove("btn-loading")
+    savingExpense = false
+
+  }
+
+}
+
+async function deleteExpense(id){
+
+  const e = state.expenses.find(x => x.id === id)
+  const desc = e?.description ? `"${e.description}"` : "este gasto"
+
+  if(!confirm(`¿Eliminar ${desc}?`)) return
+
+  try {
+
+    await api("/api/expenses/" + id, { method: "DELETE" })
+    showToast("🗑 Gasto eliminado", "ok")
+
+    // ── PRIORIDAD 1: sincronización real ──
+    await loadExpenses()
+    await loadSummary()
+    if(!document.getElementById("stats").classList.contains("hidden")){
+      renderStats()
+    }
+
+  } catch(err) {
+
+    showToast("❌ " + err.message, "error")
+    console.error("Error eliminando gasto:", err)
+
+  }
+
+}
+
+// =========== BACKUP ===========
+async function backupPOS(){
+
+  try {
+
+    const data = await api("/api/backup")
+
+    const blob = new Blob(
+      [JSON.stringify(data,null,2)],
+      {type:"application/json"}
+    )
+
+    const now = new Date()
+    const fecha =
+      now.getFullYear() + "-" +
+      String(now.getMonth()+1).padStart(2,"0") + "-" +
+      String(now.getDate()).padStart(2,"0") + "_" +
+      String(now.getHours()).padStart(2,"0") + "-" +
+      String(now.getMinutes()).padStart(2,"0") + "-" +
+      String(now.getSeconds()).padStart(2,"0")
+
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(blob)
+    a.download = "pos-backup_" + fecha + ".json"
+    a.click()
+
+    showToast("✅ Backup descargado", "ok")
+
+  } catch(err) {
+
+    console.error("Error en backup:", err)
+    showToast("❌ Error al generar backup: " + err.message, "error")
+
+  }
+
+}
+
+// =========== RESTORE ===========
+async function restorePOS(file){
+
+  if(!file) return
+
+  let data
+  try {
+    const text = await file.text()
+    data = JSON.parse(text)
+  } catch(_) {
+    showToast("❌ El archivo no es un JSON válido", "error")
+    return
+  }
+
+  try {
+
+    await api("/api/restore",{
+      method:"POST",
+      body:JSON.stringify(data)
+    })
+
+    showToast("♻️ Backup restaurado correctamente", "ok")
+
+    setTimeout(()=>{ location.reload() },1200)
+
+  } catch(err) {
+
+    console.error("Error en restore:", err)
+    showToast("❌ Error al restaurar: " + err.message, "error")
+
+  }
+
+}
+
+async function loadSales(){
+
+  try{
+
+    const res = await fetch("/api/sales")
+    const data = await res.json()
+
+    state.sales = (data || []).map(s => {
+      let d = new Date(s.date)
+      if(isNaN(d.getTime()) && typeof s.date === "string"){
+        const parts = s.date.split(",")
+        if(parts.length){
+          const fecha = parts[0].trim().split("/")
+          if(fecha.length === 3){
+            d = new Date(fecha[2], fecha[1]-1, fecha[0])
+          }
+        }
+      }
+      return { ...s, date: d.toISOString() }
+    })
+
+  }catch{
+
+    state.sales = []
+
+  }
+
+}
+
+// =========== SIDEBAR ===========
+function toggleMenu() {
+  if(window.innerWidth >= 1024) return
+  document.getElementById("sidebar").classList.toggle("open")
+  document.getElementById("overlay").classList.toggle("show")
+}
+
+function closeSidebar() {
+  if(window.innerWidth >= 1024) return
+  document.getElementById("sidebar").classList.remove("open")
+  document.getElementById("overlay").classList.remove("show")
+}
+
+// =========== SHOW ===========
+async function show(id) {
+
+  document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))
+  document.getElementById(id).classList.remove("hidden")
+
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"))
+  document.getElementById("nav-" + id)?.classList.add("active")
+
+  closeSidebar()
+
+  if(id === "inventory" || id === "stats"){
+    loadProducts(true)
+  }
+
+  if(id === "sales"){
+    await loadSales()
+    markDirty("sales")
+    flushRender()
+  }
+
+  if(id === "stats"){
+    await loadSummary()
+    renderStats()
+    setTimeout(() => {
+      drawChart()
+      drawProfitChart()
+    }, 50)
+  }
+
+  if(id === "expenses"){
+    await loadExpenses()
+  }
+
+}
+
+// =========== CATEGORIES ===========
+function getCategories() {
+  const cats = [...new Set(state.products.map(p => p.cat || "General"))]
+  return ["Todos", ...cats]
+}
+
+function renderCategoryFilter() {
+  const container = document.getElementById("catFilter")
+  container.innerHTML = ""
+  getCategories().forEach(cat => {
+    const btn = document.createElement("button")
+    btn.className = "cat-btn" + (cat === activeCategory ? " active" : "")
+    btn.textContent = cat
+    btn.onclick = () => { activeCategory = cat; renderProducts() }
+    container.appendChild(btn)
+  })
+}
+
+// =========== PRODUCTS ===========
+function renderProducts() {
+  const search = document.getElementById("searchProduct").value.toLowerCase()
+  const container = document.getElementById("productList")
+  container.innerHTML = ""
+  let lowStock = []
+
+  const filtered = state.products.filter(p => {
+    const matchSearch = p.name.toLowerCase().includes(search)
+    const matchCat = activeCategory === "Todos" || (p.cat || "General") === activeCategory
+    return matchSearch && matchCat
+  })
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:#94a3b8; padding:24px; font-size:13px;">Sin productos</div>`
+  }
+
+  filtered.forEach(p => {
+    if (p.stock <= 5) lowStock.push(`${p.name} (${p.stock})`)
+
+    const inCart = state.cart.find(x => x.id === p.id)
+    const qtyInCart = inCart ? inCart.qty : 0
+    const available = p.stock - qtyInCart
+    const oos = available <= 0
+
+    const card = document.createElement("div")
+    card.className = "product-card"
+    card.innerHTML = `
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:#0f172a;">${p.name}</div>
+      <span class="cat-chip">${p.cat || "General"}</span>
+      <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
+        <b style="font-size:15px; font-family:'JetBrains Mono',monospace; color:#0f172a;">$${p.price.toFixed(2)}</b>
+        <span class="${p.stock <= 5 && p.stock > 0 ? 'badge badge-red' : p.stock <= 0 ? 'badge badge-red' : 'badge badge-green'}">${p.stock}</span>
+      </div>
+      <button onclick="addToCart(${p.id},this)" class="btn-add" ${oos ? 'disabled' : ''}>
+        ${oos ? 'Sin stock' : '+ Agregar'}
+      </button>
+    `
+    container.appendChild(card)
+  })
+
+  const alertBox = document.getElementById("lowStockAlert")
+  alertBox.innerHTML = lowStock.length
+    ? `<div class="alert-box">⚠ Stock bajo: ${lowStock.join(" · ")}</div>` : ""
+
+  renderCategoryFilter()
+}
+
+// =========== CART ===========
+function addToCart(id, btn) {
+
+  btn.classList.add("pop")
+  setTimeout(() => btn.classList.remove("pop"), 220)
+
+  const p = state.products.find(x => x.id === id)
+  const item = state.cart.find(x => x.id === id)
+  const currentQty = item ? item.qty : 0
+
+  if (currentQty >= p.stock) {
+    showToast("⚠ No hay suficiente stock")
+    return
+  }
+
+  if (item) {
+    item.qty++
+  } else {
+    state.cart.push({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      cost: p.cost,
+      qty: 1
+    })
+  }
+
+  markDirty("cart", "products")
+  flushRender()
+  saveCart()
+}
+
+function changeQty(id, delta) {
+  let item = state.cart.find(x => x.id === id)
+  if (!item) return
+  let p = state.products.find(x => x.id === id)
+
+  if (delta > 0) {
+    if (item.qty >= p.stock) {
+      showToast("⚠ Sin más stock")
+      return
+    }
+    item.qty++
+  } else {
+    item.qty--
+    if (item.qty <= 0) state.cart = state.cart.filter(x => x.id !== id)
+  }
+
+  markDirty("cart", "products")
+  flushRender()
+  saveCart()
+}
+
+function calculateChange() {
+  const paid = Number(document.getElementById("paid").value) || 0
+  const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
+  const change = Math.max(paid - total, 0)
+  document.getElementById("change").textContent = `$${change.toFixed(2)}`
+
+  const btn = document.querySelector("#confirmSaleBtn")
+
+  if (paid < total || total === 0) {
+    btn.disabled = true
+    btn.style.opacity = "0.5"
+    btn.style.cursor = "not-allowed"
+  } else {
+    btn.disabled = false
+    btn.style.opacity = "1"
+    btn.style.cursor = "pointer"
+  }
+}
+
+function renderCart() {
+  const container = document.getElementById("cart")
+  container.innerHTML = ""
+
+  if (state.cart.length === 0) {
+    container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px 0; font-size:13px;">El carrito está vacío</div>`
+    document.getElementById("total").textContent = "$0.00"
+    calculateChange()
+    return
+  }
+
+  let total = 0
+
+  state.cart.forEach(item => {
+    const sub = item.qty * item.price
+    total += sub
+    const row = document.createElement("div")
+    row.className = "cart-row"
+    row.innerHTML = `
+      <div>
+        <div style="font-size:14px; font-weight:600; color:#0f172a;">${item.name}</div>
+        <div style="font-size:11px; color:#94a3b8; font-family:'JetBrains Mono',monospace;">$${item.price.toFixed(2)} × ${item.qty}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button class="qty-btn" onclick="changeQty(${item.id},-1)">−</button>
+        <span class="qty-display">${item.qty}</span>
+        <button class="qty-btn" onclick="changeQty(${item.id},1)">+</button>
+      </div>
+      <span style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; min-width:56px; text-align:right; color:#0f172a;">$${sub.toFixed(2)}</span>
+    `
+    container.appendChild(row)
+  })
+
+  document.getElementById("total").textContent = `$${total.toFixed(2)}`
+  calculateChange()
+}
+
+// =========== CONFIRMAR VENTA ===========
+async function confirmSale() {
+
+  if(lock) {
+    showToast("⏳ Procesando venta...")
+    return
+  }
+
+  if (state.cart.length === 0) {
+    showToast("⚠ El carrito está vacío")
+    return
+  }
+
+  const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
+  const paid = Number(document.getElementById("paid").value) || 0
+
+  if (paid < total) {
+    showToast("❌ Pago insuficiente")
+    return
+  }
+
+  const btn = document.getElementById("confirmSaleBtn")
+
+  lock = true
+  btn.disabled = true
+  btn.style.opacity = "0.6"
+  btn.textContent = "⏳ Procesando..."
+
+  try {
+
+    setSyncStatus("syncing", "Verificando stock...")
+    try {
+      const res = await fetch("/api/products")
+      if(res.ok){
+        const data = await res.json()
+        state.products = data.map(p => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          cost: Number(p.cost || 0),
+          stock: Number(p.stock),
+          sold: Number(p.sold || 0),
+          cat: p.cat || "General"
+        }))
+        lastSyncTime = new Date()
+        setSyncStatus("ok", "Stock verificado")
+      }
+    } catch(e) {
+      console.warn("No se pudo verificar stock antes de venta:", e)
+      setSyncStatus("error", "Sin conexión")
+    }
+
+    for (const item of state.cart){
+      const p = state.products.find(x => x.id === item.id)
+      if(!p){
+        showToast(`❌ Producto no existe: ${item.name}`, "error")
+        return
+      }
+      if(p.stock < item.qty){
+        showToast(`❌ Sin stock: ${item.name} (disponible: ${p.stock})`, "error")
+        item.qty = p.stock
+        markDirty("cart", "products")
+        flushRender()
+        return
+      }
+    }
+
+    const finalTotal = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
+
+    const now = new Date()
+
+    const sale = {
+      id: null,
+      num: null,
+      date: now.toISOString(),
+      dateKey: now.getDate() + "/" + (now.getMonth()+1),
+      items: JSON.parse(JSON.stringify(state.cart)),
+      total: finalTotal,
+      paid,
+      change: paid - finalTotal
+    }
+
+    const data = await api("/api/sales",{
+      method:"POST",
+      body:JSON.stringify(sale)
+    })
+
+    sale.id  = data.id
+    sale.num = data.num != null ? Number(data.num) : null
+
+    if(sale.num == null){
+      console.warn("⚠ El backend no devolvió num.")
+    }
+
+    state.sales.unshift(sale)
+
+    state.cart = []
+    localStorage.removeItem("cart")
+    document.getElementById("paid").value = ""
+    if (document.activeElement) document.activeElement.blur()
+
+    markDirty("cart", "products")
+    flushRender()
+
+    showSaleSummary(sale)
+    showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`, "ok")
+
+  } catch (err) {
+
+    console.error(err)
+    showToast("❌ " + err.message, "error")
+
+  } finally {
+
+    lock = false
+    btn.disabled = false
+    btn.style.opacity = "1"
+    btn.textContent = "✅ Confirmar Venta"
+    calculateChange()
+
+  }
+
+}
+
+// =========== INVENTORY ===========
+function renderInventory() {
+
+  const container = document.getElementById("inventoryList")
+  container.innerHTML = ""
+
+  const search = document.getElementById("searchInventory")?.value?.toLowerCase() || ""
+
+  const filtered = state.products.filter(p =>
+    p.name.toLowerCase().includes(search)
+  )
+
+  const best = [...state.products]
+    .sort((a,b) => (b.sold*(b.price-b.cost)) - (a.sold*(a.price-a.cost)))[0]
+
+  filtered.forEach(p => {
+
+    const profit = p.price - p.cost
+    const totalProfit = p.sold * profit
+
+    const isBest = best && p.id === best.id && totalProfit > 0
+    const isZero = p.sold === 0
+
+    const card = document.createElement("div")
+    card.className = "inv-card" + (isBest ? " best" : isZero ? " zero" : "")
+
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+        <div>
+          <span style="font-weight:700; font-size:15px;">
+            ${isBest ? "🥇 " : ""}${p.name}
+          </span>
+          <span class="cat-chip" style="margin-left:8px;">${p.cat || "General"}</span>
+        </div>
+        ${isZero
+          ? '<span class="badge badge-red">Sin ventas</span>'
+          : `<span class="badge badge-green">${p.sold} vendidos</span>`
+        }
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:13px; color:#475569;">
+        <div style="font-size:11px;color:#94a3b8;font-weight:600;">PRECIO VENTA</div>
+        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.price.toFixed(2)}</b></div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:600;">COSTO</div>
+        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.cost.toFixed(2)}</b></div>
+        <div style="background:#f0fdf4; border-radius:8px; padding:8px;">
+          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA/U</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">$${profit.toFixed(2)}</b>
+        </div>
+        <div style="background:#f0fdf4; border-radius:8px; padding:8px;">
+          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA TOTAL</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">$${totalProfit.toFixed(2)}</b>
+        </div>
+        <div style="background:#f8fafc; border-radius:8px; padding:8px;">
+          <div style="font-size:11px;color:#94a3b8;font-weight:600;">STOCK</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:${p.stock<=5?'#dc2626':'#0f172a'};">${p.stock}</b>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button onclick="openEditModal(${p.id})" class="btn-ghost" style="flex:1;">✏️ Editar</button>
+        <button onclick="openRestock(${p.id})" class="btn-ghost" style="flex:1; border-color:#22c55e; color:#16a34a;">+ Stock</button>
+        <button onclick="deleteProduct(${p.id})" class="btn-danger">🗑</button>
+      </div>
+    `
+
+    container.appendChild(card)
+
+  })
+
+}
+
+// =========== MODAL PRODUCTO ===========
+function openAddModal() {
+  editingId = null
+  document.getElementById("modal-title").textContent = "➕ Nuevo Producto"
+  ;["m-name","m-price","m-cost","m-stock","m-cat"].forEach(id => document.getElementById(id).value = "")
+  clearModalError()
+  document.getElementById("modal").classList.add("show")
+  setTimeout(() => document.getElementById("m-name").focus(), 100)
+}
+
+function openEditModal(id) {
+  editingId = id
+  const p = state.products.find(x => x.id === id)
+  document.getElementById("modal-title").textContent = "✏️ Editar producto"
+  document.getElementById("m-name").value = p.name
+  document.getElementById("m-price").value = p.price
+  document.getElementById("m-cost").value = p.cost
+  document.getElementById("m-stock").value = p.stock
+  document.getElementById("m-cat").value = p.cat || ""
+  clearModalError()
+  document.getElementById("modal").classList.add("show")
+}
+
+function closeModal() {
+  document.getElementById("modal").classList.remove("show")
+  clearModalError()
+}
+
+function showModalError(msg) {
+  const el = document.getElementById("modal-error")
+  el.textContent = msg
+  el.style.display = "block"
+}
+
+function clearModalError() {
+  const el = document.getElementById("modal-error")
+  if(el){
+    el.style.display = "none"
+    el.textContent = ""
+  }
+}
+
+async function saveProduct(){
+
+  const name = document.getElementById("m-name").value.trim()
+
+  if(!name){
+    showToast("⚠ Ingresá el nombre")
+    return
+  }
+
+  const price = parseFloat(document.getElementById("m-price").value) || 0
+  const cost  = parseFloat(document.getElementById("m-cost").value) || 0
+  const stock = parseInt(document.getElementById("m-stock").value) || 0
+
+  const cat = (
+    document.getElementById("m-cat").value.trim()
+    .toLowerCase()
+    .replace(/^\w/, c => c.toUpperCase())
+  ) || "General"
+
+  const product = { name, price, cost, stock, cat }
+
+  const saveBtn = document.getElementById("saveBtn")
+  const originalText = saveBtn.textContent
+
+  saveBtn.textContent = "⏳ Guardando..."
+  saveBtn.classList.add("btn-loading")
+  clearModalError()
+
+  try {
+
+    if(editingId){
+      await api("/api/products/"+editingId,{
+        method:"PUT",
+        body:JSON.stringify(product)
+      })
+      showToast("✏️ Producto actualizado", "ok")
+    } else {
+      await api("/api/products",{
+        method:"POST",
+        body:JSON.stringify(product)
+      })
+      showToast("✅ Producto agregado", "ok")
+    }
+
+    closeModal()
+    editingId = null
+    await loadProducts()
+
+  } catch(err) {
+
+    showModalError("❌ " + err.message)
+    console.error("Error guardando producto:", err)
+
+  } finally {
+
+    saveBtn.textContent = originalText
+    saveBtn.classList.remove("btn-loading")
+
+  }
+
+}
+
+// =========== RESTOCK ===========
+function openRestock(id) {
+  restockId = id
+  const p = state.products.find(x => x.id === id)
+  document.getElementById("restock-name").textContent = p.name
+  document.getElementById("restock-qty").value = ""
+  document.getElementById("restockModal").classList.add("show")
+  setTimeout(() => document.getElementById("restock-qty").focus(), 100)
+}
+
+function closeRestock() { document.getElementById("restockModal").classList.remove("show") }
+
+async function confirmRestock(){
+
+  const qty = parseInt(document.getElementById("restock-qty").value) || 0
+
+  if(qty <= 0){
+    showToast("⚠ Cantidad inválida")
+    return
+  }
+
+  const restockBtn = document.getElementById("restockBtn")
+  restockBtn.textContent = "⏳ Agregando..."
+  restockBtn.classList.add("btn-loading")
+
+  try {
+
+    await api("/api/restock",{
+      method:"POST",
+      body:JSON.stringify({ id:restockId, qty })
+    })
+
+    closeRestock()
+    await loadProducts()
+    showToast(`✅ +${qty} unidades agregadas`, "ok")
+
+  } catch(err) {
+
+    showToast("❌ " + err.message, "error")
+    console.error("Error en restock:", err)
+
+  } finally {
+
+    restockBtn.textContent = "+ Agregar"
+    restockBtn.classList.remove("btn-loading")
+
+  }
+
+}
+
+async function deleteProduct(id){
+
+  const p = state.products.find(x => x.id === id)
+
+  if(!confirm(`¿Eliminar "${p.name}"?`)) return
+
+  try {
+
+    const res = await fetch("/api/products/"+id,{ method:"DELETE" })
+
+    if(!res.ok){
+      let data = {}
+      try { data = await res.json() } catch(_){}
+      throw new Error(data.error || "Error al eliminar")
+    }
+
+    await loadProducts()
+    showToast("🗑 Producto eliminado", "ok")
+
+  } catch(err) {
+
+    showToast("❌ " + err.message, "error")
+    console.error("Error eliminando producto:", err)
+
+  }
+
+}
+
+// =========== TICKET ===========
+function showSaleSummary(sale){
+
+  const line = "--------------------------------"
+
+  const header = `
+${line}
+Producto              Unit     Total
+${line}
+`
+
+  const maxNameLength = Math.max(
+    ...sale.items.map(p => (p.name + " x" + p.qty).length),
+    16
+  ) + 2
+
+  const items = sale.items.map(p => {
+    const sub = p.qty * p.price
+    const name = (p.name + " x" + p.qty).padEnd(maxNameLength)
+    const unit = ("$" + p.price.toFixed(2)).padEnd(10)
+    const total = "$" + sub.toFixed(2)
+    return `${name}${unit}${total}`
+  }).join("\n")
+
+  document.getElementById("saleSummaryInfo").innerHTML =
+    `Venta ${saleNumLabel(sale.num)}<br>ID: ${sale.id}<br>${formatDate(sale.date)}`
+
+  document.getElementById("saleSummaryItems").innerHTML =
+    `<pre style="font-family:monospace;overflow-x:auto;">${header}${items}\n${line}</pre>`
+
+  document.getElementById("saleSummaryTotal").innerHTML = `<b>$${sale.total.toFixed(2)}</b>`
+  document.getElementById("saleSummaryPaid").innerHTML = `<b>$${sale.paid.toFixed(2)}</b>`
+  document.getElementById("saleSummaryChange").innerHTML =
+    `<span style="color:#16a34a;font-weight:700;">$${sale.change.toFixed(2)} 🟢</span>`
+
+  const modal = document.getElementById("saleSummary")
+  modal.style.display = "flex"
+
+  document.body.style.pointerEvents = "none"
+  modal.style.pointerEvents = "auto"
+
+}
+
+function closeSummary(){
+  const modal = document.getElementById("saleSummary")
+  modal.style.display = "none"
+
+  document.body.style.pointerEvents = ""
+
+  loadProducts(true).catch(console.error)
+
+  markDirty("cart", "products")
+  flushRender()
+  calculateChange()
+}
+
+function printTicket(){
+  const content = document.getElementById("saleSummaryBox").innerHTML
+  const w = window.open("")
+  w.document.write(`<html><body style="font-family:monospace;padding:20px">${content}</body></html>`)
+  w.document.close()
+  w.print()
+}
+
+function shareTicket(){
+  const text = document.getElementById("saleSummaryBox").innerText
+  if(navigator.share){
+    navigator.share({ title:"Ticket de venta", text })
+    .catch(()=>{
+      navigator.clipboard.writeText(text)
+      showToast("📋 Ticket copiado")
+    })
+  }else{
+    navigator.clipboard.writeText(text)
+    showToast("📋 Ticket copiado")
+  }
+}
+
+function filtrarVentas(ventas, texto){
+  const palabras = texto.toLowerCase().split(" ").filter(p => p.trim() !== "")
+  if(palabras.length === 0) return ventas
+  return ventas.filter(sale => {
+    const nombres = sale.items.map(i => i.name.toLowerCase())
+    return palabras.every(p => nombres.some(n => n.includes(p)))
+  })
+}
+
+// =========== SALES ===========
+function renderSales(){
+
+  const container = document.getElementById("salesList")
+  container.innerHTML = ""
+
+  const search = document.getElementById("searchSales")?.value?.toLowerCase() || ""
+
+  const filtradas = filtrarVentas(state.sales, search)
+
+  if(filtradas.length === 0){
+    const msg = search
+      ? "No se encontraron coincidencias"
+      : "No hay ventas registradas aún"
+    container.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:40px 0;">${msg}</div>`
+    return
+  }
+
+  const ventasOrdenadas = filtradas
+    .slice()
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 50)
+
+  const totalGeneral = ventasOrdenadas.reduce((a, s) => a + s.total, 0)
+  let acumuladoRestante = totalGeneral
+
+  const ventasConAcumulado = ventasOrdenadas.map(s => {
+    const acumulado = acumuladoRestante
+    acumuladoRestante -= s.total
+    return { ...s, acumulado }
+  })
+
+  const ORDEN_SECCIONES = ["Hoy", "Ayer", "Esta semana", "Este mes", "Más antiguas"]
+
+  const grupos = {}
+  ventasConAcumulado.forEach(s => {
+    const label = getDayLabel(s.date)
+    if(!grupos[label]) grupos[label] = []
+    grupos[label].push(s)
+  })
+
+  const colors = ["#dbeafe","#dcfce7","#fef9c3","#fee2e2","#e0f2fe"]
+
+  ORDEN_SECCIONES.forEach(seccion => {
+
+    const ventas = grupos[seccion]
+    if(!ventas || ventas.length === 0) return
+
+    const header = document.createElement("div")
+    header.className = "day-section-header"
+    header.innerHTML = `
+      <span class="day-section-label">${seccion}</span>
+      <div class="day-section-line"></div>
+      <span style="font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap;">${ventas.length} venta${ventas.length > 1 ? "s" : ""}</span>
+    `
+    container.appendChild(header)
+
+    ventas.forEach((s, i) => {
+
+      const items = s.items.map(p=>{
+        const unitProfit = (p.price - p.cost)
+        const totalProfit = unitProfit * p.qty
+        const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"
+        return `
+          ${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
+          <br>Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
+          <br>${icon} Ganancia unidad: <b style="color:#16a34a;font-size:14px;">$${unitProfit.toFixed(2)} c/u</b>
+          <br><br>
+        `
+      }).join("")
+
+      const profitVenta = s.items.reduce((a,p)=>{
+        return a + ((p.price - p.cost) * p.qty)
+      },0)
+
+      const div = document.createElement("div")
+      div.style.background = colors[i % colors.length]
+      div.style.borderRadius = "14px"
+      div.style.padding = "16px"
+      div.style.marginBottom = "14px"
+      div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
+
+      div.innerHTML = `
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Venta ${saleNumLabel(s.num)}</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:6px;">ID: ${s.id}</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:10px;">${formatDate(s.date)}</div>
+        <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">${items}</div>
+        <div style="font-size:13px;line-height:1.8;">
+          Total: <b>$${s.total.toFixed(2)}</b><br>
+          Ganancia: <b style="color:#16a34a">$${profitVenta.toFixed(2)}</b><br>
+          Pagó: <b>$${Number(s.paid).toFixed(2)}</b><br>
+          Vuelto: <b>$${Number(s.change).toFixed(2)}</b><br>
+          <span style="font-weight:700;">Acumulado: $${s.acumulado.toFixed(2)}</span>
+        </div>
+        <div style="margin-top:10px;">
+          <button class="btn-ghost" style="width:100%;">📄 Ver ticket</button>
+        </div>
+      `
+
+      const btn = div.querySelector("button")
+      btn.onclick = () => showSaleSummary(s)
+
+      container.appendChild(div)
+
+    })
+
+  })
+
+}
+
+// =========================================================
+// renderStats
+// =========================================================
+function renderStats() {
+
+  // ── 1. PANEL OPERATIVO ──
+  const totalSales    = state.sales.length
+  const ingresos      = state.sales.reduce((a,b) => a + b.total, 0)
+  const totalProfit   = state.products.reduce((a,p) => a + p.sold*(p.price-p.cost), 0)
+  const sorted        = [...state.products].sort((a,b) => b.sold - a.sold)
+  const mostSold      = sorted.find(p => p.sold > 0)
+  const mostProfit    = [...state.products]
+    .sort((a,b) => (b.sold*(b.price-b.cost)) - (a.sold*(a.price-a.cost)))
+    .find(p => p.sold > 0)
+  const lowStock      = state.products.filter(p => p.stock <= 5).length
+
+  document.getElementById("statsPanel").innerHTML = `
+    <div class="stat-card" style="background:#dbeafe;">
+      <div style="font-size:11px; color:#1d4ed8; font-weight:700; letter-spacing:0.5px;">VENTAS</div>
+      <div class="stat-value" style="color:#1e40af;">${totalSales}</div>
+    </div>
+    <div class="stat-card" style="background:#dcfce7;">
+      <div style="font-size:11px; color:#15803d; font-weight:700; letter-spacing:0.5px;">INGRESOS</div>
+      <div class="stat-value" style="color:#166534;">$${ingresos.toFixed(2)}</div>
+    </div>
+    <div class="stat-card" style="background:#fef9c3;">
+      <div style="font-size:11px; color:#a16207; font-weight:700; letter-spacing:0.5px;">MÁS VENDIDO</div>
+      <div style="font-size:15px; font-weight:700; color:#92400e; margin-top:4px;">${mostSold ? mostSold.name : "—"}</div>
+    </div>
+    <div class="stat-card" style="background:#f3e8ff;">
+      <div style="font-size:11px; color:#7c3aed; font-weight:700; letter-spacing:0.5px;">MÁS GANANCIA</div>
+      <div style="font-size:15px; font-weight:700; color:#6d28d9; margin-top:4px;">${mostProfit ? mostProfit.name : "—"}</div>
+    </div>
+    <div class="stat-card" style="background:#d1fae5;">
+      <div style="font-size:11px; color:#065f46; font-weight:700; letter-spacing:0.5px;">GANANCIA BRUTA</div>
+      <div class="stat-value" style="color:#064e3b;">$${totalProfit.toFixed(2)}</div>
+    </div>
+    <div class="stat-card" style="background:${lowStock > 0 ? '#fee2e2' : '#f0fdf4'};">
+      <div style="font-size:11px; color:${lowStock > 0 ? '#b91c1c' : '#15803d'}; font-weight:700; letter-spacing:0.5px;">STOCK BAJO</div>
+      <div class="stat-value" style="color:${lowStock > 0 ? '#991b1b' : '#166534'};">${lowStock}</div>
+    </div>
+  `
+
+  // ── 2. SUMMARY FINANCIERO REAL ──
+  const s = state.summary
+  const panel = document.getElementById("summaryPanel")
+  const filterLabel = document.getElementById("summaryFilterLabel")
+
+  if(filterLabel){
+    filterLabel.textContent = s?.filter?.desde
+      ? `${s.filter.desde}${s.filter.hasta ? " → " + s.filter.hasta : ""}`
+      : "Histórico completo"
+  }
+
+  if(!s){
+    // ── PRIORIDAD 2: sin datos, no inventar nada ──
+    panel.innerHTML = `
+      <div style="grid-column:1/-1; background:#fef2f2; border:2px solid #fca5a5; border-radius:12px; padding:16px; font-size:13px; color:#dc2626; font-weight:600; text-align:center; line-height:1.6;">
+        🔴 Datos financieros no disponibles<br>
+        <span style="font-size:11px; font-weight:400; color:#991b1b;">El servidor no respondió. Los números reales no se pueden mostrar.</span>
+      </div>
+    `
+  } else {
+
+    const profitColor  = s.profit >= 0 ? "#064e3b" : "#991b1b"
+    const profitBg     = s.profit >= 0 ? "#dcfce7"  : "#fee2e2"
+    const profitBorder = s.profit >= 0 ? "#86efac"  : "#fca5a5"
+    const profitIcon   = s.profit >= 0 ? "💰"        : "📉"
+
+    // ── PRIORIDAD 2: banner de advertencia si los datos son fallback local ──
+    const fallbackBanner = s._source === "local" ? `
+      <div style="grid-column:1/-1; background:#fef9c3; border:2px solid #fde047; border-radius:10px; padding:10px 14px; margin-bottom:4px; font-size:12px; font-weight:600; color:#854d0e; display:flex; align-items:center; gap:8px;">
+        ⚠ Datos aproximados (servidor no disponible) — Los gastos se calcularon localmente
+      </div>
+    ` : ""
+
+    // ── PRIORIDAD 3: ganancia real ocupa toda la fila ──
+    panel.innerHTML = `
+      ${fallbackBanner}
+      <div class="stat-card" style="background:#ecfeff;">
+        <div style="font-size:11px; color:#0891b2; font-weight:700; letter-spacing:0.5px;">TOTAL VENDIDO</div>
+        <div class="stat-value" style="color:#0e7490;">$${s.sales.toFixed(2)}</div>
+      </div>
+      <div class="stat-card" style="background:#fff7ed;">
+        <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">COSTO MERCADERÍA</div>
+        <div class="stat-value" style="color:#9a3412;">$${s.costs.toFixed(2)}</div>
+      </div>
+      <div class="stat-card" style="background:#fef3c7; position:relative;">
+        <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">GASTOS OPERATIVOS</div>
+        <div class="stat-value" style="color:#78350f;">$${s.expenses.toFixed(2)}</div>
+        <span style="position:absolute; top:10px; right:10px; font-size:11px; font-weight:600; cursor:pointer; color:#d97706;" onclick="show('expenses')" title="Ver gastos">→💸</span>
+      </div>
+      <div class="stat-card" style="
+        grid-column: 1 / -1;
+        background:${profitBg};
+        border: 3px solid ${profitBorder};
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        padding: 18px 20px;
+      ">
+        <div>
+          <div style="font-size:12px; color:${profitColor}; font-weight:700; letter-spacing:0.5px; margin-bottom:4px;">${profitIcon} LO QUE TE QUEDÓ (GANANCIA REAL)</div>
+          <div style="font-size:11px; color:${profitColor}; opacity:.75;">Ventas − Costos − Gastos</div>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:32px; font-weight:700; color:${profitColor};">
+          $${s.profit.toFixed(2)}
+        </div>
+      </div>
+    `
+  }
+
+  // ── 3. RANKING + GASTOS POR CATEGORÍA ──
+  const withSales = sorted.filter(p => p.sold > 0)
+  const medals = ["🥇","🥈","🥉"]
+
+  let rankHtml = `<span style="font-weight:700; font-size:15px; margin-bottom:12px; display:block;">🏆 Ranking de ventas</span>`
+
+  if (withSales.length === 0) {
+    rankHtml += `<div style="text-align:center; color:#94a3b8; font-size:13px; padding:12px 0;">Aún no hay ventas registradas</div>`
+  } else {
+    withSales.forEach((p, i) => {
+      rankHtml += `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+          <span style="font-weight:600; color:#0f172a; font-size:14px;">${medals[i] || (i+1)+"."} ${p.name}</span>
+          <span class="badge badge-blue">${p.sold} vendidos</span>
+        </div>`
+    })
+  }
+
+  if(s && s.expenses_by_category && s.expenses_by_category.length > 0){
+    rankHtml += `
+      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="font-weight:700; font-size:14px; color:#0f172a;">💸 Gastos por categoría</span>
+          <button onclick="show('expenses')" class="btn-ghost" style="font-size:11px; padding:4px 10px;">Ver todos →</button>
+        </div>
+        ${s.expenses_by_category.map(e => `
+          <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            padding:8px 10px;
+            background:#fef9c3;
+            border-radius:8px;
+            margin-bottom:6px;
+          ">
+            <span style="font-size:13px; font-weight:600; color:#92400e;">${e.category}</span>
+            <b style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#78350f;">$${e.total.toFixed(2)}</b>
+          </div>
+        `).join("")}
+      </div>
+    `
+  } else if(s && s.expenses_by_category && s.expenses_by_category.length === 0) {
+    rankHtml += `
+      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
+        <span style="font-weight:700; font-size:14px; color:#0f172a; display:block; margin-bottom:8px;">💸 Gastos por categoría</span>
+        <div style="text-align:center; color:#94a3b8; font-size:13px; padding:8px 0;">Sin gastos registrados</div>
+      </div>
+    `
+  }
+
+  document.getElementById("rankingList").innerHTML = rankHtml
+
+  drawChart()
+  drawProfitChart()
+}
+
+// =========== RESET STATS ===========
+async function resetStats(){
+  if(!confirm("¿Reiniciar estadísticas? Las ventas se eliminarán pero el inventario seguirá igual.")) return
+
+  try {
+
+    await api("/api/reset-stats",{method:"POST"})
+    await loadProducts()
+    state.summary = null
+    showToast("📊 Estadísticas reiniciadas", "ok")
+    renderStats()
+
+  } catch(err) {
+
+    showToast("❌ Error al reiniciar: " + err.message, "error")
+    console.error(err)
+
+  }
+
+}
+
+// =========== CLEAR HISTORY ===========
+async function clearHistory(){
+  if(!confirm("¿Eliminar todo el historial de ventas? Esta acción no se puede deshacer.")) return
+
+  try {
+
+    await api("/api/sales",{ method:"DELETE" })
+    state.sales = []
+    renderAll()
+    showToast("🗑 Historial eliminado", "ok")
+
+  } catch(err) {
+
+    showToast("❌ Error al borrar: " + err.message, "error")
+    console.error(err)
+
+  }
+
+}
+
+// =========== CHART ===========
+function drawChart() {
+
+  const canvas = document.getElementById("salesChart")
+  if (!canvas) return
+
+  const ctx = canvas.getContext("2d")
+  const W = canvas.offsetWidth || 300
+  canvas.width = W
+  canvas.height = 160
+  const H = 160
+
+  const byDay = {}
+
+  state.sales.forEach(s => {
+    const key = getDateKey(s.date)
+    if(!key) return
+    byDay[key] = (byDay[key] || 0) + s.total
+  })
+
+  const labels = Object.keys(byDay)
+    .sort((a,b)=>{
+      const [d1,m1] = a.split("/").map(Number)
+      const [d2,m2] = b.split("/").map(Number)
+      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
+    })
+    .slice(-7)
+
+  const values = labels.map(k => byDay[k])
+
+  ctx.clearRect(0,0,W,H)
+
+  if(labels.length === 0){
+    ctx.fillStyle = "#94a3b8"
+    ctx.font = "13px Sora, sans-serif"
+    ctx.textAlign = "center"
+    ctx.fillText("Aún no hay datos para graficar",W/2,H/2)
+    return
+  }
+
+  const maxVal = Math.max(...values,1)
+  const padL = 8, padR = 8, padT = 22, padB = 32
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+  const gap = chartW / labels.length
+  const barW = Math.min(gap * 0.55,40)
+
+  ctx.strokeStyle = "#f1f5f9"
+  ctx.lineWidth = 1
+  for(let i=1;i<=3;i++){
+    const y = padT + chartH - (i/3)*chartH
+    ctx.beginPath()
+    ctx.moveTo(padL,y)
+    ctx.lineTo(W-padR,y)
+    ctx.stroke()
+  }
+
+  labels.forEach((lbl,i)=>{
+    const barH = Math.max((values[i]/maxVal)*chartH,4)
+    const x = padL + i*gap + gap/2 - barW/2
+    const y = padT + chartH - barH
+
+    const grad = ctx.createLinearGradient(0,y,0,y+barH)
+    grad.addColorStop(0,"#3b82f6")
+    grad.addColorStop(1,"#bfdbfe")
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    if(ctx.roundRect){ ctx.roundRect(x,y,barW,barH,5) }
+    else { ctx.rect(x,y,barW,barH) }
+    ctx.fill()
+
+    ctx.fillStyle = "#1e40af"
+    ctx.font = "bold 9px JetBrains Mono, monospace"
+    ctx.textAlign = "center"
+    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
+
+    ctx.fillStyle = "#64748b"
+    ctx.font = "9px Sora, sans-serif"
+    ctx.textAlign = "center"
+    ctx.fillText(lbl,x+barW/2,H-6)
+  })
+}
+
+function drawProfitChart(){
+
+  const canvas = document.getElementById("profitChart")
+  if(!canvas) return
+
+  const ctx = canvas.getContext("2d")
+  const W = canvas.offsetWidth || 300
+  canvas.width = W
+  canvas.height = 160
+  const H = 160
+
+  const byDay = {}
+
+  state.sales.forEach(s=>{
+    const key = getDateKey(s.date)
+    if(!key) return
+    let profit = 0
+    s.items.forEach(p=>{ profit += (p.price - p.cost) * p.qty })
+    byDay[key] = (byDay[key] || 0) + profit
+  })
+
+  const labels = Object.keys(byDay)
+    .sort((a,b)=>{
+      const [d1,m1] = a.split("/").map(Number)
+      const [d2,m2] = b.split("/").map(Number)
+      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
+    })
+    .slice(-7)
+
+  const values = labels.map(k=>byDay[k])
+
+  ctx.clearRect(0,0,W,H)
+
+  if(labels.length===0){
+    ctx.fillStyle="#94a3b8"
+    ctx.font="13px Sora"
+    ctx.textAlign="center"
+    ctx.fillText("Sin datos",W/2,H/2)
+    return
+  }
+
+  const maxVal = Math.max(...values,1)
+  const padL=8,padR=8,padT=22,padB=32
+  const chartW=W-padL-padR
+  const chartH=H-padT-padB
+  const gap=chartW/labels.length
+  const barW=Math.min(gap*0.55,40)
+
+  labels.forEach((lbl,i)=>{
+    const barH=(values[i]/maxVal)*chartH
+    const x=padL+i*gap+gap/2-barW/2
+    const y=padT+chartH-barH
+    ctx.fillStyle="#22c55e"
+    ctx.fillRect(x,y,barW,barH)
+    ctx.fillStyle="#166534"
+    ctx.font="bold 9px JetBrains Mono"
+    ctx.textAlign="center"
+    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
+    ctx.fillStyle="#64748b"
+    ctx.font="9px Sora"
+    ctx.fillText(lbl,x+barW/2,H-6)
+  })
+}
+
+// =========== EXPORT CSV ===========
+function exportCSV(){
+
+  if(state.sales.length === 0){
+    showToast("⚠ No hay ventas")
+    return
+  }
+
+  let text = ""
+  const ventas = state.sales.slice().sort((a,b) => new Date(b.date) - new Date(a.date))
+  let acumulado = ventas.reduce((a,b)=> a + b.total, 0)
+
+  ventas.forEach(s => {
+    text += `Venta ${saleNumLabel(s.num)}\n`
+    text += `ID: ${s.id}\n`
+    text += `${formatDate(s.date)}\n\n`
+
+    s.items.forEach(p => {
+      const unitProfit = (p.price - p.cost)
+      const totalProfit = unitProfit * p.qty
+      text += `• ${p.name} x${p.qty}\n`
+      text += `  Precio: $${p.price.toFixed(2)}\n`
+      text += `  Costo: $${p.cost.toFixed(2)}\n`
+      text += `  Ganancia/u: $${unitProfit.toFixed(2)}\n`
+      text += `  Ganancia total: $${totalProfit.toFixed(2)}\n\n`
+    })
+
+    const profitVenta = s.items.reduce((a,p)=>{ return a + ((p.price - p.cost) * p.qty) },0)
+
+    text += `Total: $${s.total.toFixed(2)}\n`
+    text += `Ganancia: $${profitVenta.toFixed(2)}\n`
+    text += `Pagó: $${Number(s.paid).toFixed(2)}\n`
+    text += `Vuelto: $${Number(s.change).toFixed(2)}\n`
+    text += `Acumulado: $${acumulado.toFixed(2)}\n`
+
+    acumulado -= s.total
+    text += `\n--------------------------------\n\n`
+  })
+
+  const blob = new Blob(["\uFEFF" + text],{type:"text/plain;charset=utf-8"})
+  const a = document.createElement("a")
+  a.href = URL.createObjectURL(blob)
+
+  const now = new Date()
+  const fecha = now.getFullYear() + "-" + String(now.getMonth()+1).padStart(2,"0") + "-" + String(now.getDate()).padStart(2,"0")
+  const hora = String(now.getHours()).padStart(2,"0") + "-" + String(now.getMinutes()).padStart(2,"0") + "-" + String(now.getSeconds()).padStart(2,"0")
+
+  a.download = `historial-${fecha}_${hora}.txt`
+  a.click()
+
+  showToast("✅ Historial completo descargado", "ok")
+}
+
+// =========== RENDER ALL ===========
+function renderAll() {
+  renderCategoryFilter()
+  renderProducts()
+  renderCart()
+  renderInventory()
+  renderStats()
+  renderSales()
+}
+
+// =========== CLOSE MODALS ON BACKDROP ===========
+document.getElementById("modal")?.addEventListener("click", e => {
+  if (e.target === document.getElementById("modal")) closeModal()
+})
+
+document.getElementById("restockModal")?.addEventListener("click", e => {
+  if (e.target === document.getElementById("restockModal")) closeRestock()
+})
+
+document.getElementById("expenseModal")?.addEventListener("click", e => {
+  if (e.target === document.getElementById("expenseModal")) closeExpenseModal()
+})
+
+// =========== EVENTS ===========
+document.getElementById("searchProduct")?.addEventListener("input", ()=>{
+  renderProducts()
+  showSuggestions()
+})
+
+document.getElementById("searchInventory")?.addEventListener("input", renderInventory)
+document.getElementById("searchSales")?.addEventListener("input", renderSales)
+document.getElementById("searchExpenses")?.addEventListener("input", renderExpenses)
+document.getElementById("paid")?.addEventListener("input", calculateChange)
+
+// Tecla Enter en modal de gasto
+document.getElementById("e-amount")?.addEventListener("keydown", e => {
+  if(e.key === "Enter") saveExpense()
+})
+document.getElementById("e-cat")?.addEventListener("keydown", e => {
+  if(e.key === "Enter") saveExpense()
+})
+
+document.addEventListener("click", e => {
+  const box = document.getElementById("searchSuggestions")
+  const input = document.getElementById("searchProduct")
+  if(!box || !input) return
+  if(!box.contains(e.target) && e.target !== input){
+    box.style.display="none"
+  }
+})
+
+const dateEl = document.getElementById("date")
+if (dateEl) {
+  dateEl.textContent = new Date().toLocaleDateString("es", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short"
+  })
+}
+
+// =========== INIT ===========
+async function init(){
+
+  await loadProducts()
+  await loadSales()
+
+  loadCart()
+
+  const itemsAjustados = []
+
+  state.cart = state.cart.filter(item=>{
+    const p = state.products.find(x=>x.id === item.id)
+    if(!p || p.stock <= 0){
+      itemsAjustados.push(`${item.name} (sin stock)`)
+      return false
+    }
+    if(p.stock < item.qty){
+      itemsAjustados.push(`${item.name} (ajustado a ${p.stock})`)
+      item.qty = p.stock
+    }
+    return true
+  })
+
+  if(itemsAjustados.length > 0){
+    setTimeout(()=>{
+      showToast(`⚠ Carrito ajustado: ${itemsAjustados.join(", ")}`)
+    }, 800)
+  }
+
+  markDirty("cart", "sales")
+  flushRender()
+
+  show("pos")
+
+}
+
+init()
+
+setInterval(()=>{
+  const ticketAbierto = document.getElementById("saleSummary")?.style.display === "flex"
+  if(!lock && !syncing && !userIsActive() && !ticketAbierto){
+    loadProducts()
+  }
+}, 5000)
+
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible" && !lock){
+    loadProducts(true)
+  }
+})
+
+</script>
+
+</body>
+</html>
