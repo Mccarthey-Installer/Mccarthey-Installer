@@ -1426,14 +1426,20 @@ sed -i "s/__PORT_PLACEHOLDER__/$PORT/" "$SERVER_NEW"
 
 # ── Validación de sintaxis JS ─────────────────────────────
 echo "  → Validando sintaxis de server.js.new..."
-if ! node --check "$SERVER_NEW" 2>/tmp/pos-syntax-error.txt; then
+
+TEMP_CHECK_FILE="$APP_DIR/server.check.js"
+cp "$SERVER_NEW" "$TEMP_CHECK_FILE"
+
+if ! node --check "$TEMP_CHECK_FILE" 2>/tmp/pos-syntax-error.txt; then
   echo "  ✗ ERROR SINTAXIS — server.js NO fue reemplazado"
   echo "  Detalle:"
   cat /tmp/pos-syntax-error.txt
-  rm -f "$SERVER_NEW"
+  rm -f "$SERVER_NEW" "$TEMP_CHECK_FILE"
   echo "  El server.js anterior sigue intacto."
   exit 1
 fi
+
+rm -f "$TEMP_CHECK_FILE"
 echo "  ✓ Sintaxis OK"
 
 # ── Backup del server.js actual (si existe) ───────────────
