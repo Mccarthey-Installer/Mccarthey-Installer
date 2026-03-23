@@ -1,4 +1,9 @@
 #!/bin/bash
+set -euo pipefail
+
+# ===========================================================
+# ===== CONFIGURACIÓN
+# ===========================================================
 
 DOMAIN="tienda.valeentina.shop"
 REPO="https://github.com/Mccarthey-Installer/Mccarthey-Installer.git"
@@ -6,8 +11,51 @@ APP_DIR="/var/www/pos"
 PORT="9092"
 ENV_FILE="$APP_DIR/.env"
 
+DEPLOY_LOCK="/tmp/pos-deploy.lock"
+DEPLOY_LOG="/var/log/pos-deploy.log"
+
+# ===========================================================
+# ===== DEPLOY LOCK — evita ejecuciones simultáneas
+# ===========================================================
+
+if [ -e "$DEPLOY_LOCK" ]; then
+  LOCK_PID=$(cat "$DEPLOY_LOCK" 2>/dev/null || echo "?")
+  echo "  ✗ ERROR: ya hay un deploy corriendo (PID $LOCK_PID)"
+  echo "  Si es un proceso muerto, borrá el lock con: rm $DEPLOY_LOCK"
+  exit 1
+fi
+
+echo $$ > "$DEPLOY_LOCK"
+
+cleanup() {
+  local EXIT_CODE=$?
+  rm -f "$DEPLOY_LOCK"
+  rm -f "$APP_DIR/server.js.new" 2>/dev/null || true
+  if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "  ✗ DEPLOY FALLÓ (código $EXIT_CODE) — $(date)" | tee -a "$DEPLOY_LOG"
+    echo "  Revisá los errores arriba antes de correr el script de nuevo."
+  else
+    echo "  ✓ DEPLOY COMPLETADO OK — $(date)" | tee -a "$DEPLOY_LOG"
+  fi
+}
+trap cleanup EXIT
+
+echo "===== DEPLOY INICIADO — $(date) =====" | tee -a "$DEPLOY_LOG"
+
+# ===========================================================
+# ===== VALIDACIONES PREVIAS
+# ===========================================================
+
+echo "===== VERIFICANDO PERMISOS ====="
+if [ "$(id -u)" -ne 0 ]; then
+  echo "  ✗ Este script requiere root (corré con sudo)"
+  exit 1
+fi
+echo "  ✓ Corriendo como root"
+
 echo "===== DETENIENDO PROCESO ANTERIOR ====="
-pm2 delete pos 2>/dev/null
+pm2 delete pos 2>/dev/null || true
 
 echo "===== ACTUALIZANDO SISTEMA ====="
 apt update -y
@@ -15,23 +63,110 @@ apt update -y
 echo "===== INSTALANDO DEPENDENCIAS ====="
 apt install -y git curl mysql-server jq
 
-echo "===== INSTALANDO NODE ====="
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt install -y nodejs
+echo "===== VERIFICANDO MYSQL ====="
+# Arrancar si no está corriendo
+if ! systemctl is-active --quiet mysql; then
+  echo "  → MySQL no está activo — arrancando..."
+  systemctl start mysql
+  sleep 2
+fi
 
-echo "===== INSTALANDO PM2 ====="
-npm install -g pm2
+# Verificar que responde de verdad
+MYSQL_RETRIES=5
+MYSQL_OK=0
+for i in $(seq 1 $MYSQL_RETRIES); do
+  if mysqladmin ping --silent 2>/dev/null; then
+    MYSQL_OK=1
+    break
+  fi
+  echo "  ⏳ Esperando MySQL (intento $i/$MYSQL_RETRIES)..."
+  sleep 2
+done
+
+if [ "$MYSQL_OK" -eq "0" ]; then
+  echo "  ✗ ERROR: MySQL no responde después de $MYSQL_RETRIES intentos"
+  echo "  Revisá con: systemctl status mysql"
+  exit 1
+fi
+
+# Habilitar arranque automático
+systemctl enable mysql --quiet
+echo "  ✓ MySQL corriendo y habilitado en arranque"
+
+echo "===== VERIFICANDO NODE ====="
+NODE_REQUIRED=20
+NODE_OK=0
+
+if command -v node &>/dev/null; then
+  NODE_CURRENT=$(node -e "console.log(process.versions.node.split('.')[0])" 2>/dev/null)
+  if [ "$NODE_CURRENT" = "$NODE_REQUIRED" ]; then
+    echo "  ✓ Node ya instalado en versión $NODE_CURRENT — sin cambios"
+    NODE_OK=1
+  else
+    echo "  ⚠️  Node $NODE_CURRENT detectado, se requiere $NODE_REQUIRED — actualizando..."
+  fi
+else
+  echo "  → Node no encontrado — instalando versión $NODE_REQUIRED..."
+fi
+
+if [ "$NODE_OK" -eq "0" ]; then
+  curl -fsSL https://deb.nodesource.com/setup_${NODE_REQUIRED}.x | bash -
+  apt install -y nodejs
+  NODE_POST=$(node -e "console.log(process.versions.node.split('.')[0])" 2>/dev/null)
+  if [ "$NODE_POST" != "$NODE_REQUIRED" ]; then
+    echo "  ✗ ERROR: Node se instaló como versión $NODE_POST (esperado $NODE_REQUIRED)"
+    exit 1
+  fi
+  echo "  ✓ Node $NODE_POST instalado correctamente"
+fi
+
+echo "===== VERIFICANDO PM2 ====="
+if command -v pm2 &>/dev/null; then
+  echo "  ✓ PM2 ya instalado ($(pm2 -v)) — sin cambios"
+else
+  echo "  → Instalando PM2..."
+  npm install -g pm2
+  echo "  ✓ PM2 instalado"
+fi
 
 echo "===== CLONANDO O ACTUALIZANDO POS ====="
 mkdir -p /var/www
 if [ ! -d "$APP_DIR" ]; then
-  cd /var/www && git clone $REPO pos
+  git clone "$REPO" "$APP_DIR"
 else
-  cd $APP_DIR && git pull
+  cd "$APP_DIR"
+
+  # Guardar estado del repo por si el pull falla
+  GIT_PREV_HASH=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+  # Stash de cambios locales no commiteados (protege trabajo manual)
+  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+    echo "  ⚠️  Cambios locales detectados — guardando en stash..."
+    git stash push -m "auto-stash deploy $(date +%Y%m%d_%H%M%S)" || true
+  fi
+
+  # Pull con detección de fallo
+  if ! git pull 2>&1; then
+    echo "  ✗ git pull falló — abortando deploy"
+    # Restaurar hash anterior si quedó a medias
+    if [ -n "$GIT_PREV_HASH" ]; then
+      echo "  → Restaurando commit anterior ($GIT_PREV_HASH)..."
+      git reset --hard "$GIT_PREV_HASH" || true
+    fi
+    exit 1
+  fi
+
+  GIT_NEW_HASH=$(git rev-parse HEAD 2>/dev/null || echo "")
+  if [ "$GIT_PREV_HASH" = "$GIT_NEW_HASH" ]; then
+    echo "  · Repo sin cambios ($(git log -1 --format='%h %s'))"
+  else
+    echo "  ✓ Repo actualizado: $GIT_PREV_HASH → $GIT_NEW_HASH"
+  fi
 fi
-cd $APP_DIR
-echo ".env" >> .gitignore 2>/dev/null
-sort -u .gitignore -o .gitignore 2>/dev/null
+
+cd "$APP_DIR"
+echo ".env" >> .gitignore 2>/dev/null || true
+sort -u .gitignore -o .gitignore 2>/dev/null || true
 
 echo "===== CREANDO package.json SI NO EXISTE ====="
 if [ ! -f "$APP_DIR/package.json" ]; then
@@ -288,13 +423,16 @@ mysql posdb -e "
 "
 
 # ===========================================================
-# ===== SERVER.JS  (siempre sobreescribe)
+# ===== SERVER.JS  (escritura segura con backup + rollback)
 # ===========================================================
 
 echo "===== ESCRIBIENDO SERVER.JS ====="
-rm -f "$APP_DIR/server.js"
 
-cat <<'SERVEREOF' > "$APP_DIR/server.js"
+SERVER_NEW="$APP_DIR/server.js.new"
+SERVER_BAK=""
+
+# Escribir SIEMPRE en archivo temporal primero
+cat <<'SERVEREOF' > "$SERVER_NEW"
 require("dotenv").config()
 const express   = require("express")
 const path      = require("path")
@@ -934,6 +1072,45 @@ app.get("/api/expenses", auth, (req, res) => {
   )
 })
 
+app.put("/api/expenses/:id", auth, (req, res) => {
+  const { amount, description, category } = req.body
+
+  const amt = Number(amount)
+  if (isNaN(amt) || amt <= 0)
+    return res.status(400).json({ error: "Monto inválido" })
+  if (amt > 999999)
+    return res.status(400).json({ error: "Monto demasiado alto" })
+
+  const desc = typeof description === "string" ? description.trim() : ""
+  if (desc.length > 255)
+    return res.status(400).json({ error: "Descripción muy larga" })
+
+  const rawCat = typeof category === "string" ? category.trim() : ""
+  if (rawCat.length > 50)
+    return res.status(400).json({ error: "Categoría muy larga" })
+  if (rawCat.length > 0 && !EXP_CAT_VALID.test(rawCat))
+    return res.status(400).json({ error: "Categoría contiene caracteres no permitidos" })
+
+  const cat = rawCat.length > 0
+    ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    : "General"
+
+  db.query(
+    "UPDATE expenses SET amount=?, description=?, category=? WHERE id=?",
+    [Math.round(amt * 100) / 100, desc, cat, req.params.id],
+    (err, result) => {
+      if (err) {
+        logError("UPDATE_EXPENSE", err)
+        return res.status(500).json({ error: "Error interno" })
+      }
+      if (result.affectedRows === 0)
+        return res.status(404).json({ error: "No existe" })
+      logInfo("UPDATE_EXPENSE", `Actualizado id=${req.params.id} $${amt} cat="${cat}"`)
+      res.json({ ok: true })
+    }
+  )
+})
+
 app.delete("/api/expenses/:id", auth, (req, res) => {
   db.query(
     "DELETE FROM expenses WHERE id=?",
@@ -1244,8 +1421,42 @@ validateSchema()
   })
 SERVEREOF
 
-sed -i "s/__PORT_PLACEHOLDER__/$PORT/" "$APP_DIR/server.js"
-echo "server.js escrito"
+# Inyectar el puerto en el archivo temporal
+sed -i "s/__PORT_PLACEHOLDER__/$PORT/" "$SERVER_NEW"
+
+# ── Validación de sintaxis JS ─────────────────────────────
+echo "  → Validando sintaxis de server.js.new..."
+if ! node --check "$SERVER_NEW" 2>/tmp/pos-syntax-error.txt; then
+  echo "  ✗ ERROR SINTAXIS — server.js NO fue reemplazado"
+  echo "  Detalle:"
+  cat /tmp/pos-syntax-error.txt
+  rm -f "$SERVER_NEW"
+  echo "  El server.js anterior sigue intacto."
+  exit 1
+fi
+echo "  ✓ Sintaxis OK"
+
+# ── Backup del server.js actual (si existe) ───────────────
+if [ -f "$APP_DIR/server.js" ]; then
+  SERVER_BAK="$APP_DIR/server.js.bak-$(date +%Y%m%d_%H%M%S)"
+  cp "$APP_DIR/server.js" "$SERVER_BAK"
+  echo "  → Backup guardado en: $SERVER_BAK"
+fi
+
+# ── Reemplazo atómico ─────────────────────────────────────
+mv "$SERVER_NEW" "$APP_DIR/server.js"
+echo "  ✓ server.js actualizado correctamente"
+
+# función de rollback por si pm2 falla más adelante
+rollback_server() {
+  if [ -n "$SERVER_BAK" ] && [ -f "$SERVER_BAK" ]; then
+    echo "  ⚠️  ROLLBACK: restaurando $SERVER_BAK"
+    cp "$SERVER_BAK" "$APP_DIR/server.js"
+    echo "  ✓ Rollback completado"
+  else
+    echo "  ⚠️  No hay backup disponible para rollback"
+  fi
+}
 
 # ===========================================================
 # ===== LOGIN HTML
@@ -1345,14 +1556,35 @@ find /var/backups/pos -type f -mtime +7 -delete
 BACKUP_SCRIPT
 
 chmod +x /usr/local/bin/pos-backup.sh
-( crontab -l 2>/dev/null | grep -v "pos-backup.sh"; echo "0 */6 * * * /usr/local/bin/pos-backup.sh" ) | crontab -
+( crontab -l 2>/dev/null || true; echo "0 */6 * * * /usr/local/bin/pos-backup.sh" ) | grep -v "^$" | sort -u | crontab -
 
 # ===========================================================
 # ===== ARRANCAR
 # ===========================================================
 
 echo "===== INICIANDO POS ====="
-pm2 restart pos 2>/dev/null || pm2 start server.js --name pos
+pm2 restart pos 2>/dev/null || pm2 start "$APP_DIR/server.js" --name pos
+
+# Esperar 3 segundos y verificar que el proceso siga vivo
+sleep 3
+if ! pm2 list | grep -q "pos.*online"; then
+  echo ""
+  echo "  ✗ ERROR: pm2 no pudo levantar el servidor"
+  echo "  → Revisando logs:"
+  pm2 logs pos --lines 20 --nostream 2>/dev/null || true
+  rollback_server
+  echo "  → Intentando reiniciar con versión anterior..."
+  pm2 restart pos 2>/dev/null || pm2 start "$APP_DIR/server.js" --name pos
+  sleep 2
+  if pm2 list | grep -q "pos.*online"; then
+    echo "  ✓ Servidor restaurado con versión anterior"
+  else
+    echo "  ✗ FALLO TOTAL — revisar manualmente con: pm2 logs pos"
+  fi
+  exit 1
+fi
+
+echo "  ✓ Servidor corriendo OK"
 pm2 startup
 pm2 save
 
@@ -1375,6 +1607,7 @@ echo "╠═══════════════════════�
 echo "║  GASTOS (con categoría):                                      ║"
 echo "║    POST   /api/expenses      → { amount, description, cat }   ║"
 echo "║    GET    /api/expenses      → lista ordenada por fecha        ║"
+echo "║    PUT    /api/expenses/:id  → editar                         ║"
 echo "║    DELETE /api/expenses/:id  → eliminar                       ║"
 echo "╠═══════════════════════════════════════════════════════════════╣"
 echo "║  ENDPOINTS INTERNOS (requieren x-backup-key):                 ║"
