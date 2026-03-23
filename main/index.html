@@ -195,12 +195,19 @@ location.href="/login.html"
 
 * { box-sizing: border-box; }
 
+/* =========================================================
+   LAYOUT PRINCIPAL — flex real, sin margin-left hacks
+   ========================================================= */
+
 body {
-font-family: 'Sora', sans-serif;
-background: #f1f5f9;
-margin: 0;
+  font-family: 'Sora', sans-serif;
+  background: #f1f5f9;
+  margin: 0;
+  display: flex;           /* chasis del layout */
+  min-height: 100vh;
 }
 
+/* En mobile el sidebar flota encima (fixed), el main ocupa todo */
 #sidebar {
   position: fixed;
   top: 0;
@@ -216,9 +223,23 @@ margin: 0;
   overflow-y: auto;
 }
 
+/* El contenedor principal siempre ocupa el espacio restante */
+.main-layout {
+  flex: 1;
+  min-width: 0;          /* evita overflow en flex */
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* En desktop el sidebar entra al flujo normal (no fixed) */
 @media (min-width: 1024px) {
   #sidebar {
+    position: sticky;      /* sticky: se queda fijo al hacer scroll */
+    top: 0;
+    height: 100vh;
     transform: translateX(0) !important;
+    flex-shrink: 0;        /* no se encoge */
     box-shadow: 4px 0 24px rgba(0,0,0,.18);
   }
 
@@ -230,12 +251,13 @@ margin: 0;
     display: none !important;
   }
 
+  /* SIN margin-left — el flex se encarga */
   header {
-    margin-left: var(--sidebar-w);
+    margin-left: 0 !important;
   }
 
   section {
-    margin-left: var(--sidebar-w);
+    margin-left: 0 !important;
   }
 }
 
@@ -812,6 +834,9 @@ z-index: 1;
   <div style="padding:16px 20px; color:#475569; font-size:11px; font-weight:600;">POS Mobile Pro v2.3</div>
 </aside>
 
+<!-- ========== CONTENEDOR PRINCIPAL ========== -->
+<div class="main-layout">
+
 <header>
   <div style="display:flex; gap:12px; align-items:center;">
     <button class="hamburger" onclick="toggleMenu()">
@@ -1193,6 +1218,8 @@ Vuelto: <b id="saleSummaryChange"></b>
   <div id="expensesList"></div>
 
 </section>
+
+</div><!-- /.main-layout -->
 
 <script>
 
