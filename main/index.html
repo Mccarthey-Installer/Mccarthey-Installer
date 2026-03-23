@@ -2520,39 +2520,102 @@ async function deleteProduct(id){
 }
 
 // =========== TICKET ===========
+
+/* Siempre 2 decimales, sin excepciones */
+function money(n){
+  return Number(n || 0).toFixed(2)
+}
+
+/* Divide nombres largos en líneas de max chars */
+function wrapText(text, max){
+  const words = text.split(" ")
+  const lines = []
+  let current = ""
+  for(const w of words){
+    if((current + w).length > max){
+      if(current) lines.push(current.trimEnd())
+      current = w + " "
+    } else {
+      current += w + " "
+    }
+  }
+  if(current.trim()) lines.push(current.trimEnd())
+  return lines.length ? lines : [text]
+}
+
+/*
+  Formato de una línea de producto:
+
+  Nombre línea 1
+  Nombre línea 2          (si es largo)
+  x{qty}    ${unit}    ${total}
+*/
+function formatTicketItem(name, qty, price, total, lineWidth){
+  const WRAP_AT   = lineWidth - 2           // máx chars para el nombre
+  const COL_QTY   = 6                       // "x999  "
+  const COL_UNIT  = 9                       // "$999.99  "
+  const nameLines = wrapText(name, WRAP_AT)
+  let out = ""
+
+  // nombre (puede ser varias líneas)
+  nameLines.forEach(l => { out += l + "\n" })
+
+  // fila de números, alineada a la derecha
+  const qtyStr   = ("x" + qty).padEnd(COL_QTY)
+  const unitStr  = ("$" + money(price)).padEnd(COL_UNIT)
+  const totalStr = "$" + money(total)
+  out += qtyStr + unitStr + totalStr + "\n"
+
+  return out
+}
+
 function showSaleSummary(sale){
 
-  const line = "--------------------------------"
+  const LINE_W  = 32            // caracteres por línea (monospace)
+  const SEP     = "─".repeat(LINE_W)
 
-  const header = `
-${line}
-Producto              Unit     Total
-${line}
-`
+  // ── Cabecera ──
+  const header = [
+    SEP,
+    "PRODUCTO".padEnd(LINE_W - 17) + "CANT   UNIT    TOTAL",
+    SEP
+  ].join("\n") + "\n"
 
-  const maxNameLength = Math.max(
-    ...sale.items.map(p => (p.name + " x" + p.qty).length),
-    16
-  ) + 2
-
-  const items = sale.items.map(p => {
-    const sub = p.qty * p.price
-    const name = (p.name + " x" + p.qty).padEnd(maxNameLength)
-    const unit = ("$" + p.price.toFixed(2)).padEnd(10)
-    const total = "$" + sub.toFixed(2)
-    return `${name}${unit}${total}`
+  // ── Items ──
+  const itemsText = sale.items.map(p => {
+    const sub = Number(p.qty) * Number(p.price)
+    return formatTicketItem(p.name, p.qty, p.price, sub, LINE_W)
   }).join("\n")
 
+  // ── Pie ──
+  const footer = [
+    SEP,
+    ("TOTAL:").padEnd(LINE_W - 8) + ("$" + money(sale.total)).padStart(8),
+    ("PAGÓ:").padEnd(LINE_W - 8)  + ("$" + money(sale.paid)).padStart(8),
+    ("VUELTO:").padEnd(LINE_W - 8)+ ("$" + money(sale.change)).padStart(8),
+    SEP
+  ].join("\n")
+
+  // ── Info de la venta ──
   document.getElementById("saleSummaryInfo").innerHTML =
-    `Venta ${saleNumLabel(sale.num)}<br>ID: ${sale.id}<br>${formatDate(sale.date)}`
+    `Venta ${saleNumLabel(sale.num)}&nbsp;&nbsp;<span style="color:#94a3b8;font-size:11px;">${formatDate(sale.date)}</span><br>
+     <span style="font-size:10px;color:#cbd5e1;">ID: ${sale.id}</span>`
 
-  document.getElementById("saleSummaryItems").innerHTML =
-    `<pre style="font-family:monospace;overflow-x:auto;">${header}${items}\n${line}</pre>`
+  document.getElementById("saleSummaryItems").innerHTML = `
+    <pre style="
+      font-family:'JetBrains Mono',monospace;
+      font-size:12px;
+      line-height:1.6;
+      overflow-x:auto;
+      white-space:pre;
+      color:#0f172a;
+    ">${header}${itemsText}${footer}</pre>
+  `
 
-  document.getElementById("saleSummaryTotal").innerHTML = `<b>$${sale.total.toFixed(2)}</b>`
-  document.getElementById("saleSummaryPaid").innerHTML = `<b>$${sale.paid.toFixed(2)}</b>`
+  document.getElementById("saleSummaryTotal").innerHTML  = `<b>$${money(sale.total)}</b>`
+  document.getElementById("saleSummaryPaid").innerHTML   = `<b>$${money(sale.paid)}</b>`
   document.getElementById("saleSummaryChange").innerHTML =
-    `<span style="color:#16a34a;font-weight:700;">$${sale.change.toFixed(2)} 🟢</span>`
+    `<span style="color:#16a34a;font-weight:700;">$${money(sale.change)} 🟢</span>`
 
   const modal = document.getElementById("saleSummary")
   modal.style.display = "flex"
