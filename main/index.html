@@ -1447,63 +1447,22 @@ async function loadProducts(force = false){
 
 // =========================================================
 // LOAD SUMMARY — /api/summary
-// Si falla → calcula local como fallback (ventas - costos - gastos)
+// ─────────────────────────────────────────────────────────
+// YA NO ES FUENTE DE VERDAD para números en pantalla.
+// Solo se llama en background para:
+//   - guardar el filtro histórico si el usuario lo aplica
+//   - analytics futuras
+// Los números reales siempre vienen de calcularResumen()
 // =========================================================
 async function loadSummary(){
-
-  const panel = document.getElementById("summaryPanel")
-  if(panel){
-    panel.innerHTML = `
-      <div class="stat-card skeleton" style="height:72px;"></div>
-      <div class="stat-card skeleton" style="height:72px;"></div>
-      <div class="stat-card skeleton" style="height:72px;"></div>
-      <div class="stat-card skeleton" style="height:72px;"></div>
-    `
-  }
-
   try {
-
     const data = await api("/api/summary")
-    state.summary = data
-    state.summary._source = "api"
-
+    // Solo guardamos el filtro histórico, no los números
+    state.summary = { filter: data.filter || { desde: null, hasta: null } }
   } catch(err) {
-
-    console.error("Error cargando summary — usando fallback local:", err)
-
-    // ── FALLBACK LOCAL ──
-    // Ventas: desde state.sales
-    const salesTotal = state.sales.reduce((a, s) => a + Number(s.total), 0)
-    // Costos: desde sale_items dentro de state.sales
-    const costsTotal = state.sales.reduce((a, s) => {
-      return a + (s.items || []).reduce((b, item) => b + (Number(item.cost || 0) * Number(item.qty)), 0)
-    }, 0)
-    // Gastos: desde state.expenses (si ya se cargaron)
-    const expensesTotal = state.expenses.reduce((a, e) => a + Number(e.amount), 0)
-    const profit = salesTotal - costsTotal - expensesTotal
-
-    // Gastos por categoría local
-    const byCatMap = {}
-    state.expenses.forEach(e => {
-      const c = e.category || "General"
-      byCatMap[c] = (byCatMap[c] || 0) + Number(e.amount)
-    })
-    const expenses_by_category = Object.entries(byCatMap)
-      .map(([category, total]) => ({ category, total }))
-      .sort((a, b) => b.total - a.total)
-
-    state.summary = {
-      sales:    salesTotal,
-      costs:    costsTotal,
-      expenses: expensesTotal,
-      profit,
-      expenses_by_category,
-      filter: { desde: null, hasta: null },
-      _source: "local"   // ← marca: datos aproximados, no del servidor
-    }
-
+    // Silencioso — no es crítico. Los números ya están en frontend.
+    state.summary = { filter: { desde: null, hasta: null } }
   }
-
 }
 
 // =========================================================
@@ -1964,7 +1923,9 @@ async function show(id) {
       const input = document.getElementById("cajaInicial")
       if(input && !input.value) input.value = savedCaja
     }
-    await loadSummary()
+    // Cargar gastos primero — calcularResumen los necesita
+    // loadSummary en background solo para el filtro histórico
+    await Promise.all([ loadExpenses(), loadSummary() ])
     renderStats()
     setTimeout(() => {
       drawChart()
@@ -2775,78 +2736,75 @@ function renderStats() {
     </div>
   `
 
-  // ── 2. SUMMARY FINANCIERO REAL ──
-  const s = state.summary
+  // ── 2. SUMMARY FINANCIERO REAL — FUENTE ÚNICA: calcularResumen ──
+  // state.summary ya NO maneja números críticos.
+  // Solo se usa para el label del filtro histórico (si el usuario lo aplicó).
+  const s = calcularResumen({ ventas: state.sales, gastos: state.expenses })
+
   const panel = document.getElementById("summaryPanel")
   const filterLabel = document.getElementById("summaryFilterLabel")
 
   if(filterLabel){
-    filterLabel.textContent = s?.filter?.desde
-      ? `${s.filter.desde}${s.filter.hasta ? " → " + s.filter.hasta : ""}`
-      : "Histórico completo"
+    // El label solo viene del filtro API si se aplicó uno, si no: "Datos en vivo"
+    const apiFilter = state.summary?.filter
+    filterLabel.textContent = apiFilter?.desde
+      ? `Filtro: ${apiFilter.desde}${apiFilter.hasta ? " → " + apiFilter.hasta : ""}`
+      : "Datos en vivo ●"
+    filterLabel.style.color = apiFilter?.desde ? "#94a3b8" : "#22c55e"
   }
 
-  if(!s){
-    // ── PRIORIDAD 2: sin datos, no inventar nada ──
-    panel.innerHTML = `
-      <div style="grid-column:1/-1; background:#fef2f2; border:2px solid #fca5a5; border-radius:12px; padding:16px; font-size:13px; color:#dc2626; font-weight:600; text-align:center; line-height:1.6;">
-        🔴 Datos financieros no disponibles<br>
-        <span style="font-size:11px; font-weight:400; color:#991b1b;">El servidor no respondió. Los números reales no se pueden mostrar.</span>
-      </div>
-    `
-  } else {
+  const profitColor  = s.gananciaReal >= 0 ? "#064e3b" : "#991b1b"
+  const profitBg     = s.gananciaReal >= 0 ? "#dcfce7"  : "#fee2e2"
+  const profitBorder = s.gananciaReal >= 0 ? "#86efac"  : "#fca5a5"
+  const profitIcon   = s.gananciaReal >= 0 ? "💰"        : "📉"
 
-    const profitColor  = s.profit >= 0 ? "#064e3b" : "#991b1b"
-    const profitBg     = s.profit >= 0 ? "#dcfce7"  : "#fee2e2"
-    const profitBorder = s.profit >= 0 ? "#86efac"  : "#fca5a5"
-    const profitIcon   = s.profit >= 0 ? "💰"        : "📉"
+  panel.innerHTML = `
+    <div class="stat-card" style="background:#ecfeff;">
+      <div style="font-size:11px; color:#0891b2; font-weight:700; letter-spacing:0.5px;">TOTAL VENDIDO</div>
+      <div class="stat-value" style="color:#0e7490;">$${s.ventas.toFixed(2)}</div>
+    </div>
+    <div class="stat-card" style="background:#fff7ed;">
+      <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">COSTO MERCADERÍA</div>
+      <div class="stat-value" style="color:#9a3412;">$${s.costos.toFixed(2)}</div>
+    </div>
+    <div class="stat-card" style="background:#fef3c7; position:relative;">
+      <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">GASTOS OPERATIVOS</div>
+      <div class="stat-value" style="color:#78350f;">$${s.gastos.toFixed(2)}</div>
+      <span style="position:absolute; top:10px; right:10px; font-size:11px; font-weight:600; cursor:pointer; color:#d97706;" onclick="show('expenses')" title="Ver gastos">→💸</span>
+    </div>
+    <div class="stat-card" style="
+      grid-column: 1 / -1;
+      background:${profitBg};
+      border: 3px solid ${profitBorder};
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      padding: 18px 20px;
+      border-radius:14px;
+    ">
+      <div>
+        <div style="font-size:12px; color:${profitColor}; font-weight:700; letter-spacing:0.5px; margin-bottom:4px;">${profitIcon} LO QUE TE QUEDÓ (GANANCIA REAL)</div>
+        <div style="font-size:11px; color:${profitColor}; opacity:.75;">Ventas $${s.ventas.toFixed(2)} − Costos $${s.costos.toFixed(2)} − Gastos $${s.gastos.toFixed(2)}</div>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:32px; font-weight:700; color:${profitColor};">
+        $${s.gananciaReal.toFixed(2)}
+      </div>
+    </div>
+  `
 
-    // ── PRIORIDAD 2: banner de advertencia si los datos son fallback local ──
-    const fallbackBanner = s._source === "local" ? `
-      <div style="grid-column:1/-1; background:#fef9c3; border:2px solid #fde047; border-radius:10px; padding:10px 14px; margin-bottom:4px; font-size:12px; font-weight:600; color:#854d0e; display:flex; align-items:center; gap:8px;">
-        ⚠ Datos aproximados (servidor no disponible) — Los gastos se calcularon localmente
-      </div>
-    ` : ""
-
-    // ── PRIORIDAD 3: ganancia real ocupa toda la fila ──
-    panel.innerHTML = `
-      ${fallbackBanner}
-      <div class="stat-card" style="background:#ecfeff;">
-        <div style="font-size:11px; color:#0891b2; font-weight:700; letter-spacing:0.5px;">TOTAL VENDIDO</div>
-        <div class="stat-value" style="color:#0e7490;">$${s.sales.toFixed(2)}</div>
-      </div>
-      <div class="stat-card" style="background:#fff7ed;">
-        <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">COSTO MERCADERÍA</div>
-        <div class="stat-value" style="color:#9a3412;">$${s.costs.toFixed(2)}</div>
-      </div>
-      <div class="stat-card" style="background:#fef3c7; position:relative;">
-        <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">GASTOS OPERATIVOS</div>
-        <div class="stat-value" style="color:#78350f;">$${s.expenses.toFixed(2)}</div>
-        <span style="position:absolute; top:10px; right:10px; font-size:11px; font-weight:600; cursor:pointer; color:#d97706;" onclick="show('expenses')" title="Ver gastos">→💸</span>
-      </div>
-      <div class="stat-card" style="
-        grid-column: 1 / -1;
-        background:${profitBg};
-        border: 3px solid ${profitBorder};
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        padding: 18px 20px;
-      ">
-        <div>
-          <div style="font-size:12px; color:${profitColor}; font-weight:700; letter-spacing:0.5px; margin-bottom:4px;">${profitIcon} LO QUE TE QUEDÓ (GANANCIA REAL)</div>
-          <div style="font-size:11px; color:${profitColor}; opacity:.75;">Ventas − Costos − Gastos</div>
-        </div>
-        <div style="font-family:'JetBrains Mono',monospace; font-size:32px; font-weight:700; color:${profitColor};">
-          $${s.profit.toFixed(2)}
-        </div>
-      </div>
-    `
-  }
-
-  // ── 3. RANKING + GASTOS POR CATEGORÍA ──
+  // ── 3. RANKING + GASTOS POR CATEGORÍA (desde state.expenses local) ──
   const withSales = sorted.filter(p => p.sold > 0)
   const medals = ["🥇","🥈","🥉"]
+
+  // Gastos por categoría — calculado local, sin depender del backend
+  const byCatLocal = {}
+  state.expenses.forEach(e => {
+    const c = e.category || "General"
+    byCatLocal[c] = (byCatLocal[c] || 0) + Number(e.amount)
+  })
+  const expByCat = Object.entries(byCatLocal)
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total)
 
   let rankHtml = `<span style="font-weight:700; font-size:15px; margin-bottom:12px; display:block;">🏆 Ranking de ventas</span>`
 
@@ -2862,30 +2820,25 @@ function renderStats() {
     })
   }
 
-  if(s && s.expenses_by_category && s.expenses_by_category.length > 0){
+  if(expByCat.length > 0){
     rankHtml += `
       <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <span style="font-weight:700; font-size:14px; color:#0f172a;">💸 Gastos por categoría</span>
           <button onclick="show('expenses')" class="btn-ghost" style="font-size:11px; padding:4px 10px;">Ver todos →</button>
         </div>
-        ${s.expenses_by_category.map(e => `
+        ${expByCat.map(e => `
           <div style="
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            padding:8px 10px;
-            background:#fef9c3;
-            border-radius:8px;
-            margin-bottom:6px;
+            display:flex; justify-content:space-between; align-items:center;
+            padding:8px 10px; background:#fef9c3; border-radius:8px; margin-bottom:6px;
           ">
             <span style="font-size:13px; font-weight:600; color:#92400e;">${e.category}</span>
-            <b style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#78350f;">$${e.total.toFixed(2)}</b>
+            <b style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#78350f;">$${Number(e.total).toFixed(2)}</b>
           </div>
         `).join("")}
       </div>
     `
-  } else if(s && s.expenses_by_category && s.expenses_by_category.length === 0) {
+  } else {
     rankHtml += `
       <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
         <span style="font-weight:700; font-size:14px; color:#0f172a; display:block; margin-bottom:8px;">💸 Gastos por categoría</span>
@@ -2908,7 +2861,7 @@ async function resetStats(){
 
     await api("/api/reset-stats",{method:"POST"})
     await loadProducts()
-    state.summary = null
+    state.expenses = []   // limpiar local también para que cuadre
     showToast("📊 Estadísticas reiniciadas", "ok")
     renderStats()
 
