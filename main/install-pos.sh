@@ -134,6 +134,14 @@ CREATE TABLE IF NOT EXISTS sale_items(
   CONSTRAINT fk_sale FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS expenses(
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  amount      DECIMAL(10,2) NOT NULL,
+  description VARCHAR(255),
+  category    VARCHAR(50)   DEFAULT 'General',
+  created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+);
+
 EOF
 
 # ===========================================================
@@ -246,15 +254,25 @@ ensure_column "sale_items" "price"      "DECIMAL(10,2)"          "decimal"
 ensure_column "sale_items" "cost"       "DECIMAL(10,2)"          "decimal"
 ensure_column "sale_items" "qty"        "INT"                    "int"
 
+ensure_column "expenses" "amount"      "DECIMAL(10,2) NOT NULL"              "decimal"
+ensure_column "expenses" "description" "VARCHAR(255)"                        "varchar"
+ensure_column "expenses" "category"    "VARCHAR(50) DEFAULT 'General'"       "varchar"
+ensure_column "expenses" "created_at"  "TIMESTAMP DEFAULT CURRENT_TIMESTAMP" "timestamp"
+
 ensure_index "sales"      "idx_num"        "(num)"
 ensure_index "sales"      "idx_date"       "(date)"
 ensure_index "sale_items" "idx_product_id" "(product_id)"
+ensure_index "expenses"   "idx_exp_date"   "(created_at)"
+ensure_index "expenses"   "idx_exp_cat"    "(category)"
 
 echo "===== FIN SCHEMA GUARDIAN (bash) ====="
 
 echo ""
 echo "Estado final de la tabla sales:"
 mysql posdb -e "DESCRIBE sales;"
+echo ""
+echo "Estado final de la tabla expenses:"
+mysql posdb -e "DESCRIBE expenses;"
 echo ""
 
 # ===========================================================
@@ -333,32 +351,21 @@ const db = mysql.createPool({
 })
 
 /* =========================================================
-   🛡️  VALIDACIÓN DE PRODUCTOS
-   ---------------------------------------------------------
-   Reglas:
-   · name    → string, 1–100 chars, no solo espacios
-   · price   → número >= 0, máx 999999.99
-   · cost    → número >= 0, máx 999999.99
-   · stock   → entero >= 0, máx 999999
-   · cat     → string, 1–60 chars, NO puede ser solo números
-               (evita que manden "50" como categoría)
-               Solo letras, espacios, guiones, tildes
+   VALIDACIÓN DE PRODUCTOS
    ========================================================= */
 
-const CAT_INVALID_PATTERN = /^\d+$/ // rechaza strings puramente numéricos: "50", "123"
-const CAT_VALID_PATTERN   = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ0-9 \-_&/]+$/ // letras, nums mezclados, espacios, guion
+const CAT_INVALID_PATTERN = /^\d+$/
+const CAT_VALID_PATTERN   = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ0-9 \-_&/]+$/
 
 function validateProduct(body) {
   const errors = []
 
-  /* ── nombre ── */
   if (typeof body.name !== "string" || body.name.trim().length === 0) {
     errors.push("name: es requerido y debe ser texto")
   } else if (body.name.trim().length > 100) {
     errors.push("name: máximo 100 caracteres")
   }
 
-  /* ── precio ── */
   const price = Number(body.price)
   if (isNaN(price) || price < 0) {
     errors.push("price: debe ser un número >= 0")
@@ -366,7 +373,6 @@ function validateProduct(body) {
     errors.push("price: valor demasiado alto (máx 999999.99)")
   }
 
-  /* ── costo ── */
   const cost = Number(body.cost)
   if (isNaN(cost) || cost < 0) {
     errors.push("cost: debe ser un número >= 0")
@@ -374,7 +380,6 @@ function validateProduct(body) {
     errors.push("cost: valor demasiado alto (máx 999999.99)")
   }
 
-  /* ── stock ── */
   const stock = Number(body.stock)
   if (!Number.isInteger(stock) || stock < 0) {
     errors.push("stock: debe ser un entero >= 0")
@@ -382,15 +387,13 @@ function validateProduct(body) {
     errors.push("stock: valor demasiado alto (máx 999999)")
   }
 
-  /* ── categoría ── */
   const rawCat = typeof body.cat === "string" ? body.cat.trim() : ""
 
   if (rawCat.length === 0) {
-    // cat vacía → se normalizará a "General" más abajo (no es error)
+    // vacía → "General", no es error
   } else if (rawCat.length > 60) {
     errors.push("cat: máximo 60 caracteres")
   } else if (CAT_INVALID_PATTERN.test(rawCat)) {
-    // ES SOLO NÚMEROS → rechazar con mensaje claro
     errors.push(`cat: "${rawCat}" no es una categoría válida — no puede ser solo números`)
   } else if (!CAT_VALID_PATTERN.test(rawCat)) {
     errors.push(`cat: "${rawCat}" contiene caracteres no permitidos`)
@@ -399,11 +402,8 @@ function validateProduct(body) {
   return errors
 }
 
-/* Normaliza y devuelve el objeto producto limpio */
 function sanitizeProduct(body) {
   const rawCat = typeof body.cat === "string" ? body.cat.trim() : ""
-
-  // Capitaliza la primera letra de cada palabra, resto en minúsculas
   const normalizedCat = rawCat.length > 0
     ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
     : "General"
@@ -422,30 +422,30 @@ function sanitizeProduct(body) {
 const REQUIRED_SCHEMA = {
   products: {
     columns: [
-      { name: "name",  def: "VARCHAR(100)",  type: "varchar"   },
-      { name: "price", def: "DECIMAL(10,2)", type: "decimal"   },
-      { name: "cost",  def: "DECIMAL(10,2)", type: "decimal"   },
-      { name: "stock", def: "INT DEFAULT 0", type: "int"       },
-      { name: "sold",  def: "INT DEFAULT 0", type: "int"       },
-      { name: "cat",   def: "VARCHAR(100)",  type: "varchar"   }
+      { name: "name",  def: "VARCHAR(100)",  type: "varchar" },
+      { name: "price", def: "DECIMAL(10,2)", type: "decimal" },
+      { name: "cost",  def: "DECIMAL(10,2)", type: "decimal" },
+      { name: "stock", def: "INT DEFAULT 0", type: "int"     },
+      { name: "sold",  def: "INT DEFAULT 0", type: "int"     },
+      { name: "cat",   def: "VARCHAR(100)",  type: "varchar" }
     ],
     indexes: []
   },
   sessions: {
     columns: [
-      { name: "token",         def: "VARCHAR(200)",                          type: "varchar"   },
-      { name: "admin_id",      def: "INT",                                   type: "int"       },
-      { name: "created_at",    def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",   type: "timestamp" },
-      { name: "last_activity", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",   type: "timestamp" }
+      { name: "token",         def: "VARCHAR(200)",                        type: "varchar"   },
+      { name: "admin_id",      def: "INT",                                 type: "int"       },
+      { name: "created_at",    def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP", type: "timestamp" },
+      { name: "last_activity", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP", type: "timestamp" }
     ],
     indexes: []
   },
   admins: {
     columns: [
-      { name: "username",      def: "VARCHAR(50)",                           type: "varchar"   },
-      { name: "password_hash", def: "TEXT",                                  type: "text"      },
-      { name: "recovery_key",  def: "VARCHAR(50)",                           type: "varchar"   },
-      { name: "created_at",    def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",   type: "timestamp" }
+      { name: "username",      def: "VARCHAR(50)",                         type: "varchar"   },
+      { name: "password_hash", def: "TEXT",                                type: "text"      },
+      { name: "recovery_key",  def: "VARCHAR(50)",                         type: "varchar"   },
+      { name: "created_at",    def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP", type: "timestamp" }
     ],
     indexes: []
   },
@@ -474,6 +474,18 @@ const REQUIRED_SCHEMA = {
     indexes: [
       { name: "idx_product_id", def: "(product_id)" }
     ]
+  },
+  expenses: {
+    columns: [
+      { name: "amount",      def: "DECIMAL(10,2) NOT NULL",              type: "decimal"   },
+      { name: "description", def: "VARCHAR(255)",                        type: "varchar"   },
+      { name: "category",    def: "VARCHAR(50) DEFAULT 'General'",       type: "varchar"   },
+      { name: "created_at",  def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP", type: "timestamp" }
+    ],
+    indexes: [
+      { name: "idx_exp_date", def: "(created_at)" },
+      { name: "idx_exp_cat",  def: "(category)"   }
+    ]
   }
 }
 
@@ -495,9 +507,7 @@ async function validateSchema() {
     for (const col of spec.columns) {
       if (!colMap.has(col.name)) {
         try {
-          await conn.query(
-            `ALTER TABLE \`${table}\` ADD COLUMN \`${col.name}\` ${col.def}`
-          )
+          await conn.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${col.name}\` ${col.def}`)
           fixed.push(`+col ${table}.${col.name}`)
         } catch (e) {
           logError("SCHEMA_GUARDIAN", `No pude agregar ${table}.${col.name}: ${e.message}`)
@@ -525,9 +535,7 @@ async function validateSchema() {
     for (const idx of spec.indexes) {
       if (!idxSet.has(idx.name)) {
         try {
-          await conn.query(
-            `ALTER TABLE \`${table}\` ADD INDEX \`${idx.name}\` ${idx.def}`
-          )
+          await conn.query(`ALTER TABLE \`${table}\` ADD INDEX \`${idx.name}\` ${idx.def}`)
           fixed.push(`+idx ${table}.${idx.name}`)
         } catch (e) {
           logError("SCHEMA_GUARDIAN", `No pude agregar índice ${table}.${idx.name}: ${e.message}`)
@@ -666,21 +674,15 @@ app.get("/api/products", auth, (req, res) => {
   })
 })
 
-/* =========================================================
-   POST /api/products — CREAR producto con validación
-   ========================================================= */
 app.post("/api/products", auth, (req, res) => {
-  // 1. Validar
   const errors = validateProduct(req.body)
   if (errors.length > 0) {
     logError("CREATE_PRODUCT_VALIDATION", errors.join(" | "))
     return res.status(400).json({ error: "Datos inválidos", details: errors })
   }
 
-  // 2. Sanitizar
   const p = sanitizeProduct(req.body)
 
-  // 3. Insertar limpio
   db.query(
     "INSERT INTO products(name,price,cost,stock,cat,sold) VALUES(?,?,?,?,?,0)",
     [p.name, p.price, p.cost, p.stock, p.cat],
@@ -692,27 +694,21 @@ app.post("/api/products", auth, (req, res) => {
   )
 })
 
-/* =========================================================
-   PUT /api/products/:id — EDITAR producto con validación
-   ========================================================= */
 app.put("/api/products/:id", auth, (req, res) => {
-  // 1. Validar
   const errors = validateProduct(req.body)
   if (errors.length > 0) {
     logError("UPDATE_PRODUCT_VALIDATION", `id=${req.params.id} — ` + errors.join(" | "))
     return res.status(400).json({ error: "Datos inválidos", details: errors })
   }
 
-  // 2. Sanitizar
   const p = sanitizeProduct(req.body)
 
-  // 3. Actualizar limpio
   db.query(
     "UPDATE products SET name=?,price=?,cost=?,stock=?,cat=? WHERE id=?",
     [p.name, p.price, p.cost, p.stock, p.cat, req.params.id],
     (err, result) => {
-      if (err)                        { logError("UPDATE_PRODUCT", err); return res.status(500).json({ error: "Error interno" }) }
-      if (result.affectedRows === 0)  { return res.status(404).json({ error: "Producto no encontrado" }) }
+      if (err)                       { logError("UPDATE_PRODUCT", err); return res.status(500).json({ error: "Error interno" }) }
+      if (result.affectedRows === 0) { return res.status(404).json({ error: "Producto no encontrado" }) }
       logInfo("UPDATE_PRODUCT", `Actualizado id=${req.params.id}: "${p.name}" cat="${p.cat}"`)
       res.json({ ok: true })
     }
@@ -882,6 +878,172 @@ app.post("/api/sales", auth, async (req, res) => {
   }
 })
 
+/* =========================================================
+   GASTOS
+   ========================================================= */
+
+const EXP_CAT_VALID = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ0-9 \-_&/]+$/
+
+app.post("/api/expenses", auth, (req, res) => {
+  const { amount, description, category } = req.body
+
+  const amt = Number(amount)
+  if (isNaN(amt) || amt <= 0)
+    return res.status(400).json({ error: "Monto inválido" })
+  if (amt > 999999)
+    return res.status(400).json({ error: "Monto demasiado alto" })
+
+  const desc = typeof description === "string" ? description.trim() : ""
+  if (desc.length > 255)
+    return res.status(400).json({ error: "Descripción demasiado larga (máx 255)" })
+
+  const rawCat = typeof category === "string" ? category.trim() : ""
+  if (rawCat.length > 50)
+    return res.status(400).json({ error: "Categoría demasiado larga (máx 50)" })
+  if (rawCat.length > 0 && !EXP_CAT_VALID.test(rawCat))
+    return res.status(400).json({ error: "Categoría contiene caracteres no permitidos" })
+
+  const cat = rawCat.length > 0
+    ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    : "General"
+
+  db.query(
+    "INSERT INTO expenses(amount, description, category) VALUES(?,?,?)",
+    [Math.round(amt * 100) / 100, desc, cat],
+    (err) => {
+      if (err) {
+        logError("CREATE_EXPENSE", err)
+        return res.status(500).json({ error: "Error interno" })
+      }
+      logInfo("CREATE_EXPENSE", `Gasto $${amt} cat="${cat}" — "${desc}"`)
+      res.json({ ok: true })
+    }
+  )
+})
+
+app.get("/api/expenses", auth, (req, res) => {
+  db.query(
+    "SELECT * FROM expenses ORDER BY id DESC",
+    (err, data) => {
+      if (err) {
+        logError("GET_EXPENSES", err)
+        return res.status(500).json([])
+      }
+      res.json(data)
+    }
+  )
+})
+
+app.delete("/api/expenses/:id", auth, (req, res) => {
+  db.query(
+    "DELETE FROM expenses WHERE id=?",
+    [req.params.id],
+    (err) => {
+      if (err) {
+        logError("DELETE_EXPENSE", err)
+        return res.status(500).json({})
+      }
+      res.json({ ok: true })
+    }
+  )
+})
+
+/* =========================================================
+   RESUMEN FINANCIERO REAL  —  GET /api/summary
+   ---------------------------------------------------------
+   costos = SUM(sale_items.cost * qty)
+   → usa sale_items, no products.sold
+   → inmune a borrado de ventas: si borran una venta,
+     el CASCADE elimina sus sale_items también, así que
+     el costo calculado baja en consecuencia — siempre consistente.
+
+   Soporta filtro opcional por fecha:
+     ?desde=YYYY-MM-DD
+     ?hasta=YYYY-MM-DD
+     ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+   ========================================================= */
+
+app.get("/api/summary", auth, async (req, res) => {
+  try {
+    const { desde, hasta } = req.query
+
+    // construir condiciones de fecha para sales y expenses por separado
+    // (sales usa columna "date", expenses usa "created_at")
+    const salesWhere = []
+    const salesVals  = []
+    const expWhere   = []
+    const expVals    = []
+
+    if (desde) {
+      salesWhere.push("s.date >= ?");      salesVals.push(desde)
+      expWhere.push("created_at >= ?");    expVals.push(desde)
+    }
+    if (hasta) {
+      // hasta incluye el día completo
+      salesWhere.push("s.date < DATE_ADD(?, INTERVAL 1 DAY)");    salesVals.push(hasta)
+      expWhere.push("created_at < DATE_ADD(?, INTERVAL 1 DAY)");  expVals.push(hasta)
+    }
+
+    const salesCondition = salesWhere.length ? "WHERE " + salesWhere.join(" AND ") : ""
+    const expCondition   = expWhere.length   ? "WHERE " + expWhere.join(" AND ")   : ""
+
+    // ventas brutas (lo cobrado)
+    const [[salesRow]] = await db.promise().query(
+      `SELECT COALESCE(SUM(s.total), 0) AS total
+       FROM sales s ${salesCondition}`,
+      salesVals
+    )
+
+    // costo real de lo vendido — desde sale_items
+    const [[costsRow]] = await db.promise().query(
+      `SELECT COALESCE(SUM(si.cost * si.qty), 0) AS total
+       FROM sale_items si
+       JOIN sales s ON s.id = si.sale_id
+       ${salesCondition}`,
+      salesVals
+    )
+
+    // gastos operativos totales
+    const [[expRow]] = await db.promise().query(
+      `SELECT COALESCE(SUM(amount), 0) AS total
+       FROM expenses ${expCondition}`,
+      expVals
+    )
+
+    // gastos agrupados por categoría
+    const [byCat] = await db.promise().query(
+      `SELECT category, COALESCE(SUM(amount), 0) AS total
+       FROM expenses ${expCondition}
+       GROUP BY category
+       ORDER BY total DESC`,
+      expVals
+    )
+
+    const totalSales    = Math.round(Number(salesRow.total) * 100) / 100
+    const totalCosts    = Math.round(Number(costsRow.total) * 100) / 100
+    const totalExpenses = Math.round(Number(expRow.total)   * 100) / 100
+    const profit        = Math.round((totalSales - totalCosts - totalExpenses) * 100) / 100
+
+    logInfo("SUMMARY", `sales=${totalSales} costs=${totalCosts} expenses=${totalExpenses} profit=${profit}`)
+
+    res.json({
+      sales:    totalSales,
+      costs:    totalCosts,
+      expenses: totalExpenses,
+      profit,
+      expenses_by_category: byCat.map(r => ({
+        category: r.category,
+        total:    Math.round(Number(r.total) * 100) / 100
+      })),
+      filter: { desde: desde || null, hasta: hasta || null }
+    })
+
+  } catch (err) {
+    logError("SUMMARY", err)
+    res.status(500).json({})
+  }
+})
+
 /* ─── SNAPSHOT HELPER ───────────────────────────────────────────────────── */
 
 async function snapshotQuery() {
@@ -890,25 +1052,29 @@ async function snapshotQuery() {
     await conn.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
     await conn.beginTransaction()
 
-    const [[products], [sales], [items]] = await Promise.all([
+    const [[products], [sales], [items], [expenses]] = await Promise.all([
       conn.query("SELECT * FROM products"),
       conn.query("SELECT * FROM sales"),
-      conn.query("SELECT * FROM sale_items")
+      conn.query("SELECT * FROM sale_items"),
+      conn.query("SELECT * FROM expenses")
     ])
 
     const [[sp]] = await conn.query("SHOW CREATE TABLE products")
     const [[ss]] = await conn.query("SHOW CREATE TABLE sales")
     const [[si]] = await conn.query("SHOW CREATE TABLE sale_items")
+    const [[se]] = await conn.query("SHOW CREATE TABLE expenses")
 
     await conn.commit()
     return {
       products,
       sales,
       sale_items: items,
+      expenses,
       schema: {
         products:   sp["Create Table"],
         sales:      ss["Create Table"],
-        sale_items: si["Create Table"]
+        sale_items: si["Create Table"],
+        expenses:   se["Create Table"]
       }
     }
   } catch (err) {
@@ -958,6 +1124,7 @@ app.post("/api/restore", auth, async (req, res) => {
     if (modo === "limpio") {
       await conn.query("DELETE FROM sale_items")
       await conn.query("DELETE FROM sales")
+      await conn.query("DELETE FROM expenses")
 
       for (const p of data.products) {
         await conn.query(
@@ -977,6 +1144,12 @@ app.post("/api/restore", auth, async (req, res) => {
           [i.sale_id, i.product_id, i.name, i.price, i.cost, i.qty]
         )
       }
+      for (const e of (data.expenses || [])) {
+        await conn.query(
+          "INSERT INTO expenses(id,amount,description,category,created_at) VALUES(?,?,?,?,?)",
+          [e.id, e.amount, e.description, e.category || "General", e.created_at]
+        )
+      }
     } else {
       for (const p of data.products) {
         await conn.query(
@@ -994,6 +1167,12 @@ app.post("/api/restore", auth, async (req, res) => {
         await conn.query(
           "INSERT IGNORE INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
           [i.sale_id, i.product_id, i.name, i.price, i.cost, i.qty]
+        )
+      }
+      for (const e of (data.expenses || [])) {
+        await conn.query(
+          "INSERT IGNORE INTO expenses(id,amount,description,category,created_at) VALUES(?,?,?,?,?)",
+          [e.id, e.amount, e.description, e.category || "General", e.created_at]
         )
       }
     }
@@ -1041,7 +1220,7 @@ app.get("/internal/health", async (req, res) => {
 validateSchema()
   .then((result) => {
     if (result.alerts.length > 0) {
-      logError("STARTUP", `Schema corrupto — ${result.alerts.length} alerta(s) crítica(s). Corregir manualmente antes de arrancar.`)
+      logError("STARTUP", `Schema corrupto — ${result.alerts.length} alerta(s) crítica(s). Corregir manualmente.`)
       logError("STARTUP", result.alerts.join(" | "))
       process.exit(1)
     }
@@ -1053,9 +1232,8 @@ validateSchema()
     setInterval(() => {
       validateSchema()
         .then(r => {
-          if (r.alerts.length > 0) {
+          if (r.alerts.length > 0)
             logError("SCHEMA_INTERVAL", `⚠ Schema degradado en vivo: ${r.alerts.join(" | ")}`)
-          }
         })
         .catch(err => logError("SCHEMA_INTERVAL", err))
     }, 5 * 60 * 1000)
@@ -1179,27 +1357,30 @@ pm2 startup
 pm2 save
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║             POS PRO INSTALADO ✓                          ║"
-echo "╠══════════════════════════════════════════════════════════╣"
-echo "║  usuario:  admin                                         ║"
-echo "║  password: admin123                                      ║"
-echo "╠══════════════════════════════════════════════════════════╣"
+echo "╔═══════════════════════════════════════════════════════════════╗"
+echo "║               POS PRO INSTALADO ✓                            ║"
+echo "╠═══════════════════════════════════════════════════════════════╣"
+echo "║  usuario:  admin                                              ║"
+echo "║  password: admin123                                           ║"
+echo "╠═══════════════════════════════════════════════════════════════╣"
 echo "║  URL:  http://$DOMAIN:$PORT/login.html"
-echo "╠══════════════════════════════════════════════════════════╣"
-echo "║  VALIDACIÓN DE PRODUCTOS (nuevo):                        ║"
-echo "║    ✓ name  → texto no vacío, máx 100 chars               ║"
-echo "║    ✓ price → número >= 0                                 ║"
-echo "║    ✓ cost  → número >= 0                                 ║"
-echo "║    ✓ stock → entero >= 0                                 ║"
-echo "║    ✓ cat   → NO acepta solo números (ej: '50' rechazado) ║"
-echo "║    ✓ cat   → normalizada: primera letra mayúscula        ║"
-echo "║    ✓ cat vacía → se guarda como 'General'                ║"
-echo "╠══════════════════════════════════════════════════════════╣"
-echo "║  ENDPOINTS INTERNOS (requieren x-backup-key):            ║"
-echo "║    /internal/backup  → snapshot completo                 ║"
-echo "║    /internal/health  → estado DB + schema                ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╠═══════════════════════════════════════════════════════════════╣"
+echo "║  RESUMEN FINANCIERO REAL:                                     ║"
+echo "║    GET /api/summary               → totales globales          ║"
+echo "║    GET /api/summary?desde=&hasta= → filtro por fecha          ║"
+echo "║    → { sales, costs, expenses, profit,                        ║"
+echo "║        expenses_by_category[] }                               ║"
+echo "║    costos calculados desde sale_items (no products.sold)      ║"
+echo "╠═══════════════════════════════════════════════════════════════╣"
+echo "║  GASTOS (con categoría):                                      ║"
+echo "║    POST   /api/expenses      → { amount, description, cat }   ║"
+echo "║    GET    /api/expenses      → lista ordenada por fecha        ║"
+echo "║    DELETE /api/expenses/:id  → eliminar                       ║"
+echo "╠═══════════════════════════════════════════════════════════════╣"
+echo "║  ENDPOINTS INTERNOS (requieren x-backup-key):                 ║"
+echo "║    /internal/backup  → snapshot completo                      ║"
+echo "║    /internal/health  → estado DB + schema                     ║"
+echo "╚═══════════════════════════════════════════════════════════════╝"
 echo ""
 echo "Logs del servidor:   tail -f $APP_DIR/errors.log"
 echo "Alertas de schema:   tail -f /var/log/pos-schema.log"
