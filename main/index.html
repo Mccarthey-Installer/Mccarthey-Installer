@@ -106,20 +106,34 @@ function showSuggestions(){
 
 }
 
-/* ================= API WRAPPER ================= */
+/* ================= API WRAPPER — INTELIGENTE ================= */
+/* Lanza error si el servidor devuelve !ok, con el mensaje del backend */
 
-function api(url, options = {}){
+async function api(url, options = {}){
 
-const token = localStorage.getItem("token")
+  const token = localStorage.getItem("token")
 
-options.headers = {
-...(options.headers || {}),
-Authorization: token,
-"Content-Type": "application/json"
-}
+  options.headers = {
+    ...(options.headers || {}),
+    Authorization: token,
+    "Content-Type": "application/json"
+  }
 
-return fetch(url, options)
+  const res = await fetch(url, options)
 
+  let data = {}
+  try {
+    data = await res.json()
+  } catch(_) {}
+
+  if(!res.ok){
+    const msg = data?.details
+      ? data.details.join(" · ")
+      : (data?.error || "Error del servidor")
+    throw new Error(msg)
+  }
+
+  return data
 }
 
 /* ================= VERIFICAR TOKEN ================= */
@@ -349,7 +363,7 @@ section {
 @media (min-width: 1024px) {
   section {
     padding: 28px 36px;
-    max-width: 1600px; /* evita que se estire infinito en pantallas enormes */
+    max-width: 1600px;
   }
 }
 
@@ -381,7 +395,6 @@ section {
   gap: 12px;
 }
 
-/* tablet */
 @media (min-width: 640px) {
   #productList {
     grid-template-columns: repeat(3, 1fr);
@@ -389,7 +402,6 @@ section {
   }
 }
 
-/* laptop */
 @media (min-width: 1024px) {
   #productList {
     grid-template-columns: repeat(4, 1fr);
@@ -397,14 +409,12 @@ section {
   }
 }
 
-/* pantalla grande */
 @media (min-width: 1280px) {
   #productList {
     grid-template-columns: repeat(5, 1fr);
   }
 }
 
-/* pantalla XL */
 @media (min-width: 1600px) {
   #productList {
     grid-template-columns: repeat(6, 1fr);
@@ -412,7 +422,7 @@ section {
 }
 
 /* =========================================================
-   PRODUCT CARD — más aire en desktop
+   PRODUCT CARD
    ========================================================= */
 
 .product-card {
@@ -438,7 +448,7 @@ section {
 .product-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(34,197,94,.15); }
 
 /* =========================================================
-   LAYOUT DE DOS COLUMNAS EN PC (POS: productos + carrito)
+   LAYOUT DE DOS COLUMNAS EN PC
    ========================================================= */
 
 @media (min-width: 1024px) {
@@ -449,10 +459,9 @@ section {
     align-items: start;
   }
 
-  /* El carrito se queda pegado al hacer scroll */
   #pos > .card:last-child {
     position: sticky;
-    top: 78px; /* altura del header */
+    top: 78px;
   }
 }
 
@@ -485,7 +494,7 @@ section {
 }
 
 /* =========================================================
-   ESTADÍSTICAS: más columnas en PC
+   ESTADÍSTICAS
    ========================================================= */
 
 @media (min-width: 1024px) {
@@ -500,7 +509,6 @@ section {
   }
 }
 
-/* Charts lado a lado en PC */
 @media (min-width: 1024px) {
   #stats .card:has(#salesChart),
   #stats .card:has(#profitChart) {
@@ -515,7 +523,7 @@ section {
 }
 
 /* =========================================================
-   RESTO DE ESTILOS (sin cambios)
+   RESTO DE ESTILOS
    ========================================================= */
 
 #saleSummaryBox{
@@ -625,11 +633,12 @@ z-index: 1;
   background: #0f172a; color: #fff; padding: 12px 22px; border-radius: 30px;
   font-weight: 600; font-size: 14px; z-index: 300;
   transition: transform .3s cubic-bezier(.4,0,.2,1);
-  white-space: nowrap;
+  white-space: nowrap; max-width: 90vw; text-align: center;
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
+#toast.toast-error { background: #dc2626; }
+#toast.toast-ok   { background: #16a34a; }
 
-/* En PC el toast no queda tapado por el sidebar */
 @media (min-width: 1024px) {
   #toast {
     left: calc(var(--sidebar-w) + 50%);
@@ -716,13 +725,8 @@ z-index: 1;
 @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
 .pop { animation: pop .2s; }
 
-/* =========================================================
-   VENTAS en PC: 2 columnas
-   ========================================================= */
-
 @media (min-width: 1024px) {
   #salesList > div[style*="border-radius: 14px"] {
-    /* las tarjetas de venta individuales */
     display: inline-block;
     width: calc(50% - 9px);
     vertical-align: top;
@@ -732,6 +736,13 @@ z-index: 1;
   #salesList > div[style*="border-radius: 14px"]:nth-child(even) {
     margin-right: 0;
   }
+}
+
+/* ── Spinner en botones durante carga ── */
+.btn-loading {
+  opacity: 0.7;
+  cursor: not-allowed !important;
+  pointer-events: none;
 }
 
 </style>
@@ -817,9 +828,22 @@ z-index: 1;
         </div>
       </div>
     </div>
-    <div style="display:flex; gap:10px; margin-top:20px;">
+    <!-- Área de error del modal -->
+    <div id="modal-error" style="
+      display:none;
+      background:#fef2f2;
+      border:2px solid #fca5a5;
+      border-radius:8px;
+      padding:10px 14px;
+      margin-top:14px;
+      font-size:12px;
+      font-weight:600;
+      color:#dc2626;
+      line-height:1.6;
+    "></div>
+    <div style="display:flex; gap:10px; margin-top:16px;">
       <button class="btn-ghost" onclick="closeModal()" style="flex:1;">Cancelar</button>
-      <button class="btn-primary" onclick="saveProduct()" style="flex:2;">Guardar</button>
+      <button id="saveBtn" class="btn-primary" onclick="saveProduct()" style="flex:2;">Guardar</button>
     </div>
   </div>
 </div>
@@ -833,7 +857,7 @@ z-index: 1;
     <input id="restock-qty" class="input" type="number" min="1" placeholder="Ej: 50" style="margin-bottom:16px;">
     <div style="display:flex; gap:10px;">
       <button class="btn-ghost" onclick="closeRestock()" style="flex:1;">Cancelar</button>
-      <button class="btn-primary" onclick="confirmRestock()" style="flex:2;">+ Agregar</button>
+      <button id="restockBtn" class="btn-primary" onclick="confirmRestock()" style="flex:2;">+ Agregar</button>
     </div>
   </div>
 </div>
@@ -903,7 +927,6 @@ Vuelto: <b id="saleSummaryChange"></b>
     </div>
     <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>
     <div id="lowStockAlert"></div>
-    <!-- NOTA: las clases grid/grid-cols-2 de Tailwind quedan sobreescritas por el CSS de #productList -->
     <div id="productList" class="grid grid-cols-2 gap-3"></div>
   </div>
 
@@ -1097,6 +1120,17 @@ let activeCategory = "Todos"
 let editingId = null
 let restockId = null
 
+// =========== TOAST — con colores ============
+function showToast(msg, type = "default") {
+  const t = document.getElementById("toast")
+  t.textContent = msg
+  t.className = ""
+  if(type === "error") t.classList.add("toast-error")
+  else if(type === "ok") t.classList.add("toast-ok")
+  t.classList.add("show")
+  setTimeout(() => t.classList.remove("show"), 2800)
+}
+
 // =========== FORMATEAR FECHA ===========
 function formatDate(str){
   if(!str) return ""
@@ -1137,7 +1171,6 @@ function getDayLabel(dateStr){
   return "Más antiguas"
 }
 
-// =========== HELPER: label seguro para num ===========
 function saleNumLabel(num){
   return (num != null && num !== "" && !isNaN(Number(num)))
     ? "#" + Number(num)
@@ -1228,51 +1261,74 @@ async function loadProducts(force = false){
 
 }
 
+// =========== BACKUP ===========
 async function backupPOS(){
 
-  const res = await fetch("/api/backup")
-  const data = await res.json()
+  try {
 
-  const blob = new Blob(
-    [JSON.stringify(data,null,2)],
-    {type:"application/json"}
-  )
+    const data = await api("/api/backup")
 
-  const now = new Date()
+    const blob = new Blob(
+      [JSON.stringify(data,null,2)],
+      {type:"application/json"}
+    )
 
-  const fecha =
-    now.getFullYear() + "-" +
-    String(now.getMonth()+1).padStart(2,"0") + "-" +
-    String(now.getDate()).padStart(2,"0") + "_" +
-    String(now.getHours()).padStart(2,"0") + "-" +
-    String(now.getMinutes()).padStart(2,"0") + "-" +
-    String(now.getSeconds()).padStart(2,"0")
+    const now = new Date()
+    const fecha =
+      now.getFullYear() + "-" +
+      String(now.getMonth()+1).padStart(2,"0") + "-" +
+      String(now.getDate()).padStart(2,"0") + "_" +
+      String(now.getHours()).padStart(2,"0") + "-" +
+      String(now.getMinutes()).padStart(2,"0") + "-" +
+      String(now.getSeconds()).padStart(2,"0")
 
-  const a = document.createElement("a")
-  a.href = URL.createObjectURL(blob)
-  a.download = "pos-backup_" + fecha + ".json"
-  a.click()
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(blob)
+    a.download = "pos-backup_" + fecha + ".json"
+    a.click()
 
-  showToast("✅ Backup descargado")
+    showToast("✅ Backup descargado", "ok")
+
+  } catch(err) {
+
+    console.error("Error en backup:", err)
+    showToast("❌ Error al generar backup: " + err.message, "error")
+
+  }
 
 }
 
+// =========== RESTORE ===========
 async function restorePOS(file){
 
   if(!file) return
 
-  const text = await file.text()
-  const data = JSON.parse(text)
+  let data
+  try {
+    const text = await file.text()
+    data = JSON.parse(text)
+  } catch(_) {
+    showToast("❌ El archivo no es un JSON válido", "error")
+    return
+  }
 
-  await fetch("/api/restore",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify(data)
-  })
+  try {
 
-  showToast("♻️ Backup restaurado")
+    await api("/api/restore",{
+      method:"POST",
+      body:JSON.stringify(data)
+    })
 
-  setTimeout(()=>{ location.reload() },1000)
+    showToast("♻️ Backup restaurado correctamente", "ok")
+
+    setTimeout(()=>{ location.reload() },1200)
+
+  } catch(err) {
+
+    console.error("Error en restore:", err)
+    showToast("❌ Error al restaurar: " + err.message, "error")
+
+  }
 
 }
 
@@ -1306,7 +1362,6 @@ async function loadSales(){
 }
 
 // =========== SIDEBAR ===========
-// 🥈 En PC (≥1024px) el sidebar siempre está visible — no se abre ni cierra
 function toggleMenu() {
   if(window.innerWidth >= 1024) return
   document.getElementById("sidebar").classList.toggle("open")
@@ -1347,14 +1402,6 @@ async function show(id) {
     }, 50)
   }
 
-}
-
-// =========== TOAST ===========
-function showToast(msg) {
-  const t = document.getElementById("toast")
-  t.textContent = msg
-  t.classList.add("show")
-  setTimeout(() => t.classList.remove("show"), 2400)
 }
 
 // =========== CATEGORIES ===========
@@ -1532,7 +1579,7 @@ function renderCart() {
   calculateChange()
 }
 
-// =========== CONFIRMAR VENTA — FLUJO BLINDADO ===========
+// =========== CONFIRMAR VENTA ===========
 async function confirmSale() {
 
   if(lock) {
@@ -1587,11 +1634,11 @@ async function confirmSale() {
     for (const item of state.cart){
       const p = state.products.find(x => x.id === item.id)
       if(!p){
-        showToast(`❌ Producto no existe: ${item.name}`)
+        showToast(`❌ Producto no existe: ${item.name}`, "error")
         return
       }
       if(p.stock < item.qty){
-        showToast(`❌ Sin stock: ${item.name} (disponible: ${p.stock})`)
+        showToast(`❌ Sin stock: ${item.name} (disponible: ${p.stock})`, "error")
         item.qty = p.stock
         markDirty("cart", "products")
         flushRender()
@@ -1614,24 +1661,17 @@ async function confirmSale() {
       change: paid - finalTotal
     }
 
-    const res = await fetch("/api/sales",{
+    // ── Usa api() para detectar errores del backend ──
+    const data = await api("/api/sales",{
       method:"POST",
-      headers:{ "Content-Type":"application/json" },
       body:JSON.stringify(sale)
     })
-
-    const data = await res.json()
-
-    if(!res.ok){
-      showToast(data.error || "❌ Error en venta")
-      return
-    }
 
     sale.id  = data.id
     sale.num = data.num != null ? Number(data.num) : null
 
     if(sale.num == null){
-      console.warn("⚠ El backend no devolvió num. Verificá que server.js esté actualizado y reiniciá pm2.")
+      console.warn("⚠ El backend no devolvió num.")
     }
 
     state.sales.unshift(sale)
@@ -1645,12 +1685,12 @@ async function confirmSale() {
     flushRender()
 
     showSaleSummary(sale)
-    showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`)
+    showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`, "ok")
 
   } catch (err) {
 
     console.error(err)
-    showToast("❌ Error inesperado al procesar la venta")
+    showToast("❌ " + err.message, "error")
 
   } finally {
 
@@ -1741,6 +1781,7 @@ function openAddModal() {
   editingId = null
   document.getElementById("modal-title").textContent = "➕ Nuevo Producto"
   ;["m-name","m-price","m-cost","m-stock","m-cat"].forEach(id => document.getElementById(id).value = "")
+  clearModalError()
   document.getElementById("modal").classList.add("show")
   setTimeout(() => document.getElementById("m-name").focus(), 100)
 }
@@ -1754,11 +1795,30 @@ function openEditModal(id) {
   document.getElementById("m-cost").value = p.cost
   document.getElementById("m-stock").value = p.stock
   document.getElementById("m-cat").value = p.cat || ""
+  clearModalError()
   document.getElementById("modal").classList.add("show")
 }
 
-function closeModal() { document.getElementById("modal").classList.remove("show") }
+function closeModal() {
+  document.getElementById("modal").classList.remove("show")
+  clearModalError()
+}
 
+function showModalError(msg) {
+  const el = document.getElementById("modal-error")
+  el.textContent = msg
+  el.style.display = "block"
+}
+
+function clearModalError() {
+  const el = document.getElementById("modal-error")
+  if(el){
+    el.style.display = "none"
+    el.textContent = ""
+  }
+}
+
+// =========== GUARDAR PRODUCTO — con validación real ===========
 async function saveProduct(){
 
   const name = document.getElementById("m-name").value.trim()
@@ -1780,29 +1840,49 @@ async function saveProduct(){
 
   const product = { name, price, cost, stock, cat }
 
-  if(editingId){
-    await fetch("/api/products/"+editingId,{
-      method:"PUT",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify(product)
-    })
-    showToast("✏️ Producto actualizado")
-  }else{
-    await fetch("/api/products",{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body:JSON.stringify(product)
-    })
-    showToast("✅ Producto agregado")
-  }
+  const saveBtn = document.getElementById("saveBtn")
+  const originalText = saveBtn.textContent
 
-  closeModal()
-  editingId = null
-  await loadProducts()
+  saveBtn.textContent = "⏳ Guardando..."
+  saveBtn.classList.add("btn-loading")
+  clearModalError()
+
+  try {
+
+    if(editingId){
+      await api("/api/products/"+editingId,{
+        method:"PUT",
+        body:JSON.stringify(product)
+      })
+      showToast("✏️ Producto actualizado", "ok")
+    } else {
+      await api("/api/products",{
+        method:"POST",
+        body:JSON.stringify(product)
+      })
+      showToast("✅ Producto agregado", "ok")
+    }
+
+    closeModal()
+    editingId = null
+    await loadProducts()
+
+  } catch(err) {
+
+    // Muestra el error dentro del modal, no lo cierra
+    showModalError("❌ " + err.message)
+    console.error("Error guardando producto:", err)
+
+  } finally {
+
+    saveBtn.textContent = originalText
+    saveBtn.classList.remove("btn-loading")
+
+  }
 
 }
 
-// =========== RESTOCK ===========
+// =========== RESTOCK — con validación real ===========
 function openRestock(id) {
   restockId = id
   const p = state.products.find(x => x.id === id)
@@ -1823,30 +1903,61 @@ async function confirmRestock(){
     return
   }
 
-  await fetch("/api/restock",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({ id:restockId, qty })
-  })
+  const restockBtn = document.getElementById("restockBtn")
+  restockBtn.textContent = "⏳ Agregando..."
+  restockBtn.classList.add("btn-loading")
 
-  closeRestock()
-  await loadProducts()
-  showToast(`✅ +${qty} unidades agregadas`)
+  try {
+
+    await api("/api/restock",{
+      method:"POST",
+      body:JSON.stringify({ id:restockId, qty })
+    })
+
+    closeRestock()
+    await loadProducts()
+    showToast(`✅ +${qty} unidades agregadas`, "ok")
+
+  } catch(err) {
+
+    showToast("❌ " + err.message, "error")
+    console.error("Error en restock:", err)
+
+  } finally {
+
+    restockBtn.textContent = "+ Agregar"
+    restockBtn.classList.remove("btn-loading")
+
+  }
 
 }
 
-// =========== DELETE ===========
+// =========== DELETE — con validación real ===========
 async function deleteProduct(id){
 
   const p = state.products.find(x => x.id === id)
 
   if(!confirm(`¿Eliminar "${p.name}"?`)) return
 
-  await fetch("/api/products/"+id,{ method:"DELETE" })
+  try {
 
-  await loadProducts()
+    const res = await fetch("/api/products/"+id,{ method:"DELETE" })
 
-  showToast("🗑 Producto eliminado")
+    if(!res.ok){
+      let data = {}
+      try { data = await res.json() } catch(_){}
+      throw new Error(data.error || "Error al eliminar")
+    }
+
+    await loadProducts()
+    showToast("🗑 Producto eliminado", "ok")
+
+  } catch(err) {
+
+    showToast("❌ " + err.message, "error")
+    console.error("Error eliminando producto:", err)
+
+  }
 
 }
 
@@ -2106,11 +2217,43 @@ function renderStats() {
   drawProfitChart()
 }
 
+// =========== RESET STATS — con validación ===========
 async function resetStats(){
   if(!confirm("¿Reiniciar estadísticas? Las ventas se eliminarán pero el inventario seguirá igual.")) return
-  await fetch("/api/reset-stats",{method:"POST"})
-  await loadProducts()
-  showToast("📊 Estadísticas reiniciadas")
+
+  try {
+
+    await api("/api/reset-stats",{method:"POST"})
+    await loadProducts()
+    showToast("📊 Estadísticas reiniciadas", "ok")
+
+  } catch(err) {
+
+    showToast("❌ Error al reiniciar: " + err.message, "error")
+    console.error(err)
+
+  }
+
+}
+
+// =========== CLEAR HISTORY — con validación ===========
+async function clearHistory(){
+  if(!confirm("¿Eliminar todo el historial de ventas? Esta acción no se puede deshacer.")) return
+
+  try {
+
+    await api("/api/sales",{ method:"DELETE" })
+    state.sales = []
+    renderAll()
+    showToast("🗑 Historial eliminado", "ok")
+
+  } catch(err) {
+
+    showToast("❌ Error al borrar: " + err.message, "error")
+    console.error(err)
+
+  }
+
 }
 
 // =========== CHART ===========
@@ -2310,16 +2453,7 @@ function exportCSV(){
   a.download = `historial-${fecha}_${hora}.txt`
   a.click()
 
-  showToast("✅ Historial completo descargado")
-}
-
-// =========== CLEAR HISTORY ===========
-async function clearHistory(){
-  if(!confirm("¿Eliminar todo el historial de ventas? Esta acción no se puede deshacer.")) return
-  await fetch("/api/sales",{ method:"DELETE" })
-  state.sales = []
-  renderAll()
-  showToast("🗑 Historial eliminado")
+  showToast("✅ Historial completo descargado", "ok")
 }
 
 // =========== RENDER ALL ===========
