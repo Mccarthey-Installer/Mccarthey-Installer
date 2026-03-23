@@ -1094,6 +1094,45 @@ Vuelto: <b id="saleSummaryChange"></b>
   <!-- ── PANEL OPERATIVO (local, desde products + sales) ── -->
   <div id="statsPanel"></div>
 
+  <!-- ── CAJA DISPONIBLE ── -->
+  <div id="cajaBox" class="card" style="background:#ecfdf5; border:2px solid #22c55e; margin-top:16px; margin-bottom:4px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+      <div style="flex:1; min-width:180px;">
+        <div style="font-size:12px; font-weight:700; color:#166534; letter-spacing:0.5px; margin-bottom:4px;">💰 CAJA DISPONIBLE</div>
+        <div id="cajaTotal" style="font-size:32px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#15803d;">$0.00</div>
+        <div style="margin-top:8px; font-size:13px; color:#374151; line-height:1.8;">
+          📦 Capital (costos): <b id="cajaCapital" style="font-family:'JetBrains Mono',monospace;">$0.00</b><br>
+          💸 Gastos operativos: <b id="cajaGastos" style="font-family:'JetBrains Mono',monospace;">$0.00</b><br>
+          📈 Ganancia real: <b id="cajaGanancia" style="font-family:'JetBrains Mono',monospace; color:#15803d;">$0.00</b>
+        </div>
+      </div>
+      <div style="min-width:160px;">
+        <div style="font-size:11px; font-weight:700; color:#166534; margin-bottom:6px; letter-spacing:0.4px;">💵 CAJA INICIAL</div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:13px; color:#374151; font-weight:600;">$</span>
+          <input
+            id="cajaInicial"
+            type="number"
+            min="0"
+            step="0.01"
+            class="input"
+            style="width:110px; font-size:14px; font-family:'JetBrains Mono',monospace; padding:8px 10px;"
+            placeholder="0.00"
+            oninput="onCajaInicialChange()"
+            title="Dinero con el que abriste el día"
+          >
+        </div>
+        <div style="font-size:10px; color:#6b7280; margin-top:4px;">Editá para ver tu caja real</div>
+      </div>
+    </div>
+    <!-- ALERTAS -->
+    <div id="cajaAlertas" style="margin-top:12px;"></div>
+  </div>
+
+  <!-- ── PREDICCIÓN ── -->
+  <div id="predictionBox" style="display:none;" class="card" style="margin-bottom:4px; background:#f0f9ff; border:2px solid #38bdf8;">
+  </div>
+
   <!-- ── SEPARADOR FINANCIERO REAL ── -->
   <div style="display:flex; align-items:center; gap:10px; margin: 20px 0 4px;">
     <span style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">💰 Finanzas reales</span>
@@ -1140,12 +1179,14 @@ Vuelto: <b id="saleSummaryChange"></b>
   <div class="cats-scroll" id="expenseCatFilter" style="margin-bottom:14px;"></div>
 
   <!-- Buscador -->
-  <div style="margin-bottom:16px;">
+  <div style="position:relative; margin-bottom:16px;">
     <input
       id="searchExpenses"
       class="input"
       placeholder="🔎 Buscar gasto..."
+      style="padding-left:40px;"
     >
+    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; pointer-events:none;">🔍</span>
   </div>
 
   <!-- Lista -->
@@ -1251,6 +1292,17 @@ let activeCatExpense = "Todos"
 let editingId = null
 let restockId = null
 let editingExpenseId = null
+
+// ── CAJA INICIAL ──
+function onCajaInicialChange(){
+  const val = parseFloat(document.getElementById("cajaInicial")?.value) || 0
+  localStorage.setItem("cajaInicial", val)
+  // Re-renderizar caja si el resumen ya existe
+  if(state.summary){
+    const res = calcularResumen({ ventas: state.sales, gastos: state.expenses })
+    renderCaja(res)
+  }
+}
 
 // =========== TOAST ===========
 function showToast(msg, type = "default") {
@@ -1906,6 +1958,12 @@ async function show(id) {
   }
 
   if(id === "stats"){
+    // Restaurar caja inicial guardada
+    const savedCaja = localStorage.getItem("cajaInicial")
+    if(savedCaja){
+      const input = document.getElementById("cajaInicial")
+      if(input && !input.value) input.value = savedCaja
+    }
     await loadSummary()
     renderStats()
     setTimeout(() => {
@@ -2675,6 +2733,10 @@ function renderSales(){
 // =========================================================
 function renderStats() {
 
+  // ── 0. CAJA UNIFICADA (fuente única de verdad) ──
+  const resumen = calcularResumen({ ventas: state.sales, gastos: state.expenses })
+  renderCaja(resumen)
+
   // ── 1. PANEL OPERATIVO ──
   const totalSales    = state.sales.length
   const ingresos      = state.sales.reduce((a,b) => a + b.total, 0)
@@ -2879,11 +2941,287 @@ async function clearHistory(){
 
 }
 
-// =========== CHART ===========
+// =========================================================
+// FUNCIÓN CENTRAL — calcularResumen
+// UNA sola fuente de verdad para todos los números financieros
+// =========================================================
+function calcularResumen({ ventas = [], gastos = [] }) {
+  let totalVentas      = 0
+  let totalCostos      = 0
+  let totalGananciaBruta = 0
+
+  ventas.forEach(v => {
+    totalVentas        += Number(v.total    || 0)
+    // costTotal: sum de (cost * qty) por venta, calculado en tiempo real
+    const costVenta     = (v.items || []).reduce((a, i) => a + (Number(i.cost || 0) * Number(i.qty)), 0)
+    totalCostos        += costVenta
+    totalGananciaBruta += Number(v.total || 0) - costVenta
+  })
+
+  const totalGastos  = gastos.reduce((acc, g) => acc + Number(g.amount || 0), 0)
+  const gananciaReal = totalVentas - totalCostos - totalGastos
+
+  return {
+    ventas:          totalVentas,
+    costos:          totalCostos,
+    gastos:          totalGastos,
+    gananciaBruta:   totalGananciaBruta,
+    gananciaReal,
+    caja:            totalVentas   // lo que entró en caja (ventas brutas)
+  }
+}
+
+// =========================================================
+// AGRUPACIÓN UNIFICADA — agruparPorDia
+// Usa fechas ISO reales para evitar bugs de formato
+// =========================================================
+function agruparPorDia(ventas, gastos) {
+  const mapa = {}
+
+  ventas.forEach(v => {
+    // Siempre cortar en "T" para obtener YYYY-MM-DD
+    const dia = (v.date || "").split("T")[0]
+    if(!dia) return
+    if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
+    mapa[dia].ventas += Number(v.total || 0)
+    mapa[dia].costos += (v.items || []).reduce((a, i) => a + (Number(i.cost || 0) * Number(i.qty)), 0)
+  })
+
+  gastos.forEach(g => {
+    const dia = (g.created_at || "").split("T")[0]
+    if(!dia) return
+    if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
+    mapa[dia].gastos += Number(g.amount || 0)
+  })
+
+  const labels      = []
+  const ventasArr   = []
+  const gananciaArr = []
+
+  Object.keys(mapa).sort().slice(-14).forEach(dia => {  // últimos 14 días
+    const d           = mapa[dia]
+    const gananciaReal = d.ventas - d.costos - d.gastos
+    // Label legible: DD/MM
+    const [y, m, dd]  = dia.split("-")
+    labels.push(`${Number(dd)}/${Number(m)}`)
+    ventasArr.push(d.ventas)
+    gananciaArr.push(gananciaReal)
+  })
+
+  return { labels, ventasArr, gananciaArr }
+}
+
+// =========================================================
+// PREDICCIÓN DE GANANCIA — regresión lineal simple
+// Toma los últimos N días y proyecta los próximos 3
+// =========================================================
+function predecirGanancia(gananciaArr) {
+  const n = gananciaArr.length
+  if(n < 3) return null   // necesitamos al menos 3 puntos
+
+  // Regresión lineal mínimos cuadrados
+  const xs = gananciaArr.map((_, i) => i)
+  const ys = gananciaArr
+  const xMean = xs.reduce((a, x) => a + x, 0) / n
+  const yMean = ys.reduce((a, y) => a + y, 0) / n
+
+  let num = 0, den = 0
+  xs.forEach((x, i) => {
+    num += (x - xMean) * (ys[i] - yMean)
+    den += (x - xMean) ** 2
+  })
+
+  if(den === 0) return null
+  const slope     = num / den
+  const intercept = yMean - slope * xMean
+
+  // Proyectar 3 días siguientes
+  const proyecciones = [1, 2, 3].map(offset => {
+    const val = intercept + slope * (n - 1 + offset)
+    return Math.round(val * 100) / 100
+  })
+
+  return {
+    slope,           // positivo = tendencia creciente
+    proyecciones,    // [mañana, pasado, antepasado]
+    promedioDiario: yMean
+  }
+}
+
+// =========================================================
+// RENDER CAJA
+// =========================================================
+function renderCaja(resumen) {
+  const cajaInicial = Number(localStorage.getItem("cajaInicial") || 0)
+  const cajaReal    = cajaInicial + resumen.caja - resumen.gastos
+
+  document.getElementById("cajaTotal").textContent     = `$${cajaReal.toFixed(2)}`
+  document.getElementById("cajaCapital").textContent   = `$${resumen.costos.toFixed(2)}`
+  document.getElementById("cajaGastos").textContent    = `$${resumen.gastos.toFixed(2)}`
+  document.getElementById("cajaGanancia").textContent  = `$${resumen.gananciaReal.toFixed(2)}`
+
+  // Color dinámico del total
+  const cajaEl = document.getElementById("cajaTotal")
+  if(cajaReal < 0){
+    cajaEl.style.color = "#dc2626"
+  } else if(cajaReal < resumen.costos * 0.5){
+    cajaEl.style.color = "#d97706"
+  } else {
+    cajaEl.style.color = "#15803d"
+  }
+
+  // Color de ganancia
+  const ganEl = document.getElementById("cajaGanancia")
+  ganEl.style.color = resumen.gananciaReal < 0 ? "#dc2626" : "#15803d"
+
+  renderAlertas(resumen, cajaInicial, cajaReal)
+}
+
+// =========================================================
+// ALERTAS DE NEGOCIO
+// =========================================================
+function renderAlertas(resumen, cajaInicial, cajaReal) {
+  const box = document.getElementById("cajaAlertas")
+  if(!box) return
+
+  const alertas = []
+
+  // 🔴 Pérdida real
+  if(resumen.gananciaReal < 0){
+    alertas.push({
+      nivel: "rojo",
+      msg:   `📉 Estás perdiendo $${Math.abs(resumen.gananciaReal).toFixed(2)} — los gastos superan tu ganancia bruta`
+    })
+  }
+
+  // 🔴 Te estás comiendo el capital
+  if(resumen.gananciaReal < -resumen.costos * 0.5 && resumen.costos > 0){
+    alertas.push({
+      nivel: "rojo",
+      msg:   `💀 TE ESTÁS COMIENDO EL CAPITAL — perdiste más de la mitad de tu inversión en mercadería`
+    })
+  }
+
+  // 🟠 Gastos superiores al 60% de ventas
+  if(resumen.ventas > 0 && resumen.gastos / resumen.ventas > 0.6){
+    const pct = ((resumen.gastos / resumen.ventas) * 100).toFixed(0)
+    alertas.push({
+      nivel: "naranja",
+      msg:   `⚠ Tus gastos son el ${pct}% de lo que vendés — mirá en qué estás gastando`
+    })
+  }
+
+  // 🟠 Caja por debajo de la inicial
+  if(cajaInicial > 0 && cajaReal < cajaInicial && resumen.ventas > 0){
+    const diff = (cajaInicial - cajaReal).toFixed(2)
+    alertas.push({
+      nivel: "naranja",
+      msg:   `⚠ Tu caja bajó $${diff} respecto al inicio del día`
+    })
+  }
+
+  // 🟡 Sin ventas hoy
+  const hoy = new Date().toISOString().split("T")[0]
+  const ventasHoy = state.sales.filter(s => (s.date || "").startsWith(hoy))
+  if(ventasHoy.length === 0 && state.sales.length > 0){
+    alertas.push({
+      nivel: "amarillo",
+      msg:   `ℹ Todavía no hay ventas registradas hoy`
+    })
+  }
+
+  // 🟢 Todo OK
+  if(alertas.length === 0 && resumen.ventas > 0){
+    box.innerHTML = `
+      <div style="background:#f0fdf4; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; color:#15803d;">
+        ✅ Todo en orden — seguí así
+      </div>
+    `
+    return
+  }
+
+  const colores = {
+    rojo:     { bg: "#fef2f2", border: "#fca5a5", color: "#dc2626" },
+    naranja:  { bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" },
+    amarillo: { bg: "#fefce8", border: "#fde68a", color: "#92400e" }
+  }
+
+  box.innerHTML = alertas.map(a => {
+    const c = colores[a.nivel]
+    return `
+      <div style="
+        background:${c.bg};
+        border:2px solid ${c.border};
+        border-radius:8px;
+        padding:8px 12px;
+        margin-bottom:6px;
+        font-size:12px;
+        font-weight:700;
+        color:${c.color};
+        line-height:1.5;
+      ">${a.msg}</div>
+    `
+  }).join("")
+}
+
+// =========================================================
+// PREDICCIÓN BOX — HTML
+// =========================================================
+function renderPrediccion(gananciaArr) {
+  const box = document.getElementById("predictionBox")
+  if(!box) return
+
+  const pred = predecirGanancia(gananciaArr)
+  if(!pred){ box.style.display = "none"; return }
+
+  const tendencia = pred.slope > 0.5  ? "📈 Subiendo"
+                  : pred.slope < -0.5 ? "📉 Bajando"
+                  : "➡ Estable"
+  const tendColor = pred.slope > 0.5  ? "#15803d"
+                  : pred.slope < -0.5 ? "#dc2626"
+                  : "#0891b2"
+
+  const dias = ["Mañana", "Pasado", "Antepasado"]
+
+  box.style.display = "block"
+  box.style.background  = "#f0f9ff"
+  box.style.border      = "2px solid #38bdf8"
+  box.style.borderRadius = "14px"
+  box.style.padding     = "16px"
+  box.style.marginBottom = "4px"
+
+  box.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <span style="font-weight:700; font-size:14px; color:#0f172a;">🔮 Predicción próximos días</span>
+      <span style="font-size:12px; font-weight:700; color:${tendColor};">${tendencia}</span>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
+      ${pred.proyecciones.map((v, i) => {
+        const color = v >= 0 ? "#15803d" : "#dc2626"
+        const bg    = v >= 0 ? "#f0fdf4" : "#fef2f2"
+        return `
+          <div style="background:${bg}; border-radius:10px; padding:10px; text-align:center;">
+            <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:4px;">${dias[i]}</div>
+            <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:${color};">$${v.toFixed(2)}</div>
+          </div>
+        `
+      }).join("")}
+    </div>
+    <div style="margin-top:10px; font-size:11px; color:#64748b; font-style:italic;">
+      Basado en tendencia de los últimos ${gananciaArr.length} días · Solo orientativo
+    </div>
+  `
+}
+
+// =========================================================
+// DIBUJAR GRÁFICAS — usa agruparPorDia unificado
+// =========================================================
 function drawChart() {
 
   const canvas = document.getElementById("salesChart")
   if (!canvas) return
+
+  const chartData = agruparPorDia(state.sales, state.expenses)
 
   const ctx = canvas.getContext("2d")
   const W = canvas.offsetWidth || 300
@@ -2891,25 +3229,10 @@ function drawChart() {
   canvas.height = 160
   const H = 160
 
-  const byDay = {}
-
-  state.sales.forEach(s => {
-    const key = getDateKey(s.date)
-    if(!key) return
-    byDay[key] = (byDay[key] || 0) + s.total
-  })
-
-  const labels = Object.keys(byDay)
-    .sort((a,b)=>{
-      const [d1,m1] = a.split("/").map(Number)
-      const [d2,m2] = b.split("/").map(Number)
-      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
-    })
-    .slice(-7)
-
-  const values = labels.map(k => byDay[k])
-
   ctx.clearRect(0,0,W,H)
+
+  const labels = chartData.labels
+  const values = chartData.ventasArr
 
   if(labels.length === 0){
     ctx.fillStyle = "#94a3b8"
@@ -2919,25 +3242,22 @@ function drawChart() {
     return
   }
 
-  const maxVal = Math.max(...values,1)
+  const maxVal = Math.max(...values, 1)
   const padL = 8, padR = 8, padT = 22, padB = 32
   const chartW = W - padL - padR
   const chartH = H - padT - padB
   const gap = chartW / labels.length
-  const barW = Math.min(gap * 0.55,40)
+  const barW = Math.min(gap * 0.55, 40)
 
   ctx.strokeStyle = "#f1f5f9"
   ctx.lineWidth = 1
   for(let i=1;i<=3;i++){
     const y = padT + chartH - (i/3)*chartH
-    ctx.beginPath()
-    ctx.moveTo(padL,y)
-    ctx.lineTo(W-padR,y)
-    ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke()
   }
 
   labels.forEach((lbl,i)=>{
-    const barH = Math.max((values[i]/maxVal)*chartH,4)
+    const barH = Math.max((values[i]/maxVal)*chartH, 4)
     const x = padL + i*gap + gap/2 - barW/2
     const y = padT + chartH - barH
 
@@ -2946,19 +3266,18 @@ function drawChart() {
     grad.addColorStop(1,"#bfdbfe")
     ctx.fillStyle = grad
     ctx.beginPath()
-    if(ctx.roundRect){ ctx.roundRect(x,y,barW,barH,5) }
-    else { ctx.rect(x,y,barW,barH) }
+    if(ctx.roundRect){ ctx.roundRect(x,y,barW,barH,5) } else { ctx.rect(x,y,barW,barH) }
     ctx.fill()
 
     ctx.fillStyle = "#1e40af"
     ctx.font = "bold 9px JetBrains Mono, monospace"
     ctx.textAlign = "center"
-    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
+    ctx.fillText("$"+values[i].toFixed(2), x+barW/2, y-5)
 
     ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora, sans-serif"
     ctx.textAlign = "center"
-    ctx.fillText(lbl,x+barW/2,H-6)
+    ctx.fillText(lbl, x+barW/2, H-6)
   })
 }
 
@@ -2967,63 +3286,70 @@ function drawProfitChart(){
   const canvas = document.getElementById("profitChart")
   if(!canvas) return
 
+  const chartData = agruparPorDia(state.sales, state.expenses)
+
   const ctx = canvas.getContext("2d")
   const W = canvas.offsetWidth || 300
   canvas.width = W
   canvas.height = 160
   const H = 160
 
-  const byDay = {}
-
-  state.sales.forEach(s=>{
-    const key = getDateKey(s.date)
-    if(!key) return
-    let profit = 0
-    s.items.forEach(p=>{ profit += (p.price - p.cost) * p.qty })
-    byDay[key] = (byDay[key] || 0) + profit
-  })
-
-  const labels = Object.keys(byDay)
-    .sort((a,b)=>{
-      const [d1,m1] = a.split("/").map(Number)
-      const [d2,m2] = b.split("/").map(Number)
-      return new Date(2026,m1-1,d1) - new Date(2026,m2-1,d2)
-    })
-    .slice(-7)
-
-  const values = labels.map(k=>byDay[k])
-
   ctx.clearRect(0,0,W,H)
 
-  if(labels.length===0){
-    ctx.fillStyle="#94a3b8"
-    ctx.font="13px Sora"
-    ctx.textAlign="center"
-    ctx.fillText("Sin datos",W/2,H/2)
+  const labels = chartData.labels
+  const values = chartData.gananciaArr  // ← ganancia REAL (ventas - costos - gastos)
+
+  if(labels.length === 0){
+    ctx.fillStyle = "#94a3b8"
+    ctx.font = "13px Sora"
+    ctx.textAlign = "center"
+    ctx.fillText("Sin datos", W/2, H/2)
     return
   }
 
-  const maxVal = Math.max(...values,1)
-  const padL=8,padR=8,padT=22,padB=32
-  const chartW=W-padL-padR
-  const chartH=H-padT-padB
-  const gap=chartW/labels.length
-  const barW=Math.min(gap*0.55,40)
+  // Calcular predicción y dibujarla después
+  renderPrediccion(values)
 
-  labels.forEach((lbl,i)=>{
-    const barH=(values[i]/maxVal)*chartH
-    const x=padL+i*gap+gap/2-barW/2
-    const y=padT+chartH-barH
-    ctx.fillStyle="#22c55e"
-    ctx.fillRect(x,y,barW,barH)
-    ctx.fillStyle="#166534"
-    ctx.font="bold 9px JetBrains Mono"
-    ctx.textAlign="center"
-    ctx.fillText("$"+values[i].toFixed(2),x+barW/2,y-5)
-    ctx.fillStyle="#64748b"
-    ctx.font="9px Sora"
-    ctx.fillText(lbl,x+barW/2,H-6)
+  const maxVal = Math.max(...values.map(Math.abs), 1)
+  const padL=8, padR=8, padT=22, padB=32
+  const chartW = W - padL - padR
+  const chartH = H - padT - padB
+  const gap    = chartW / labels.length
+  const barW   = Math.min(gap * 0.55, 40)
+  const zeroY  = padT + chartH   // línea de cero (en la base)
+
+  labels.forEach((lbl, i) => {
+    const val  = values[i]
+    const barH = Math.max(Math.abs(val) / maxVal * chartH, 2)
+    const x    = padL + i*gap + gap/2 - barW/2
+    // barras positivas crecen hacia arriba, negativas hacia abajo
+    const y    = val >= 0 ? zeroY - barH : zeroY
+
+    ctx.fillStyle = val >= 0 ? "#22c55e" : "#ef4444"
+    ctx.beginPath()
+    if(ctx.roundRect){ ctx.roundRect(x, y, barW, barH, 4) } else { ctx.rect(x, y, barW, barH) }
+    ctx.fill()
+
+    ctx.fillStyle = val >= 0 ? "#166534" : "#991b1b"
+    ctx.font = "bold 9px JetBrains Mono"
+    ctx.textAlign = "center"
+    const labelY = val >= 0 ? y - 5 : y + barH + 11
+    ctx.fillText("$"+val.toFixed(2), x+barW/2, labelY)
+
+    ctx.fillStyle = "#64748b"
+    ctx.font = "9px Sora"
+    ctx.fillText(lbl, x+barW/2, H-6)
   })
+
+  // Línea de cero
+  ctx.strokeStyle = "#cbd5e1"
+  ctx.lineWidth   = 1
+  ctx.setLineDash([3, 3])
+  ctx.beginPath()
+  ctx.moveTo(padL, zeroY)
+  ctx.lineTo(W-padR, zeroY)
+  ctx.stroke()
+  ctx.setLineDash([])
 }
 
 // =========== EXPORT CSV ===========
