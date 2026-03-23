@@ -977,28 +977,16 @@ background:#fff;
 border-radius:16px;
 padding:20px;
 width:90%;
-max-width:360px;
+max-width:380px;
 box-shadow:0 20px 60px rgba(0,0,0,.25);
 ">
-<h3 style="margin-bottom:10px;">🧾 Ticket de venta</h3>
-<div id="saleSummaryInfo" style="font-size:13px;color:#64748b;margin-bottom:10px;"></div>
-<div id="saleSummaryItems"
-style="
-margin-bottom:12px;
-line-height:1.7;
-font-weight:600;
-overflow-x:auto;
-max-width:100%;
-"></div>
-<div style="border-top:1px solid #e2e8f0;padding-top:10px;font-size:14px;">
-Total: <b id="saleSummaryTotal"></b><br>
-Pagó: <b id="saleSummaryPaid"></b><br>
-Vuelto: <b id="saleSummaryChange"></b>
-</div>
-<div style="margin-top:15px;display:flex;gap:8px;position:relative;z-index:5;">
-<button onclick="printTicket()" class="btn-ghost">🖨 Imprimir</button>
-<button onclick="shareTicket()" class="btn-ghost">📤 Compartir</button>
-<button onclick="closeSummary()" class="btn-confirm">Cerrar</button>
+<h3 style="margin-bottom:6px; font-size:16px;">🧾 Ticket de venta</h3>
+<div id="saleSummaryInfo" style="font-size:12px; color:#64748b; margin-bottom:10px; line-height:1.5;"></div>
+<div id="saleSummaryItems" style="overflow-x:auto; max-width:100%;"></div>
+<div style="margin-top:12px; display:flex; gap:8px; position:relative; z-index:5;">
+  <button onclick="printTicket()" class="btn-ghost" style="flex:1; font-size:12px;">🖨 Imprimir</button>
+  <button onclick="shareTicket()" class="btn-ghost" style="flex:1; font-size:12px;">📤 Compartir</button>
+  <button onclick="closeSummary()" class="btn-confirm" style="flex:1; font-size:13px;">Cerrar</button>
 </div>
 </div>
 </div>
@@ -2521,7 +2509,7 @@ async function deleteProduct(id){
 
 // =========== TICKET ===========
 
-/* Siempre 2 decimales, sin excepciones */
+/* Siempre 2 decimales */
 function money(n){
   return Number(n || 0).toFixed(2)
 }
@@ -2544,85 +2532,81 @@ function wrapText(text, max){
 }
 
 /*
-  Formato de una línea de producto:
-
-  Nombre línea 1
-  Nombre línea 2          (si es largo)
-  x{qty}    ${unit}    ${total}
+  Columnas fijas (monospace, 32 chars total):
+  ─────────────────────────────────
+  Nombre (wrap a 32 chars)
+  x{qty}      ${unit}    ${total}
+  Col:  6     9          10
 */
-function formatTicketItem(name, qty, price, total, lineWidth){
-  const WRAP_AT   = lineWidth - 2           // máx chars para el nombre
-  const COL_QTY   = 6                       // "x999  "
-  const COL_UNIT  = 9                       // "$999.99  "
-  const nameLines = wrapText(name, WRAP_AT)
+function formatTicketItem(name, qty, price, total){
+  const WRAP    = 32
+  const C_QTY   = 6    // "x999  "
+  const C_UNIT  = 9    // "$999.99  "
+  const nameLines = wrapText(name, WRAP)
   let out = ""
-
-  // nombre (puede ser varias líneas)
   nameLines.forEach(l => { out += l + "\n" })
-
-  // fila de números, alineada a la derecha
-  const qtyStr   = ("x" + qty).padEnd(COL_QTY)
-  const unitStr  = ("$" + money(price)).padEnd(COL_UNIT)
+  const qtyStr   = ("x" + qty).padEnd(C_QTY)
+  const unitStr  = ("$" + money(price)).padEnd(C_UNIT)
   const totalStr = "$" + money(total)
   out += qtyStr + unitStr + totalStr + "\n"
-
   return out
 }
 
 function showSaleSummary(sale){
 
-  const LINE_W  = 32            // caracteres por línea (monospace)
-  const SEP     = "─".repeat(LINE_W)
+  const W   = 32
+  const SEP = "─".repeat(W)
 
-  // ── Cabecera ──
-  const header = [
-    SEP,
-    "PRODUCTO".padEnd(LINE_W - 17) + "CANT   UNIT    TOTAL",
-    SEP
-  ].join("\n") + "\n"
+  // cabecera fija
+  const HDR_COL = "CANT   UNIT      TOTAL"
+  const hdrPad  = W - HDR_COL.length
+  const header  = SEP + "\n" +
+    "PRODUCTO".padEnd(hdrPad > 0 ? hdrPad : 1) + HDR_COL + "\n" +
+    SEP + "\n"
 
-  // ── Items ──
+  // items
   const itemsText = sale.items.map(p => {
     const sub = Number(p.qty) * Number(p.price)
-    return formatTicketItem(p.name, p.qty, p.price, sub, LINE_W)
+    return formatTicketItem(p.name, p.qty, p.price, sub)
   }).join("\n")
 
-  // ── Pie ──
-  const footer = [
-    SEP,
-    ("TOTAL:").padEnd(LINE_W - 8) + ("$" + money(sale.total)).padStart(8),
-    ("PAGÓ:").padEnd(LINE_W - 8)  + ("$" + money(sale.paid)).padStart(8),
-    ("VUELTO:").padEnd(LINE_W - 8)+ ("$" + money(sale.change)).padStart(8),
+  // pie — etiqueta padEnd + valor padStart para alineación derecha
+  const COL = W
+  const fmtRow = (label, val) =>
+    label.padEnd(COL - val.length) + val
+
+  const footer = SEP + "\n" +
+    fmtRow("Total:",   "$" + money(sale.total))  + "\n" +
+    fmtRow("Pagó:",    "$" + money(sale.paid))   + "\n" +
+    fmtRow("Vuelto:",  "$" + money(sale.change)) + " 🟢\n" +
     SEP
-  ].join("\n")
 
-  // ── Info de la venta ──
+  // info de cabecera (fuera del pre)
   document.getElementById("saleSummaryInfo").innerHTML =
-    `Venta ${saleNumLabel(sale.num)}&nbsp;&nbsp;<span style="color:#94a3b8;font-size:11px;">${formatDate(sale.date)}</span><br>
-     <span style="font-size:10px;color:#cbd5e1;">ID: ${sale.id}</span>`
+    `<b>Venta ${saleNumLabel(sale.num)}</b> &nbsp;
+     <span style="color:#94a3b8;">${formatDate(sale.date)}</span><br>
+     <span style="font-size:10px; color:#cbd5e1; font-family:'JetBrains Mono',monospace;">${sale.id}</span>`
 
+  // todo el ticket en un solo <pre> monospace — sin bloques duplicados
   document.getElementById("saleSummaryItems").innerHTML = `
     <pre style="
       font-family:'JetBrains Mono',monospace;
       font-size:12px;
-      line-height:1.6;
-      overflow-x:auto;
+      line-height:1.65;
       white-space:pre;
+      overflow-x:auto;
       color:#0f172a;
+      margin:0;
+      background:#f8fafc;
+      border-radius:10px;
+      padding:12px 10px;
     ">${header}${itemsText}${footer}</pre>
   `
 
-  document.getElementById("saleSummaryTotal").innerHTML  = `<b>$${money(sale.total)}</b>`
-  document.getElementById("saleSummaryPaid").innerHTML   = `<b>$${money(sale.paid)}</b>`
-  document.getElementById("saleSummaryChange").innerHTML =
-    `<span style="color:#16a34a;font-weight:700;">$${money(sale.change)} 🟢</span>`
-
   const modal = document.getElementById("saleSummary")
   modal.style.display = "flex"
-
   document.body.style.pointerEvents = "none"
   modal.style.pointerEvents = "auto"
-
 }
 
 function closeSummary(){
