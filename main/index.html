@@ -4,7 +4,6 @@
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="light dark">
 <title>POS Mobile Pro</title>
 
 <script>
@@ -79,15 +78,12 @@ function showSuggestions(){
     row.style.display="flex"
     row.style.justifyContent="space-between"
     row.style.fontSize="13px"
-    row.style.borderBottom="1px solid var(--border)"
+    row.style.borderBottom="1px solid #f1f5f9"
 
     row.innerHTML = `
-<span style="color:var(--text);">${p.name}</span>
-<b style="color:var(--text);">$${p.price.toFixed(2)}</b>
+<span>${p.name}</span>
+<b>$${p.price.toFixed(2)}</b>
 `
-
-    row.onmouseenter = () => row.style.background = "var(--hover)"
-    row.onmouseleave = () => row.style.background = "transparent"
 
     row.onclick = () => {
 
@@ -190,286 +186,35 @@ location.href="/login.html"
 
 <style>
 
-/* =========================================================
-   SISTEMA DE TOKENS — fuente única de verdad para colores
-   =========================================================
-   Cambiar un token aquí afecta toda la app.
-   Light mode en :root, dark mode en @media.
-   ========================================================= */
-
-:root {
-  /* Acento (no cambia entre temas) */
-  --accent:  #22c55e;
-  --accent2: #3b82f6;
-  --danger:  #ef4444;
-
-  /* Acento hover */
-  --accent-hover:  #16a34a;
-  --accent2-hover: #2563eb;
-  --danger-hover:  #dc2626;
-
-  /* Colores semánticos derivados */
-  --accent-text:   #16a34a;   /* texto sobre fondo blanco */
-  --accent2-text:  #1d4ed8;
-  --danger-text:   #dc2626;
-
-  /* Fondos semánticos (badges, stat cards, etc.) */
-  --bg-green:   #dcfce7;
-  --bg-blue:    #dbeafe;
-  --bg-red:     #fee2e2;
-  --bg-yellow:  #fef3c7;
-  --bg-purple:  #f3e8ff;
-  --bg-cyan:    #ecfeff;
-  --bg-orange:  #fff7ed;
-
-  /* Textos semánticos */
-  --text-green:   #166534;
-  --text-blue:    #1e40af;
-  --text-red:     #991b1b;
-  --text-yellow:  #92400e;
-  --text-purple:  #6d28d9;
-  --text-cyan:    #0e7490;
-  --text-orange:  #9a3412;
-
-  /* Colores de ganancia */
-  --profit-bg:     #dcfce7;
-  --profit-border: #86efac;
-  --profit-text:   #064e3b;
-  --loss-bg:       #fee2e2;
-  --loss-border:   #fca5a5;
-  --loss-text:     #991b1b;
-
-  /* Ticket (pink brand — no cambia con el tema) */
-  --ticket-pink:       #e91e8c;
-  --ticket-pink-light: #f06292;
-  --ticket-bg:         #fff5f9;
-  --ticket-border:     #fce4ec;
-  --ticket-muted:      #c2185b;
-  --ticket-tag-bg:     #fce4ec;
-  --ticket-tag-text:   #c2185b;
-  --ticket-footer-bg:  #fce4ec;
-  --ticket-btn-color:  #e91e8c;
-
-  /* Caja / finanzas */
-  --caja-bg:      #ecfdf5;
-  --caja-border:  #22c55e;
-  --caja-title:   #166534;
-  --caja-value:   #15803d;
-  --caja-text:    #374151;
-  --caja-sub:     #6b7280;
-
-  /* Predicción */
-  --pred-bg:     #f0f9ff;
-  --pred-border: #38bdf8;
-
-  /* Gastos */
-  --expense-border-hover: #fbbf24;
-
-  /* Layout */
-  --sidebar-w: 260px;
-  --sidebar-bg: #0f172a;
-
-  /* Fondos */
-  --bg:       #f1f5f9;
-  --surface:  #ffffff;
-  --surface2: #f8fafc;
-  --surface3: #f1f5f9;
-
-  /* Bordes */
-  --border:  #e2e8f0;
-  --border2: #f1f5f9;
-
-  /* Textos */
-  --text:    #0f172a;
-  --text2:   #475569;
-  --text3:   #64748b;
-  --text4:   #94a3b8;
-
-  /* Header */
-  --header-bg:     #ffffff;
-  --header-shadow: 0 1px 8px rgba(0,0,0,.08);
-
-  /* Skeleton */
-  --sk-from: #f1f5f9;
-  --sk-to:   #e2e8f0;
-
-  /* Hover */
-  --hover: #f1f5f9;
-
-  /* Inv-card especiales */
-  --inv-best-bg:   #f0fdf4;
-  --inv-zero-bg:   #fff8f8;
-
-  /* Sale card colors */
-  --sale-color-0: #dbeafe;
-  --sale-color-1: #dcfce7;
-  --sale-color-2: #fef9c3;
-  --sale-color-3: #fee2e2;
-  --sale-color-4: #e0f2fe;
-
-  /* Inputs */
-  --input-focus-search: #3b82f6;
-
-  /* Alertas de negocio */
-  --alert-rojo-bg:      #fef2f2;
-  --alert-rojo-border:  #fca5a5;
-  --alert-rojo-text:    #dc2626;
-  --alert-naranja-bg:   #fff7ed;
-  --alert-naranja-border:#fed7aa;
-  --alert-naranja-text: #c2410c;
-  --alert-amarillo-bg:  #fefce8;
-  --alert-amarillo-border:#fde68a;
-  --alert-amarillo-text:#92400e;
-  --alert-ok-bg:        #f0fdf4;
-  --alert-ok-text:      #15803d;
-
-  /* Gráficas */
-  --chart-text:       #64748b;
-  --chart-text2:      #1e40af;
-  --chart-grid:       #f1f5f9;
-  --chart-bar-from:   #3b82f6;
-  --chart-bar-to:     #bfdbfe;
+:root{
+--accent:#22c55e;
+--accent2:#3b82f6;
+--dark:#0f172a;
+--sidebar-w:260px;
 }
 
-/* ── DARK MODE ── */
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Fondos semánticos — versiones oscuras */
-    --bg-green:   rgba(34,197,94,.15);
-    --bg-blue:    rgba(59,130,246,.15);
-    --bg-red:     rgba(239,68,68,.15);
-    --bg-yellow:  rgba(234,179,8,.15);
-    --bg-purple:  rgba(139,92,246,.15);
-    --bg-cyan:    rgba(6,182,212,.12);
-    --bg-orange:  rgba(249,115,22,.12);
-
-    /* Textos semánticos — versiones oscuras */
-    --text-green:   #86efac;
-    --text-blue:    #93c5fd;
-    --text-red:     #fca5a5;
-    --text-yellow:  #fde68a;
-    --text-purple:  #c4b5fd;
-    --text-cyan:    #67e8f9;
-    --text-orange:  #fdba74;
-
-    /* Acento texto */
-    --accent-text:  #86efac;
-    --accent2-text: #93c5fd;
-    --danger-text:  #fca5a5;
-
-    /* Ganancia */
-    --profit-bg:     rgba(34,197,94,.12);
-    --profit-border: rgba(34,197,94,.4);
-    --profit-text:   #86efac;
-    --loss-bg:       rgba(239,68,68,.12);
-    --loss-border:   rgba(239,68,68,.4);
-    --loss-text:     #fca5a5;
-
-    /* Ticket — se mantiene igual (es una marca) */
-
-    /* Caja */
-    --caja-bg:      rgba(34,197,94,.07);
-    --caja-border:  rgba(34,197,94,.4);
-    --caja-title:   #86efac;
-    --caja-value:   #4ade80;
-    --caja-text:    #94a3b8;
-    --caja-sub:     #6e7681;
-
-    /* Predicción */
-    --pred-bg:     rgba(56,189,248,.08);
-    --pred-border: rgba(56,189,248,.35);
-
-    /* Gastos */
-    --expense-border-hover: rgba(251,191,36,.5);
-
-    /* Fondos */
-    --bg:       #0d1117;
-    --surface:  #161b22;
-    --surface2: #1c2128;
-    --surface3: #21262d;
-
-    --border:  #30363d;
-    --border2: #21262d;
-
-    --text:    #e6edf3;
-    --text2:   #8b949e;
-    --text3:   #6e7681;
-    --text4:   #484f58;
-
-    --header-bg:     #161b22;
-    --header-shadow: 0 1px 8px rgba(0,0,0,.4);
-
-    --sk-from: #21262d;
-    --sk-to:   #30363d;
-
-    --hover: #21262d;
-
-    --sidebar-bg: #010409;
-
-    --inv-best-bg:   rgba(34,197,94,.07);
-    --inv-zero-bg:   rgba(239,68,68,.06);
-
-    /* Sale card colors — dark */
-    --sale-color-0: rgba(59,130,246,.12);
-    --sale-color-1: rgba(34,197,94,.10);
-    --sale-color-2: rgba(234,179,8,.10);
-    --sale-color-3: rgba(239,68,68,.10);
-    --sale-color-4: rgba(14,165,233,.10);
-
-    /* Alertas de negocio */
-    --alert-rojo-bg:       rgba(239,68,68,.12);
-    --alert-rojo-border:   rgba(239,68,68,.4);
-    --alert-rojo-text:     #fca5a5;
-    --alert-naranja-bg:    rgba(249,115,22,.10);
-    --alert-naranja-border:rgba(249,115,22,.4);
-    --alert-naranja-text:  #fdba74;
-    --alert-amarillo-bg:   rgba(234,179,8,.10);
-    --alert-amarillo-border:rgba(234,179,8,.4);
-    --alert-amarillo-text: #fde68a;
-    --alert-ok-bg:         rgba(34,197,94,.10);
-    --alert-ok-text:       #86efac;
-
-    /* Gráficas */
-    --chart-text:       #8b949e;
-    --chart-text2:      #93c5fd;
-    --chart-grid:       #21262d;
-    --chart-bar-from:   #3b82f6;
-    --chart-bar-to:     #1d4ed8;
-
-    /* Inputs */
-    --input-focus-search: #3b82f6;
-  }
-}
-
-/* ── Transición suave al cambiar tema en tiempo real ── */
-*, *::before, *::after {
-  box-sizing: border-box;
-  transition:
-    background-color .25s ease,
-    border-color     .25s ease,
-    color            .2s  ease;
-}
-.spin, .pop, .skeleton { transition: none !important; }
+* { box-sizing: border-box; }
 
 /* =========================================================
-   LAYOUT PRINCIPAL
+   LAYOUT PRINCIPAL — flex real, sin margin-left hacks
    ========================================================= */
 
 body {
   font-family: 'Sora', sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  background: #f1f5f9;
   margin: 0;
-  display: flex;
+  display: flex;           /* chasis del layout */
   min-height: 100vh;
 }
 
+/* En mobile el sidebar flota encima (fixed), el main ocupa todo */
 #sidebar {
   position: fixed;
-  top: 0; left: 0;
+  top: 0;
+  left: 0;
   width: var(--sidebar-w);
   height: 100%;
-  background: var(--sidebar-bg);
+  background: var(--dark);
   transform: translateX(calc(-1 * var(--sidebar-w)));
   transition: transform .3s cubic-bezier(.4,0,.2,1);
   z-index: 100;
@@ -478,493 +223,584 @@ body {
   overflow-y: auto;
 }
 
+/* El contenedor principal siempre ocupa el espacio restante */
 .main-layout {
   flex: 1;
-  min-width: 0;
+  min-width: 0;          /* evita overflow en flex */
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
+/* En desktop el sidebar entra al flujo normal (no fixed) */
 @media (min-width: 1024px) {
   #sidebar {
-    position: sticky;
+    position: sticky;      /* sticky: se queda fijo al hacer scroll */
     top: 0;
     height: 100vh;
     transform: translateX(0) !important;
-    flex-shrink: 0;
-    box-shadow: 4px 0 24px rgba(0,0,0,.3);
+    flex-shrink: 0;        /* no se encoge */
+    box-shadow: 4px 0 24px rgba(0,0,0,.18);
   }
-  .hamburger    { display: none !important; }
-  #overlay      { display: none !important; }
-  header        { margin-left: 0 !important; }
-  section       { margin-left: 0 !important; }
+
+  .hamburger {
+    display: none !important;
+  }
+
+  #overlay {
+    display: none !important;
+  }
+
+  /* SIN margin-left — el flex se encarga */
+  header {
+    margin-left: 0 !important;
+  }
+
+  section {
+    margin-left: 0 !important;
+  }
 }
 
-/* ── SIDEBAR — siempre oscuro, no cambia con el tema ── */
-.nav-btn {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%; padding: 10px 14px;
-  background: none; border: none;
-  color: #94a3b8;
-  font-weight: 600; cursor: pointer; border-radius: 8px;
-  transition: background .2s, color .2s;
-}
-.nav-btn:hover, .nav-btn.active {
-  background: rgba(255,255,255,.08);
-  color: #fff;
-}
-.nav-btn .icon { font-size: 18px; width: 24px; text-align: center; }
-
-#sidebar.open { transform: translateX(0); }
-
-.nav-divider {
-  height: 1px;
-  background: rgba(255,255,255,.08);
-  margin: 6px 14px;
+.nav-btn{
+display:flex;
+align-items:center;
+gap:10px;
+width:100%;
+padding:10px 14px;
+background:none;
+border:none;
+color:#94a3b8;
+font-weight:600;
+cursor:pointer;
+border-radius:8px;
+transition:background .2s,color .2s;
 }
 
-#overlay {
-  display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,.45); z-index: 99;
-  transition: opacity .25s; opacity: 0;
+.nav-btn:hover,
+.nav-btn.active{
+background:rgba(255,255,255,.08);
+color:#fff;
 }
-#overlay.show { display: block; opacity: 1; }
 
-/* ── HEADER ── */
+.nav-btn .icon{
+font-size:18px;
+width:24px;
+text-align:center;
+}
+
+#sidebar.open {
+transform: translateX(0);
+}
+
+#overlay{
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.45);
+z-index:99;
+transition:opacity .25s;
+opacity:0;
+}
+
+#overlay.show{
+display:block;
+opacity:1;
+}
+
 header {
-  background: var(--header-bg);
-  box-shadow: var(--header-shadow);
-  padding: 10px 18px;
-  display: flex; justify-content: space-between; align-items: center;
+  background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.08);
+  padding: 10px 18px; display: flex;
+  justify-content: space-between; align-items: center;
   position: sticky; top: 0; z-index: 50;
   gap: 10px;
 }
-@media (min-width: 1024px) { header { padding: 14px 32px; } }
 
-.logo { font-weight: 700; font-size: 18px; color: var(--text); letter-spacing: -.5px; }
+@media (min-width: 1024px) {
+  header {
+    padding: 14px 32px;
+  }
+}
+
+.logo { font-weight: 700; font-size: 18px; color: var(--dark); letter-spacing: -0.5px; }
 .logo span { color: var(--accent); }
 
-/* ── SYNC INDICATOR ── */
 #syncIndicator {
-  display: flex; align-items: center; gap: 5px;
-  background: var(--surface2); border: 2px solid var(--border);
-  border-radius: 20px; padding: 4px 10px;
-  font-size: 11px; font-weight: 700; color: var(--text3);
-  white-space: nowrap; flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  transition: all .3s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-#syncIndicator.syncing { border-color: #3b82f6; color: #2563eb; background: #eff6ff; }
-#syncIndicator.ok      { border-color: #22c55e; color: #16a34a; background: #f0fdf4; }
-#syncIndicator.error   { border-color: #ef4444; color: #dc2626; background: #fef2f2; }
-@media (prefers-color-scheme: dark) {
-  #syncIndicator.syncing { background: rgba(59,130,246,.15); color: #93c5fd; }
-  #syncIndicator.ok      { background: rgba(34,197,94,.12);  color: #86efac; }
-  #syncIndicator.error   { background: rgba(239,68,68,.12);  color: #fca5a5; }
+#syncIndicator.syncing {
+  border-color: #3b82f6;
+  color: #2563eb;
+  background: #eff6ff;
 }
-
+#syncIndicator.ok {
+  border-color: #22c55e;
+  color: #16a34a;
+  background: #f0fdf4;
+}
+#syncIndicator.error {
+  border-color: #ef4444;
+  color: #dc2626;
+  background: #fef2f2;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { display: inline-block; animation: spin .8s linear infinite; }
 
-/* ── SECTIONS ── */
-section { padding: 18px; }
-@media (min-width: 768px)  { section { padding: 22px 24px; } }
-@media (min-width: 1024px) { section { padding: 28px 36px; max-width: 1600px; } }
+section {
+  padding: 18px;
+}
 
-/* ── CARDS ── */
+@media (min-width: 768px) {
+  section {
+    padding: 22px 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  section {
+    padding: 28px 36px;
+    max-width: 1600px;
+  }
+}
+
 .card {
-  background: var(--surface);
-  border-radius: 14px;
+  background: #fff; border-radius: 14px;
   box-shadow: 0 2px 12px rgba(0,0,0,.06);
   padding: 16px; margin-bottom: 16px;
 }
-@media (prefers-color-scheme: dark) {
-  .card { box-shadow: 0 2px 12px rgba(0,0,0,.3); }
-}
+
 @media (min-width: 1024px) {
-  .card { padding: 24px; border-radius: 18px; margin-bottom: 22px; }
+  .card {
+    padding: 24px;
+    border-radius: 18px;
+    margin-bottom: 22px;
+  }
 }
 
-/* ── PRODUCT GRID ── */
 #productList {
   display: grid !important;
-  grid-template-columns: repeat(2, 1fr); gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
-@media (min-width: 640px)  { #productList { grid-template-columns: repeat(3,1fr); gap:14px; } }
-@media (min-width: 1024px) { #productList { grid-template-columns: repeat(4,1fr); gap:18px; } }
-@media (min-width: 1280px) { #productList { grid-template-columns: repeat(5,1fr); } }
-@media (min-width: 1600px) { #productList { grid-template-columns: repeat(6,1fr); } }
+
+@media (min-width: 640px) {
+  #productList {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (min-width: 1024px) {
+  #productList {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+  }
+}
+
+@media (min-width: 1280px) {
+  #productList {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (min-width: 1600px) {
+  #productList {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
 
 .product-card {
   border-radius: 12px; padding: 14px;
-  border: 2px solid var(--border);
-  background: var(--surface);
+  border: 2px solid #e2e8f0;
   transition: border-color .2s, box-shadow .2s;
+  background: #fff;
 }
+
+@media (min-width: 1024px) {
+  .product-card {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .product-card .btn-add {
+    padding: 10px;
+    font-size: 14px;
+    margin-top: 14px;
+  }
+}
+
 .product-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(34,197,94,.15); }
+
 @media (min-width: 1024px) {
-  .product-card { padding: 18px; border-radius: 16px; }
-  .product-card .btn-add { padding: 10px; font-size: 14px; margin-top: 14px; }
+  #pos {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  #pos > .card:last-child {
+    position: sticky;
+    top: 78px;
+  }
 }
 
-/* ── POS LAYOUT ── */
-@media (min-width: 1024px) {
-  #pos { display: grid; grid-template-columns: 1fr 380px; gap: 24px; align-items: start; }
-  #pos > .card:last-child { position: sticky; top: 78px; }
+@media (min-width: 1280px) {
+  #pos {
+    grid-template-columns: 1fr 420px;
+  }
 }
-@media (min-width: 1280px) { #pos { grid-template-columns: 1fr 420px; } }
 
-/* ── INVENTORY GRID ── */
 @media (min-width: 1024px) {
-  #inventoryList { display: grid; grid-template-columns: repeat(2,1fr); gap: 18px; }
-  #inventoryList .inv-card { margin-bottom: 0; }
-}
-@media (min-width: 1280px) { #inventoryList { grid-template-columns: repeat(3,1fr); } }
+  #inventoryList {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
 
-/* ── STATS/SUMMARY GRIDS ── */
+  #inventoryList .inv-card {
+    margin-bottom: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  #inventoryList {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ── STATS PANEL — 2 col mobile, 3 col tablet, 6 col desktop ── */
 #statsPanel {
-  display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
 }
-@media (min-width: 640px)  { #statsPanel { grid-template-columns: repeat(3,1fr); gap:12px; } }
-@media (min-width: 1024px) { #statsPanel { grid-template-columns: repeat(3,1fr); gap:14px; } }
-@media (min-width: 1280px) { #statsPanel { grid-template-columns: repeat(6,1fr); } }
 
-#summaryPanel {
-  display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-top: 16px;
+@media (min-width: 640px) {
+  #statsPanel {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
 }
-#summaryPanel .profit-full { grid-column: 1 / -1; }
-@media (min-width: 640px) { #summaryPanel { grid-template-columns: repeat(3,1fr); gap:12px; } }
+
+@media (min-width: 1024px) {
+  #statsPanel {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (min-width: 1280px) {
+  #statsPanel {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* ── SUMMARY PANEL (financiero real) ── */
+#summaryPanel {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* La tarjeta de ganancia real ocupa toda la fila siempre */
+#summaryPanel .profit-full {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 640px) {
+  #summaryPanel {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+}
 
 @media (min-width: 1024px) {
   #stats .card:has(#salesChart),
-  #stats .card:has(#profitChart) { display: inline-block; width: calc(50% - 11px); vertical-align: top; }
-  #stats .card:has(#salesChart)  { margin-right: 12px; }
+  #stats .card:has(#profitChart) {
+    display: inline-block;
+    width: calc(50% - 11px);
+    vertical-align: top;
+  }
+
+  #stats .card:has(#salesChart) {
+    margin-right: 12px;
+  }
 }
 
-/* ── BOTONES ── */
+#saleSummaryBox{
+font-family: monospace;
+overflow: hidden;
+position: relative;
+z-index: 1;
+}
+
 .btn-add {
   background: var(--accent); color: #fff;
-  width: 100%; padding: 8px; border-radius: 8px; border: none;
-  cursor: pointer; font-weight: 600; font-size: 13px;
-  margin-top: 10px; font-family: 'Sora', sans-serif;
+  width: 100%; padding: 8px; border-radius: 8px;
+  border: none; cursor: pointer; font-weight: 600; font-size: 13px;
+  margin-top: 10px; transition: background .2s, transform .1s;
+  font-family: 'Sora', sans-serif;
 }
 .btn-add:active { transform: scale(.96); }
-.btn-add:disabled { background: var(--text4); cursor: not-allowed; }
+.btn-add:disabled { background: #94a3b8; cursor: not-allowed; }
+
+.cart-row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 8px; align-items: center; padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.qty-btn {
+  width: 30px; height: 30px; border-radius: 8px; border: 2px solid #e2e8f0;
+  background: #fff; cursor: pointer; font-size: 17px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s; line-height: 1;
+  font-family: 'Sora', sans-serif;
+}
+.qty-btn:hover { background: #f1f5f9; }
+.qty-display {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700;
+  min-width: 28px; text-align: center; font-size: 15px;
+}
 
 .btn-primary {
   background: var(--accent2); color: #fff;
   padding: 12px 20px; border-radius: 10px; border: none;
-  cursor: pointer; font-weight: 700; font-size: 15px; width: 100%;
+  cursor: pointer; font-weight: 700; font-size: 15px;
+  transition: background .2s, transform .1s; width: 100%;
   font-family: 'Sora', sans-serif;
 }
-.btn-primary:hover  { background: var(--accent2-hover); }
+.btn-primary:hover { background: #2563eb; }
 .btn-primary:active { transform: scale(.98); }
 
 .btn-confirm {
   background: linear-gradient(135deg, #22c55e, #16a34a);
   color: #fff; padding: 14px 20px; border-radius: 12px; border: none;
-  cursor: pointer; font-weight: 700; font-size: 16px; width: 100%;
+  cursor: pointer; font-weight: 700; font-size: 16px;
+  transition: opacity .2s, transform .1s; width: 100%;
   box-shadow: 0 4px 14px rgba(34,197,94,.3);
   font-family: 'Sora', sans-serif;
 }
-.btn-confirm:hover  { opacity: .9; }
+.btn-confirm:hover { opacity: .9; }
 .btn-confirm:active { transform: scale(.98); }
 
 .btn-danger {
-  background: var(--danger); color: #fff;
+  background: #ef4444; color: #fff;
   padding: 8px 14px; border-radius: 8px; border: none;
   cursor: pointer; font-weight: 600; font-size: 13px;
-  font-family: 'Sora', sans-serif;
+  transition: background .2s; font-family: 'Sora', sans-serif;
 }
-.btn-danger:hover { background: var(--danger-hover); }
+.btn-danger:hover { background: #dc2626; }
 
 .btn-ghost {
-  background: transparent;
-  border: 2px solid var(--border); color: var(--text2);
+  background: transparent; border: 2px solid #e2e8f0; color: #475569;
   padding: 8px 14px; border-radius: 8px; cursor: pointer;
-  font-weight: 600; font-size: 13px;
+  font-weight: 600; font-size: 13px; transition: border-color .2s, color .2s;
   font-family: 'Sora', sans-serif;
 }
-.btn-ghost:hover { border-color: var(--text3); color: var(--text); }
+.btn-ghost:hover { border-color: #94a3b8; color: #0f172a; }
 
-.btn-loading { opacity: .7; cursor: not-allowed !important; pointer-events: none; }
-
-/* ── INPUTS ── */
 .input {
-  border: 2px solid var(--border); border-radius: 10px;
+  border: 2px solid #e2e8f0; border-radius: 10px;
   padding: 10px 14px; font-size: 14px; width: 100%;
-  font-family: 'Sora', sans-serif;
-  color: var(--text);
-  background: var(--surface);
-  outline: none;
+  font-family: 'Sora', sans-serif; color: #0f172a;
+  transition: border-color .2s; outline: none;
 }
 .input:focus { border-color: var(--accent2); }
-.input::placeholder { color: var(--text4); }
 
-/* ── CARRITO ── */
-.cart-row {
-  display: grid; grid-template-columns: 1fr auto auto;
-  gap: 8px; align-items: center; padding: 10px 0;
-  border-bottom: 1px solid var(--border2);
-}
-.qty-btn {
-  width: 30px; height: 30px; border-radius: 8px;
-  border: 2px solid var(--border);
-  background: var(--surface); color: var(--text);
-  cursor: pointer; font-size: 17px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Sora', sans-serif;
-}
-.qty-btn:hover { background: var(--hover); }
-.qty-display {
-  font-family: 'JetBrains Mono', monospace; font-weight: 700;
-  min-width: 28px; text-align: center; font-size: 15px; color: var(--text);
-}
-
-/* ── MODALES ── */
-#modal, #restockModal, #expenseModal {
+#modal {
   display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,.55); z-index: 200;
+  background: rgba(0,0,0,.5); z-index: 200;
   align-items: center; justify-content: center; padding: 16px;
 }
-#modal.show, #restockModal.show, #expenseModal.show { display: flex; }
-
-#modal-box, #expenseModal-box {
-  background: var(--surface); border-radius: 20px; padding: 24px;
+#modal.show { display: flex; }
+#modal-box {
+  background: #fff; border-radius: 20px; padding: 24px;
   width: 100%; max-width: 420px;
-  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
   animation: slideUp .25s ease;
 }
-#restockModal > div {
-  background: var(--surface); border-radius: 20px; padding: 24px;
-  width: 100%; max-width: 340px;
-  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-label { font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 5px; display: block; letter-spacing: 0.3px; text-transform: uppercase; }
+
+#restockModal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.5); z-index: 200;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#restockModal.show { display: flex; }
+
+/* ── EXPENSE MODAL ── */
+#expenseModal {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.5); z-index: 200;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#expenseModal.show { display: flex; }
+#expenseModal-box {
+  background: #fff; border-radius: 20px; padding: 24px;
+  width: 100%; max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
   animation: slideUp .25s ease;
 }
 
-@keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to   { transform: translateY(0);    opacity: 1; }
+/* ── EXPENSE CARDS ── */
+.expense-card {
+  background: #fff;
+  border-radius: 14px;
+  border: 2px solid #e2e8f0;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: border-color .2s, box-shadow .2s;
 }
-.modal-label {
-  font-size: 12px; font-weight: 700; color: var(--text3);
-  margin-bottom: 5px; display: block;
-  letter-spacing: .3px; text-transform: uppercase;
+.expense-card:hover {
+  border-color: #fbbf24;
+  box-shadow: 0 4px 16px rgba(251,191,36,.12);
 }
-
-/* ── TOAST ── */
-#toast {
-  position: fixed; bottom: 24px; left: 50%;
-  transform: translateX(-50%) translateY(80px);
-  background: var(--text); color: var(--surface);
-  padding: 12px 22px; border-radius: 30px;
-  font-weight: 600; font-size: 14px; z-index: 300;
-  transition: transform .3s cubic-bezier(.4,0,.2,1);
-  white-space: nowrap; max-width: 90vw; text-align: center;
-}
-#toast.show        { transform: translateX(-50%) translateY(0); }
-#toast.toast-error { background: #dc2626; color: #fff; }
-#toast.toast-ok    { background: #0f172a; color: #fff; }
-@media (prefers-color-scheme: dark) {
-  #toast.toast-ok { background: #f1f5f9; color: #0f172a; }
-}
-@media (min-width: 1024px) {
-  #toast { left: calc(var(--sidebar-w) + 50%); }
-}
-
-/* ── BADGES ── */
-.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
-.badge-red    { background: var(--bg-red);    color: var(--text-red); }
-.badge-green  { background: var(--bg-green);  color: var(--text-green); }
-.badge-blue   { background: var(--bg-blue);   color: var(--text-blue); }
-.badge-yellow { background: var(--bg-yellow); color: var(--text-yellow); }
-
-/* ── STAT CARDS ── */
-.stat-card  { border-radius: 12px; padding: 14px; }
-.stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
-@media (min-width: 1024px) {
-  .stat-card  { padding: 18px; border-radius: 14px; }
-  .stat-value { font-size: 24px; }
-}
-
-/* ── FILTROS DE CATEGORÍA ── */
-.cat-btn {
-  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
-  border: 2px solid var(--border); background: var(--surface); color: var(--text2);
-  cursor: pointer; white-space: nowrap; font-family: 'Sora', sans-serif;
-}
-.cat-btn.active {
-  background: var(--text); border-color: var(--text); color: var(--surface);
-}
-.cats-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
-.cats-scroll::-webkit-scrollbar { display: none; }
 
 /* ── EXPENSE FILTER TABS ── */
 .exp-tab {
   padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
-  border: 2px solid var(--border); background: var(--surface); color: var(--text2);
-  cursor: pointer; white-space: nowrap; font-family: 'Sora', sans-serif;
+  border: 2px solid #e2e8f0; background: #fff; cursor: pointer; color: #475569;
+  transition: all .2s; white-space: nowrap; font-family: 'Sora', sans-serif;
 }
 .exp-tab.active { background: #f59e0b; border-color: #f59e0b; color: #fff; }
 
-/* ── TIPOGRAFÍA GENERAL ── */
-.sec-title { font-size: 17px; font-weight: 700; color: var(--text); }
-@media (min-width: 1024px) { .sec-title { font-size: 20px; } }
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: #0f172a; color: #fff; padding: 12px 22px; border-radius: 30px;
+  font-weight: 600; font-size: 14px; z-index: 300;
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  white-space: nowrap; max-width: 90vw; text-align: center;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.toast-error { background: #dc2626; }
+#toast.toast-ok   { background: #0f172a; }
 
-.cat-chip {
-  background: var(--surface3); color: var(--text3);
-  padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600;
+@media (min-width: 1024px) {
+  #toast {
+    left: calc(var(--sidebar-w) + 50%);
+    transform: translateX(-50%) translateY(80px);
+  }
+  #toast.show {
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
-/* ── INV CARDS ── */
+.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.badge-red { background: #fee2e2; color: #dc2626; }
+.badge-green { background: #dcfce7; color: #16a34a; }
+.badge-blue { background: #dbeafe; color: #2563eb; }
+.badge-yellow { background: #fef3c7; color: #92400e; }
+
+.stat-card { border-radius: 12px; padding: 14px; }
+.stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+@media (min-width: 1024px) {
+  .stat-card { padding: 18px; border-radius: 14px; }
+  .stat-value { font-size: 24px; }
+}
+
+.cat-btn {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  border: 2px solid #e2e8f0; background: #fff; cursor: pointer; color: #475569;
+  transition: all .2s; white-space: nowrap; font-family: 'Sora', sans-serif;
+}
+.cat-btn.active { background: var(--dark); border-color: var(--dark); color: #fff; }
+
+.cats-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.cats-scroll::-webkit-scrollbar { display: none; }
+
+.sec-title { font-size: 17px; font-weight: 700; color: #0f172a; }
+
+@media (min-width: 1024px) {
+  .sec-title { font-size: 20px; }
+}
+
+.cat-chip { background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+
 .inv-card {
-  background: var(--surface); border-radius: 12px; padding: 14px;
-  border: 2px solid var(--border); margin-bottom: 12px;
-}
-@media (min-width: 1024px) { .inv-card { padding: 20px; border-radius: 16px; } }
-.inv-card.best { border-color: var(--accent) !important; background: var(--inv-best-bg); }
-.inv-card.zero { border-color: var(--loss-border) !important; background: var(--inv-zero-bg); }
-
-/* ── EXPENSE CARDS ── */
-.expense-card {
-  background: var(--surface); border-radius: 14px;
-  border: 2px solid var(--border); padding: 16px; margin-bottom: 12px;
-}
-.expense-card:hover {
-  border-color: var(--expense-border-hover);
-  box-shadow: 0 4px 16px rgba(251,191,36,.12);
+  background: #fff; border-radius: 12px; padding: 14px;
+  border: 2px solid #e2e8f0; transition: border-color .2s;
+  margin-bottom: 12px;
 }
 
-/* ── SALE CARDS / ALERTS ── */
-.sale-card {
-  background: var(--surface); border-radius: 12px; padding: 16px;
-  border: 2px solid var(--border); margin-bottom: 12px;
-}
-.alert-box {
-  background: var(--bg-yellow); border: 2px solid #fde047;
-  border-radius: 10px; padding: 10px 14px;
-  margin-bottom: 12px; font-size: 12px; font-weight: 600; color: var(--text-yellow);
-}
-@media (prefers-color-scheme: dark) {
-  .alert-box { border-color: rgba(234,179,8,.4); }
+@media (min-width: 1024px) {
+  .inv-card {
+    padding: 20px;
+    border-radius: 16px;
+  }
 }
 
-/* ── DAY SECTION HEADERS ── */
-.day-section-header { display:flex; align-items:center; gap:10px; margin:18px 0 10px; }
-.day-section-label  { font-size:12px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; }
-.day-section-line   { flex:1; height:1px; background:var(--border); }
+.inv-card.best { border-color: var(--accent) !important; background: #f0fdf4; }
+.inv-card.zero { border-color: #fca5a5 !important; background: #fff8f8; }
 
-/* ── HAMBURGER ── */
-.hamburger { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; }
-.hamburger:hover { background: var(--hover); }
-.hamburger rect  { fill: var(--text); }
+.sale-card { background: #fff; border-radius: 12px; padding: 16px; border: 2px solid #e2e8f0; margin-bottom: 12px; }
+.alert-box { background: #fef9c3; border: 2px solid #fde047; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; font-weight: 600; color: #854d0e; }
 
-/* ── ANIMACIONES ── */
+.day-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 10px;
+}
+.day-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.day-section-line {
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.hamburger { background: none; border: none; cursor: pointer; padding: 6px; border-radius: 8px; transition: background .2s; }
+.hamburger:hover { background: #f1f5f9; }
+
 @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
 .pop { animation: pop .2s; }
 
-/* ── SKELETON ── */
+.btn-loading {
+  opacity: 0.7;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
+/* ── SUMMARY LOADING SKELETON ── */
 .skeleton {
-  background: linear-gradient(90deg, var(--sk-from) 25%, var(--sk-to) 50%, var(--sk-from) 75%);
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s infinite;
   border-radius: 8px;
 }
 @keyframes shimmer {
-  0%   { background-position: 200% 0; }
+  0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
-/* ── MISC ── */
-#saleSummaryBox { font-family: monospace; overflow: hidden; position: relative; z-index: 1; }
-
-/* ── MODAL RESTOCK INNER ── */
-.restock-inner {
-  background: var(--surface);
-  border-radius: 20px;
-  padding: 24px;
-  width: 100%;
-  max-width: 340px;
-  box-shadow: 0 20px 60px rgba(0,0,0,.35);
-  animation: slideUp .25s ease;
+/* ── NAV DIVIDER ── */
+.nav-divider {
+  height: 1px;
+  background: rgba(255,255,255,.08);
+  margin: 6px 14px;
 }
-.restock-name { color: var(--accent); }
-.restock-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; color: var(--text); }
-.restock-sub   { font-size: 14px; color: var(--text2); margin-bottom: 14px; }
-
-/* ── TOTAL + VUELTO en carrito ── */
-.cart-total-label { font-weight: 600; color: var(--text3); }
-.cart-total-value {
-  font-size: 26px; font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--text);
-}
-.cart-change-box {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 14px;
-  background: var(--inv-best-bg);
-  border-radius: 10px;
-  margin-bottom: 14px;
-}
-.cart-change-label { font-weight: 600; color: var(--accent-text); font-size: 14px; }
-.cart-change-value {
-  font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 20px;
-  color: var(--accent-text);
-}
-
-/* ── FINANZAS separador ── */
-.fin-sep-label { font-size: 12px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
-.fin-filter-label { font-size: 11px; color: var(--text4); font-weight: 600; }
-
-/* ── RANKING ── */
-.ranking-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border2);
-}
-.ranking-name { font-weight: 600; color: var(--text); font-size: 14px; }
-.ranking-divider { margin-top: 20px; padding-top: 16px; border-top: 2px solid var(--border2); }
-.ranking-title { font-weight: 700; font-size: 14px; color: var(--text); display: block; margin-bottom: 10px; }
-
-/* ── EXPENSE BY CAT ROW ── */
-.exp-cat-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 10px;
-  background: var(--bg-yellow);
-  border-radius: 8px;
-  margin-bottom: 6px;
-}
-.exp-cat-name  { font-size: 13px; font-weight: 600; color: var(--text-yellow); }
-.exp-cat-value { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--text-yellow); font-weight: 700; }
-
-/* ── CAJA BOX ── */
-#cajaBox {
-  background: var(--caja-bg) !important;
-  border: 2px solid var(--caja-border) !important;
-}
-.caja-title  { font-size: 12px; font-weight: 700; color: var(--caja-title); letter-spacing: 0.5px; margin-bottom: 4px; }
-.caja-value  { font-size: 32px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--caja-value); }
-.caja-detail { margin-top: 8px; font-size: 13px; color: var(--caja-text); line-height: 1.8; }
-.caja-inicial-title { font-size: 11px; font-weight: 700; color: var(--caja-title); margin-bottom: 6px; letter-spacing: 0.4px; }
-.caja-inicial-hint  { font-size: 10px; color: var(--caja-sub); margin-top: 4px; }
-
-/* ── PREDICCIÓN ── */
-#predictionBox {
-  background: var(--pred-bg) !important;
-  border: 2px solid var(--pred-border) !important;
-}
-.pred-title    { font-weight: 700; font-size: 14px; color: var(--text); }
-.pred-day-label{ font-size: 10px; font-weight: 700; color: var(--text3); margin-bottom: 4px; }
-.pred-note     { margin-top: 10px; font-size: 11px; color: var(--text3); font-style: italic; }
-
-/* ── SALE DETAIL TEXT ── */
-.sale-item-name   { font-weight: 700; font-size: 15px; color: var(--text); margin-bottom: 4px; }
-.sale-item-meta   { font-size: 11px; color: var(--text4); font-family: 'JetBrains Mono', monospace; }
-.sale-id          { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
-.sale-date        { font-size: 12px; color: var(--text3); margin-bottom: 10px; }
-.sale-detail-text { font-size: 13px; line-height: 1.8; color: var(--text2); }
-.sale-detail-bold { color: var(--text); font-weight: 700; }
 
 </style>
 </head>
@@ -1005,9 +841,9 @@ section { padding: 18px; }
   <div style="display:flex; gap:12px; align-items:center;">
     <button class="hamburger" onclick="toggleMenu()">
       <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
-        <rect width="22" height="2.5" rx="1.25"/>
-        <rect y="7.75" width="22" height="2.5" rx="1.25"/>
-        <rect y="15.5" width="22" height="2.5" rx="1.25"/>
+        <rect width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+        <rect y="7.75" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
+        <rect y="15.5" width="22" height="2.5" rx="1.25" fill="#0f172a"/>
       </svg>
     </button>
     <span class="logo">POS <span>PRO</span></span>
@@ -1018,7 +854,7 @@ section { padding: 18px; }
     <span id="syncText">Sincronizando...</span>
   </div>
 
-  <div style="font-size:12px; font-weight:600; color:var(--text3); white-space:nowrap;" id="date"></div>
+  <div style="font-size:12px; font-weight:600; color:#64748b; white-space:nowrap;" id="date"></div>
 </header>
 
 <!-- TOAST -->
@@ -1027,7 +863,7 @@ section { padding: 18px; }
 <!-- MODAL PRODUCTO -->
 <div id="modal">
   <div id="modal-box">
-    <h3 id="modal-title" style="font-size:17px; font-weight:700; margin-bottom:20px; color:var(--text);"></h3>
+    <h3 id="modal-title" style="font-size:17px; font-weight:700; margin-bottom:20px; color:#0f172a;"></h3>
     <div style="display:flex; flex-direction:column; gap:14px;">
       <div>
         <label class="modal-label">Nombre</label>
@@ -1056,14 +892,14 @@ section { padding: 18px; }
     </div>
     <div id="modal-error" style="
       display:none;
-      background:var(--bg-red);
-      border:2px solid var(--loss-border);
+      background:#fef2f2;
+      border:2px solid #fca5a5;
       border-radius:8px;
       padding:10px 14px;
       margin-top:14px;
       font-size:12px;
       font-weight:600;
-      color:var(--text-red);
+      color:#dc2626;
       line-height:1.6;
     "></div>
     <div style="display:flex; gap:10px; margin-top:16px;">
@@ -1075,9 +911,9 @@ section { padding: 18px; }
 
 <!-- MODAL RESTOCK -->
 <div id="restockModal">
-  <div class="restock-inner">
-    <h3 class="restock-title">📦 Agregar stock</h3>
-    <p class="restock-sub">Producto: <b id="restock-name" class="restock-name"></b></p>
+  <div style="background:#fff; border-radius:20px; padding:24px; width:100%; max-width:340px; box-shadow:0 20px 60px rgba(0,0,0,.25); animation:slideUp .25s ease;">
+    <h3 style="font-size:16px; font-weight:700; margin-bottom:16px; color:#0f172a;">📦 Agregar stock</h3>
+    <p style="font-size:14px; color:#475569; margin-bottom:14px;">Producto: <b id="restock-name" style="color:var(--accent);"></b></p>
     <label class="modal-label">Cantidad a agregar</label>
     <input id="restock-qty" class="input" type="number" min="1" placeholder="Ej: 50" style="margin-bottom:16px;">
     <div style="display:flex; gap:10px;">
@@ -1090,7 +926,7 @@ section { padding: 18px; }
 <!-- MODAL GASTO (crear / editar) -->
 <div id="expenseModal">
   <div id="expenseModal-box">
-    <h3 id="expenseModal-title" style="font-size:17px; font-weight:700; margin-bottom:20px; color:var(--text);">💸 Nuevo Gasto</h3>
+    <h3 id="expenseModal-title" style="font-size:17px; font-weight:700; margin-bottom:20px; color:#0f172a;">💸 Nuevo Gasto</h3>
     <div style="display:flex; flex-direction:column; gap:14px;">
       <div>
         <label class="modal-label">Descripción</label>
@@ -1109,14 +945,14 @@ section { padding: 18px; }
     </div>
     <div id="expense-error" style="
       display:none;
-      background:var(--bg-red);
-      border:2px solid var(--loss-border);
+      background:#fef2f2;
+      border:2px solid #fca5a5;
       border-radius:8px;
       padding:10px 14px;
       margin-top:14px;
       font-size:12px;
       font-weight:600;
-      color:var(--text-red);
+      color:#dc2626;
       line-height:1.6;
     "></div>
     <div style="display:flex; gap:10px; margin-top:16px;">
@@ -1139,7 +975,7 @@ section { padding: 18px; }
   overflow-y:auto;
 ">
 <div id="saleSummaryBox" style="
-  background:var(--ticket-bg);
+  background:#fff;
   border-radius:24px;
   width:100%;
   max-width:400px;
@@ -1149,20 +985,20 @@ section { padding: 18px; }
 ">
 
   <!-- CABECERA ROSA -->
-  <div style="background:linear-gradient(135deg,var(--ticket-pink),var(--ticket-pink-light)); padding:22px 20px 18px; text-align:center;">
+  <div style="background:linear-gradient(135deg,#e91e8c,#f06292); padding:22px 20px 18px; text-align:center;">
     <div style="font-size:28px; margin-bottom:4px;">🧾</div>
     <div style="font-size:20px; font-weight:700; color:#fff; letter-spacing:-0.3px;">Ticket de Venta</div>
     <div id="ticketVentaNum" style="font-size:14px; color:rgba(255,255,255,.85); margin-top:4px; font-weight:600;"></div>
   </div>
 
   <!-- CUERPO -->
-  <div style="background:var(--ticket-bg); padding:16px 18px;">
+  <div style="background:#fff5f9; padding:16px 18px;">
 
     <!-- Fecha + ID -->
     <div id="ticketMeta" style="margin-bottom:14px;"></div>
 
     <!-- Tabla de productos -->
-    <div style="background:var(--surface); border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(233,30,140,.08);">
+    <div style="background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(233,30,140,.08);">
 
       <!-- Header tabla -->
       <div style="
@@ -1170,34 +1006,34 @@ section { padding: 18px; }
         grid-template-columns:1fr auto auto auto;
         gap:8px;
         padding:10px 14px;
-        border-bottom:2px solid var(--ticket-border);
+        border-bottom:2px solid #fce4ec;
         align-items:center;
       ">
-        <div style="font-size:12px; font-weight:700; color:var(--ticket-pink); text-transform:uppercase; letter-spacing:0.4px;">🛒 Producto</div>
-        <div style="font-size:12px; font-weight:700; color:var(--ticket-pink); text-transform:uppercase; text-align:center;">Cant</div>
-        <div style="font-size:12px; font-weight:700; color:var(--ticket-pink); text-transform:uppercase; text-align:right;">Unit</div>
-        <div style="font-size:12px; font-weight:700; color:var(--ticket-pink); text-transform:uppercase; text-align:right;">Total</div>
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; letter-spacing:0.4px;">🛒 Producto</div>
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; text-align:center;">Cant</div>
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; text-align:right;">Unit</div>
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; text-align:right;">Total</div>
       </div>
 
       <!-- Filas de productos -->
       <div id="ticketItems"></div>
 
       <!-- Separador -->
-      <div style="height:1px; background:var(--ticket-border); margin:0 14px;"></div>
+      <div style="height:1px; background:#fce4ec; margin:0 14px;"></div>
 
       <!-- Totales -->
       <div style="padding:12px 14px; display:flex; flex-direction:column; gap:6px;">
         <div style="display:grid; grid-template-columns:95px auto;">
-          <span style="font-size:14px; font-weight:600; color:var(--text2);">💰 Total:</span>
-          <span id="ticketTotal" style="font-size:15px; font-weight:700; color:var(--text); font-family:'JetBrains Mono',monospace;"></span>
+          <span style="font-size:14px; font-weight:600; color:#374151;">💰 Total:</span>
+          <span id="ticketTotal" style="font-size:15px; font-weight:700; color:#0f172a; font-family:'JetBrains Mono',monospace;"></span>
         </div>
         <div style="display:grid; grid-template-columns:95px auto;">
-          <span style="font-size:14px; font-weight:600; color:var(--text2);">💵 Pagó:</span>
-          <span id="ticketPaid" style="font-size:15px; font-weight:700; color:var(--text); font-family:'JetBrains Mono',monospace;"></span>
+          <span style="font-size:14px; font-weight:600; color:#374151;">💵 Pagó:</span>
+          <span id="ticketPaid" style="font-size:15px; font-weight:700; color:#0f172a; font-family:'JetBrains Mono',monospace;"></span>
         </div>
         <div style="display:grid; grid-template-columns:95px auto;">
-          <span style="font-size:14px; font-weight:600; color:var(--text2);">💝 Vuelto:</span>
-          <span id="ticketChange" style="font-size:15px; font-weight:700; color:var(--ticket-pink); font-family:'JetBrains Mono',monospace;"></span>
+          <span style="font-size:14px; font-weight:600; color:#374151;">💝 Vuelto:</span>
+          <span id="ticketChange" style="font-size:15px; font-weight:700; color:#e91e8c; font-family:'JetBrains Mono',monospace;"></span>
         </div>
       </div>
 
@@ -1205,31 +1041,31 @@ section { padding: 18px; }
 
     <!-- Gracias -->
     <div style="text-align:center; margin-top:16px; padding:10px 0;">
-      <div style="font-size:14px; font-weight:600; color:var(--ticket-pink);">Gracias por su compra ✨</div>
-      <div style="font-size:13px; font-weight:600; color:var(--ticket-pink); margin-top:2px;">¡Vuelva pronto!</div>
+      <div style="font-size:14px; font-weight:600; color:#e91e8c;">Gracias por su compra ✨</div>
+      <div style="font-size:13px; font-weight:600; color:#e91e8c; margin-top:2px;">¡Vuelva pronto!</div>
     </div>
 
   </div>
 
   <!-- BOTONES -->
-  <div style="background:var(--ticket-footer-bg); padding:16px 18px; display:flex; gap:10px;">
+  <div style="background:#fce4ec; padding:16px 18px; display:flex; gap:10px;">
     <button onclick="printTicket()" style="
       flex:1; padding:12px 8px; border-radius:50px;
-      border:2px solid var(--ticket-btn-color); background:var(--surface);
-      color:var(--ticket-btn-color); font-weight:700; font-size:13px;
+      border:2px solid #e91e8c; background:#fff;
+      color:#e91e8c; font-weight:700; font-size:13px;
       cursor:pointer; font-family:'Sora',sans-serif;
       display:flex; align-items:center; justify-content:center; gap:6px;
     ">🖨️ Imprimir</button>
     <button onclick="shareTicket()" style="
       flex:1; padding:12px 8px; border-radius:50px;
-      border:2px solid var(--ticket-btn-color); background:var(--surface);
-      color:var(--ticket-btn-color); font-weight:700; font-size:13px;
+      border:2px solid #e91e8c; background:#fff;
+      color:#e91e8c; font-weight:700; font-size:13px;
       cursor:pointer; font-family:'Sora',sans-serif;
       display:flex; align-items:center; justify-content:center; gap:6px;
     ">📤 Compartir</button>
     <button onclick="closeSummary()" style="
       flex:1; padding:12px 8px; border-radius:50px;
-      border:none; background:var(--ticket-pink);
+      border:none; background:#e91e8c;
       color:#fff; font-weight:700; font-size:13px;
       cursor:pointer; font-family:'Sora',sans-serif;
     ">Cerrar</button>
@@ -1250,14 +1086,13 @@ section { padding: 18px; }
         top:42px;
         left:0;
         right:0;
-        background:var(--surface);
-        border:2px solid var(--border);
+        background:#fff;
+        border:2px solid #e2e8f0;
         border-radius:10px;
         display:none;
         max-height:160px;
         overflow:auto;
         z-index:50;
-        box-shadow: 0 8px 24px rgba(0,0,0,.12);
         "></div>
       </div>
     </div>
@@ -1270,15 +1105,15 @@ section { padding: 18px; }
     <span class="sec-title">🧾 Carrito</span>
     <div id="cart" style="margin-top:10px; min-height:48px;"></div>
 
-    <div style="margin-top:12px; border-top:2px solid var(--border2); padding-top:14px;">
+    <div style="margin-top:12px; border-top:2px solid #f1f5f9; padding-top:14px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <span class="cart-total-label">Total</span>
-        <span id="total" class="cart-total-value">$0.00</span>
+        <span style="font-weight:600; color:#64748b;">Total</span>
+        <span id="total" style="font-size:26px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#0f172a;">$0.00</span>
       </div>
       <input id="paid" type="number" class="input" placeholder="💵 Monto que paga el cliente..." style="margin-bottom:10px;">
-      <div class="cart-change-box">
-        <span class="cart-change-label">Vuelto</span>
-        <span id="change" class="cart-change-value">$0.00</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f0fdf4; border-radius:10px; margin-bottom:14px;">
+        <span style="font-weight:600; color:#16a34a; font-size:14px;">Vuelto</span>
+        <span id="change" style="font-weight:700; font-family:'JetBrains Mono',monospace; font-size:20px; color:#16a34a;">$0.00</span>
       </div>
       <button id="confirmSaleBtn" onclick="confirmSale()" class="btn-confirm">
         ✅ Confirmar Venta
@@ -1317,9 +1152,14 @@ section { padding: 18px; }
         id="searchSales"
         class="input"
         placeholder="Buscar ventas (ej: pepsi churro arroz)"
-        style="padding-left:40px;"
-        onfocus="this.style.borderColor='var(--accent2)'"
-        onblur="this.style.borderColor='var(--border)'"
+        style="
+          padding-left:40px;
+          background:#fff;
+          border:2px solid #e2e8f0;
+          transition:all .2s;
+        "
+        onfocus="this.style.borderColor='#3b82f6'"
+        onblur="this.style.borderColor='#e2e8f0'"
       >
       <span style="
         position:absolute;
@@ -1327,7 +1167,7 @@ section { padding: 18px; }
         top:50%;
         transform:translateY(-50%);
         font-size:14px;
-        color:var(--text4);
+        color:#94a3b8;
         pointer-events:none;
       ">
         🔍
@@ -1347,24 +1187,25 @@ section { padding: 18px; }
     </button>
   </div>
 
+  <!-- ── PANEL OPERATIVO (local, desde products + sales) ── -->
   <div id="statsPanel"></div>
 
-  <!-- CAJA DISPONIBLE -->
-  <div id="cajaBox" class="card" style="margin-top:16px; margin-bottom:4px;">
+  <!-- ── CAJA DISPONIBLE ── -->
+  <div id="cajaBox" class="card" style="background:#ecfdf5; border:2px solid #22c55e; margin-top:16px; margin-bottom:4px;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
       <div style="flex:1; min-width:180px;">
-        <div class="caja-title">💰 CAJA DISPONIBLE</div>
-        <div id="cajaTotal" class="caja-value">$0.00</div>
-        <div class="caja-detail">
+        <div style="font-size:12px; font-weight:700; color:#166534; letter-spacing:0.5px; margin-bottom:4px;">💰 CAJA DISPONIBLE</div>
+        <div id="cajaTotal" style="font-size:32px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#15803d;">$0.00</div>
+        <div style="margin-top:8px; font-size:13px; color:#374151; line-height:1.8;">
           📦 Capital (costos): <b id="cajaCapital" style="font-family:'JetBrains Mono',monospace;">$0.00</b><br>
           💸 Gastos operativos: <b id="cajaGastos" style="font-family:'JetBrains Mono',monospace;">$0.00</b><br>
-          📈 Ganancia real: <b id="cajaGanancia" style="font-family:'JetBrains Mono',monospace;">$0.00</b>
+          📈 Ganancia real: <b id="cajaGanancia" style="font-family:'JetBrains Mono',monospace; color:#15803d;">$0.00</b>
         </div>
       </div>
       <div style="min-width:160px;">
-        <div class="caja-inicial-title">💵 CAJA INICIAL</div>
+        <div style="font-size:11px; font-weight:700; color:#166534; margin-bottom:6px; letter-spacing:0.4px;">💵 CAJA INICIAL</div>
         <div style="display:flex; align-items:center; gap:6px;">
-          <span style="font-size:13px; color:var(--text2); font-weight:600;">$</span>
+          <span style="font-size:13px; color:#374151; font-weight:600;">$</span>
           <input
             id="cajaInicial"
             type="number"
@@ -1377,34 +1218,38 @@ section { padding: 18px; }
             title="Dinero con el que abriste el día"
           >
         </div>
-        <div class="caja-inicial-hint">Editá para ver tu caja real</div>
+        <div style="font-size:10px; color:#6b7280; margin-top:4px;">Editá para ver tu caja real</div>
       </div>
     </div>
+    <!-- ALERTAS -->
     <div id="cajaAlertas" style="margin-top:12px;"></div>
   </div>
 
-  <!-- PREDICCIÓN -->
-  <div id="predictionBox" style="display:none; border-radius:14px; padding:16px; margin-bottom:4px;"></div>
-
-  <!-- SEPARADOR FINANCIERO REAL -->
-  <div style="display:flex; align-items:center; gap:10px; margin: 20px 0 4px;">
-    <span class="fin-sep-label">💰 Finanzas reales</span>
-    <div style="flex:1; height:1px; background:var(--border);"></div>
-    <span id="summaryFilterLabel" class="fin-filter-label"></span>
+  <!-- ── PREDICCIÓN ── -->
+  <div id="predictionBox" style="display:none;" class="card" style="margin-bottom:4px; background:#f0f9ff; border:2px solid #38bdf8;">
   </div>
 
+  <!-- ── SEPARADOR FINANCIERO REAL ── -->
+  <div style="display:flex; align-items:center; gap:10px; margin: 20px 0 4px;">
+    <span style="font-size:12px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap;">💰 Finanzas reales</span>
+    <div style="flex:1; height:1px; background:#e2e8f0;"></div>
+    <span id="summaryFilterLabel" style="font-size:11px; color:#94a3b8; font-weight:600;"></span>
+  </div>
+
+  <!-- ── SUMMARY PANEL (desde /api/summary, incluye gastos) ── -->
   <div id="summaryPanel"></div>
 
-  <!-- GRÁFICAS -->
+  <!-- ── GRÁFICAS ── -->
   <div class="card" style="margin-top:4px;">
-    <span style="font-weight:700; font-size:14px; color:var(--text);">📈 Ventas por día</span>
+    <span style="font-weight:700; font-size:14px; color:#0f172a;">📈 Ventas por día</span>
     <canvas id="salesChart" style="margin-top:12px; width:100%; height:160px;"></canvas>
   </div>
   <div class="card" style="margin-top:10px;">
-    <span style="font-weight:700; font-size:14px; color:var(--text);">💰 Ganancia por día</span>
-    <canvas id="profitChart" style="margin-top:12px; width:100%; height:160px;"></canvas>
+    <span style="font-weight:700;font-size:14px;color:#0f172a;">💰 Ganancia por día</span>
+    <canvas id="profitChart" style="margin-top:12px;width:100%;height:160px;"></canvas>
   </div>
 
+  <!-- ── RANKING + GASTOS POR CATEGORÍA ── -->
   <div id="rankingList" class="card" style="margin-top:4px;"></div>
 
 </section>
@@ -1412,11 +1257,13 @@ section { padding: 18px; }
 <!-- ========== GASTOS ========== -->
 <section id="expenses" class="hidden">
 
+  <!-- Cabecera -->
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
     <span class="sec-title">💸 Gastos</span>
     <button onclick="openExpenseModal()" class="btn-primary" style="width:auto; padding:10px 18px; background:#f59e0b;">+ Nuevo</button>
   </div>
 
+  <!-- Resumen rápido -->
   <div id="expensesSummaryBar" style="
     display:grid;
     grid-template-columns: repeat(3, 1fr);
@@ -1424,8 +1271,10 @@ section { padding: 18px; }
     margin-bottom:16px;
   "></div>
 
+  <!-- Filtro por categoría -->
   <div class="cats-scroll" id="expenseCatFilter" style="margin-bottom:14px;"></div>
 
+  <!-- Buscador -->
   <div style="position:relative; margin-bottom:16px;">
     <input
       id="searchExpenses"
@@ -1433,9 +1282,10 @@ section { padding: 18px; }
       placeholder="🔎 Buscar gasto..."
       style="padding-left:40px;"
     >
-    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color:var(--text4); pointer-events:none;">🔍</span>
+    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; pointer-events:none;">🔍</span>
   </div>
 
+  <!-- Lista -->
   <div id="expensesList"></div>
 
 </section>
@@ -1450,7 +1300,7 @@ const state = {
   cart: [],
   sales: [],
   expenses: [],
-  summary: null
+  summary: null   // ← datos de /api/summary: { sales, costs, expenses, profit, expenses_by_category[] }
 }
 
 // =========== LOCKS ===========
@@ -1458,7 +1308,7 @@ let lock = false
 let syncing = false
 let loadingProducts = false
 let lastSyncTime = null
-let savingExpense = false
+let savingExpense = false   // ← bloquea doble submit en gastos
 
 const dirty = {
   products: false,
@@ -1545,6 +1395,7 @@ let editingExpenseId = null
 function onCajaInicialChange(){
   const val = parseFloat(document.getElementById("cajaInicial")?.value) || 0
   localStorage.setItem("cajaInicial", val)
+  // Re-renderizar caja si el resumen ya existe
   if(state.summary){
     const res = calcularResumen({ ventas: state.sales, gastos: state.expenses })
     renderCaja(res)
@@ -1578,20 +1429,34 @@ function formatDate(str){
   return `${day}/${month}/${year}, ${hours}:${minutes} ${ampm}`
 }
 
+// =========================================================
+// ZONA HORARIA — fuente única para TODAS las fechas visibles
+// ---------------------------------------------------------
+// toISOString() solo para GUARDAR en el backend.
+// Para AGRUPAR, MOSTRAR y COMPARAR → siempre localDay().
+// =========================================================
 const TZ = "America/El_Salvador"
 
+/**
+ * Devuelve "YYYY-MM-DD" en zona horaria local (El Salvador).
+ * Nunca usa UTC para agrupar ni comparar días.
+ */
 function localDay(dateInput){
   const d = dateInput instanceof Date ? dateInput : new Date(dateInput)
   if(isNaN(d.getTime())) return null
+  // Intl.DateTimeFormat garantiza la conversión de zona horaria correcta
   const parts = new Intl.DateTimeFormat("sv-SE", {
     timeZone: TZ,
     year: "numeric", month: "2-digit", day: "2-digit"
   }).formatToParts(d)
   const p = {}
   parts.forEach(x => { p[x.type] = x.value })
-  return `${p.year}-${p.month}-${p.day}`
+  return `${p.year}-${p.month}-${p.day}`  // "2026-03-23"
 }
 
+/**
+ * Devuelve "DD/M" legible para labels de gráficas (ej: "23/3").
+ */
 function localDayLabel(dateInput){
   const iso = localDay(dateInput)
   if(!iso) return ""
@@ -1603,6 +1468,7 @@ function getDateKey(str){
   if(!str) return null
   const d = new Date(str)
   if(!isNaN(d.getTime())){
+    // Usar zona horaria local, no UTC
     const iso = localDay(d)
     if(!iso) return null
     const [, m, dd] = iso.split("-")
@@ -1615,6 +1481,7 @@ function getDayLabel(dateStr){
   const d = new Date(dateStr)
   if(isNaN(d.getTime())) return "Antiguas"
 
+  // Comparar días en zona horaria local
   const dKey    = localDay(d)
   const hoyKey  = localDay(new Date())
   const ayerD   = new Date(); ayerD.setDate(ayerD.getDate() - 1)
@@ -1623,9 +1490,11 @@ function getDayLabel(dateStr){
   if(dKey === hoyKey)  return "Hoy"
   if(dKey === ayerKey) return "Ayer"
 
+  // Esta semana: últimos 7 días
   const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7)
   if(d >= hace7) return "Esta semana"
 
+  // Este mes: mismo año-mes local
   const [dYear, dMonth]   = (dKey  || "").split("-")
   const [hYear, hMonth]   = (hoyKey|| "").split("-")
   if(dYear === hYear && dMonth === hMonth) return "Este mes"
@@ -1723,17 +1592,28 @@ async function loadProducts(force = false){
 
 }
 
+// =========================================================
+// LOAD SUMMARY — /api/summary
+// ─────────────────────────────────────────────────────────
+// YA NO ES FUENTE DE VERDAD para números en pantalla.
+// Solo se llama en background para:
+//   - guardar el filtro histórico si el usuario lo aplica
+//   - analytics futuras
+// Los números reales siempre vienen de calcularResumen()
+// =========================================================
 async function loadSummary(){
   try {
     const data = await api("/api/summary")
+    // Solo guardamos el filtro histórico, no los números
     state.summary = { filter: data.filter || { desde: null, hasta: null } }
   } catch(err) {
+    // Silencioso — no es crítico. Los números ya están en frontend.
     state.summary = { filter: { desde: null, hasta: null } }
   }
 }
 
 // =========================================================
-// EXPENSES
+// EXPENSES — LOAD, RENDER, CRUD
 // =========================================================
 
 async function loadExpenses(){
@@ -1778,6 +1658,7 @@ function renderExpensesSummaryBar(){
 
   const total = state.expenses.reduce((a, e) => a + Number(e.amount), 0)
 
+  // Gasto este mes
   const now = new Date()
   const thisMes = state.expenses
     .filter(e => {
@@ -1786,6 +1667,7 @@ function renderExpensesSummaryBar(){
     })
     .reduce((a, e) => a + Number(e.amount), 0)
 
+  // Categoría con más gasto
   const byCat = {}
   state.expenses.forEach(e => {
     const c = e.category || "General"
@@ -1794,18 +1676,18 @@ function renderExpensesSummaryBar(){
   const topCat = Object.entries(byCat).sort((a,b) => b[1]-a[1])[0]
 
   bar.innerHTML = `
-    <div class="stat-card" style="background:var(--bg-yellow);">
-      <div style="font-size:11px; color:var(--text-yellow); font-weight:700; letter-spacing:0.5px;">TOTAL GASTOS</div>
-      <div class="stat-value" style="color:var(--text-yellow);">$${total.toFixed(2)}</div>
+    <div class="stat-card" style="background:#fef3c7;">
+      <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">TOTAL GASTOS</div>
+      <div class="stat-value" style="color:#78350f;">$${total.toFixed(2)}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-orange);">
-      <div style="font-size:11px; color:var(--text-orange); font-weight:700; letter-spacing:0.5px;">ESTE MES</div>
-      <div class="stat-value" style="color:var(--text-orange);">$${thisMes.toFixed(2)}</div>
+    <div class="stat-card" style="background:#fff7ed;">
+      <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">ESTE MES</div>
+      <div class="stat-value" style="color:#9a3412;">$${thisMes.toFixed(2)}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-yellow);">
-      <div style="font-size:11px; color:var(--text-yellow); font-weight:700; letter-spacing:0.5px;">MAYOR CATEGORÍA</div>
-      <div style="font-size:14px; font-weight:700; color:var(--text-yellow); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${topCat ? topCat[0] : "—"}</div>
-      ${topCat ? `<div style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; color:var(--text-yellow);">$${topCat[1].toFixed(2)}</div>` : ""}
+    <div class="stat-card" style="background:#fef9c3;">
+      <div style="font-size:11px; color:#a16207; font-weight:700; letter-spacing:0.5px;">MAYOR CATEGORÍA</div>
+      <div style="font-size:14px; font-weight:700; color:#92400e; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${topCat ? topCat[0] : "—"}</div>
+      ${topCat ? `<div style="font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; color:#78350f;">$${topCat[1].toFixed(2)}</div>` : ""}
     </div>
   `
 }
@@ -1831,7 +1713,7 @@ function renderExpenses(){
 
   if(filtered.length === 0){
     container.innerHTML = `
-      <div style="text-align:center; padding:48px 0; color:var(--text4);">
+      <div style="text-align:center; padding:48px 0; color:#94a3b8;">
         <div style="font-size:36px; margin-bottom:12px;">💸</div>
         <div style="font-size:14px; font-weight:600;">Sin gastos registrados</div>
         <div style="font-size:12px; margin-top:4px;">Presioná "+ Nuevo" para agregar uno</div>
@@ -1840,6 +1722,7 @@ function renderExpenses(){
     return
   }
 
+  // Agrupar por día
   const ORDEN = ["Hoy", "Ayer", "Esta semana", "Este mes", "Más antiguas"]
   const grupos = {}
   filtered.forEach(e => {
@@ -1871,12 +1754,12 @@ function renderExpenses(){
       card.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
           <div style="flex:1; min-width:0;">
-            <div style="font-weight:700; font-size:15px; color:var(--text); margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            <div style="font-weight:700; font-size:15px; color:#0f172a; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
               ${e.description || "Sin descripción"}
             </div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span class="badge badge-yellow">${e.category || "General"}</span>
-              <span style="font-size:11px; color:var(--text4); font-weight:600;">${formatDate(e.created_at)}</span>
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">${formatDate(e.created_at)}</span>
             </div>
           </div>
           <div style="text-align:right; flex-shrink:0;">
@@ -1910,6 +1793,7 @@ function openExpenseModal(){
   setTimeout(() => document.getElementById("e-desc").focus(), 100)
 }
 
+// ── MODAL EDIT ──
 function openEditExpenseModal(id){
   const e = state.expenses.find(x => x.id === id)
   if(!e) return
@@ -1942,6 +1826,7 @@ function clearExpenseError(){
 
 async function saveExpense(){
 
+  // ── PRIORIDAD 5: bloqueo de doble submit ──
   if(savingExpense) return
   savingExpense = true
 
@@ -1949,6 +1834,7 @@ async function saveExpense(){
   const amount      = parseFloat(document.getElementById("e-amount").value)
   const category    = document.getElementById("e-cat").value.trim()
 
+  // Validación en frontend
   if(!description){
     showExpenseError("❌ La descripción es requerida")
     savingExpense = false
@@ -1991,8 +1877,11 @@ async function saveExpense(){
 
     closeExpenseModal()
 
+    // ── PRIORIDAD 1: sincronización real ──
+    // Recargamos gastos + summary juntos para que las finanzas sean consistentes
     await loadExpenses()
     await loadSummary()
+    // Si stats está visible, actualizarlo en vivo
     if(!document.getElementById("stats").classList.contains("hidden")){
       renderStats()
     }
@@ -2024,6 +1913,7 @@ async function deleteExpense(id){
     await api("/api/expenses/" + id, { method: "DELETE" })
     showToast("🗑 Gasto eliminado", "ok")
 
+    // ── PRIORIDAD 1: sincronización real ──
     await loadExpenses()
     await loadSummary()
     if(!document.getElementById("stats").classList.contains("hidden")){
@@ -2174,11 +2064,14 @@ async function show(id) {
   }
 
   if(id === "stats"){
+    // Restaurar caja inicial guardada
     const savedCaja = localStorage.getItem("cajaInicial")
     if(savedCaja){
       const input = document.getElementById("cajaInicial")
       if(input && !input.value) input.value = savedCaja
     }
+    // Cargar gastos primero — calcularResumen los necesita
+    // loadSummary en background solo para el filtro histórico
     await Promise.all([ loadExpenses(), loadSummary() ])
     renderStats()
     setTimeout(() => {
@@ -2225,7 +2118,7 @@ function renderProducts() {
   })
 
   if (filtered.length === 0) {
-    container.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:var(--text4); padding:24px; font-size:13px;">Sin productos</div>`
+    container.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:#94a3b8; padding:24px; font-size:13px;">Sin productos</div>`
   }
 
   filtered.forEach(p => {
@@ -2236,16 +2129,14 @@ function renderProducts() {
     const available = p.stock - qtyInCart
     const oos = available <= 0
 
-    const stockBadgeClass = (p.stock <= 5 && p.stock > 0) ? "badge badge-red" : p.stock <= 0 ? "badge badge-red" : "badge badge-green"
-
     const card = document.createElement("div")
     card.className = "product-card"
     card.innerHTML = `
-      <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:var(--text);">${p.name}</div>
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:#0f172a;">${p.name}</div>
       <span class="cat-chip">${p.cat || "General"}</span>
       <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
-        <b style="font-size:15px; font-family:'JetBrains Mono',monospace; color:var(--text);">$${p.price.toFixed(2)}</b>
-        <span class="${stockBadgeClass}">${p.stock}</span>
+        <b style="font-size:15px; font-family:'JetBrains Mono',monospace; color:#0f172a;">$${p.price.toFixed(2)}</b>
+        <span class="${p.stock <= 5 && p.stock > 0 ? 'badge badge-red' : p.stock <= 0 ? 'badge badge-red' : 'badge badge-green'}">${p.stock}</span>
       </div>
       <button onclick="addToCart(${p.id},this)" class="btn-add" ${oos ? 'disabled' : ''}>
         ${oos ? 'Sin stock' : '+ Agregar'}
@@ -2338,7 +2229,7 @@ function renderCart() {
   container.innerHTML = ""
 
   if (state.cart.length === 0) {
-    container.innerHTML = `<div style="text-align:center; color:var(--text4); padding:20px 0; font-size:13px;">El carrito está vacío</div>`
+    container.innerHTML = `<div style="text-align:center; color:#94a3b8; padding:20px 0; font-size:13px;">El carrito está vacío</div>`
     document.getElementById("total").textContent = "$0.00"
     calculateChange()
     return
@@ -2353,15 +2244,15 @@ function renderCart() {
     row.className = "cart-row"
     row.innerHTML = `
       <div>
-        <div style="font-size:14px; font-weight:600; color:var(--text);">${item.name}</div>
-        <div style="font-size:11px; color:var(--text4); font-family:'JetBrains Mono',monospace;">$${item.price.toFixed(2)} × ${item.qty}</div>
+        <div style="font-size:14px; font-weight:600; color:#0f172a;">${item.name}</div>
+        <div style="font-size:11px; color:#94a3b8; font-family:'JetBrains Mono',monospace;">$${item.price.toFixed(2)} × ${item.qty}</div>
       </div>
       <div style="display:flex; align-items:center; gap:6px;">
         <button class="qty-btn" onclick="changeQty(${item.id},-1)">−</button>
         <span class="qty-display">${item.qty}</span>
         <button class="qty-btn" onclick="changeQty(${item.id},1)">+</button>
       </div>
-      <span style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; min-width:56px; text-align:right; color:var(--text);">$${sub.toFixed(2)}</span>
+      <span style="font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; min-width:56px; text-align:right; color:#0f172a;">$${sub.toFixed(2)}</span>
     `
     container.appendChild(row)
   })
@@ -2523,7 +2414,7 @@ function renderInventory() {
     card.innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
         <div>
-          <span style="font-weight:700; font-size:15px; color:var(--text);">
+          <span style="font-weight:700; font-size:15px;">
             ${isBest ? "🥇 " : ""}${p.name}
           </span>
           <span class="cat-chip" style="margin-left:8px;">${p.cat || "General"}</span>
@@ -2534,28 +2425,28 @@ function renderInventory() {
         }
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:13px; color:var(--text2);">
-        <div style="font-size:11px; color:var(--text4); font-weight:600;">PRECIO VENTA</div>
-        <div><b style="font-family:'JetBrains Mono',monospace; color:var(--text);">$${p.price.toFixed(2)}</b></div>
-        <div style="font-size:11px; color:var(--text4); font-weight:600;">COSTO</div>
-        <div><b style="font-family:'JetBrains Mono',monospace; color:var(--text);">$${p.cost.toFixed(2)}</b></div>
-        <div style="background:var(--inv-best-bg); border-radius:8px; padding:8px;">
-          <div style="font-size:11px; color:var(--accent-text); font-weight:600;">GANANCIA/U</div>
-          <b style="font-family:'JetBrains Mono',monospace; color:var(--accent-text);">$${profit.toFixed(2)}</b>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:13px; color:#475569;">
+        <div style="font-size:11px;color:#94a3b8;font-weight:600;">PRECIO VENTA</div>
+        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.price.toFixed(2)}</b></div>
+        <div style="font-size:11px;color:#94a3b8;font-weight:600;">COSTO</div>
+        <div><b style="font-family:'JetBrains Mono',monospace;">$${p.cost.toFixed(2)}</b></div>
+        <div style="background:#f0fdf4; border-radius:8px; padding:8px;">
+          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA/U</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">$${profit.toFixed(2)}</b>
         </div>
-        <div style="background:var(--inv-best-bg); border-radius:8px; padding:8px;">
-          <div style="font-size:11px; color:var(--accent-text); font-weight:600;">GANANCIA TOTAL</div>
-          <b style="font-family:'JetBrains Mono',monospace; color:var(--accent-text);">$${totalProfit.toFixed(2)}</b>
+        <div style="background:#f0fdf4; border-radius:8px; padding:8px;">
+          <div style="font-size:11px;color:#16a34a;font-weight:600;">GANANCIA TOTAL</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:#16a34a;">$${totalProfit.toFixed(2)}</b>
         </div>
-        <div style="background:var(--surface2); border-radius:8px; padding:8px;">
-          <div style="font-size:11px; color:var(--text4); font-weight:600;">STOCK</div>
-          <b style="font-family:'JetBrains Mono',monospace; color:${p.stock<=5?'var(--danger-text)':'var(--text)'};">${p.stock}</b>
+        <div style="background:#f8fafc; border-radius:8px; padding:8px;">
+          <div style="font-size:11px;color:#94a3b8;font-weight:600;">STOCK</div>
+          <b style="font-family:'JetBrains Mono',monospace;color:${p.stock<=5?'#dc2626':'#0f172a'};">${p.stock}</b>
         </div>
       </div>
 
       <div style="display:flex; gap:8px; margin-top:10px;">
         <button onclick="openEditModal(${p.id})" class="btn-ghost" style="flex:1;">✏️ Editar</button>
-        <button onclick="openRestock(${p.id})" class="btn-ghost" style="flex:1; border-color:var(--accent); color:var(--accent-text);">+ Stock</button>
+        <button onclick="openRestock(${p.id})" class="btn-ghost" style="flex:1; border-color:#22c55e; color:#16a34a;">+ Stock</button>
         <button onclick="deleteProduct(${p.id})" class="btn-danger">🗑</button>
       </div>
     `
@@ -2772,27 +2663,30 @@ function wrapText(text, max){
 
 function showSaleSummary(sale){
 
+  // ── Número de venta ──
   document.getElementById("ticketVentaNum").textContent =
     "Venta " + saleNumLabel(sale.num)
 
+  // ── Fecha + ID ──
   document.getElementById("ticketMeta").innerHTML = `
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-      <span style="font-size:13px; font-weight:600; color:var(--text2);">
+      <span style="font-size:13px; font-weight:600; color:#374151;">
         📅 ${formatDate(sale.date)}
       </span>
     </div>
     <div style="
-      background:var(--ticket-tag-bg);
+      background:#fce4ec;
       border-radius:20px;
       padding:4px 12px;
       display:inline-block;
       font-size:11px;
       font-family:'JetBrains Mono',monospace;
-      color:var(--ticket-tag-text);
+      color:#c2185b;
       word-break:break-all;
     ">🔖 ${sale.id}</div>
   `
 
+  // ── Filas de productos ──
   const container = document.getElementById("ticketItems")
   container.innerHTML = ""
 
@@ -2808,26 +2702,27 @@ function showSaleSummary(sale){
       gap:8px;
       padding:12px 14px;
       align-items:center;
-      ${!isLast ? "border-bottom:1px solid var(--ticket-border);" : ""}
+      ${!isLast ? "border-bottom:1px solid #fce4ec;" : ""}
     `
 
+    // Nombre (multilínea si es largo)
     const nameHtml = nameLines.map((l, li) =>
-      `<div style="font-size:14px; font-weight:${li===0?'600':'400'}; color:${li===0?'var(--text)':'var(--text3)'};">${l}</div>`
+      `<div style="font-size:14px; font-weight:${li===0?'600':'400'}; color:${li===0?'#0f172a':'#64748b'};">${l}</div>`
     ).join("")
 
     row.innerHTML = `
       <div>${nameHtml}</div>
       <div style="
-        font-size:14px; font-weight:700; color:var(--ticket-pink);
+        font-size:14px; font-weight:700; color:#e91e8c;
         text-align:center; white-space:nowrap;
       ">x${p.qty}</div>
       <div style="
-        font-size:14px; font-weight:600; color:var(--text2);
+        font-size:14px; font-weight:600; color:#374151;
         text-align:right; white-space:nowrap;
         font-family:'JetBrains Mono',monospace;
       ">$${money(p.price)}</div>
       <div style="
-        font-size:14px; font-weight:700; color:var(--text);
+        font-size:14px; font-weight:700; color:#0f172a;
         text-align:right; white-space:nowrap;
         font-family:'JetBrains Mono',monospace;
       ">$${money(sub)}</div>
@@ -2835,10 +2730,12 @@ function showSaleSummary(sale){
     container.appendChild(row)
   })
 
+  // ── Totales ──
   document.getElementById("ticketTotal").textContent  = "$" + money(sale.total)
   document.getElementById("ticketPaid").textContent   = "$" + money(sale.paid)
   document.getElementById("ticketChange").textContent = "$" + money(sale.change) + " 💝"
 
+  // ── Mostrar modal ──
   const modal = document.getElementById("saleSummary")
   modal.style.display = "flex"
   document.body.style.pointerEvents = "none"
@@ -2873,6 +2770,7 @@ function printTicket(){
 }
 
 function shareTicket(){
+  // Armar texto plano para compartir
   const num   = document.getElementById("ticketVentaNum")?.textContent || ""
   const items = document.getElementById("ticketItems")
   const total = document.getElementById("ticketTotal")?.textContent || ""
@@ -2919,7 +2817,7 @@ function renderSales(){
     const msg = search
       ? "No se encontraron coincidencias"
       : "No hay ventas registradas aún"
-    container.innerHTML = `<div style="text-align:center; color:var(--text4); padding:40px 0;">${msg}</div>`
+    container.innerHTML = `<div style="text-align:center;color:#94a3b8;padding:40px 0;">${msg}</div>`
     return
   }
 
@@ -2946,14 +2844,7 @@ function renderSales(){
     grupos[label].push(s)
   })
 
-  // Colores usando variables CSS
-  const colorVars = [
-    "var(--sale-color-0)",
-    "var(--sale-color-1)",
-    "var(--sale-color-2)",
-    "var(--sale-color-3)",
-    "var(--sale-color-4)"
-  ]
+  const colors = ["#dbeafe","#dcfce7","#fef9c3","#fee2e2","#e0f2fe"]
 
   ORDEN_SECCIONES.forEach(seccion => {
 
@@ -2965,7 +2856,7 @@ function renderSales(){
     header.innerHTML = `
       <span class="day-section-label">${seccion}</span>
       <div class="day-section-line"></div>
-      <span style="font-size:11px; color:var(--text4); font-weight:700; white-space:nowrap;">${ventas.length} venta${ventas.length > 1 ? "s" : ""}</span>
+      <span style="font-size:11px;color:#94a3b8;font-weight:700;white-space:nowrap;">${ventas.length} venta${ventas.length > 1 ? "s" : ""}</span>
     `
     container.appendChild(header)
 
@@ -2976,9 +2867,9 @@ function renderSales(){
         const totalProfit = unitProfit * p.qty
         const icon = unitProfit >= 0.10 ? "🔥" : "⚠️"
         return `
-          <span style="color:var(--text);">${p.name} x${p.qty}</span> — Gan: <span style="color:var(--accent-text);">$${totalProfit.toFixed(2)}</span>
-          <br>Valor unitario: <b style="color:var(--text);">$${p.price.toFixed(2)} c/u</b>
-          <br>${icon} Ganancia unidad: <b style="color:var(--accent-text);font-size:14px;">$${unitProfit.toFixed(2)} c/u</b>
+          ${p.name} x${p.qty} — Gan: $${totalProfit.toFixed(2)}
+          <br>Valor unitario: <b>$${p.price.toFixed(2)} c/u</b>
+          <br>${icon} Ganancia unidad: <b style="color:#16a34a;font-size:14px;">$${unitProfit.toFixed(2)} c/u</b>
           <br><br>
         `
       }).join("")
@@ -2988,23 +2879,23 @@ function renderSales(){
       },0)
 
       const div = document.createElement("div")
-      div.style.background = colorVars[i % colorVars.length]
+      div.style.background = colors[i % colors.length]
       div.style.borderRadius = "14px"
       div.style.padding = "16px"
       div.style.marginBottom = "14px"
       div.style.boxShadow = "0 2px 8px rgba(0,0,0,.08)"
 
       div.innerHTML = `
-        <div style="font-weight:700; font-size:15px; margin-bottom:4px; color:var(--text);">Venta ${saleNumLabel(s.num)}</div>
-        <div style="font-size:11px; color:var(--text3); margin-bottom:6px;">ID: ${s.id}</div>
-        <div style="font-size:12px; color:var(--text3); margin-bottom:10px;">${formatDate(s.date)}</div>
-        <div style="line-height:1.7; margin-bottom:12px; font-weight:600;">${items}</div>
-        <div style="font-size:13px; line-height:1.8; color:var(--text2);">
-          Total: <b style="color:var(--text);">$${s.total.toFixed(2)}</b><br>
-          Ganancia: <b style="color:var(--accent-text);">$${profitVenta.toFixed(2)}</b><br>
-          Pagó: <b style="color:var(--text);">$${Number(s.paid).toFixed(2)}</b><br>
-          Vuelto: <b style="color:var(--text);">$${Number(s.change).toFixed(2)}</b><br>
-          <span style="font-weight:700; color:var(--text);">Acumulado: $${s.acumulado.toFixed(2)}</span>
+        <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Venta ${saleNumLabel(s.num)}</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:6px;">ID: ${s.id}</div>
+        <div style="font-size:12px;color:#64748b;margin-bottom:10px;">${formatDate(s.date)}</div>
+        <div style="line-height:1.7;margin-bottom:12px;font-weight:600;">${items}</div>
+        <div style="font-size:13px;line-height:1.8;">
+          Total: <b>$${s.total.toFixed(2)}</b><br>
+          Ganancia: <b style="color:#16a34a">$${profitVenta.toFixed(2)}</b><br>
+          Pagó: <b>$${Number(s.paid).toFixed(2)}</b><br>
+          Vuelto: <b>$${Number(s.change).toFixed(2)}</b><br>
+          <span style="font-weight:700;">Acumulado: $${s.acumulado.toFixed(2)}</span>
         </div>
         <div style="margin-top:10px;">
           <button class="btn-ghost" style="width:100%;">📄 Ver ticket</button>
@@ -3027,6 +2918,7 @@ function renderSales(){
 // =========================================================
 function renderStats() {
 
+  // ── 0. CAJA UNIFICADA (fuente única de verdad) ──
   const resumen = calcularResumen({ ventas: state.sales, gastos: state.expenses })
   renderCaja(resumen)
 
@@ -3042,63 +2934,66 @@ function renderStats() {
   const lowStock      = state.products.filter(p => p.stock <= 5).length
 
   document.getElementById("statsPanel").innerHTML = `
-    <div class="stat-card" style="background:var(--bg-blue);">
-      <div style="font-size:11px; color:var(--text-blue); font-weight:700; letter-spacing:0.5px;">VENTAS</div>
-      <div class="stat-value" style="color:var(--text-blue);">${totalSales}</div>
+    <div class="stat-card" style="background:#dbeafe;">
+      <div style="font-size:11px; color:#1d4ed8; font-weight:700; letter-spacing:0.5px;">VENTAS</div>
+      <div class="stat-value" style="color:#1e40af;">${totalSales}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-green);">
-      <div style="font-size:11px; color:var(--text-green); font-weight:700; letter-spacing:0.5px;">INGRESOS</div>
-      <div class="stat-value" style="color:var(--text-green);">$${ingresos.toFixed(2)}</div>
+    <div class="stat-card" style="background:#dcfce7;">
+      <div style="font-size:11px; color:#15803d; font-weight:700; letter-spacing:0.5px;">INGRESOS</div>
+      <div class="stat-value" style="color:#166534;">$${ingresos.toFixed(2)}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-yellow);">
-      <div style="font-size:11px; color:var(--text-yellow); font-weight:700; letter-spacing:0.5px;">MÁS VENDIDO</div>
-      <div style="font-size:15px; font-weight:700; color:var(--text-yellow); margin-top:4px;">${mostSold ? mostSold.name : "—"}</div>
+    <div class="stat-card" style="background:#fef9c3;">
+      <div style="font-size:11px; color:#a16207; font-weight:700; letter-spacing:0.5px;">MÁS VENDIDO</div>
+      <div style="font-size:15px; font-weight:700; color:#92400e; margin-top:4px;">${mostSold ? mostSold.name : "—"}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-purple);">
-      <div style="font-size:11px; color:var(--text-purple); font-weight:700; letter-spacing:0.5px;">MÁS GANANCIA</div>
-      <div style="font-size:15px; font-weight:700; color:var(--text-purple); margin-top:4px;">${mostProfit ? mostProfit.name : "—"}</div>
+    <div class="stat-card" style="background:#f3e8ff;">
+      <div style="font-size:11px; color:#7c3aed; font-weight:700; letter-spacing:0.5px;">MÁS GANANCIA</div>
+      <div style="font-size:15px; font-weight:700; color:#6d28d9; margin-top:4px;">${mostProfit ? mostProfit.name : "—"}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-green);">
-      <div style="font-size:11px; color:var(--text-green); font-weight:700; letter-spacing:0.5px;">GANANCIA BRUTA</div>
-      <div class="stat-value" style="color:var(--text-green);">$${totalProfit.toFixed(2)}</div>
+    <div class="stat-card" style="background:#d1fae5;">
+      <div style="font-size:11px; color:#065f46; font-weight:700; letter-spacing:0.5px;">GANANCIA BRUTA</div>
+      <div class="stat-value" style="color:#064e3b;">$${totalProfit.toFixed(2)}</div>
     </div>
-    <div class="stat-card" style="background:${lowStock > 0 ? 'var(--bg-red)' : 'var(--bg-green)'};">
-      <div style="font-size:11px; color:${lowStock > 0 ? 'var(--text-red)' : 'var(--text-green)'}; font-weight:700; letter-spacing:0.5px;">STOCK BAJO</div>
-      <div class="stat-value" style="color:${lowStock > 0 ? 'var(--text-red)' : 'var(--text-green)'};">${lowStock}</div>
+    <div class="stat-card" style="background:${lowStock > 0 ? '#fee2e2' : '#f0fdf4'};">
+      <div style="font-size:11px; color:${lowStock > 0 ? '#b91c1c' : '#15803d'}; font-weight:700; letter-spacing:0.5px;">STOCK BAJO</div>
+      <div class="stat-value" style="color:${lowStock > 0 ? '#991b1b' : '#166534'};">${lowStock}</div>
     </div>
   `
 
-  // ── 2. SUMMARY FINANCIERO REAL ──
+  // ── 2. SUMMARY FINANCIERO REAL — FUENTE ÚNICA: calcularResumen ──
+  // state.summary ya NO maneja números críticos.
+  // Solo se usa para el label del filtro histórico (si el usuario lo aplicó).
   const s = calcularResumen({ ventas: state.sales, gastos: state.expenses })
 
   const panel = document.getElementById("summaryPanel")
   const filterLabel = document.getElementById("summaryFilterLabel")
 
   if(filterLabel){
+    // El label solo viene del filtro API si se aplicó uno, si no: "Datos en vivo"
     const apiFilter = state.summary?.filter
     filterLabel.textContent = apiFilter?.desde
       ? `Filtro: ${apiFilter.desde}${apiFilter.hasta ? " → " + apiFilter.hasta : ""}`
       : "Datos en vivo ●"
-    filterLabel.style.color = apiFilter?.desde ? "var(--text4)" : "var(--accent)"
+    filterLabel.style.color = apiFilter?.desde ? "#94a3b8" : "#22c55e"
   }
 
-  const profitColor  = s.gananciaReal >= 0 ? "var(--profit-text)"   : "var(--loss-text)"
-  const profitBg     = s.gananciaReal >= 0 ? "var(--profit-bg)"     : "var(--loss-bg)"
-  const profitBorder = s.gananciaReal >= 0 ? "var(--profit-border)" : "var(--loss-border)"
-  const profitIcon   = s.gananciaReal >= 0 ? "💰" : "📉"
+  const profitColor  = s.gananciaReal >= 0 ? "#064e3b" : "#991b1b"
+  const profitBg     = s.gananciaReal >= 0 ? "#dcfce7"  : "#fee2e2"
+  const profitBorder = s.gananciaReal >= 0 ? "#86efac"  : "#fca5a5"
+  const profitIcon   = s.gananciaReal >= 0 ? "💰"        : "📉"
 
   panel.innerHTML = `
-    <div class="stat-card" style="background:var(--bg-cyan);">
-      <div style="font-size:11px; color:var(--text-cyan); font-weight:700; letter-spacing:0.5px;">TOTAL VENDIDO</div>
-      <div class="stat-value" style="color:var(--text-cyan);">$${s.ventas.toFixed(2)}</div>
+    <div class="stat-card" style="background:#ecfeff;">
+      <div style="font-size:11px; color:#0891b2; font-weight:700; letter-spacing:0.5px;">TOTAL VENDIDO</div>
+      <div class="stat-value" style="color:#0e7490;">$${s.ventas.toFixed(2)}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-orange);">
-      <div style="font-size:11px; color:var(--text-orange); font-weight:700; letter-spacing:0.5px;">COSTO MERCADERÍA</div>
-      <div class="stat-value" style="color:var(--text-orange);">$${s.costos.toFixed(2)}</div>
+    <div class="stat-card" style="background:#fff7ed;">
+      <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">COSTO MERCADERÍA</div>
+      <div class="stat-value" style="color:#9a3412;">$${s.costos.toFixed(2)}</div>
     </div>
-    <div class="stat-card" style="background:var(--bg-yellow); position:relative;">
-      <div style="font-size:11px; color:var(--text-yellow); font-weight:700; letter-spacing:0.5px;">GASTOS OPERATIVOS</div>
-      <div class="stat-value" style="color:var(--text-yellow);">$${s.gastos.toFixed(2)}</div>
+    <div class="stat-card" style="background:#fef3c7; position:relative;">
+      <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">GASTOS OPERATIVOS</div>
+      <div class="stat-value" style="color:#78350f;">$${s.gastos.toFixed(2)}</div>
       <span style="position:absolute; top:10px; right:10px; font-size:11px; font-weight:600; cursor:pointer; color:#d97706;" onclick="show('expenses')" title="Ver gastos">→💸</span>
     </div>
     <div class="stat-card" style="
@@ -3121,10 +3016,11 @@ function renderStats() {
     </div>
   `
 
-  // ── 3. RANKING + GASTOS POR CATEGORÍA ──
+  // ── 3. RANKING + GASTOS POR CATEGORÍA (desde state.expenses local) ──
   const withSales = sorted.filter(p => p.sold > 0)
   const medals = ["🥇","🥈","🥉"]
 
+  // Gastos por categoría — calculado local, sin depender del backend
   const byCatLocal = {}
   state.expenses.forEach(e => {
     const c = e.category || "General"
@@ -3134,15 +3030,15 @@ function renderStats() {
     .map(([category, total]) => ({ category, total }))
     .sort((a, b) => b.total - a.total)
 
-  let rankHtml = `<span style="font-weight:700; font-size:15px; margin-bottom:12px; display:block; color:var(--text);">🏆 Ranking de ventas</span>`
+  let rankHtml = `<span style="font-weight:700; font-size:15px; margin-bottom:12px; display:block;">🏆 Ranking de ventas</span>`
 
   if (withSales.length === 0) {
-    rankHtml += `<div style="text-align:center; color:var(--text4); font-size:13px; padding:12px 0;">Aún no hay ventas registradas</div>`
+    rankHtml += `<div style="text-align:center; color:#94a3b8; font-size:13px; padding:12px 0;">Aún no hay ventas registradas</div>`
   } else {
     withSales.forEach((p, i) => {
       rankHtml += `
-        <div class="ranking-row">
-          <span class="ranking-name">${medals[i] || (i+1)+"."} ${p.name}</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f1f5f9;">
+          <span style="font-weight:600; color:#0f172a; font-size:14px;">${medals[i] || (i+1)+"."} ${p.name}</span>
           <span class="badge badge-blue">${p.sold} vendidos</span>
         </div>`
     })
@@ -3150,24 +3046,27 @@ function renderStats() {
 
   if(expByCat.length > 0){
     rankHtml += `
-      <div class="ranking-divider">
+      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <span class="ranking-title">💸 Gastos por categoría</span>
+          <span style="font-weight:700; font-size:14px; color:#0f172a;">💸 Gastos por categoría</span>
           <button onclick="show('expenses')" class="btn-ghost" style="font-size:11px; padding:4px 10px;">Ver todos →</button>
         </div>
         ${expByCat.map(e => `
-          <div class="exp-cat-row">
-            <span class="exp-cat-name">${e.category}</span>
-            <b class="exp-cat-value">$${Number(e.total).toFixed(2)}</b>
+          <div style="
+            display:flex; justify-content:space-between; align-items:center;
+            padding:8px 10px; background:#fef9c3; border-radius:8px; margin-bottom:6px;
+          ">
+            <span style="font-size:13px; font-weight:600; color:#92400e;">${e.category}</span>
+            <b style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#78350f;">$${Number(e.total).toFixed(2)}</b>
           </div>
         `).join("")}
       </div>
     `
   } else {
     rankHtml += `
-      <div class="ranking-divider">
-        <span class="ranking-title">💸 Gastos por categoría</span>
-        <div style="text-align:center; color:var(--text4); font-size:13px; padding:8px 0;">Sin gastos registrados</div>
+      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
+        <span style="font-weight:700; font-size:14px; color:#0f172a; display:block; margin-bottom:8px;">💸 Gastos por categoría</span>
+        <div style="text-align:center; color:#94a3b8; font-size:13px; padding:8px 0;">Sin gastos registrados</div>
       </div>
     `
   }
@@ -3186,7 +3085,7 @@ async function resetStats(){
 
     await api("/api/reset-stats",{method:"POST"})
     await loadProducts()
-    state.expenses = []
+    state.expenses = []   // limpiar local también para que cuadre
     showToast("📊 Estadísticas reiniciadas", "ok")
     renderStats()
 
@@ -3221,6 +3120,7 @@ async function clearHistory(){
 
 // =========================================================
 // FUNCIÓN CENTRAL — calcularResumen
+// UNA sola fuente de verdad para todos los números financieros
 // =========================================================
 function calcularResumen({ ventas = [], gastos = [] }) {
   let totalVentas      = 0
@@ -3229,6 +3129,7 @@ function calcularResumen({ ventas = [], gastos = [] }) {
 
   ventas.forEach(v => {
     totalVentas        += Number(v.total    || 0)
+    // costTotal: sum de (cost * qty) por venta, calculado en tiempo real
     const costVenta     = (v.items || []).reduce((a, i) => a + (Number(i.cost || 0) * Number(i.qty)), 0)
     totalCostos        += costVenta
     totalGananciaBruta += Number(v.total || 0) - costVenta
@@ -3243,18 +3144,19 @@ function calcularResumen({ ventas = [], gastos = [] }) {
     gastos:          totalGastos,
     gananciaBruta:   totalGananciaBruta,
     gananciaReal,
-    caja:            totalVentas
+    caja:            totalVentas   // lo que entró en caja (ventas brutas)
   }
 }
 
 // =========================================================
-// AGRUPACIÓN UNIFICADA
+// AGRUPACIÓN UNIFICADA — agruparPorDia
+// Usa localDay() con TZ correcta — nunca split("T")[0] (que da UTC)
 // =========================================================
 function agruparPorDia(ventas, gastos) {
   const mapa = {}
 
   ventas.forEach(v => {
-    const dia = localDay(v.date)
+    const dia = localDay(v.date)   // ← zona horaria El Salvador
     if(!dia) return
     if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
     mapa[dia].ventas += Number(v.total || 0)
@@ -3262,7 +3164,7 @@ function agruparPorDia(ventas, gastos) {
   })
 
   gastos.forEach(g => {
-    const dia = localDay(g.created_at)
+    const dia = localDay(g.created_at)   // ← zona horaria El Salvador
     if(!dia) return
     if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
     mapa[dia].gastos += Number(g.amount || 0)
@@ -3275,6 +3177,7 @@ function agruparPorDia(ventas, gastos) {
   Object.keys(mapa).sort().slice(-14).forEach(dia => {
     const d            = mapa[dia]
     const gananciaReal = d.ventas - d.costos - d.gastos
+    // Label legible usando la misma TZ
     const [, m, dd]    = dia.split("-")
     labels.push(`${Number(dd)}/${Number(m)}`)
     ventasArr.push(d.ventas)
@@ -3285,12 +3188,14 @@ function agruparPorDia(ventas, gastos) {
 }
 
 // =========================================================
-// PREDICCIÓN DE GANANCIA
+// PREDICCIÓN DE GANANCIA — regresión lineal simple
+// Toma los últimos N días y proyecta los próximos 3
 // =========================================================
 function predecirGanancia(gananciaArr) {
   const n = gananciaArr.length
-  if(n < 3) return null
+  if(n < 3) return null   // necesitamos al menos 3 puntos
 
+  // Regresión lineal mínimos cuadrados
   const xs = gananciaArr.map((_, i) => i)
   const ys = gananciaArr
   const xMean = xs.reduce((a, x) => a + x, 0) / n
@@ -3306,14 +3211,15 @@ function predecirGanancia(gananciaArr) {
   const slope     = num / den
   const intercept = yMean - slope * xMean
 
+  // Proyectar 3 días siguientes
   const proyecciones = [1, 2, 3].map(offset => {
     const val = intercept + slope * (n - 1 + offset)
     return Math.round(val * 100) / 100
   })
 
   return {
-    slope,
-    proyecciones,
+    slope,           // positivo = tendencia creciente
+    proyecciones,    // [mañana, pasado, antepasado]
     promedioDiario: yMean
   }
 }
@@ -3330,17 +3236,19 @@ function renderCaja(resumen) {
   document.getElementById("cajaGastos").textContent    = `$${resumen.gastos.toFixed(2)}`
   document.getElementById("cajaGanancia").textContent  = `$${resumen.gananciaReal.toFixed(2)}`
 
+  // Color dinámico del total
   const cajaEl = document.getElementById("cajaTotal")
   if(cajaReal < 0){
-    cajaEl.style.color = "var(--danger-text)"
+    cajaEl.style.color = "#dc2626"
   } else if(cajaReal < resumen.costos * 0.5){
     cajaEl.style.color = "#d97706"
   } else {
-    cajaEl.style.color = "var(--caja-value)"
+    cajaEl.style.color = "#15803d"
   }
 
+  // Color de ganancia
   const ganEl = document.getElementById("cajaGanancia")
-  ganEl.style.color = resumen.gananciaReal < 0 ? "var(--danger-text)" : "var(--accent-text)"
+  ganEl.style.color = resumen.gananciaReal < 0 ? "#dc2626" : "#15803d"
 
   renderAlertas(resumen, cajaInicial, cajaReal)
 }
@@ -3354,6 +3262,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
 
   const alertas = []
 
+  // 🔴 Pérdida real
   if(resumen.gananciaReal < 0){
     alertas.push({
       nivel: "rojo",
@@ -3361,6 +3270,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🔴 Te estás comiendo el capital
   if(resumen.gananciaReal < -resumen.costos * 0.5 && resumen.costos > 0){
     alertas.push({
       nivel: "rojo",
@@ -3368,6 +3278,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟠 Gastos superiores al 60% de ventas
   if(resumen.ventas > 0 && resumen.gastos / resumen.ventas > 0.6){
     const pct = ((resumen.gastos / resumen.ventas) * 100).toFixed(0)
     alertas.push({
@@ -3376,6 +3287,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟠 Caja por debajo de la inicial
   if(cajaInicial > 0 && cajaReal < cajaInicial && resumen.ventas > 0){
     const diff = (cajaInicial - cajaReal).toFixed(2)
     alertas.push({
@@ -3384,6 +3296,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟡 Sin ventas hoy
   const hoyKey    = localDay(new Date())
   const ventasHoy = state.sales.filter(s => localDay(s.date) === hoyKey)
   if(ventasHoy.length === 0 && state.sales.length > 0){
@@ -3393,29 +3306,34 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟢 Todo OK
   if(alertas.length === 0 && resumen.ventas > 0){
     box.innerHTML = `
-      <div style="background:var(--alert-ok-bg); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; color:var(--alert-ok-text);">
+      <div style="background:#f0fdf4; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; color:#15803d;">
         ✅ Todo en orden — seguí así
       </div>
     `
     return
   }
 
+  const colores = {
+    rojo:     { bg: "#fef2f2", border: "#fca5a5", color: "#dc2626" },
+    naranja:  { bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" },
+    amarillo: { bg: "#fefce8", border: "#fde68a", color: "#92400e" }
+  }
+
   box.innerHTML = alertas.map(a => {
-    const bg     = `var(--alert-${a.nivel}-bg)`
-    const border = `var(--alert-${a.nivel}-border)`
-    const color  = `var(--alert-${a.nivel}-text)`
+    const c = colores[a.nivel]
     return `
       <div style="
-        background:${bg};
-        border:2px solid ${border};
+        background:${c.bg};
+        border:2px solid ${c.border};
         border-radius:8px;
         padding:8px 12px;
         margin-bottom:6px;
         font-size:12px;
         font-weight:700;
-        color:${color};
+        color:${c.color};
         line-height:1.5;
       ">${a.msg}</div>
     `
@@ -3435,60 +3353,51 @@ function renderPrediccion(gananciaArr) {
   const tendencia = pred.slope > 0.5  ? "📈 Subiendo"
                   : pred.slope < -0.5 ? "📉 Bajando"
                   : "➡ Estable"
-  const tendColor = pred.slope > 0.5  ? "var(--accent-text)"
-                  : pred.slope < -0.5 ? "var(--danger-text)"
-                  : "var(--text-cyan)"
+  const tendColor = pred.slope > 0.5  ? "#15803d"
+                  : pred.slope < -0.5 ? "#dc2626"
+                  : "#0891b2"
 
   const dias = ["Mañana", "Pasado", "Antepasado"]
 
   box.style.display = "block"
+  box.style.background  = "#f0f9ff"
+  box.style.border      = "2px solid #38bdf8"
+  box.style.borderRadius = "14px"
+  box.style.padding     = "16px"
+  box.style.marginBottom = "4px"
 
   box.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <span class="pred-title">🔮 Predicción próximos días</span>
+      <span style="font-weight:700; font-size:14px; color:#0f172a;">🔮 Predicción próximos días</span>
       <span style="font-size:12px; font-weight:700; color:${tendColor};">${tendencia}</span>
     </div>
     <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
       ${pred.proyecciones.map((v, i) => {
-        const color = v >= 0 ? "var(--accent-text)"  : "var(--danger-text)"
-        const bg    = v >= 0 ? "var(--inv-best-bg)"  : "var(--inv-zero-bg)"
+        const color = v >= 0 ? "#15803d" : "#dc2626"
+        const bg    = v >= 0 ? "#f0fdf4" : "#fef2f2"
         return `
           <div style="background:${bg}; border-radius:10px; padding:10px; text-align:center;">
-            <div class="pred-day-label">${dias[i]}</div>
+            <div style="font-size:10px; font-weight:700; color:#64748b; margin-bottom:4px;">${dias[i]}</div>
             <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:${color};">$${v.toFixed(2)}</div>
           </div>
         `
       }).join("")}
     </div>
-    <div class="pred-note">
+    <div style="margin-top:10px; font-size:11px; color:#64748b; font-style:italic;">
       Basado en tendencia de los últimos ${gananciaArr.length} días · Solo orientativo
     </div>
   `
 }
 
 // =========================================================
-// DIBUJAR GRÁFICAS
+// DIBUJAR GRÁFICAS — usa agruparPorDia unificado
 // =========================================================
-
-function themeColors(){
-  const style = getComputedStyle(document.documentElement)
-  const get = v => style.getPropertyValue(v).trim()
-  return {
-    text:        get("--chart-text")     || "#64748b",
-    text2:       get("--chart-text2")    || "#1e40af",
-    grid:        get("--chart-grid")     || "#f1f5f9",
-    barBlueFrom: get("--chart-bar-from") || "#3b82f6",
-    barBlueTo:   get("--chart-bar-to")   || "#bfdbfe",
-  }
-}
-
 function drawChart() {
 
   const canvas = document.getElementById("salesChart")
   if (!canvas) return
 
   const chartData = agruparPorDia(state.sales, state.expenses)
-  const tc = themeColors()
 
   const ctx = canvas.getContext("2d")
   const W = canvas.offsetWidth || 300
@@ -3502,7 +3411,7 @@ function drawChart() {
   const values = chartData.ventasArr
 
   if(labels.length === 0){
-    ctx.fillStyle = tc.text
+    ctx.fillStyle = "#94a3b8"
     ctx.font = "13px Sora, sans-serif"
     ctx.textAlign = "center"
     ctx.fillText("Aún no hay datos para graficar",W/2,H/2)
@@ -3516,7 +3425,7 @@ function drawChart() {
   const gap = chartW / labels.length
   const barW = Math.min(gap * 0.55, 40)
 
-  ctx.strokeStyle = tc.grid
+  ctx.strokeStyle = "#f1f5f9"
   ctx.lineWidth = 1
   for(let i=1;i<=3;i++){
     const y = padT + chartH - (i/3)*chartH
@@ -3529,19 +3438,19 @@ function drawChart() {
     const y = padT + chartH - barH
 
     const grad = ctx.createLinearGradient(0,y,0,y+barH)
-    grad.addColorStop(0, tc.barBlueFrom)
-    grad.addColorStop(1, tc.barBlueTo)
+    grad.addColorStop(0,"#3b82f6")
+    grad.addColorStop(1,"#bfdbfe")
     ctx.fillStyle = grad
     ctx.beginPath()
     if(ctx.roundRect){ ctx.roundRect(x,y,barW,barH,5) } else { ctx.rect(x,y,barW,barH) }
     ctx.fill()
 
-    ctx.fillStyle = tc.text2
+    ctx.fillStyle = "#1e40af"
     ctx.font = "bold 9px JetBrains Mono, monospace"
     ctx.textAlign = "center"
     ctx.fillText("$"+values[i].toFixed(2), x+barW/2, y-5)
 
-    ctx.fillStyle = tc.text
+    ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora, sans-serif"
     ctx.textAlign = "center"
     ctx.fillText(lbl, x+barW/2, H-6)
@@ -3554,7 +3463,6 @@ function drawProfitChart(){
   if(!canvas) return
 
   const chartData = agruparPorDia(state.sales, state.expenses)
-  const tc = themeColors()
 
   const ctx = canvas.getContext("2d")
   const W = canvas.offsetWidth || 300
@@ -3565,16 +3473,17 @@ function drawProfitChart(){
   ctx.clearRect(0,0,W,H)
 
   const labels = chartData.labels
-  const values = chartData.gananciaArr
+  const values = chartData.gananciaArr  // ← ganancia REAL (ventas - costos - gastos)
 
   if(labels.length === 0){
-    ctx.fillStyle = tc.text
+    ctx.fillStyle = "#94a3b8"
     ctx.font = "13px Sora"
     ctx.textAlign = "center"
     ctx.fillText("Sin datos", W/2, H/2)
     return
   }
 
+  // Calcular predicción y dibujarla después
   renderPrediccion(values)
 
   const maxVal = Math.max(...values.map(Math.abs), 1)
@@ -3583,12 +3492,13 @@ function drawProfitChart(){
   const chartH = H - padT - padB
   const gap    = chartW / labels.length
   const barW   = Math.min(gap * 0.55, 40)
-  const zeroY  = padT + chartH
+  const zeroY  = padT + chartH   // línea de cero (en la base)
 
   labels.forEach((lbl, i) => {
     const val  = values[i]
     const barH = Math.max(Math.abs(val) / maxVal * chartH, 2)
     const x    = padL + i*gap + gap/2 - barW/2
+    // barras positivas crecen hacia arriba, negativas hacia abajo
     const y    = val >= 0 ? zeroY - barH : zeroY
 
     ctx.fillStyle = val >= 0 ? "#22c55e" : "#ef4444"
@@ -3596,18 +3506,19 @@ function drawProfitChart(){
     if(ctx.roundRect){ ctx.roundRect(x, y, barW, barH, 4) } else { ctx.rect(x, y, barW, barH) }
     ctx.fill()
 
-    ctx.fillStyle = val >= 0 ? "#16a34a" : "#dc2626"
+    ctx.fillStyle = val >= 0 ? "#166534" : "#991b1b"
     ctx.font = "bold 9px JetBrains Mono"
     ctx.textAlign = "center"
     const labelY = val >= 0 ? y - 5 : y + barH + 11
     ctx.fillText("$"+val.toFixed(2), x+barW/2, labelY)
 
-    ctx.fillStyle = tc.text
+    ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora"
     ctx.fillText(lbl, x+barW/2, H-6)
   })
 
-  ctx.strokeStyle = tc.grid
+  // Línea de cero
+  ctx.strokeStyle = "#cbd5e1"
   ctx.lineWidth   = 1
   ctx.setLineDash([3, 3])
   ctx.beginPath()
@@ -3704,6 +3615,7 @@ document.getElementById("searchSales")?.addEventListener("input", renderSales)
 document.getElementById("searchExpenses")?.addEventListener("input", renderExpenses)
 document.getElementById("paid")?.addEventListener("input", calculateChange)
 
+// Tecla Enter en modal de gasto
 document.getElementById("e-amount")?.addEventListener("keydown", e => {
   if(e.key === "Enter") saveExpense()
 })
@@ -3777,15 +3689,6 @@ setInterval(()=>{
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible" && !lock){
     loadProducts(true)
-  }
-})
-
-const darkMQ = window.matchMedia("(prefers-color-scheme: dark)")
-darkMQ.addEventListener("change", () => {
-  const statsVisible = !document.getElementById("stats").classList.contains("hidden")
-  if(statsVisible){
-    drawChart()
-    drawProfitChart()
   }
 })
 
