@@ -964,30 +964,113 @@ z-index: 1;
 
 <!-- MODAL TICKET -->
 <div id="saleSummary" style="
-display:none;
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.5);
-z-index:500;
-align-items:center;
-justify-content:center;
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:500;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  overflow-y:auto;
 ">
 <div id="saleSummaryBox" style="
-background:#fff;
-border-radius:16px;
-padding:20px;
-width:90%;
-max-width:380px;
-box-shadow:0 20px 60px rgba(0,0,0,.25);
+  background:#fff;
+  border-radius:24px;
+  width:100%;
+  max-width:400px;
+  box-shadow:0 24px 64px rgba(0,0,0,.3);
+  overflow:hidden;
+  font-family:'Sora',sans-serif;
 ">
-<h3 style="margin-bottom:6px; font-size:16px;">🧾 Ticket de venta</h3>
-<div id="saleSummaryInfo" style="font-size:12px; color:#64748b; margin-bottom:10px; line-height:1.5;"></div>
-<div id="saleSummaryItems" style="overflow-x:auto; max-width:100%;"></div>
-<div style="margin-top:12px; display:flex; gap:8px; position:relative; z-index:5;">
-  <button onclick="printTicket()" class="btn-ghost" style="flex:1; font-size:12px;">🖨 Imprimir</button>
-  <button onclick="shareTicket()" class="btn-ghost" style="flex:1; font-size:12px;">📤 Compartir</button>
-  <button onclick="closeSummary()" class="btn-confirm" style="flex:1; font-size:13px;">Cerrar</button>
-</div>
+
+  <!-- CABECERA ROSA -->
+  <div style="background:linear-gradient(135deg,#e91e8c,#f06292); padding:22px 20px 18px; text-align:center;">
+    <div style="font-size:28px; margin-bottom:4px;">🧾</div>
+    <div style="font-size:20px; font-weight:700; color:#fff; letter-spacing:-0.3px;">Ticket de Venta</div>
+    <div id="ticketVentaNum" style="font-size:14px; color:rgba(255,255,255,.85); margin-top:4px; font-weight:600;"></div>
+  </div>
+
+  <!-- CUERPO -->
+  <div style="background:#fff5f9; padding:16px 18px;">
+
+    <!-- Fecha + ID -->
+    <div id="ticketMeta" style="margin-bottom:14px;"></div>
+
+    <!-- Tabla de productos -->
+    <div style="background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(233,30,140,.08);">
+
+      <!-- Header tabla -->
+      <div style="
+        display:grid;
+        grid-template-columns:1fr auto auto auto;
+        gap:8px;
+        padding:10px 14px;
+        border-bottom:2px solid #fce4ec;
+        align-items:center;
+      ">
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; letter-spacing:0.4px;">🛒 Producto</div>
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; text-align:center;">Cant</div>
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; text-align:right;">Unit</div>
+        <div style="font-size:12px; font-weight:700; color:#e91e8c; text-transform:uppercase; text-align:right;">Total</div>
+      </div>
+
+      <!-- Filas de productos -->
+      <div id="ticketItems"></div>
+
+      <!-- Separador -->
+      <div style="height:1px; background:#fce4ec; margin:0 14px;"></div>
+
+      <!-- Totales -->
+      <div style="padding:12px 14px; display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:14px; font-weight:600; color:#374151;">💰 Total:</span>
+          <span id="ticketTotal" style="font-size:15px; font-weight:700; color:#0f172a; font-family:'JetBrains Mono',monospace;"></span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:14px; font-weight:600; color:#374151;">💵 Pagó:</span>
+          <span id="ticketPaid" style="font-size:15px; font-weight:700; color:#0f172a; font-family:'JetBrains Mono',monospace;"></span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:14px; font-weight:600; color:#374151;">💝 Vuelto:</span>
+          <span id="ticketChange" style="font-size:15px; font-weight:700; color:#e91e8c; font-family:'JetBrains Mono',monospace;"></span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Gracias -->
+    <div style="text-align:center; margin-top:16px; padding:10px 0;">
+      <div style="font-size:14px; font-weight:600; color:#e91e8c;">Gracias por su compra ✨</div>
+      <div style="font-size:13px; font-weight:600; color:#e91e8c; margin-top:2px;">¡Vuelva pronto!</div>
+    </div>
+
+  </div>
+
+  <!-- BOTONES -->
+  <div style="background:#fce4ec; padding:16px 18px; display:flex; gap:10px;">
+    <button onclick="printTicket()" style="
+      flex:1; padding:12px 8px; border-radius:50px;
+      border:2px solid #e91e8c; background:#fff;
+      color:#e91e8c; font-weight:700; font-size:13px;
+      cursor:pointer; font-family:'Sora',sans-serif;
+      display:flex; align-items:center; justify-content:center; gap:6px;
+    ">🖨️ Imprimir</button>
+    <button onclick="shareTicket()" style="
+      flex:1; padding:12px 8px; border-radius:50px;
+      border:2px solid #e91e8c; background:#fff;
+      color:#e91e8c; font-weight:700; font-size:13px;
+      cursor:pointer; font-family:'Sora',sans-serif;
+      display:flex; align-items:center; justify-content:center; gap:6px;
+    ">📤 Compartir</button>
+    <button onclick="closeSummary()" style="
+      flex:1; padding:12px 8px; border-radius:50px;
+      border:none; background:#e91e8c;
+      color:#fff; font-weight:700; font-size:13px;
+      cursor:pointer; font-family:'Sora',sans-serif;
+    ">Cerrar</button>
+  </div>
+
 </div>
 </div>
 
@@ -2509,12 +2592,10 @@ async function deleteProduct(id){
 
 // =========== TICKET ===========
 
-/* Siempre 2 decimales */
 function money(n){
   return Number(n || 0).toFixed(2)
 }
 
-/* Divide nombres largos en líneas de max chars */
 function wrapText(text, max){
   const words = text.split(" ")
   const lines = []
@@ -2531,82 +2612,86 @@ function wrapText(text, max){
   return lines.length ? lines : [text]
 }
 
-/*
-  Columnas fijas (monospace, 32 chars total):
-  ─────────────────────────────────
-  Nombre (wrap a 32 chars)
-  x{qty}      ${unit}    ${total}
-  Col:  6     9          10
-*/
-function formatTicketItem(name, qty, price, total){
-  const WRAP    = 32
-  const C_QTY   = 6    // "x999  "
-  const C_UNIT  = 9    // "$999.99  "
-  const nameLines = wrapText(name, WRAP)
-  let out = ""
-  nameLines.forEach(l => { out += l + "\n" })
-  const qtyStr   = ("x" + qty).padEnd(C_QTY)
-  const unitStr  = ("$" + money(price)).padEnd(C_UNIT)
-  const totalStr = "$" + money(total)
-  out += qtyStr + unitStr + totalStr + "\n"
-  return out
-}
-
 function showSaleSummary(sale){
 
-  const W   = 32
-  const SEP = "─".repeat(W)
+  // ── Número de venta ──
+  document.getElementById("ticketVentaNum").textContent =
+    "Venta " + saleNumLabel(sale.num)
 
-  // cabecera fija
-  const HDR_COL = "CANT   UNIT      TOTAL"
-  const hdrPad  = W - HDR_COL.length
-  const header  = SEP + "\n" +
-    "PRODUCTO".padEnd(hdrPad > 0 ? hdrPad : 1) + HDR_COL + "\n" +
-    SEP + "\n"
-
-  // items
-  const itemsText = sale.items.map(p => {
-    const sub = Number(p.qty) * Number(p.price)
-    return formatTicketItem(p.name, p.qty, p.price, sub)
-  }).join("\n")
-
-  // pie — etiqueta padEnd + valor padStart para alineación derecha
-  const COL = W
-  const fmtRow = (label, val) =>
-    label.padEnd(COL - val.length) + val
-
-  const footer = SEP + "\n" +
-    fmtRow("Total:",   "$" + money(sale.total))  + "\n" +
-    fmtRow("Pagó:",    "$" + money(sale.paid))   + "\n" +
-    fmtRow("Vuelto:",  "$" + money(sale.change)) + " 🟢\n" +
-    SEP
-
-  // info de cabecera (fuera del pre)
-  document.getElementById("saleSummaryInfo").innerHTML =
-    `<b>Venta ${saleNumLabel(sale.num)}</b> &nbsp;
-     <span style="color:#94a3b8;">${formatDate(sale.date)}</span><br>
-     <span style="font-size:10px; color:#cbd5e1; font-family:'JetBrains Mono',monospace;">${sale.id}</span>`
-
-  // todo el ticket en un solo <pre> monospace — sin bloques duplicados
-  document.getElementById("saleSummaryItems").innerHTML = `
-    <pre style="
+  // ── Fecha + ID ──
+  document.getElementById("ticketMeta").innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+      <span style="font-size:13px; font-weight:600; color:#374151;">
+        📅 ${formatDate(sale.date)}
+      </span>
+    </div>
+    <div style="
+      background:#fce4ec;
+      border-radius:20px;
+      padding:4px 12px;
+      display:inline-block;
+      font-size:11px;
       font-family:'JetBrains Mono',monospace;
-      font-size:12px;
-      line-height:1.65;
-      white-space:pre;
-      overflow-x:auto;
-      color:#0f172a;
-      margin:0;
-      background:#f8fafc;
-      border-radius:10px;
-      padding:12px 10px;
-    ">${header}${itemsText}${footer}</pre>
+      color:#c2185b;
+      word-break:break-all;
+    ">🔖 ${sale.id}</div>
   `
 
+  // ── Filas de productos ──
+  const container = document.getElementById("ticketItems")
+  container.innerHTML = ""
+
+  sale.items.forEach((p, i) => {
+    const sub = Number(p.qty) * Number(p.price)
+    const nameLines = wrapText(p.name, 22)
+    const isLast = i === sale.items.length - 1
+
+    const row = document.createElement("div")
+    row.style.cssText = `
+      display:grid;
+      grid-template-columns:1fr auto auto auto;
+      gap:8px;
+      padding:12px 14px;
+      align-items:center;
+      ${!isLast ? "border-bottom:1px solid #fce4ec;" : ""}
+    `
+
+    // Nombre (multilínea si es largo)
+    const nameHtml = nameLines.map((l, li) =>
+      `<div style="font-size:14px; font-weight:${li===0?'600':'400'}; color:${li===0?'#0f172a':'#64748b'};">${l}</div>`
+    ).join("")
+
+    row.innerHTML = `
+      <div>${nameHtml}</div>
+      <div style="
+        font-size:14px; font-weight:700; color:#e91e8c;
+        text-align:center; white-space:nowrap;
+      ">x${p.qty}</div>
+      <div style="
+        font-size:14px; font-weight:600; color:#374151;
+        text-align:right; white-space:nowrap;
+        font-family:'JetBrains Mono',monospace;
+      ">$${money(p.price)}</div>
+      <div style="
+        font-size:14px; font-weight:700; color:#0f172a;
+        text-align:right; white-space:nowrap;
+        font-family:'JetBrains Mono',monospace;
+      ">$${money(sub)}</div>
+    `
+    container.appendChild(row)
+  })
+
+  // ── Totales ──
+  document.getElementById("ticketTotal").textContent  = "$" + money(sale.total)
+  document.getElementById("ticketPaid").textContent   = "$" + money(sale.paid)
+  document.getElementById("ticketChange").textContent = "$" + money(sale.change) + " 💝"
+
+  // ── Mostrar modal ──
   const modal = document.getElementById("saleSummary")
   modal.style.display = "flex"
   document.body.style.pointerEvents = "none"
   modal.style.pointerEvents = "auto"
+
 }
 
 function closeSummary(){
@@ -2625,20 +2710,36 @@ function closeSummary(){
 function printTicket(){
   const content = document.getElementById("saleSummaryBox").innerHTML
   const w = window.open("")
-  w.document.write(`<html><body style="font-family:monospace;padding:20px">${content}</body></html>`)
+  w.document.write(`
+    <html><head>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>body{font-family:'Sora',sans-serif;padding:20px;max-width:400px;margin:0 auto;}</style>
+    </head><body>${content}</body></html>
+  `)
   w.document.close()
   w.print()
 }
 
 function shareTicket(){
-  const text = document.getElementById("saleSummaryBox").innerText
+  // Armar texto plano para compartir
+  const num   = document.getElementById("ticketVentaNum")?.textContent || ""
+  const items = document.getElementById("ticketItems")
+  const total = document.getElementById("ticketTotal")?.textContent || ""
+  const paid  = document.getElementById("ticketPaid")?.textContent || ""
+  const chng  = document.getElementById("ticketChange")?.textContent || ""
+
+  let text = `🧾 Ticket de Venta\n${num}\n\n`
+  if(items){
+    items.querySelectorAll("[data-share]").forEach(r => {
+      text += r.getAttribute("data-share") + "\n"
+    })
+  }
+  text += `\n💰 Total:  ${total}\n💵 Pagó:   ${paid}\n💝 Vuelto: ${chng}\n\nGracias por su compra ✨`
+
   if(navigator.share){
     navigator.share({ title:"Ticket de venta", text })
-    .catch(()=>{
-      navigator.clipboard.writeText(text)
-      showToast("📋 Ticket copiado")
-    })
-  }else{
+    .catch(()=>{ navigator.clipboard.writeText(text); showToast("📋 Ticket copiado") })
+  } else {
     navigator.clipboard.writeText(text)
     showToast("📋 Ticket copiado")
   }
