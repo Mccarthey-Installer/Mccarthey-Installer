@@ -157,9 +157,12 @@ function showSuggestions(){
           font-size: 14px;
           font-weight: 700;
           color: #0f172a;
-          white-space: nowrap;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
           overflow: hidden;
-          text-overflow: ellipsis;
+          word-break: break-word;
+          line-height: 1.3;
           margin-bottom: 2px;
         ">${p.name}${cartBadge}</div>
         <span style="
@@ -2281,7 +2284,19 @@ function renderProducts() {
     const card = document.createElement("div")
     card.className = "product-card"
     card.innerHTML = `
-      <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:#0f172a;">${p.name}</div>
+      <div style="
+        font-weight: 700;
+        font-size: 13px;
+        margin-bottom: 4px;
+        color: #0f172a;
+        line-height: 1.3;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+        min-height: 2.6em;
+      ">${p.name}</div>
       <span class="cat-chip">${p.cat || "General"}</span>
       <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
         <b style="font-size:15px; font-family:'JetBrains Mono',monospace; color:#0f172a;">$${p.price.toFixed(2)}</b>
@@ -3846,4 +3861,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-</html>
+  </html>
