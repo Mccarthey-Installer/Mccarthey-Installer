@@ -1429,11 +1429,50 @@ function formatDate(str){
   return `${day}/${month}/${year}, ${hours}:${minutes} ${ampm}`
 }
 
+// =========================================================
+// ZONA HORARIA — fuente única para TODAS las fechas visibles
+// ---------------------------------------------------------
+// toISOString() solo para GUARDAR en el backend.
+// Para AGRUPAR, MOSTRAR y COMPARAR → siempre localDay().
+// =========================================================
+const TZ = "America/El_Salvador"
+
+/**
+ * Devuelve "YYYY-MM-DD" en zona horaria local (El Salvador).
+ * Nunca usa UTC para agrupar ni comparar días.
+ */
+function localDay(dateInput){
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput)
+  if(isNaN(d.getTime())) return null
+  // Intl.DateTimeFormat garantiza la conversión de zona horaria correcta
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: TZ,
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(d)
+  const p = {}
+  parts.forEach(x => { p[x.type] = x.value })
+  return `${p.year}-${p.month}-${p.day}`  // "2026-03-23"
+}
+
+/**
+ * Devuelve "DD/M" legible para labels de gráficas (ej: "23/3").
+ */
+function localDayLabel(dateInput){
+  const iso = localDay(dateInput)
+  if(!iso) return ""
+  const [, m, dd] = iso.split("-")
+  return `${Number(dd)}/${Number(m)}`
+}
+
 function getDateKey(str){
   if(!str) return null
   const d = new Date(str)
   if(!isNaN(d.getTime())){
-    return d.getDate() + "/" + (d.getMonth() + 1)
+    // Usar zona horaria local, no UTC
+    const iso = localDay(d)
+    if(!iso) return null
+    const [, m, dd] = iso.split("-")
+    return `${Number(dd)}/${Number(m)}`
   }
   return str.split("/").slice(0,2).join("/")
 }
@@ -1441,15 +1480,25 @@ function getDateKey(str){
 function getDayLabel(dateStr){
   const d = new Date(dateStr)
   if(isNaN(d.getTime())) return "Antiguas"
-  const hoy = new Date()
-  const ayer = new Date(); ayer.setDate(hoy.getDate() - 1)
-  const toKey = x => x.getFullYear() + "-" + x.getMonth() + "-" + x.getDate()
-  if(toKey(d) === toKey(hoy))   return "Hoy"
-  if(toKey(d) === toKey(ayer))  return "Ayer"
-  const hace7 = new Date(); hace7.setDate(hoy.getDate() - 7)
+
+  // Comparar días en zona horaria local
+  const dKey    = localDay(d)
+  const hoyKey  = localDay(new Date())
+  const ayerD   = new Date(); ayerD.setDate(ayerD.getDate() - 1)
+  const ayerKey = localDay(ayerD)
+
+  if(dKey === hoyKey)  return "Hoy"
+  if(dKey === ayerKey) return "Ayer"
+
+  // Esta semana: últimos 7 días
+  const hace7 = new Date(); hace7.setDate(hace7.getDate() - 7)
   if(d >= hace7) return "Esta semana"
-  if(d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear())
-    return "Este mes"
+
+  // Este mes: mismo año-mes local
+  const [dYear, dMonth]   = (dKey  || "").split("-")
+  const [hYear, hMonth]   = (hoyKey|| "").split("-")
+  if(dYear === hYear && dMonth === hMonth) return "Este mes"
+
   return "Más antiguas"
 }
 
@@ -3101,14 +3150,13 @@ function calcularResumen({ ventas = [], gastos = [] }) {
 
 // =========================================================
 // AGRUPACIÓN UNIFICADA — agruparPorDia
-// Usa fechas ISO reales para evitar bugs de formato
+// Usa localDay() con TZ correcta — nunca split("T")[0] (que da UTC)
 // =========================================================
 function agruparPorDia(ventas, gastos) {
   const mapa = {}
 
   ventas.forEach(v => {
-    // Siempre cortar en "T" para obtener YYYY-MM-DD
-    const dia = (v.date || "").split("T")[0]
+    const dia = localDay(v.date)   // ← zona horaria El Salvador
     if(!dia) return
     if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
     mapa[dia].ventas += Number(v.total || 0)
@@ -3116,7 +3164,7 @@ function agruparPorDia(ventas, gastos) {
   })
 
   gastos.forEach(g => {
-    const dia = (g.created_at || "").split("T")[0]
+    const dia = localDay(g.created_at)   // ← zona horaria El Salvador
     if(!dia) return
     if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
     mapa[dia].gastos += Number(g.amount || 0)
@@ -3126,11 +3174,11 @@ function agruparPorDia(ventas, gastos) {
   const ventasArr   = []
   const gananciaArr = []
 
-  Object.keys(mapa).sort().slice(-14).forEach(dia => {  // últimos 14 días
-    const d           = mapa[dia]
+  Object.keys(mapa).sort().slice(-14).forEach(dia => {
+    const d            = mapa[dia]
     const gananciaReal = d.ventas - d.costos - d.gastos
-    // Label legible: DD/MM
-    const [y, m, dd]  = dia.split("-")
+    // Label legible usando la misma TZ
+    const [, m, dd]    = dia.split("-")
     labels.push(`${Number(dd)}/${Number(m)}`)
     ventasArr.push(d.ventas)
     gananciaArr.push(gananciaReal)
@@ -3249,8 +3297,8 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
   }
 
   // 🟡 Sin ventas hoy
-  const hoy = new Date().toISOString().split("T")[0]
-  const ventasHoy = state.sales.filter(s => (s.date || "").startsWith(hoy))
+  const hoyKey    = localDay(new Date())
+  const ventasHoy = state.sales.filter(s => localDay(s.date) === hoyKey)
   if(ventasHoy.length === 0 && state.sales.length > 0){
     alertas.push({
       nivel: "amarillo",
@@ -3647,4 +3695,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-  </html>
+</html>
