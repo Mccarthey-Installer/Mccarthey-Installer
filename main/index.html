@@ -802,47 +802,6 @@ z-index: 1;
   margin: 6px 14px;
 }
 
-/* ── MOBILE: carrito fijo al fondo, siempre visible ── */
-@media (max-width: 1023px) {
-
-  /* Se clava al fondo. Nunca se mueve. */
-  #cartCard {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 60;
-    border-radius: 20px 20px 0 0;
-    margin-bottom: 0;
-    box-shadow: 0 -6px 32px rgba(0,0,0,.18);
-    display: flex;
-    flex-direction: column;
-    max-height: 56vh;
-    overflow: hidden;
-  }
-
-  /* La lista de items es la única parte scrollable */
-  #cartCard #cart {
-    overflow-y: auto;
-    flex: 1 1 auto;
-    min-height: 0;
-    scrollbar-width: none;
-  }
-  #cartCard #cart::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* total + input + vuelto + botón: NUNCA se esconden */
-  #cartCard > div:last-child {
-    flex-shrink: 0;
-  }
-
-  /* Espacio para que los productos no queden tapados */
-  section#pos {
-    padding-bottom: 360px;
-  }
-}
-
 </style>
 </head>
 <body>
@@ -1142,7 +1101,7 @@ z-index: 1;
     <div id="productList" class="grid grid-cols-2 gap-3"></div>
   </div>
 
-  <div class="card" id="cartCard">
+  <div class="card">
     <span class="sec-title">🧾 Carrito</span>
     <div id="cart" style="margin-top:10px; min-height:48px;"></div>
 
@@ -2135,15 +2094,6 @@ function getCategories() {
 
 function renderCategoryFilter() {
   const container = document.getElementById("catFilter")
-  const search = document.getElementById("searchProduct")?.value || ""
-
-  // Si hay texto en el buscador, las categorías desaparecen completamente
-  if (search.trim() !== "") {
-    container.style.display = "none"
-    return
-  }
-
-  container.style.display = "flex"
   container.innerHTML = ""
   getCategories().forEach(cat => {
     const btn = document.createElement("button")
