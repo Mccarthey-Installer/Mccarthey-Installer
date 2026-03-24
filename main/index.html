@@ -42,193 +42,68 @@ return res
 
 }
 
-/* ─────────────────────────────────────────────────────
-   showSuggestions — versión completa
-   Muestra nombre · precio · stock y botón + Agregar
-   Oculta el grid mientras hay texto en el buscador
-───────────────────────────────────────────────────── */
 function showSuggestions(){
 
   const input = document.getElementById("searchProduct")
   if(!input) return
 
   const search = input.value.toLowerCase().trim()
-  const box    = document.getElementById("searchSuggestions")
-  const grid   = document.getElementById("productList")
-  const cats   = document.getElementById("catFilter")
-  const alert  = document.getElementById("lowStockAlert")
 
-  /* ── Sin texto: restaurar vista normal ── */
+  const box = document.getElementById("searchSuggestions")
+
   if(!search){
-    box.style.display = "none"
-    box.innerHTML     = ""
-    if(grid)  grid.style.display  = ""   /* vuelve al display original (grid) */
-    if(cats)  cats.style.display  = ""
-    if(alert) alert.style.display = ""
+    box.style.display="none"
+    box.innerHTML=""
     return
   }
-
-  /* ── Con texto: ocultar grid y mostrar resultados ── */
-  if(grid)  grid.style.display  = "none"
-  if(cats)  cats.style.display  = "none"
-  if(alert) alert.style.display = "none"
 
   const results = state.products
-    .filter(p => p.name.toLowerCase().includes(search))
-    .slice(0, 12)   /* un poco más de resultados que antes */
+  .filter(p => p.name.toLowerCase().includes(search))
+  .slice(0,5)
 
   if(results.length === 0){
-    box.style.display = "block"
-    box.innerHTML = `
-      <div style="
-        padding: 20px 14px;
-        text-align: center;
-        color: #94a3b8;
-        font-size: 13px;
-        font-weight: 600;
-      ">
-        Sin resultados para "<b>${search}</b>"
-      </div>
-    `
+    box.style.display="none"
+    box.innerHTML=""
     return
   }
 
-  box.innerHTML = ""
+  box.innerHTML=""
 
-  results.forEach(p => {
-
-    const inCart    = state.cart.find(x => x.id === p.id)
-    const qtyInCart = inCart ? inCart.qty : 0
-    const available = p.stock - qtyInCart
-    const oos       = available <= 0
-    const lowStock  = available > 0 && available <= 5
-
-    /* ── Colores de stock ── */
-    const stockColor = oos      ? "#dc2626"
-                     : lowStock ? "#d97706"
-                     :            "#16a34a"
-    const stockBg    = oos      ? "#fee2e2"
-                     : lowStock ? "#fef3c7"
-                     :            "#dcfce7"
-    const stockLabel = oos
-      ? `<span style="color:#dc2626; font-weight:700; font-size:12px;">❌ Sin stock</span>`
-      : `<span style="
-            display:inline-block;
-            background:${stockBg};
-            color:${stockColor};
-            border-radius:20px;
-            padding:2px 9px;
-            font-size:12px;
-            font-weight:700;
-         ">${available}</span>`
-
-    /* ── Cantidad ya en carrito (badge opcional) ── */
-    const cartBadge = qtyInCart > 0
-      ? `<span style="
-            display:inline-block;
-            background:#dbeafe;
-            color:#1d4ed8;
-            border-radius:20px;
-            padding:2px 8px;
-            font-size:11px;
-            font-weight:700;
-            margin-left:4px;
-         ">🛒 ${qtyInCart}</span>`
-      : ""
+  results.forEach(p=>{
 
     const row = document.createElement("div")
-    row.style.cssText = `
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 10px;
-      align-items: center;
-      padding: 11px 14px;
-      border-bottom: 1px solid #f1f5f9;
-      cursor: ${oos ? "not-allowed" : "pointer"};
-      background: #fff;
-      transition: background .15s;
-      opacity: ${oos ? "0.6" : "1"};
-    `
+
+    row.style.padding="8px 10px"
+    row.style.cursor="pointer"
+    row.style.display="flex"
+    row.style.justifyContent="space-between"
+    row.style.fontSize="13px"
+    row.style.borderBottom="1px solid #f1f5f9"
 
     row.innerHTML = `
-      <!-- col 1: nombre + categoría -->
-      <div style="min-width:0;">
-        <div style="
-          font-size: 14px;
-          font-weight: 700;
-          color: #0f172a;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-          word-break: break-word;
-          line-height: 1.3;
-          margin-bottom: 2px;
-        ">${p.name}${cartBadge}</div>
-        <span style="
-          background:#f1f5f9;
-          color:#475569;
-          padding:1px 7px;
-          border-radius:20px;
-          font-size:10px;
-          font-weight:600;
-        ">${p.cat || "General"}</span>
-      </div>
+<span>${p.name}</span>
+<b>$${p.price.toFixed(2)}</b>
+`
 
-      <!-- col 2: precio + stock -->
-      <div style="text-align:right; flex-shrink:0;">
-        <div style="
-          font-family:'JetBrains Mono',monospace;
-          font-size:15px;
-          font-weight:700;
-          color:#0f172a;
-          margin-bottom:4px;
-        ">$${p.price.toFixed(2)}</div>
-        ${stockLabel}
-      </div>
+    row.onclick = () => {
 
-      <!-- col 3: botón -->
-      <button
-        style="
-          background: ${oos ? "#94a3b8" : "var(--accent)"};
-          color: #fff;
-          border: none;
-          border-radius: 8px;
-          padding: 8px 12px;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: ${oos ? "not-allowed" : "pointer"};
-          font-family:'Sora',sans-serif;
-          white-space: nowrap;
-          flex-shrink: 0;
-          transition: background .15s, transform .1s;
-        "
-        ${oos ? "disabled" : ""}
-        onclick="event.stopPropagation(); ${oos ? "" : `addToCartFromSearch(${p.id})`}"
-      >${oos ? "Agotado" : "+ Agregar"}</button>
-    `
+      addToCart(p.id,{classList:{add(){},remove(){}}})
 
-    /* Hover en toda la fila (solo si tiene stock) */
-    if(!oos){
-      row.addEventListener("mouseenter", () => { row.style.background = "#f8fafc" })
-      row.addEventListener("mouseleave", () => { row.style.background = "#fff" })
+      input.value=""
+
+      box.style.display="none"
+      box.innerHTML=""
+
+      input.focus()
+
     }
 
     box.appendChild(row)
+
   })
 
-  box.style.display = "block"
-}
+  box.style.display="block"
 
-/* ─────────────────────────────────────────────────────
-   addToCartFromSearch — igual que addToCart pero
-   NO cierra el buscador, para poder seguir sumando
-───────────────────────────────────────────────────── */
-function addToCartFromSearch(id){
-  const btn = { classList: { add(){}, remove(){} } }   /* dummy para la animación */
-  addToCart(id, btn)
-  /* Refrescar la lista de sugerencias en el lugar */
-  showSuggestions()
 }
 
 /* ================= API WRAPPER ================= */
@@ -927,49 +802,6 @@ z-index: 1;
   margin: 6px 14px;
 }
 
-/* ─────────────────────────────────────────────────────
-   BUSCADOR — panel de resultados completo
-   Ocupa el ancho total del card cuando hay texto
-───────────────────────────────────────────────────── */
-#searchSuggestions {
-  position: absolute;
-  /* se posiciona bajo el wrapper del input */
-  left: 0;
-  right: 0;
-  background: #fff;
-  border: 2px solid #e2e8f0;
-  border-top: none;
-  border-radius: 0 0 14px 14px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.10);
-  z-index: 50;
-  max-height: 420px;
-  overflow-y: auto;
-  display: none;
-}
-#searchSuggestions::-webkit-scrollbar { width: 4px; }
-#searchSuggestions::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
-
-/* Wrapper que contiene el input + el dropdown */
-#searchWrapper {
-  position: relative;
-  /* en mobile ocupa todo, en desktop un ancho fijo */
-  width: 100%;
-}
-
-@media (min-width: 640px) {
-  #searchWrapper {
-    width: 260px;
-  }
-}
-
-/* Cuando el panel de sugerencias está abierto,
-   redondear solo las esquinas superiores del input */
-#searchWrapper.open #searchProduct {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-color: var(--accent2);
-}
-
 </style>
 </head>
 <body>
@@ -1247,22 +1079,22 @@ z-index: 1;
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <span class="sec-title">🛒 Productos</span>
-
-      <!-- ── BUSCADOR MEJORADO ──
-           El wrapper #searchWrapper contiene el input + el dropdown.
-           El dropdown se posiciona relativo al wrapper, no al card.
-      ── -->
-      <div id="searchWrapper">
-        <input
-          id="searchProduct"
-          class="input"
-          placeholder="🔍 Buscar producto..."
-          autocomplete="off"
-          style="width:100%;"
-        >
-        <div id="searchSuggestions"></div>
+      <div style="position:relative; width:150px;">
+        <input id="searchProduct" class="input" placeholder="Buscar..." style="width:100%; padding:8px 12px;">
+        <div id="searchSuggestions" style="
+        position:absolute;
+        top:42px;
+        left:0;
+        right:0;
+        background:#fff;
+        border:2px solid #e2e8f0;
+        border-radius:10px;
+        display:none;
+        max-height:160px;
+        overflow:auto;
+        z-index:50;
+        "></div>
       </div>
-
     </div>
     <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>
     <div id="lowStockAlert"></div>
@@ -1762,6 +1594,12 @@ async function loadProducts(force = false){
 
 // =========================================================
 // LOAD SUMMARY — /api/summary
+// ─────────────────────────────────────────────────────────
+// YA NO ES FUENTE DE VERDAD para números en pantalla.
+// Solo se llama en background para:
+//   - guardar el filtro histórico si el usuario lo aplica
+//   - analytics futuras
+// Los números reales siempre vienen de calcularResumen()
 // =========================================================
 async function loadSummary(){
   try {
@@ -1769,6 +1607,7 @@ async function loadSummary(){
     // Solo guardamos el filtro histórico, no los números
     state.summary = { filter: data.filter || { desde: null, hasta: null } }
   } catch(err) {
+    // Silencioso — no es crítico. Los números ya están en frontend.
     state.summary = { filter: { desde: null, hasta: null } }
   }
 }
@@ -1987,6 +1826,7 @@ function clearExpenseError(){
 
 async function saveExpense(){
 
+  // ── PRIORIDAD 5: bloqueo de doble submit ──
   if(savingExpense) return
   savingExpense = true
 
@@ -1994,6 +1834,7 @@ async function saveExpense(){
   const amount      = parseFloat(document.getElementById("e-amount").value)
   const category    = document.getElementById("e-cat").value.trim()
 
+  // Validación en frontend
   if(!description){
     showExpenseError("❌ La descripción es requerida")
     savingExpense = false
@@ -2036,8 +1877,11 @@ async function saveExpense(){
 
     closeExpenseModal()
 
+    // ── PRIORIDAD 1: sincronización real ──
+    // Recargamos gastos + summary juntos para que las finanzas sean consistentes
     await loadExpenses()
     await loadSummary()
+    // Si stats está visible, actualizarlo en vivo
     if(!document.getElementById("stats").classList.contains("hidden")){
       renderStats()
     }
@@ -2069,6 +1913,7 @@ async function deleteExpense(id){
     await api("/api/expenses/" + id, { method: "DELETE" })
     showToast("🗑 Gasto eliminado", "ok")
 
+    // ── PRIORIDAD 1: sincronización real ──
     await loadExpenses()
     await loadSummary()
     if(!document.getElementById("stats").classList.contains("hidden")){
@@ -2219,11 +2064,14 @@ async function show(id) {
   }
 
   if(id === "stats"){
+    // Restaurar caja inicial guardada
     const savedCaja = localStorage.getItem("cajaInicial")
     if(savedCaja){
       const input = document.getElementById("cajaInicial")
       if(input && !input.value) input.value = savedCaja
     }
+    // Cargar gastos primero — calcularResumen los necesita
+    // loadSummary en background solo para el filtro histórico
     await Promise.all([ loadExpenses(), loadSummary() ])
     renderStats()
     setTimeout(() => {
@@ -2284,19 +2132,7 @@ function renderProducts() {
     const card = document.createElement("div")
     card.className = "product-card"
     card.innerHTML = `
-      <div style="
-        font-weight: 700;
-        font-size: 13px;
-        margin-bottom: 4px;
-        color: #0f172a;
-        line-height: 1.3;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-        word-break: break-word;
-        min-height: 2.6em;
-      ">${p.name}</div>
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px; color:#0f172a;">${p.name}</div>
       <span class="cat-chip">${p.cat || "General"}</span>
       <div style="margin-top:8px; display:flex; justify-content:space-between; align-items:center;">
         <b style="font-size:15px; font-family:'JetBrains Mono',monospace; color:#0f172a;">$${p.price.toFixed(2)}</b>
@@ -2827,9 +2663,11 @@ function wrapText(text, max){
 
 function showSaleSummary(sale){
 
+  // ── Número de venta ──
   document.getElementById("ticketVentaNum").textContent =
     "Venta " + saleNumLabel(sale.num)
 
+  // ── Fecha + ID ──
   document.getElementById("ticketMeta").innerHTML = `
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
       <span style="font-size:13px; font-weight:600; color:#374151;">
@@ -2848,6 +2686,7 @@ function showSaleSummary(sale){
     ">🔖 ${sale.id}</div>
   `
 
+  // ── Filas de productos ──
   const container = document.getElementById("ticketItems")
   container.innerHTML = ""
 
@@ -2866,6 +2705,7 @@ function showSaleSummary(sale){
       ${!isLast ? "border-bottom:1px solid #fce4ec;" : ""}
     `
 
+    // Nombre (multilínea si es largo)
     const nameHtml = nameLines.map((l, li) =>
       `<div style="font-size:14px; font-weight:${li===0?'600':'400'}; color:${li===0?'#0f172a':'#64748b'};">${l}</div>`
     ).join("")
@@ -2890,10 +2730,12 @@ function showSaleSummary(sale){
     container.appendChild(row)
   })
 
+  // ── Totales ──
   document.getElementById("ticketTotal").textContent  = "$" + money(sale.total)
   document.getElementById("ticketPaid").textContent   = "$" + money(sale.paid)
   document.getElementById("ticketChange").textContent = "$" + money(sale.change) + " 💝"
 
+  // ── Mostrar modal ──
   const modal = document.getElementById("saleSummary")
   modal.style.display = "flex"
   document.body.style.pointerEvents = "none"
@@ -2928,6 +2770,7 @@ function printTicket(){
 }
 
 function shareTicket(){
+  // Armar texto plano para compartir
   const num   = document.getElementById("ticketVentaNum")?.textContent || ""
   const items = document.getElementById("ticketItems")
   const total = document.getElementById("ticketTotal")?.textContent || ""
@@ -3075,9 +2918,11 @@ function renderSales(){
 // =========================================================
 function renderStats() {
 
+  // ── 0. CAJA UNIFICADA (fuente única de verdad) ──
   const resumen = calcularResumen({ ventas: state.sales, gastos: state.expenses })
   renderCaja(resumen)
 
+  // ── 1. PANEL OPERATIVO ──
   const totalSales    = state.sales.length
   const ingresos      = state.sales.reduce((a,b) => a + b.total, 0)
   const totalProfit   = state.products.reduce((a,p) => a + p.sold*(p.price-p.cost), 0)
@@ -3115,12 +2960,16 @@ function renderStats() {
     </div>
   `
 
+  // ── 2. SUMMARY FINANCIERO REAL — FUENTE ÚNICA: calcularResumen ──
+  // state.summary ya NO maneja números críticos.
+  // Solo se usa para el label del filtro histórico (si el usuario lo aplicó).
   const s = calcularResumen({ ventas: state.sales, gastos: state.expenses })
 
   const panel = document.getElementById("summaryPanel")
   const filterLabel = document.getElementById("summaryFilterLabel")
 
   if(filterLabel){
+    // El label solo viene del filtro API si se aplicó uno, si no: "Datos en vivo"
     const apiFilter = state.summary?.filter
     filterLabel.textContent = apiFilter?.desde
       ? `Filtro: ${apiFilter.desde}${apiFilter.hasta ? " → " + apiFilter.hasta : ""}`
@@ -3167,9 +3016,11 @@ function renderStats() {
     </div>
   `
 
+  // ── 3. RANKING + GASTOS POR CATEGORÍA (desde state.expenses local) ──
   const withSales = sorted.filter(p => p.sold > 0)
   const medals = ["🥇","🥈","🥉"]
 
+  // Gastos por categoría — calculado local, sin depender del backend
   const byCatLocal = {}
   state.expenses.forEach(e => {
     const c = e.category || "General"
@@ -3234,7 +3085,7 @@ async function resetStats(){
 
     await api("/api/reset-stats",{method:"POST"})
     await loadProducts()
-    state.expenses = []
+    state.expenses = []   // limpiar local también para que cuadre
     showToast("📊 Estadísticas reiniciadas", "ok")
     renderStats()
 
@@ -3269,6 +3120,7 @@ async function clearHistory(){
 
 // =========================================================
 // FUNCIÓN CENTRAL — calcularResumen
+// UNA sola fuente de verdad para todos los números financieros
 // =========================================================
 function calcularResumen({ ventas = [], gastos = [] }) {
   let totalVentas      = 0
@@ -3277,6 +3129,7 @@ function calcularResumen({ ventas = [], gastos = [] }) {
 
   ventas.forEach(v => {
     totalVentas        += Number(v.total    || 0)
+    // costTotal: sum de (cost * qty) por venta, calculado en tiempo real
     const costVenta     = (v.items || []).reduce((a, i) => a + (Number(i.cost || 0) * Number(i.qty)), 0)
     totalCostos        += costVenta
     totalGananciaBruta += Number(v.total || 0) - costVenta
@@ -3291,18 +3144,19 @@ function calcularResumen({ ventas = [], gastos = [] }) {
     gastos:          totalGastos,
     gananciaBruta:   totalGananciaBruta,
     gananciaReal,
-    caja:            totalVentas
+    caja:            totalVentas   // lo que entró en caja (ventas brutas)
   }
 }
 
 // =========================================================
 // AGRUPACIÓN UNIFICADA — agruparPorDia
+// Usa localDay() con TZ correcta — nunca split("T")[0] (que da UTC)
 // =========================================================
 function agruparPorDia(ventas, gastos) {
   const mapa = {}
 
   ventas.forEach(v => {
-    const dia = localDay(v.date)
+    const dia = localDay(v.date)   // ← zona horaria El Salvador
     if(!dia) return
     if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
     mapa[dia].ventas += Number(v.total || 0)
@@ -3310,7 +3164,7 @@ function agruparPorDia(ventas, gastos) {
   })
 
   gastos.forEach(g => {
-    const dia = localDay(g.created_at)
+    const dia = localDay(g.created_at)   // ← zona horaria El Salvador
     if(!dia) return
     if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
     mapa[dia].gastos += Number(g.amount || 0)
@@ -3323,6 +3177,7 @@ function agruparPorDia(ventas, gastos) {
   Object.keys(mapa).sort().slice(-14).forEach(dia => {
     const d            = mapa[dia]
     const gananciaReal = d.ventas - d.costos - d.gastos
+    // Label legible usando la misma TZ
     const [, m, dd]    = dia.split("-")
     labels.push(`${Number(dd)}/${Number(m)}`)
     ventasArr.push(d.ventas)
@@ -3333,12 +3188,14 @@ function agruparPorDia(ventas, gastos) {
 }
 
 // =========================================================
-// PREDICCIÓN DE GANANCIA
+// PREDICCIÓN DE GANANCIA — regresión lineal simple
+// Toma los últimos N días y proyecta los próximos 3
 // =========================================================
 function predecirGanancia(gananciaArr) {
   const n = gananciaArr.length
-  if(n < 3) return null
+  if(n < 3) return null   // necesitamos al menos 3 puntos
 
+  // Regresión lineal mínimos cuadrados
   const xs = gananciaArr.map((_, i) => i)
   const ys = gananciaArr
   const xMean = xs.reduce((a, x) => a + x, 0) / n
@@ -3354,14 +3211,15 @@ function predecirGanancia(gananciaArr) {
   const slope     = num / den
   const intercept = yMean - slope * xMean
 
+  // Proyectar 3 días siguientes
   const proyecciones = [1, 2, 3].map(offset => {
     const val = intercept + slope * (n - 1 + offset)
     return Math.round(val * 100) / 100
   })
 
   return {
-    slope,
-    proyecciones,
+    slope,           // positivo = tendencia creciente
+    proyecciones,    // [mañana, pasado, antepasado]
     promedioDiario: yMean
   }
 }
@@ -3378,6 +3236,7 @@ function renderCaja(resumen) {
   document.getElementById("cajaGastos").textContent    = `$${resumen.gastos.toFixed(2)}`
   document.getElementById("cajaGanancia").textContent  = `$${resumen.gananciaReal.toFixed(2)}`
 
+  // Color dinámico del total
   const cajaEl = document.getElementById("cajaTotal")
   if(cajaReal < 0){
     cajaEl.style.color = "#dc2626"
@@ -3387,6 +3246,7 @@ function renderCaja(resumen) {
     cajaEl.style.color = "#15803d"
   }
 
+  // Color de ganancia
   const ganEl = document.getElementById("cajaGanancia")
   ganEl.style.color = resumen.gananciaReal < 0 ? "#dc2626" : "#15803d"
 
@@ -3402,6 +3262,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
 
   const alertas = []
 
+  // 🔴 Pérdida real
   if(resumen.gananciaReal < 0){
     alertas.push({
       nivel: "rojo",
@@ -3409,6 +3270,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🔴 Te estás comiendo el capital
   if(resumen.gananciaReal < -resumen.costos * 0.5 && resumen.costos > 0){
     alertas.push({
       nivel: "rojo",
@@ -3416,6 +3278,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟠 Gastos superiores al 60% de ventas
   if(resumen.ventas > 0 && resumen.gastos / resumen.ventas > 0.6){
     const pct = ((resumen.gastos / resumen.ventas) * 100).toFixed(0)
     alertas.push({
@@ -3424,6 +3287,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟠 Caja por debajo de la inicial
   if(cajaInicial > 0 && cajaReal < cajaInicial && resumen.ventas > 0){
     const diff = (cajaInicial - cajaReal).toFixed(2)
     alertas.push({
@@ -3432,6 +3296,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟡 Sin ventas hoy
   const hoyKey    = localDay(new Date())
   const ventasHoy = state.sales.filter(s => localDay(s.date) === hoyKey)
   if(ventasHoy.length === 0 && state.sales.length > 0){
@@ -3441,6 +3306,7 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
+  // 🟢 Todo OK
   if(alertas.length === 0 && resumen.ventas > 0){
     box.innerHTML = `
       <div style="background:#f0fdf4; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; color:#15803d;">
@@ -3524,7 +3390,7 @@ function renderPrediccion(gananciaArr) {
 }
 
 // =========================================================
-// DIBUJAR GRÁFICAS
+// DIBUJAR GRÁFICAS — usa agruparPorDia unificado
 // =========================================================
 function drawChart() {
 
@@ -3607,7 +3473,7 @@ function drawProfitChart(){
   ctx.clearRect(0,0,W,H)
 
   const labels = chartData.labels
-  const values = chartData.gananciaArr
+  const values = chartData.gananciaArr  // ← ganancia REAL (ventas - costos - gastos)
 
   if(labels.length === 0){
     ctx.fillStyle = "#94a3b8"
@@ -3617,6 +3483,7 @@ function drawProfitChart(){
     return
   }
 
+  // Calcular predicción y dibujarla después
   renderPrediccion(values)
 
   const maxVal = Math.max(...values.map(Math.abs), 1)
@@ -3625,12 +3492,13 @@ function drawProfitChart(){
   const chartH = H - padT - padB
   const gap    = chartW / labels.length
   const barW   = Math.min(gap * 0.55, 40)
-  const zeroY  = padT + chartH
+  const zeroY  = padT + chartH   // línea de cero (en la base)
 
   labels.forEach((lbl, i) => {
     const val  = values[i]
     const barH = Math.max(Math.abs(val) / maxVal * chartH, 2)
     const x    = padL + i*gap + gap/2 - barW/2
+    // barras positivas crecen hacia arriba, negativas hacia abajo
     const y    = val >= 0 ? zeroY - barH : zeroY
 
     ctx.fillStyle = val >= 0 ? "#22c55e" : "#ef4444"
@@ -3649,6 +3517,7 @@ function drawProfitChart(){
     ctx.fillText(lbl, x+barW/2, H-6)
   })
 
+  // Línea de cero
   ctx.strokeStyle = "#cbd5e1"
   ctx.lineWidth   = 1
   ctx.setLineDash([3, 3])
@@ -3741,32 +3610,6 @@ document.getElementById("searchProduct")?.addEventListener("input", ()=>{
   showSuggestions()
 })
 
-/* Cerrar sugerencias al hacer click fuera */
-document.addEventListener("click", e => {
-  const wrapper = document.getElementById("searchWrapper")
-  const box     = document.getElementById("searchSuggestions")
-  if(!wrapper || !box) return
-  if(!wrapper.contains(e.target)){
-    box.style.display = "none"
-    wrapper.classList.remove("open")
-    /* Restaurar grid si el input quedó con texto */
-    const input = document.getElementById("searchProduct")
-    if(input && !input.value.trim()){
-      document.getElementById("productList").style.display  = ""
-      document.getElementById("catFilter").style.display    = ""
-      document.getElementById("lowStockAlert").style.display = ""
-    }
-  }
-})
-
-/* Abrir el panel cuando el input recibe foco y ya tiene texto */
-document.getElementById("searchProduct")?.addEventListener("focus", () => {
-  const input = document.getElementById("searchProduct")
-  if(input && input.value.trim()){
-    showSuggestions()
-  }
-})
-
 document.getElementById("searchInventory")?.addEventListener("input", renderInventory)
 document.getElementById("searchSales")?.addEventListener("input", renderSales)
 document.getElementById("searchExpenses")?.addEventListener("input", renderExpenses)
@@ -3778,15 +3621,6 @@ document.getElementById("e-amount")?.addEventListener("keydown", e => {
 })
 document.getElementById("e-cat")?.addEventListener("keydown", e => {
   if(e.key === "Enter") saveExpense()
-})
-
-/* Limpiar buscador con Escape */
-document.getElementById("searchProduct")?.addEventListener("keydown", e => {
-  if(e.key === "Escape"){
-    e.target.value = ""
-    showSuggestions()
-    e.target.blur()
-  }
 })
 
 document.addEventListener("click", e => {
@@ -3861,4 +3695,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-  </html>
+</html>
