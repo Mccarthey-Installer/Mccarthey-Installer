@@ -802,6 +802,43 @@ z-index: 1;
   margin: 6px 14px;
 }
 
+/* ── MOBILE: carrito fijo al fondo, siempre visible ── */
+@media (max-width: 1023px) {
+
+  /* El carrito se clava abajo, no importa cuántos productos haya arriba */
+  #cartCard {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
+    border-radius: 20px 20px 0 0;
+    margin-bottom: 0;
+    box-shadow: 0 -6px 28px rgba(0,0,0,.14);
+    max-height: 55vh;          /* nunca ocupa más de la mitad de pantalla */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Los items del carrito son scrollables dentro del panel */
+  #cartCard #cart {
+    overflow-y: auto;
+    max-height: 120px;
+    flex-shrink: 1;
+  }
+
+  /* El bloque de total+pago+vuelto+botón NUNCA se esconde */
+  #cartCard > div:last-child {
+    flex-shrink: 0;
+  }
+
+  /* Padding abajo en la sección de productos para que no queden tapados */
+  section#pos {
+    padding-bottom: 340px;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -1101,7 +1138,7 @@ z-index: 1;
     <div id="productList" class="grid grid-cols-2 gap-3"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="cartCard">
     <span class="sec-title">🧾 Carrito</span>
     <div id="cart" style="margin-top:10px; min-height:48px;"></div>
 
