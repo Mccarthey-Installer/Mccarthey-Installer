@@ -3071,7 +3071,7 @@ function renderStats() {
       <div class="stat-value" style="color:#78350f;">$${s.gastos.toFixed(2)}</div>
       <span style="position:absolute; top:10px; right:10px; font-size:11px; font-weight:600; cursor:pointer; color:#d97706;" onclick="show('expenses')" title="Ver gastos">→💸</span>
     </div>
-    <div class="stat-card" style="background:#fdf4ff; position:relative;">
+    <div class="stat-card" style="background:#fdf4ff; position:relative; cursor:pointer;" onclick="show('expenses')">
       <div style="font-size:11px; color:#7e22ce; font-weight:700; letter-spacing:0.5px; margin-bottom:8px;">GASTOS POR CATEGORÍA</div>
       ${expByCat.length > 0 ? expByCat.map(e => `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #f3e8ff;">
