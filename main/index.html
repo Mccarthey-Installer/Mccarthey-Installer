@@ -1356,6 +1356,7 @@ function markDirty(...sections) {
 
 function flushRender() {
   if(dirty.products || dirty.cart) {
+    renderLowStockAlert()
     renderCategoryFilter()
     renderProducts()
   }
@@ -2160,6 +2161,17 @@ function renderCategoryFilter() {
   })
 }
 
+// =========== LOW STOCK ALERT (siempre visible, independiente) ===========
+function renderLowStockAlert() {
+  const alertBox = document.getElementById("lowStockAlert")
+  if(!alertBox) return
+  const lowStock = state.products
+    .filter(p => p.stock <= 5)
+    .map(p => `${p.name} (${p.stock})`)
+  alertBox.innerHTML = lowStock.length
+    ? `<div class="alert-box">⚠ Stock bajo: ${lowStock.join(" · ")}</div>` : ""
+}
+
 // =========== PRODUCTS ===========
 function renderProducts() {
   if(!categoriesVisible){
@@ -2168,7 +2180,6 @@ function renderProducts() {
   const search = document.getElementById("searchProduct").value.toLowerCase()
   const container = document.getElementById("productList")
   container.innerHTML = ""
-  let lowStock = []
 
   const filtered = state.products.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search)
@@ -2181,7 +2192,6 @@ function renderProducts() {
   }
 
   filtered.forEach(p => {
-    if (p.stock <= 5) lowStock.push(`${p.name} (${p.stock})`)
 
     const inCart = state.cart.find(x => x.id === p.id)
     const qtyInCart = inCart ? inCart.qty : 0
@@ -2203,10 +2213,6 @@ function renderProducts() {
     `
     container.appendChild(card)
   })
-
-  const alertBox = document.getElementById("lowStockAlert")
-  alertBox.innerHTML = lowStock.length
-    ? `<div class="alert-box">⚠ Stock bajo: ${lowStock.join(" · ")}</div>` : ""
 
   renderCategoryFilter()
 }
