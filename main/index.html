@@ -96,10 +96,10 @@ function showSuggestions(){
     let stockIcon = ""
     let stockText = ""
     if(p.stock === 0){
-      stockIcon = "🔴 "
+      stockIcon = "💀 "
       stockText = "Sin stock"
     } else if(p.stock <= 3){
-      stockIcon = "😐 "
+      stockIcon = "🔴 "
       stockText = `Stock: ${p.stock}`
     } else if(p.stock <= 5){
       stockIcon = "⚠️ "
@@ -2134,6 +2134,7 @@ function toggleCategories() {
     wrapper.style.display = "none"
     btn.textContent = "👉 Mostrar categorías"
     document.getElementById("productList").innerHTML = ""
+    document.getElementById("lowStockAlert").innerHTML = ""
     document.getElementById("catFilter").innerHTML = ""
   }
   if(categoriesVisible){
@@ -3041,6 +3042,16 @@ function renderStats() {
     filterLabel.style.color = apiFilter?.desde ? "#94a3b8" : "#22c55e"
   }
 
+  // Gastos por categoría — calculado antes del panel para usar en el 4to cuadro
+  const byCatLocal = {}
+  state.expenses.forEach(e => {
+    const c = e.category || "General"
+    byCatLocal[c] = (byCatLocal[c] || 0) + Number(e.amount)
+  })
+  const expByCat = Object.entries(byCatLocal)
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total)
+
   const profitColor  = s.gananciaReal >= 0 ? "#064e3b" : "#991b1b"
   const profitBg     = s.gananciaReal >= 0 ? "#dcfce7"  : "#fee2e2"
   const profitBorder = s.gananciaReal >= 0 ? "#86efac"  : "#fca5a5"
@@ -3059,6 +3070,16 @@ function renderStats() {
       <div style="font-size:11px; color:#92400e; font-weight:700; letter-spacing:0.5px;">GASTOS OPERATIVOS</div>
       <div class="stat-value" style="color:#78350f;">$${s.gastos.toFixed(2)}</div>
       <span style="position:absolute; top:10px; right:10px; font-size:11px; font-weight:600; cursor:pointer; color:#d97706;" onclick="show('expenses')" title="Ver gastos">→💸</span>
+    </div>
+    <div class="stat-card" style="background:#fdf4ff; position:relative;">
+      <div style="font-size:11px; color:#7e22ce; font-weight:700; letter-spacing:0.5px; margin-bottom:8px;">GASTOS POR CATEGORÍA</div>
+      ${expByCat.length > 0 ? expByCat.map(e => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid #f3e8ff;">
+          <span style="font-size:12px; font-weight:600; color:#92400e;">${e.category}</span>
+          <b style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#6b21a8;">$${Number(e.total).toFixed(2)}</b>
+        </div>
+      `).join("") : `<div style="font-size:12px; color:#94a3b8; margin-top:4px;">Sin gastos</div>`}
+      <span style="position:absolute; top:10px; right:10px; font-size:11px; font-weight:600; cursor:pointer; color:#a855f7;" onclick="show('expenses')" title="Ver todos">→💸</span>
     </div>
     <div class="stat-card" style="
       grid-column: 1 / -1;
@@ -3080,19 +3101,9 @@ function renderStats() {
     </div>
   `
 
-  // ── 3. RANKING + GASTOS POR CATEGORÍA (desde state.expenses local) ──
+  // ── 3. RANKING DE VENTAS ──
   const withSales = sorted.filter(p => p.sold > 0)
   const medals = ["🥇","🥈","🥉"]
-
-  // Gastos por categoría — calculado local, sin depender del backend
-  const byCatLocal = {}
-  state.expenses.forEach(e => {
-    const c = e.category || "General"
-    byCatLocal[c] = (byCatLocal[c] || 0) + Number(e.amount)
-  })
-  const expByCat = Object.entries(byCatLocal)
-    .map(([category, total]) => ({ category, total }))
-    .sort((a, b) => b.total - a.total)
 
   let rankHtml = `<span style="font-weight:700; font-size:15px; margin-bottom:12px; display:block;">🏆 Ranking de ventas</span>`
 
@@ -3106,33 +3117,6 @@ function renderStats() {
           <span class="badge badge-blue">${p.sold} vendidos</span>
         </div>`
     })
-  }
-
-  if(expByCat.length > 0){
-    rankHtml += `
-      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <span style="font-weight:700; font-size:14px; color:#0f172a;">💸 Gastos por categoría</span>
-          <button onclick="show('expenses')" class="btn-ghost" style="font-size:11px; padding:4px 10px;">Ver todos →</button>
-        </div>
-        ${expByCat.map(e => `
-          <div style="
-            display:flex; justify-content:space-between; align-items:center;
-            padding:8px 10px; background:#fef9c3; border-radius:8px; margin-bottom:6px;
-          ">
-            <span style="font-size:13px; font-weight:600; color:#92400e;">${e.category}</span>
-            <b style="font-family:'JetBrains Mono',monospace; font-size:14px; color:#78350f;">$${Number(e.total).toFixed(2)}</b>
-          </div>
-        `).join("")}
-      </div>
-    `
-  } else {
-    rankHtml += `
-      <div style="margin-top:20px; padding-top:16px; border-top:2px solid #f1f5f9;">
-        <span style="font-weight:700; font-size:14px; color:#0f172a; display:block; margin-bottom:8px;">💸 Gastos por categoría</span>
-        <div style="text-align:center; color:#94a3b8; font-size:13px; padding:8px 0;">Sin gastos registrados</div>
-      </div>
-    `
   }
 
   document.getElementById("rankingList").innerHTML = rankHtml
