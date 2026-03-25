@@ -92,7 +92,22 @@ function showSuggestions(){
     infoEl.style.fontSize="12px"
     infoEl.style.color="#64748b"
     infoEl.style.fontFamily="'JetBrains Mono', monospace"
-    infoEl.textContent = `$${p.price.toFixed(2)} · Stock: ${p.stock}`
+
+    let stockIcon = ""
+    let stockText = ""
+    if(p.stock === 0){
+      stockIcon = "💀 "
+      stockText = "Sin stock"
+    } else if(p.stock <= 3){
+      stockIcon = "🔴 "
+      stockText = `Stock: ${p.stock}`
+    } else if(p.stock <= 5){
+      stockIcon = "⚠️ "
+      stockText = `Stock: ${p.stock}`
+    } else {
+      stockText = `Stock: ${p.stock}`
+    }
+    infoEl.textContent = `$${p.price.toFixed(2)} · ${stockIcon}${stockText}`
 
     row.appendChild(nameEl)
     row.appendChild(infoEl)
@@ -1113,9 +1128,9 @@ z-index: 1;
     <div style="margin-bottom:12px;">
       <button id="toggleCategoriesBtn" onclick="toggleCategories()" style="width:100%; padding:10px 14px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:10px; font-weight:600; font-size:13px; cursor:pointer; color:#475569; font-family:'Sora',sans-serif; text-align:left;">👉 Mostrar categorías</button>
     </div>
+    <div id="lowStockAlert"></div>
     <div id="categoriesWrapper" style="display:none;">
       <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>
-      <div id="lowStockAlert"></div>
       <div id="productList" class="grid grid-cols-2 gap-3"></div>
     </div>
   </div>
