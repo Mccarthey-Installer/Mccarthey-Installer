@@ -1050,6 +1050,10 @@ z-index: 1;
 
       <!-- Totales -->
       <div style="padding:12px 14px; display:flex; flex-direction:column; gap:6px;">
+        <div style="display:grid; grid-template-columns:165px auto;">
+          <span style="font-size:14px; font-weight:600; color:#374151;">🛒 Total De Artículos:</span>
+          <span id="ticketQtyTotal" style="font-size:15px; font-weight:700; color:#0f172a; font-family:'JetBrains Mono',monospace;"></span>
+        </div>
         <div style="display:grid; grid-template-columns:95px auto;">
           <span style="font-size:14px; font-weight:600; color:#374151;">💰 Total:</span>
           <span id="ticketTotal" style="font-size:15px; font-weight:700; color:#0f172a; font-family:'JetBrains Mono',monospace;"></span>
@@ -2796,6 +2800,8 @@ function showSaleSummary(sale){
   })
 
   // ── Totales ──
+  const totalArticulos = sale.items.reduce((a, p) => a + p.qty, 0)
+  document.getElementById("ticketQtyTotal").textContent = totalArticulos
   document.getElementById("ticketTotal").textContent  = "$" + money(sale.total)
   document.getElementById("ticketPaid").textContent   = "$" + money(sale.paid)
   document.getElementById("ticketChange").textContent = "$" + money(sale.change) + " 💝"
