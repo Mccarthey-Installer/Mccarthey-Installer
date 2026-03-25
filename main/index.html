@@ -96,10 +96,10 @@ function showSuggestions(){
     let stockIcon = ""
     let stockText = ""
     if(p.stock === 0){
-      stockIcon = "💀 "
+      stockIcon = "🔴 "
       stockText = "Sin stock"
     } else if(p.stock <= 3){
-      stockIcon = "🔴 "
+      stockIcon = "😐 "
       stockText = `Stock: ${p.stock}`
     } else if(p.stock <= 5){
       stockIcon = "⚠️ "
@@ -2134,7 +2134,6 @@ function toggleCategories() {
     wrapper.style.display = "none"
     btn.textContent = "👉 Mostrar categorías"
     document.getElementById("productList").innerHTML = ""
-    document.getElementById("lowStockAlert").innerHTML = ""
     document.getElementById("catFilter").innerHTML = ""
   }
   if(categoriesVisible){
