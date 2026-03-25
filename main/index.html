@@ -73,17 +73,29 @@ function showSuggestions(){
 
     const row = document.createElement("div")
 
-    row.style.padding="8px 10px"
+    row.style.padding="10px 12px"
     row.style.cursor="pointer"
     row.style.display="flex"
-    row.style.justifyContent="space-between"
+    row.style.flexDirection="column"
+    row.style.gap="2px"
     row.style.fontSize="13px"
     row.style.borderBottom="1px solid #f1f5f9"
+    row.style.lineHeight="1.4"
 
-    row.innerHTML = `
-<span>${p.name}</span>
-<b>$${p.price.toFixed(2)}</b>
-`
+    const nameEl = document.createElement("span")
+    nameEl.style.fontWeight="600"
+    nameEl.style.color="#0f172a"
+    nameEl.style.wordBreak="break-word"
+    nameEl.textContent = p.name
+
+    const infoEl = document.createElement("span")
+    infoEl.style.fontSize="12px"
+    infoEl.style.color="#64748b"
+    infoEl.style.fontFamily="'JetBrains Mono', monospace"
+    infoEl.textContent = `$${p.price.toFixed(2)} · Stock: ${p.stock}`
+
+    row.appendChild(nameEl)
+    row.appendChild(infoEl)
 
     row.onclick = () => {
 
@@ -1079,26 +1091,33 @@ z-index: 1;
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <span class="sec-title">🛒 Productos</span>
-      <div style="position:relative; width:150px;">
+      <div style="position:relative; flex:1; max-width:280px; margin-left:12px;">
         <input id="searchProduct" class="input" placeholder="Buscar..." style="width:100%; padding:8px 12px;">
         <div id="searchSuggestions" style="
         position:absolute;
         top:42px;
         left:0;
         right:0;
+        min-width:260px;
         background:#fff;
         border:2px solid #e2e8f0;
         border-radius:10px;
         display:none;
-        max-height:160px;
+        max-height:220px;
         overflow:auto;
         z-index:50;
+        box-shadow:0 4px 16px rgba(0,0,0,.10);
         "></div>
       </div>
     </div>
-    <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>
-    <div id="lowStockAlert"></div>
-    <div id="productList" class="grid grid-cols-2 gap-3"></div>
+    <div style="margin-bottom:12px;">
+      <button id="toggleCategoriesBtn" onclick="toggleCategories()" style="width:100%; padding:10px 14px; background:#f8fafc; border:2px solid #e2e8f0; border-radius:10px; font-weight:600; font-size:13px; cursor:pointer; color:#475569; font-family:'Sora',sans-serif; text-align:left;">👉 Mostrar categorías</button>
+    </div>
+    <div id="categoriesWrapper" style="display:none;">
+      <div class="cats-scroll" id="catFilter" style="margin-bottom:12px;"></div>
+      <div id="lowStockAlert"></div>
+      <div id="productList" class="grid grid-cols-2 gap-3"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -1386,6 +1405,7 @@ function loadCart(){
 }
 
 let activeCategory = "Todos"
+let categoriesVisible = false
 let activeCatExpense = "Todos"
 let editingId = null
 let restockId = null
@@ -2086,6 +2106,27 @@ async function show(id) {
 
 }
 
+// =========== TOGGLE CATEGORIES ===========
+function toggleCategories() {
+  categoriesVisible = !categoriesVisible
+  const wrapper = document.getElementById("categoriesWrapper")
+  const btn = document.getElementById("toggleCategoriesBtn")
+  if(categoriesVisible){
+    wrapper.style.display = "block"
+    btn.textContent = "🔼 Ocultar categorías"
+  } else {
+    wrapper.style.display = "none"
+    btn.textContent = "👉 Mostrar categorías"
+    document.getElementById("productList").innerHTML = ""
+    document.getElementById("lowStockAlert").innerHTML = ""
+    document.getElementById("catFilter").innerHTML = ""
+  }
+  if(categoriesVisible){
+    renderCategoryFilter()
+    renderProducts()
+  }
+}
+
 // =========== CATEGORIES ===========
 function getCategories() {
   const cats = [...new Set(state.products.map(p => p.cat || "General"))]
@@ -2106,6 +2147,9 @@ function renderCategoryFilter() {
 
 // =========== PRODUCTS ===========
 function renderProducts() {
+  if(!categoriesVisible){
+    return
+  }
   const search = document.getElementById("searchProduct").value.toLowerCase()
   const container = document.getElementById("productList")
   container.innerHTML = ""
