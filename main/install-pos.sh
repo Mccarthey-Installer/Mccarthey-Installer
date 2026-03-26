@@ -1383,6 +1383,53 @@ function normalizeProduct(p, index) {
   }
 }
 
+// ── Convierte cualquier formato de fecha al formato MySQL "YYYY-MM-DD HH:MM:SS" ──
+// Acepta: ISO 8601, MySQL datetime, Date objects, strings parciales, null/undefined.
+// Nunca lanza excepción — si la fecha es irrecuperable devuelve la fecha actual.
+// IMPORTANTE: preserva la hora local del servidor (no convierte a UTC) para que
+// los backups con formato ISO "...Z" no sufran desplazamiento de timezone.
+function toMySQLDatetime(raw) {
+  // Helper: extrae componentes locales del Date y arma "YYYY-MM-DD HH:MM:SS"
+  function dateToLocal(d) {
+    const pad = n => String(n).padStart(2, "0")
+    return (
+      d.getFullYear() + "-" +
+      pad(d.getMonth() + 1) + "-" +
+      pad(d.getDate()) + " " +
+      pad(d.getHours()) + ":" +
+      pad(d.getMinutes()) + ":" +
+      pad(d.getSeconds())
+    )
+  }
+
+  // null / undefined / vacío → fecha actual
+  if (!raw) return dateToLocal(new Date())
+
+  // Si ya viene en formato MySQL "YYYY-MM-DD HH:MM:SS" lo retornamos directo
+  // (evitamos re-parsear y posibles shifts de timezone)
+  if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw.trim())) {
+    return raw.trim()
+  }
+
+  // Intentar parseo genérico (ISO 8601, timestamps, etc.)
+  const d = new Date(raw)
+  if (!isNaN(d.getTime())) {
+    // Si el raw es un ISO con "Z" o zona explícita, new Date() lo interpreta en UTC
+    // correctamente y getHours() devuelve la hora local del servidor → correcto.
+    return dateToLocal(d)
+  }
+
+  // Fallback: intentar formato legacy "DD/MM/YYYY" (versiones antiguas del frontend)
+  const match = String(raw).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (match) {
+    const fallback = new Date(`${match[3]}-${match[2].padStart(2,"0")}-${match[1].padStart(2,"0")}T00:00:00`)
+    if (!isNaN(fallback.getTime())) return dateToLocal(fallback)
+  }
+
+  // Irrecuperable → fecha actual como fallback seguro
+  return dateToLocal(new Date())
+}
+
 function normalizeSale(s, index) {
   const tag = `sales[${index}]`
   if (!s || typeof s !== "object") {
@@ -1396,7 +1443,7 @@ function normalizeSale(s, index) {
     result: {
       id:            String(s.id),
       num:           s.num != null ? Number(s.num) : null,
-      date:          s.date ?? s.fecha ?? new Date().toISOString(),
+      date:          toMySQLDatetime(s.date ?? s.fecha),
       total:         dec2(s.total ?? 0),
       paid:          dec2(s.paid  ?? s.pago  ?? s.total ?? 0),
       change_amount: dec2(s.change_amount ?? s.change ?? s.vuelto ?? 0)
@@ -1443,7 +1490,7 @@ function normalizeExpense(e, index) {
       amount,
       description: String(e.description ?? e.descripcion ?? "").trim().slice(0, 255),
       category:    String(e.category ?? e.categoria ?? "General").trim().slice(0, 50),
-      created_at:  e.created_at ?? e.date ?? e.fecha ?? new Date().toISOString()
+      created_at:  toMySQLDatetime(e.created_at ?? e.date ?? e.fecha)
     },
     warnings
   }
