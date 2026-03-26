@@ -853,16 +853,6 @@ app.put("/api/products/:id", auth, (req, res) => {
   )
 })
 
-app.delete("/api/products/all", auth, (req, res) => {
-  db.query(
-    "DELETE FROM products",
-    (err) => {
-      if (err) { logError("DELETE_ALL_PRODUCTS", err); return res.status(500).json(err) }
-      res.json({ ok: true })
-    }
-  )
-})
-
 app.delete("/api/products/:id", auth, (req, res) => {
   db.query(
     "DELETE FROM products WHERE id=?", [req.params.id],
@@ -1253,6 +1243,8 @@ async function snapshotQuery() {
 
     await conn.commit()
     return {
+      backup_version: "2.0",
+      created_at: new Date().toISOString(),
       products,
       sales,
       sale_items: items,
@@ -1300,11 +1292,228 @@ app.get("/api/backup", auth, async (req, res) => {
 
 /* ─── RESTORE ───────────────────────────────────────────────────────────── */
 
-app.post("/api/restore", auth, async (req, res) => {
-  const data = req.body
-  const modo = req.query.modo || "parcial"
-  const conn = await db.promise().getConnection()
+// ═══════════════════════════════════════════════════════════════════════════
+// BACKUP / RESTORE — diseño versionado con visibilidad y migración real
+// ═══════════════════════════════════════════════════════════════════════════
 
+// ── Fuente única de verdad: versión actual del backup ──
+const BACKUP_VERSION = "2.0"
+
+// ── Registro de migraciones ──────────────────────────────────────────────
+// Cada entrada corresponde a una versión ORIGEN.
+// La función recibe el payload crudo y devuelve { data, warnings[] }.
+// Para agregar soporte a una versión nueva: solo agregar la entrada aquí.
+// ─────────────────────────────────────────────────────────────────────────
+const MIGRATIONS = {
+
+  // Backups sin campo backup_version (anteriores al versionado)
+  "legacy": function migrateLegacy(raw) {
+    const warnings = []
+    // change_amount pudo llamarse "change" en versiones viejas de sales
+    const sales = (raw.sales || []).map(s => ({
+      ...s,
+      change_amount: s.change_amount ?? s.change ?? 0
+    }))
+    if (!raw.expenses) {
+      warnings.push("Backup legacy: campo 'expenses' ausente — se omite esa sección")
+    }
+    return {
+      data: { ...raw, sales, expenses: raw.expenses || [] },
+      warnings
+    }
+  },
+
+  // v1.0: igual que legacy más normalización de categoría en productos
+  "1.0": function migrate1_0(raw) {
+    const base = MIGRATIONS["legacy"](raw)
+    const products = (base.data.products || []).map(p => ({
+      ...p,
+      cat: p.cat ?? p.category ?? "General"
+    }))
+    return {
+      data: { ...base.data, products },
+      warnings: base.warnings
+    }
+  }
+
+  // v2.0 es la versión actual — no necesita migración
+}
+
+// ── Normalizadores ────────────────────────────────────────────────────────
+// Cada función devuelve { result, warnings[] }.
+// result === null significa que el registro es irrecuperable y debe omitirse.
+// Nunca se descarta un registro en silencio — todo queda en warnings.
+// ─────────────────────────────────────────────────────────────────────────
+
+function normalizeProduct(p, index) {
+  const warnings = []
+  const tag = `products[${index}]`
+  if (!p || typeof p !== "object") {
+    return { result: null, warnings: [`${tag}: no es un objeto — omitido`] }
+  }
+  const rawName = p.name ?? p.nombre
+  if (!rawName) {
+    warnings.push(`${tag} (id:${p.id ?? "?"}): sin nombre — se usó "Producto importado"`)
+  }
+  return {
+    result: {
+      id:    p.id ?? null,
+      name:  String(rawName ?? "Producto importado").trim().slice(0, 100),
+      price: Number(p.price ?? p.precio ?? 0),
+      cost:  Number(p.cost  ?? p.costo  ?? 0),
+      stock: Math.max(0, Math.floor(Number(p.stock   ?? p.cantidad ?? 0))),
+      sold:  Math.max(0, Math.floor(Number(p.sold    ?? p.vendidos ?? 0))),
+      cat:   String(p.cat ?? p.category ?? p.categoria ?? "General").trim().slice(0, 100)
+    },
+    warnings
+  }
+}
+
+function normalizeSale(s, index) {
+  const tag = `sales[${index}]`
+  if (!s || typeof s !== "object") {
+    return { result: null, warnings: [`${tag}: no es un objeto — omitido`] }
+  }
+  if (!s.id) {
+    return { result: null, warnings: [`${tag}: sin id (campo requerido) — omitido`] }
+  }
+  return {
+    result: {
+      id:            String(s.id),
+      num:           s.num ?? null,
+      date:          s.date ?? s.fecha ?? new Date().toISOString(),
+      total:         Number(s.total ?? 0),
+      paid:          Number(s.paid  ?? s.pago  ?? s.total ?? 0),
+      change_amount: Number(s.change_amount ?? s.change ?? s.vuelto ?? 0)
+    },
+    warnings: []
+  }
+}
+
+function normalizeSaleItem(i, index) {
+  const tag = `sale_items[${index}]`
+  if (!i || typeof i !== "object") {
+    return { result: null, warnings: [`${tag}: no es un objeto — omitido`] }
+  }
+  if (!i.sale_id) {
+    return { result: null, warnings: [`${tag}: sin sale_id (campo requerido) — omitido`] }
+  }
+  return {
+    result: {
+      sale_id:    String(i.sale_id),
+      product_id: i.product_id ?? null,
+      name:       String(i.name ?? i.nombre ?? "Producto").trim().slice(0, 255),
+      price:      Number(i.price ?? i.precio ?? 0),
+      cost:       Number(i.cost  ?? i.costo  ?? 0),
+      qty:        Math.max(1, Math.floor(Number(i.qty ?? i.cantidad ?? i.quantity ?? 1)))
+    },
+    warnings: []
+  }
+}
+
+function normalizeExpense(e, index) {
+  const warnings = []
+  const tag = `expenses[${index}]`
+  if (!e || typeof e !== "object") {
+    return { result: null, warnings: [`${tag}: no es un objeto — omitido`] }
+  }
+  const amount = Number(e.amount ?? e.monto ?? 0)
+  if (amount <= 0) {
+    warnings.push(`${tag} (id:${e.id ?? "?"}): monto ${amount} inválido — se usó 0`)
+  }
+  return {
+    result: {
+      id:          e.id ?? null,
+      amount,
+      description: String(e.description ?? e.descripcion ?? "").trim().slice(0, 255),
+      category:    String(e.category ?? e.categoria ?? "General").trim().slice(0, 50),
+      created_at:  e.created_at ?? e.date ?? e.fecha ?? new Date().toISOString()
+    },
+    warnings
+  }
+}
+
+// ── Normalizar una colección completa y recolectar todos los warnings ──
+function normalizeCollection(items, normFn) {
+  const results  = []
+  const warnings = []
+  ;(items || []).forEach((item, i) => {
+    const { result, warnings: w } = normFn(item, i)
+    warnings.push(...w)
+    if (result !== null) results.push(result)
+  })
+  return { results, warnings }
+}
+
+// ── Detectar versión y aplicar migración si corresponde ──
+function applyMigration(raw) {
+  const version = raw.backup_version ?? "legacy"
+  if (version === BACKUP_VERSION) {
+    return { data: raw, warnings: [], version }
+  }
+  const migrateFn = MIGRATIONS[version]
+  if (!migrateFn) {
+    // Versión desconocida — advertir pero intentar sin migración
+    return {
+      data: raw,
+      warnings: [`Versión de backup desconocida "${version}" — se intentará restaurar sin migración`],
+      version
+    }
+  }
+  const { data, warnings } = migrateFn(raw)
+  return { data, warnings, version }
+}
+
+// ── Insertar con tracking: cuenta insertados, omitidos y errores ──
+async function trackedInsert(conn, sql, params, entityStats) {
+  const [result] = await conn.query(sql, params)
+  // affectedRows: 0 = ignorado (IGNORE), 1 = insert, 2 = update (ON DUPLICATE KEY)
+  if (result.affectedRows > 0) {
+    entityStats.inserted++
+  } else {
+    entityStats.skipped++
+  }
+}
+
+// ── Endpoint principal de restore ─────────────────────────────────────────
+app.post("/api/restore", auth, async (req, res) => {
+  const raw  = req.body
+  const modo = req.query.modo || "parcial"
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return res.status(400).json({ error: "Payload inválido: se esperaba un objeto JSON" })
+  }
+
+  // ── Fase 1: detectar versión y migrar ──
+  const { data, warnings: migrationWarnings, version } = applyMigration(raw)
+
+  // ── Fase 2: normalizar todas las entidades ANTES de tocar la DB ──
+  const { results: normProducts, warnings: wProducts }  = normalizeCollection(data.products,   normalizeProduct)
+  const { results: normSales,    warnings: wSales }     = normalizeCollection(data.sales,      normalizeSale)
+  const { results: normItems,    warnings: wItems }     = normalizeCollection(data.sale_items, normalizeSaleItem)
+  const { results: normExpenses, warnings: wExpenses }  = normalizeCollection(data.expenses,   normalizeExpense)
+
+  const allWarnings = [
+    ...migrationWarnings,
+    ...wProducts,
+    ...wSales,
+    ...wItems,
+    ...wExpenses
+  ]
+
+  if (allWarnings.length > 0) {
+    logInfo("RESTORE_WARNINGS", allWarnings.join(" | "))
+  }
+
+  // ── Fase 3: insertar en DB dentro de una transacción ──
+  const stats = {
+    products:   { inserted: 0, skipped: 0 },
+    sales:      { inserted: 0, skipped: 0 },
+    sale_items: { inserted: 0, skipped: 0 },
+    expenses:   { inserted: 0, skipped: 0 }
+  }
+
+  const conn = await db.promise().getConnection()
   try {
     await conn.beginTransaction()
 
@@ -1312,64 +1521,72 @@ app.post("/api/restore", auth, async (req, res) => {
       await conn.query("DELETE FROM sale_items")
       await conn.query("DELETE FROM sales")
       await conn.query("DELETE FROM expenses")
+    }
 
-      for (const p of data.products) {
-        await conn.query(
-          "INSERT IGNORE INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
-          [p.id, p.name, p.price, p.cost, p.stock, p.sold, p.cat]
-        )
-      }
-      for (const s of data.sales) {
-        await conn.query(
-          "INSERT INTO sales(id,num,date,total,paid,change_amount) VALUES(?,?,?,?,?,?)",
-          [s.id, s.num, s.date, s.total, s.paid, s.change_amount]
-        )
-      }
-      for (const i of data.sale_items) {
-        await conn.query(
-          "INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
-          [i.sale_id, i.product_id, i.name, i.price, i.cost, i.qty]
-        )
-      }
-      for (const e of (data.expenses || [])) {
-        await conn.query(
-          "INSERT INTO expenses(id,amount,description,category,created_at) VALUES(?,?,?,?,?)",
-          [e.id, e.amount, e.description, e.category || "General", e.created_at]
-        )
-      }
-    } else {
-      for (const p of data.products) {
-        await conn.query(
-          "INSERT IGNORE INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?)",
-          [p.id, p.name, p.price, p.cost, p.stock, p.sold, p.cat]
-        )
-      }
-      for (const s of data.sales) {
-        await conn.query(
-          "INSERT IGNORE INTO sales(id,num,date,total,paid,change_amount) VALUES(?,?,?,?,?,?)",
-          [s.id, s.num, s.date, s.total, s.paid, s.change_amount]
-        )
-      }
-      for (const i of data.sale_items) {
-        await conn.query(
-          "INSERT IGNORE INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)",
-          [i.sale_id, i.product_id, i.name, i.price, i.cost, i.qty]
-        )
-      }
-      for (const e of (data.expenses || [])) {
-        await conn.query(
-          "INSERT IGNORE INTO expenses(id,amount,description,category,created_at) VALUES(?,?,?,?,?)",
-          [e.id, e.amount, e.description, e.category || "General", e.created_at]
-        )
-      }
+    for (const p of normProducts) {
+      await trackedInsert(
+        conn,
+        "INSERT INTO products(id,name,price,cost,stock,sold,cat) VALUES(?,?,?,?,?,?,?) " +
+        "ON DUPLICATE KEY UPDATE name=VALUES(name),price=VALUES(price),cost=VALUES(cost)," +
+        "stock=VALUES(stock),sold=VALUES(sold),cat=VALUES(cat)",
+        [p.id, p.name, p.price, p.cost, p.stock, p.sold, p.cat],
+        stats.products
+      )
+    }
+
+    for (const s of normSales) {
+      const sql = modo === "limpio"
+        ? "INSERT INTO sales(id,num,date,total,paid,change_amount) VALUES(?,?,?,?,?,?)"
+        : "INSERT IGNORE INTO sales(id,num,date,total,paid,change_amount) VALUES(?,?,?,?,?,?)"
+      await trackedInsert(conn, sql,
+        [s.id, s.num, s.date, s.total, s.paid, s.change_amount],
+        stats.sales
+      )
+    }
+
+    for (const i of normItems) {
+      const sql = modo === "limpio"
+        ? "INSERT INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)"
+        : "INSERT IGNORE INTO sale_items(sale_id,product_id,name,price,cost,qty) VALUES(?,?,?,?,?,?)"
+      await trackedInsert(conn, sql,
+        [i.sale_id, i.product_id, i.name, i.price, i.cost, i.qty],
+        stats.sale_items
+      )
+    }
+
+    for (const e of normExpenses) {
+      const sql = modo === "limpio"
+        ? "INSERT INTO expenses(id,amount,description,category,created_at) VALUES(?,?,?,?,?)"
+        : "INSERT IGNORE INTO expenses(id,amount,description,category,created_at) VALUES(?,?,?,?,?)"
+      await trackedInsert(conn, sql,
+        [e.id, e.amount, e.description, e.category, e.created_at],
+        stats.expenses
+      )
     }
 
     await conn.commit()
-    res.json({ ok: true, modo })
+
+    logInfo("RESTORE_OK", `versión=${version} modo=${modo} ` +
+      `productos=${stats.products.inserted}i/${stats.products.skipped}s ` +
+      `ventas=${stats.sales.inserted}i/${stats.sales.skipped}s ` +
+      `gastos=${stats.expenses.inserted}i/${stats.expenses.skipped}s`)
+
+    res.json({
+      ok:             true,
+      modo,
+      backup_version: version,
+      stats,
+      warnings:       allWarnings
+    })
+
   } catch (err) {
     await conn.rollback()
     logError("RESTORE", err)
-    res.status(500).json(err)
+    res.status(500).json({
+      error:          err.message || "Error al restaurar",
+      backup_version: version,
+      warnings:       allWarnings
+    })
   } finally {
     conn.release()
   }
