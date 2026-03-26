@@ -853,6 +853,16 @@ app.put("/api/products/:id", auth, (req, res) => {
   )
 })
 
+app.delete("/api/products/all", auth, (req, res) => {
+  db.query(
+    "DELETE FROM products",
+    (err) => {
+      if (err) { logError("DELETE_ALL_PRODUCTS", err); return res.status(500).json(err) }
+      res.json({ ok: true })
+    }
+  )
+})
+
 app.delete("/api/products/:id", auth, (req, res) => {
   db.query(
     "DELETE FROM products WHERE id=?", [req.params.id],
