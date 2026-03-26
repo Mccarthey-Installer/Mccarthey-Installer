@@ -1164,7 +1164,10 @@ z-index: 1;
 <section id="inventory" class="hidden">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
     <span class="sec-title">📦 Inventario</span>
-    <button onclick="openAddModal()" class="btn-primary" style="width:auto; padding:10px 18px;">+ Nuevo</button>
+    <div style="display:flex; gap:8px;">
+      <button onclick="deleteAllProducts()" class="btn-danger" style="width:auto; padding:10px 14px;">🗑 Eliminar todo</button>
+      <button onclick="openAddModal()" class="btn-primary" style="width:auto; padding:10px 18px;">+ Nuevo</button>
+    </div>
   </div>
   <input
     id="searchInventory"
@@ -2708,6 +2711,34 @@ async function deleteProduct(id){
 
 }
 
+// =========== DELETE ALL PRODUCTS ===========
+async function deleteAllProducts(){
+
+  if(!confirm("¿Seguro que deseas eliminar todo el inventario?")) return
+
+  try {
+
+    for(const p of state.products){
+      const res = await fetch("/api/products/" + p.id, { method: "DELETE" })
+      if(!res.ok){
+        let data = {}
+        try { data = await res.json() } catch(_){}
+        throw new Error(data.error || "Error al eliminar " + p.name)
+      }
+    }
+
+    await loadProducts()
+    showToast("🗑 Inventario eliminado", "ok")
+
+  } catch(err) {
+
+    showToast("❌ " + err.message, "error")
+    console.error("Error eliminando inventario:", err)
+
+  }
+
+}
+
 // =========== TICKET ===========
 
 function money(n){
@@ -3749,4 +3780,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-</html>
+  </html>
