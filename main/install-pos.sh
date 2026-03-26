@@ -447,7 +447,7 @@ const app  = express()
 const PORT = __PORT_PLACEHOLDER__
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '10mb' }))
 
 /* ─── LOGGER ────────────────────────────────────────────────────────────── */
 
@@ -851,6 +851,19 @@ app.put("/api/products/:id", auth, (req, res) => {
       res.json({ ok: true })
     }
   )
+})
+
+app.delete("/api/products/all", auth, async (req, res) => {
+  try {
+    // Nullear referencias en sale_items antes de eliminar productos
+    // (por si en el entorno real existe un FK sobre product_id)
+    await db.promise().query("UPDATE sale_items SET product_id = NULL")
+    await db.promise().query("DELETE FROM products")
+    res.json({ ok: true })
+  } catch (err) {
+    logError("DELETE_ALL_PRODUCTS", err)
+    res.status(500).json({ error: err.message || "Error al eliminar inventario" })
+  }
 })
 
 app.delete("/api/products/:id", auth, (req, res) => {
@@ -1355,12 +1368,13 @@ function normalizeProduct(p, index) {
   if (!rawName) {
     warnings.push(`${tag} (id:${p.id ?? "?"}): sin nombre — se usó "Producto importado"`)
   }
+  const dec2 = v => Math.round(Number(v) * 100) / 100
   return {
     result: {
-      id:    p.id ?? null,
+      id:    p.id != null ? Number(p.id) : null,
       name:  String(rawName ?? "Producto importado").trim().slice(0, 100),
-      price: Number(p.price ?? p.precio ?? 0),
-      cost:  Number(p.cost  ?? p.costo  ?? 0),
+      price: dec2(p.price ?? p.precio ?? 0),
+      cost:  dec2(p.cost  ?? p.costo  ?? 0),
       stock: Math.max(0, Math.floor(Number(p.stock   ?? p.cantidad ?? 0))),
       sold:  Math.max(0, Math.floor(Number(p.sold    ?? p.vendidos ?? 0))),
       cat:   String(p.cat ?? p.category ?? p.categoria ?? "General").trim().slice(0, 100)
@@ -1377,14 +1391,15 @@ function normalizeSale(s, index) {
   if (!s.id) {
     return { result: null, warnings: [`${tag}: sin id (campo requerido) — omitido`] }
   }
+  const dec2 = v => Math.round(Number(v) * 100) / 100
   return {
     result: {
       id:            String(s.id),
-      num:           s.num ?? null,
+      num:           s.num != null ? Number(s.num) : null,
       date:          s.date ?? s.fecha ?? new Date().toISOString(),
-      total:         Number(s.total ?? 0),
-      paid:          Number(s.paid  ?? s.pago  ?? s.total ?? 0),
-      change_amount: Number(s.change_amount ?? s.change ?? s.vuelto ?? 0)
+      total:         dec2(s.total ?? 0),
+      paid:          dec2(s.paid  ?? s.pago  ?? s.total ?? 0),
+      change_amount: dec2(s.change_amount ?? s.change ?? s.vuelto ?? 0)
     },
     warnings: []
   }
@@ -1398,13 +1413,14 @@ function normalizeSaleItem(i, index) {
   if (!i.sale_id) {
     return { result: null, warnings: [`${tag}: sin sale_id (campo requerido) — omitido`] }
   }
+  const dec2 = v => Math.round(Number(v) * 100) / 100
   return {
     result: {
       sale_id:    String(i.sale_id),
-      product_id: i.product_id ?? null,
+      product_id: i.product_id != null ? Number(i.product_id) : null,
       name:       String(i.name ?? i.nombre ?? "Producto").trim().slice(0, 255),
-      price:      Number(i.price ?? i.precio ?? 0),
-      cost:       Number(i.cost  ?? i.costo  ?? 0),
+      price:      dec2(i.price ?? i.precio ?? 0),
+      cost:       dec2(i.cost  ?? i.costo  ?? 0),
       qty:        Math.max(1, Math.floor(Number(i.qty ?? i.cantidad ?? i.quantity ?? 1)))
     },
     warnings: []
@@ -1417,13 +1433,13 @@ function normalizeExpense(e, index) {
   if (!e || typeof e !== "object") {
     return { result: null, warnings: [`${tag}: no es un objeto — omitido`] }
   }
-  const amount = Number(e.amount ?? e.monto ?? 0)
+  const amount = Math.round(Number(e.amount ?? e.monto ?? 0) * 100) / 100
   if (amount <= 0) {
     warnings.push(`${tag} (id:${e.id ?? "?"}): monto ${amount} inválido — se usó 0`)
   }
   return {
     result: {
-      id:          e.id ?? null,
+      id:          e.id != null ? Number(e.id) : null,
       amount,
       description: String(e.description ?? e.descripcion ?? "").trim().slice(0, 255),
       category:    String(e.category ?? e.categoria ?? "General").trim().slice(0, 50),
@@ -1565,6 +1581,22 @@ app.post("/api/restore", auth, async (req, res) => {
     }
 
     await conn.commit()
+
+    // Reiniciar AUTO_INCREMENT en tablas donde se insertaron IDs explícitos.
+    // Esto evita colisiones en inserciones posteriores al restore.
+    try {
+      await db.promise().query(`
+        SET @max_prod = (SELECT IFNULL(MAX(id),0)+1 FROM products);
+        SET @max_exp  = (SELECT IFNULL(MAX(id),0)+1 FROM expenses);
+        SET @max_num  = (SELECT IFNULL(MAX(num),0)+1 FROM sales);
+      `)
+    } catch(_) {}
+    // MySQL no soporta ALTER TABLE dentro de transacción, se ejecuta fuera
+    await db.promise().query("ALTER TABLE products AUTO_INCREMENT = 1")
+    await db.promise().query("ALTER TABLE expenses AUTO_INCREMENT = 1")
+    // sales.num es AUTO_INCREMENT con UNIQUE — forzar al máximo actual
+    const [[maxNumRow]] = await db.promise().query("SELECT IFNULL(MAX(num),0)+1 AS next FROM sales")
+    await db.promise().query(`ALTER TABLE sales AUTO_INCREMENT = ${Number(maxNumRow.next)}`)
 
     logInfo("RESTORE_OK", `versión=${version} modo=${modo} ` +
       `productos=${stats.products.inserted}i/${stats.products.skipped}s ` +
