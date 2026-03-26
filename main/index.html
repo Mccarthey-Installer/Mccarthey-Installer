@@ -2025,19 +2025,38 @@ async function restorePOS(file){
 
   try {
 
-    await api("/api/restore",{
+    const result = await api("/api/restore",{
       method:"POST",
       body:JSON.stringify(data)
     })
 
-    showToast("♻️ Backup restaurado correctamente", "ok")
+    // Armar resumen legible del restore
+    const s = result.stats || {}
+    const lines = []
 
-    setTimeout(()=>{ location.reload() },1200)
+    if(s.products)   lines.push(`📦 Productos: ${s.products.inserted} insertados, ${s.products.skipped} omitidos`)
+    if(s.sales)      lines.push(`🧾 Ventas: ${s.sales.inserted} insertadas, ${s.sales.skipped} omitidas`)
+    if(s.expenses)   lines.push(`💸 Gastos: ${s.expenses.inserted} insertados, ${s.expenses.skipped} omitidos`)
+    if(result.backup_version) lines.push(`🏷 Versión del backup: ${result.backup_version}`)
+
+    const warns = result.warnings || []
+    if(warns.length > 0) lines.push(`⚠️ ${warns.length} advertencia(s) al restaurar`)
+
+    const summary = lines.join("\n")
+
+    if(summary){
+      alert("✅ Backup restaurado\n\n" + summary + (warns.length > 0 ? "\n\nAdvertencias:\n" + warns.join("\n") : ""))
+    } else {
+      showToast("♻️ Backup restaurado correctamente", "ok")
+    }
+
+    setTimeout(()=>{ location.reload() },800)
 
   } catch(err) {
 
     console.error("Error en restore:", err)
-    showToast("❌ Error al restaurar: " + err.message, "error")
+    const detail = err.message || "Error desconocido"
+    showToast("❌ Error al restaurar: " + detail, "error")
 
   }
 
@@ -3778,4 +3797,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-</html>
+  </html>
