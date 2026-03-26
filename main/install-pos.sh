@@ -1234,6 +1234,167 @@ app.get("/api/summary", auth, async (req, res) => {
   }
 })
 
+/* ─── HELPER ZONA HORARIA — misma lógica que el frontend ───────────────── */
+
+const STATS_TZ = "America/El_Salvador"
+
+function toLocalDay(dateInput) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput)
+  if (isNaN(d.getTime())) return null
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: STATS_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(d)
+  const p = {}
+  parts.forEach(x => { p[x.type] = x.value })
+  return `${p.year}-${p.month}-${p.day}`
+}
+
+/* ─── STATS OPERACIONALES  —  GET /api/stats ────────────────────────────── */
+/*
+ * Devuelve los indicadores del panel operativo:
+ *   totalSales, ingresos, totalProfit (ganancia bruta por sold*margen),
+ *   mostSold, mostProfit, lowStock, ranking
+ *
+ * Fuente: tabla products (sold, price, cost, stock) + COUNT/SUM en sales.
+ * Nota: totalProfit usa el margen actual del producto (price-cost actual),
+ *       no el costo histórico de cada venta — ese lo calcula /api/summary.
+ */
+
+app.get("/api/stats", auth, async (req, res) => {
+  try {
+    const [[totals]] = await db.promise().query(
+      "SELECT COUNT(*) AS totalSales, COALESCE(SUM(total), 0) AS ingresos FROM sales"
+    )
+    const [products] = await db.promise().query("SELECT * FROM products")
+
+    const totalProfit = products.reduce(
+      (a, p) => a + Number(p.sold) * (Number(p.price) - Number(p.cost)), 0
+    )
+    const lowStock = products.filter(p => Number(p.stock) <= 5).length
+
+    const byMostSold = [...products].sort((a, b) => Number(b.sold) - Number(a.sold))
+    const mostSold   = byMostSold.find(p => Number(p.sold) > 0) || null
+
+    const byMostProfit = [...products].sort((a, b) =>
+      (Number(b.sold) * (Number(b.price) - Number(b.cost))) -
+      (Number(a.sold) * (Number(a.price) - Number(a.cost)))
+    )
+    const mostProfit = byMostProfit.find(p => Number(p.sold) > 0) || null
+
+    const ranking = byMostSold
+      .filter(p => Number(p.sold) > 0)
+      .map(p => ({ id: p.id, name: p.name, sold: Number(p.sold) }))
+
+    res.json({
+      totalSales:  Number(totals.totalSales),
+      ingresos:    Math.round(Number(totals.ingresos) * 100) / 100,
+      totalProfit: Math.round(totalProfit * 100) / 100,
+      mostSold:    mostSold    ? { name: mostSold.name }    : null,
+      mostProfit:  mostProfit  ? { name: mostProfit.name }  : null,
+      lowStock,
+      ranking
+    })
+  } catch (err) {
+    logError("GET_STATS", err)
+    res.status(500).json({ error: "Error interno" })
+  }
+})
+
+/* ─── STATS DIARIAS + PREDICCIÓN  —  GET /api/stats/daily ──────────────── */
+/*
+ * Devuelve datos agregados por día (últimos 14) para las gráficas y la
+ * predicción de los próximos 3 días por regresión lineal.
+ *
+ * gananciaReal por día = ventas - costos_históricos (sale_items) - gastos
+ * Zona horaria: America/El_Salvador (igual que el frontend).
+ */
+
+app.get("/api/stats/daily", auth, async (req, res) => {
+  try {
+    const [sales]    = await db.promise().query("SELECT id, date, total FROM sales")
+    const [items]    = await db.promise().query("SELECT sale_id, cost, qty FROM sale_items")
+    const [expenses] = await db.promise().query("SELECT amount, created_at FROM expenses")
+
+    const mapa = {}
+
+    // Ventas por día
+    sales.forEach(s => {
+      const dia = toLocalDay(s.date)
+      if (!dia) return
+      if (!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
+      mapa[dia].ventas += Number(s.total)
+    })
+
+    // Costos históricos por día (desde sale_items — igual que /api/summary)
+    const saleDay = {}
+    sales.forEach(s => { saleDay[s.id] = toLocalDay(s.date) })
+
+    items.forEach(item => {
+      const dia = saleDay[item.sale_id]
+      if (!dia) return
+      if (!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
+      mapa[dia].costos += Number(item.cost) * Number(item.qty)
+    })
+
+    // Gastos operativos por día
+    expenses.forEach(e => {
+      const dia = toLocalDay(e.created_at)
+      if (!dia) return
+      if (!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
+      mapa[dia].gastos += Number(e.amount)
+    })
+
+    // Ordenar cronológicamente — tomar últimos 14 días
+    const sortedDays = Object.keys(mapa).sort().slice(-14)
+
+    const labels      = []
+    const ventasArr   = []
+    const gananciaArr = []
+
+    sortedDays.forEach(dia => {
+      const d        = mapa[dia]
+      const [, m, dd] = dia.split("-")
+      labels.push(`${Number(dd)}/${Number(m)}`)
+      ventasArr.push(Math.round(d.ventas * 100) / 100)
+      gananciaArr.push(Math.round((d.ventas - d.costos - d.gastos) * 100) / 100)
+    })
+
+    // Regresión lineal — mínimos cuadrados (misma fórmula que el frontend tenía)
+    let prediction = null
+    const n = gananciaArr.length
+    if (n >= 3) {
+      const xs    = gananciaArr.map((_, i) => i)
+      const ys    = gananciaArr
+      const xMean = xs.reduce((a, x) => a + x, 0) / n
+      const yMean = ys.reduce((a, y) => a + y, 0) / n
+      let num = 0, den = 0
+      xs.forEach((x, i) => {
+        num += (x - xMean) * (ys[i] - yMean)
+        den += (x - xMean) ** 2
+      })
+      if (den !== 0) {
+        const slope     = num / den
+        const intercept = yMean - slope * xMean
+        const proyecciones = [1, 2, 3].map(offset =>
+          Math.round((intercept + slope * (n - 1 + offset)) * 100) / 100
+        )
+        prediction = {
+          slope,
+          proyecciones,
+          promedioDiario: Math.round(yMean * 100) / 100
+        }
+      }
+    }
+
+    res.json({ labels, ventasArr, gananciaArr, prediction })
+
+  } catch (err) {
+    logError("GET_STATS_DAILY", err)
+    res.status(500).json({ error: "Error interno" })
+  }
+})
+
 /* ─── SNAPSHOT HELPER ───────────────────────────────────────────────────── */
 
 async function snapshotQuery() {
