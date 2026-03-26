@@ -1341,7 +1341,9 @@ const state = {
   cart: [],
   sales: [],
   expenses: [],
-  summary: null   // ← datos de /api/summary: { sales, costs, expenses, profit, expenses_by_category[] }
+  summary: null,         // ← datos de /api/summary: { ventas, costos, gastos, gananciaReal, expByCat, filter }
+  statsOperational: null, // ← datos de /api/stats: panel operativo
+  statsDaily: null        // ← datos de /api/stats/daily: gráficas + predicción
 }
 
 // =========== LOCKS ===========
@@ -1438,10 +1440,8 @@ let editingExpenseId = null
 function onCajaInicialChange(){
   const val = parseFloat(document.getElementById("cajaInicial")?.value) || 0
   localStorage.setItem("cajaInicial", val)
-  // Re-renderizar caja si el resumen ya existe
   if(state.summary){
-    const res = calcularResumen({ ventas: state.sales, gastos: state.expenses })
-    renderCaja(res)
+    renderCaja()
   }
 }
 
@@ -1637,21 +1637,46 @@ async function loadProducts(force = false){
 
 // =========================================================
 // LOAD SUMMARY — /api/summary
-// ─────────────────────────────────────────────────────────
-// YA NO ES FUENTE DE VERDAD para números en pantalla.
-// Solo se llama en background para:
-//   - guardar el filtro histórico si el usuario lo aplica
-//   - analytics futuras
-// Los números reales siempre vienen de calcularResumen()
+// Fuente de verdad financiera: ventas, costos, gastos, gananciaReal.
+// El frontend no recalcula estos números — los recibe del backend.
 // =========================================================
 async function loadSummary(){
   try {
     const data = await api("/api/summary")
-    // Solo guardamos el filtro histórico, no los números
-    state.summary = { filter: data.filter || { desde: null, hasta: null } }
+    state.summary = {
+      ventas:       data.sales    || 0,
+      costos:       data.costs    || 0,
+      gastos:       data.expenses || 0,
+      gananciaReal: data.profit   || 0,
+      expByCat:     data.expenses_by_category || [],
+      filter:       data.filter   || { desde: null, hasta: null }
+    }
   } catch(err) {
-    // Silencioso — no es crítico. Los números ya están en frontend.
-    state.summary = { filter: { desde: null, hasta: null } }
+    state.summary = { ventas: 0, costos: 0, gastos: 0, gananciaReal: 0, expByCat: [], filter: { desde: null, hasta: null } }
+  }
+}
+
+// =========================================================
+// LOAD STATS — /api/stats
+// Panel operativo: totalSales, ingresos, totalProfit, mostSold, mostProfit, lowStock, ranking.
+// =========================================================
+async function loadStats(){
+  try {
+    state.statsOperational = await api("/api/stats")
+  } catch(err) {
+    state.statsOperational = null
+  }
+}
+
+// =========================================================
+// LOAD STATS DAILY — /api/stats/daily
+// Datos diarios para gráficas + predicción por regresión lineal.
+// =========================================================
+async function loadStatsDaily(){
+  try {
+    state.statsDaily = await api("/api/stats/daily")
+  } catch(err) {
+    state.statsDaily = null
   }
 }
 
@@ -1869,7 +1894,7 @@ function clearExpenseError(){
 
 async function saveExpense(){
 
-  // ── PRIORIDAD 5: bloqueo de doble submit ──
+  // ── bloqueo de doble submit ──
   if(savingExpense) return
   savingExpense = true
 
@@ -1877,7 +1902,8 @@ async function saveExpense(){
   const amount      = parseFloat(document.getElementById("e-amount").value)
   const category    = document.getElementById("e-cat").value.trim()
 
-  // Validación en frontend
+  // El backend valida todos los datos. El frontend solo evita requests vacíos
+  // para no generar errores innecesarios con campos claramente en blanco.
   if(!description){
     showExpenseError("❌ La descripción es requerida")
     savingExpense = false
@@ -1885,11 +1911,6 @@ async function saveExpense(){
   }
   if(isNaN(amount) || amount <= 0){
     showExpenseError("❌ El monto debe ser un número mayor a 0")
-    savingExpense = false
-    return
-  }
-  if(amount > 999999){
-    showExpenseError("❌ El monto es demasiado alto")
     savingExpense = false
     return
   }
@@ -2153,9 +2174,8 @@ async function show(id) {
       const input = document.getElementById("cajaInicial")
       if(input && !input.value) input.value = savedCaja
     }
-    // Cargar gastos primero — calcularResumen los necesita
-    // loadSummary en background solo para el filtro histórico
-    await Promise.all([ loadExpenses(), loadSummary() ])
+    // Cargar todo desde el backend antes de renderizar
+    await Promise.all([ loadExpenses(), loadSummary(), loadStats(), loadStatsDaily() ])
     renderStats()
     setTimeout(() => {
       drawChart()
@@ -2403,56 +2423,18 @@ async function confirmSale() {
 
   try {
 
-    setSyncStatus("syncing", "Verificando stock...")
-    try {
-      const res = await fetch("/api/products")
-      if(res.ok){
-        const data = await res.json()
-        state.products = data.map(p => ({
-          id: p.id,
-          name: p.name,
-          price: Number(p.price),
-          cost: Number(p.cost || 0),
-          stock: Number(p.stock),
-          sold: Number(p.sold || 0),
-          cat: p.cat || "General"
-        }))
-        lastSyncTime = new Date()
-        setSyncStatus("ok", "Stock verificado")
-      }
-    } catch(e) {
-      console.warn("No se pudo verificar stock antes de venta:", e)
-      setSyncStatus("error", "Sin conexión")
-    }
-
-    for (const item of state.cart){
-      const p = state.products.find(x => x.id === item.id)
-      if(!p){
-        showToast(`❌ Producto no existe: ${item.name}`, "error")
-        return
-      }
-      if(p.stock < item.qty){
-        showToast(`❌ Sin stock: ${item.name} (disponible: ${p.stock})`, "error")
-        item.qty = p.stock
-        markDirty("cart", "products")
-        flushRender()
-        return
-      }
-    }
-
     const finalTotal = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
-
-    const now = new Date()
+    const now        = new Date()
 
     const sale = {
-      id: null,
-      num: null,
-      date: now.toISOString(),
+      id:      null,
+      num:     null,
+      date:    now.toISOString(),
       dateKey: now.getDate() + "/" + (now.getMonth()+1),
-      items: JSON.parse(JSON.stringify(state.cart)),
-      total: finalTotal,
+      items:   JSON.parse(JSON.stringify(state.cart)),
+      total:   finalTotal,
       paid,
-      change: paid - finalTotal
+      change:  paid - finalTotal
     }
 
     const data = await api("/api/sales",{
@@ -2484,6 +2466,11 @@ async function confirmSale() {
 
     console.error(err)
     showToast("❌ " + err.message, "error")
+
+    // Si el backend rechazó por stock, refrescar productos para que el UI quede consistente
+    if(err.message && err.message.toLowerCase().includes("stock")){
+      await loadProducts(true)
+    }
 
   } finally {
 
@@ -2613,22 +2600,18 @@ function clearModalError() {
 
 async function saveProduct(){
 
-  const name = document.getElementById("m-name").value.trim()
+  const name  = document.getElementById("m-name").value.trim()
+  const price = parseFloat(document.getElementById("m-price").value) || 0
+  const cost  = parseFloat(document.getElementById("m-cost").value)  || 0
+  const stock = parseInt(document.getElementById("m-stock").value)   || 0
+  const cat   = document.getElementById("m-cat").value.trim()
 
+  // El backend valida y normaliza todos los campos.
+  // El frontend solo verifica que el nombre no esté vacío para no enviar un request inútil.
   if(!name){
     showToast("⚠ Ingresá el nombre")
     return
   }
-
-  const price = parseFloat(document.getElementById("m-price").value) || 0
-  const cost  = parseFloat(document.getElementById("m-cost").value) || 0
-  const stock = parseInt(document.getElementById("m-stock").value) || 0
-
-  const cat = (
-    document.getElementById("m-cat").value.trim()
-    .toLowerCase()
-    .replace(/^\w/, c => c.toUpperCase())
-  ) || "General"
 
   const product = { name, price, cost, stock, cat }
 
@@ -2689,6 +2672,8 @@ async function confirmRestock(){
 
   const qty = parseInt(document.getElementById("restock-qty").value) || 0
 
+  // El backend valida qty > 0 y que el producto exista.
+  // El frontend solo evita el request si el campo está vacío/cero.
   if(qty <= 0){
     showToast("⚠ Cantidad inválida")
     return
@@ -3054,24 +3039,21 @@ function renderSales(){
 }
 
 // =========================================================
-// renderStats
+// renderStats — usa datos del backend (state.statsOperational + state.summary)
 // =========================================================
 function renderStats() {
 
-  // ── 0. CAJA UNIFICADA (fuente única de verdad) ──
-  const resumen = calcularResumen({ ventas: state.sales, gastos: state.expenses })
-  renderCaja(resumen)
+  // ── 0. CAJA UNIFICADA ──
+  renderCaja()
 
-  // ── 1. PANEL OPERATIVO ──
-  const totalSales    = state.sales.length
-  const ingresos      = state.sales.reduce((a,b) => a + b.total, 0)
-  const totalProfit   = state.products.reduce((a,p) => a + p.sold*(p.price-p.cost), 0)
-  const sorted        = [...state.products].sort((a,b) => b.sold - a.sold)
-  const mostSold      = sorted.find(p => p.sold > 0)
-  const mostProfit    = [...state.products]
-    .sort((a,b) => (b.sold*(b.price-b.cost)) - (a.sold*(a.price-a.cost)))
-    .find(p => p.sold > 0)
-  const lowStock      = state.products.filter(p => p.stock <= 5).length
+  // ── 1. PANEL OPERATIVO — desde /api/stats ──
+  const op = state.statsOperational || {}
+  const totalSales  = op.totalSales  || 0
+  const ingresos    = op.ingresos    || 0
+  const totalProfit = op.totalProfit || 0
+  const mostSold    = op.mostSold    || null
+  const mostProfit  = op.mostProfit  || null
+  const lowStock    = op.lowStock    || 0
 
   document.getElementById("statsPanel").innerHTML = `
     <div class="stat-card" style="background:#dbeafe;">
@@ -3100,32 +3082,21 @@ function renderStats() {
     </div>
   `
 
-  // ── 2. SUMMARY FINANCIERO REAL — FUENTE ÚNICA: calcularResumen ──
-  // state.summary ya NO maneja números críticos.
-  // Solo se usa para el label del filtro histórico (si el usuario lo aplicó).
-  const s = calcularResumen({ ventas: state.sales, gastos: state.expenses })
+  // ── 2. SUMMARY FINANCIERO REAL — desde /api/summary ──
+  const s = state.summary || { ventas: 0, costos: 0, gastos: 0, gananciaReal: 0, expByCat: [], filter: {} }
 
   const panel = document.getElementById("summaryPanel")
   const filterLabel = document.getElementById("summaryFilterLabel")
 
   if(filterLabel){
-    // El label solo viene del filtro API si se aplicó uno, si no: "Datos en vivo"
-    const apiFilter = state.summary?.filter
+    const apiFilter = s.filter
     filterLabel.textContent = apiFilter?.desde
       ? `Filtro: ${apiFilter.desde}${apiFilter.hasta ? " → " + apiFilter.hasta : ""}`
       : "Datos en vivo ●"
     filterLabel.style.color = apiFilter?.desde ? "#94a3b8" : "#22c55e"
   }
 
-  // Gastos por categoría — calculado antes del panel para usar en el 4to cuadro
-  const byCatLocal = {}
-  state.expenses.forEach(e => {
-    const c = e.category || "General"
-    byCatLocal[c] = (byCatLocal[c] || 0) + Number(e.amount)
-  })
-  const expByCat = Object.entries(byCatLocal)
-    .map(([category, total]) => ({ category, total }))
-    .sort((a, b) => b.total - a.total)
+  const expByCat = s.expByCat || []
 
   const profitColor  = s.gananciaReal >= 0 ? "#064e3b" : "#991b1b"
   const profitBg     = s.gananciaReal >= 0 ? "#dcfce7"  : "#fee2e2"
@@ -3176,16 +3147,16 @@ function renderStats() {
     </div>
   `
 
-  // ── 3. RANKING DE VENTAS ──
-  const withSales = sorted.filter(p => p.sold > 0)
-  const medals = ["🥇","🥈","🥉"]
+  // ── 3. RANKING DE VENTAS — desde /api/stats ──
+  const ranking = op.ranking || []
+  const medals  = ["🥇","🥈","🥉"]
 
   let rankHtml = `<span style="font-weight:700; font-size:15px; margin-bottom:12px; display:block;">🏆 Ranking de ventas</span>`
 
-  if (withSales.length === 0) {
+  if (ranking.length === 0) {
     rankHtml += `<div style="text-align:center; color:#94a3b8; font-size:13px; padding:12px 0;">Aún no hay ventas registradas</div>`
   } else {
-    withSales.forEach((p, i) => {
+    ranking.forEach((p, i) => {
       rankHtml += `
         <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid #f1f5f9;">
           <span style="font-weight:600; color:#0f172a; font-size:14px;">${medals[i] || (i+1)+"."} ${p.name}</span>
@@ -3242,142 +3213,35 @@ async function clearHistory(){
 }
 
 // =========================================================
-// FUNCIÓN CENTRAL — calcularResumen
-// UNA sola fuente de verdad para todos los números financieros
+// RENDER CAJA — usa state.summary del backend
 // =========================================================
-function calcularResumen({ ventas = [], gastos = [] }) {
-  let totalVentas      = 0
-  let totalCostos      = 0
-  let totalGananciaBruta = 0
-
-  ventas.forEach(v => {
-    totalVentas        += Number(v.total    || 0)
-    // costTotal: sum de (cost * qty) por venta, calculado en tiempo real
-    const costVenta     = (v.items || []).reduce((a, i) => a + (Number(i.cost || 0) * Number(i.qty)), 0)
-    totalCostos        += costVenta
-    totalGananciaBruta += Number(v.total || 0) - costVenta
-  })
-
-  const totalGastos  = gastos.reduce((acc, g) => acc + Number(g.amount || 0), 0)
-  const gananciaReal = totalVentas - totalCostos - totalGastos
-
-  return {
-    ventas:          totalVentas,
-    costos:          totalCostos,
-    gastos:          totalGastos,
-    gananciaBruta:   totalGananciaBruta,
-    gananciaReal,
-    caja:            totalVentas   // lo que entró en caja (ventas brutas)
-  }
-}
-
-// =========================================================
-// AGRUPACIÓN UNIFICADA — agruparPorDia
-// Usa localDay() con TZ correcta — nunca split("T")[0] (que da UTC)
-// =========================================================
-function agruparPorDia(ventas, gastos) {
-  const mapa = {}
-
-  ventas.forEach(v => {
-    const dia = localDay(v.date)   // ← zona horaria El Salvador
-    if(!dia) return
-    if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
-    mapa[dia].ventas += Number(v.total || 0)
-    mapa[dia].costos += (v.items || []).reduce((a, i) => a + (Number(i.cost || 0) * Number(i.qty)), 0)
-  })
-
-  gastos.forEach(g => {
-    const dia = localDay(g.created_at)   // ← zona horaria El Salvador
-    if(!dia) return
-    if(!mapa[dia]) mapa[dia] = { ventas: 0, costos: 0, gastos: 0 }
-    mapa[dia].gastos += Number(g.amount || 0)
-  })
-
-  const labels      = []
-  const ventasArr   = []
-  const gananciaArr = []
-
-  Object.keys(mapa).sort().slice(-14).forEach(dia => {
-    const d            = mapa[dia]
-    const gananciaReal = d.ventas - d.costos - d.gastos
-    // Label legible usando la misma TZ
-    const [, m, dd]    = dia.split("-")
-    labels.push(`${Number(dd)}/${Number(m)}`)
-    ventasArr.push(d.ventas)
-    gananciaArr.push(gananciaReal)
-  })
-
-  return { labels, ventasArr, gananciaArr }
-}
-
-// =========================================================
-// PREDICCIÓN DE GANANCIA — regresión lineal simple
-// Toma los últimos N días y proyecta los próximos 3
-// =========================================================
-function predecirGanancia(gananciaArr) {
-  const n = gananciaArr.length
-  if(n < 3) return null   // necesitamos al menos 3 puntos
-
-  // Regresión lineal mínimos cuadrados
-  const xs = gananciaArr.map((_, i) => i)
-  const ys = gananciaArr
-  const xMean = xs.reduce((a, x) => a + x, 0) / n
-  const yMean = ys.reduce((a, y) => a + y, 0) / n
-
-  let num = 0, den = 0
-  xs.forEach((x, i) => {
-    num += (x - xMean) * (ys[i] - yMean)
-    den += (x - xMean) ** 2
-  })
-
-  if(den === 0) return null
-  const slope     = num / den
-  const intercept = yMean - slope * xMean
-
-  // Proyectar 3 días siguientes
-  const proyecciones = [1, 2, 3].map(offset => {
-    const val = intercept + slope * (n - 1 + offset)
-    return Math.round(val * 100) / 100
-  })
-
-  return {
-    slope,           // positivo = tendencia creciente
-    proyecciones,    // [mañana, pasado, antepasado]
-    promedioDiario: yMean
-  }
-}
-
-// =========================================================
-// RENDER CAJA
-// =========================================================
-function renderCaja(resumen) {
+function renderCaja() {
+  const s = state.summary || { ventas: 0, costos: 0, gastos: 0, gananciaReal: 0 }
   const cajaInicial = Number(localStorage.getItem("cajaInicial") || 0)
-  const cajaReal    = cajaInicial + resumen.caja - resumen.gastos
+  const cajaReal    = cajaInicial + s.ventas - s.gastos
 
   document.getElementById("cajaTotal").textContent     = `$${cajaReal.toFixed(2)}`
-  document.getElementById("cajaCapital").textContent   = `$${resumen.costos.toFixed(2)}`
-  document.getElementById("cajaGastos").textContent    = `$${resumen.gastos.toFixed(2)}`
-  document.getElementById("cajaGanancia").textContent  = `$${resumen.gananciaReal.toFixed(2)}`
+  document.getElementById("cajaCapital").textContent   = `$${s.costos.toFixed(2)}`
+  document.getElementById("cajaGastos").textContent    = `$${s.gastos.toFixed(2)}`
+  document.getElementById("cajaGanancia").textContent  = `$${s.gananciaReal.toFixed(2)}`
 
-  // Color dinámico del total
   const cajaEl = document.getElementById("cajaTotal")
   if(cajaReal < 0){
     cajaEl.style.color = "#dc2626"
-  } else if(cajaReal < resumen.costos * 0.5){
+  } else if(cajaReal < s.costos * 0.5){
     cajaEl.style.color = "#d97706"
   } else {
     cajaEl.style.color = "#15803d"
   }
 
-  // Color de ganancia
   const ganEl = document.getElementById("cajaGanancia")
-  ganEl.style.color = resumen.gananciaReal < 0 ? "#dc2626" : "#15803d"
+  ganEl.style.color = s.gananciaReal < 0 ? "#dc2626" : "#15803d"
 
-  renderAlertas(resumen, cajaInicial, cajaReal)
+  renderAlertas(s, cajaInicial, cajaReal)
 }
 
 // =========================================================
-// ALERTAS DE NEGOCIO
+// ALERTAS DE NEGOCIO — recibe resumen del backend
 // =========================================================
 function renderAlertas(resumen, cajaInicial, cajaReal) {
   const box = document.getElementById("cajaAlertas")
@@ -3419,16 +3283,6 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
     })
   }
 
-  // 🟡 Sin ventas hoy
-  const hoyKey    = localDay(new Date())
-  const ventasHoy = state.sales.filter(s => localDay(s.date) === hoyKey)
-  if(ventasHoy.length === 0 && state.sales.length > 0){
-    alertas.push({
-      nivel: "amarillo",
-      msg:   `ℹ Todavía no hay ventas registradas hoy`
-    })
-  }
-
   // 🟢 Todo OK
   if(alertas.length === 0 && resumen.ventas > 0){
     box.innerHTML = `
@@ -3464,13 +3318,13 @@ function renderAlertas(resumen, cajaInicial, cajaReal) {
 }
 
 // =========================================================
-// PREDICCIÓN BOX — HTML
+// PREDICCIÓN BOX — usa state.statsDaily.prediction del backend
 // =========================================================
-function renderPrediccion(gananciaArr) {
+function renderPrediccion() {
   const box = document.getElementById("predictionBox")
   if(!box) return
 
-  const pred = predecirGanancia(gananciaArr)
+  const pred = state.statsDaily?.prediction
   if(!pred){ box.style.display = "none"; return }
 
   const tendencia = pred.slope > 0.5  ? "📈 Subiendo"
@@ -3481,6 +3335,7 @@ function renderPrediccion(gananciaArr) {
                   : "#0891b2"
 
   const dias = ["Mañana", "Pasado", "Antepasado"]
+  const n    = state.statsDaily?.gananciaArr?.length || 0
 
   box.style.display = "block"
   box.style.background  = "#f0f9ff"
@@ -3507,20 +3362,22 @@ function renderPrediccion(gananciaArr) {
       }).join("")}
     </div>
     <div style="margin-top:10px; font-size:11px; color:#64748b; font-style:italic;">
-      Basado en tendencia de los últimos ${gananciaArr.length} días · Solo orientativo
+      Basado en tendencia de los últimos ${n} días · Solo orientativo
     </div>
   `
 }
 
 // =========================================================
-// DIBUJAR GRÁFICAS — usa agruparPorDia unificado
+// DIBUJAR GRÁFICAS — usan state.statsDaily del backend
 // =========================================================
 function drawChart() {
 
   const canvas = document.getElementById("salesChart")
   if (!canvas) return
 
-  const chartData = agruparPorDia(state.sales, state.expenses)
+  const daily = state.statsDaily
+  const labels = daily?.labels    || []
+  const values = daily?.ventasArr || []
 
   const ctx = canvas.getContext("2d")
   const W = canvas.offsetWidth || 300
@@ -3529,9 +3386,6 @@ function drawChart() {
   const H = 160
 
   ctx.clearRect(0,0,W,H)
-
-  const labels = chartData.labels
-  const values = chartData.ventasArr
 
   if(labels.length === 0){
     ctx.fillStyle = "#94a3b8"
@@ -3585,7 +3439,9 @@ function drawProfitChart(){
   const canvas = document.getElementById("profitChart")
   if(!canvas) return
 
-  const chartData = agruparPorDia(state.sales, state.expenses)
+  const daily  = state.statsDaily
+  const labels = daily?.labels      || []
+  const values = daily?.gananciaArr || []
 
   const ctx = canvas.getContext("2d")
   const W = canvas.offsetWidth || 300
@@ -3595,9 +3451,6 @@ function drawProfitChart(){
 
   ctx.clearRect(0,0,W,H)
 
-  const labels = chartData.labels
-  const values = chartData.gananciaArr  // ← ganancia REAL (ventas - costos - gastos)
-
   if(labels.length === 0){
     ctx.fillStyle = "#94a3b8"
     ctx.font = "13px Sora"
@@ -3606,8 +3459,8 @@ function drawProfitChart(){
     return
   }
 
-  // Calcular predicción y dibujarla después
-  renderPrediccion(values)
+  // Renderizar predicción desde state.statsDaily
+  renderPrediccion()
 
   const maxVal = Math.max(...values.map(Math.abs), 1)
   const padL=8, padR=8, padT=22, padB=32
@@ -3615,13 +3468,12 @@ function drawProfitChart(){
   const chartH = H - padT - padB
   const gap    = chartW / labels.length
   const barW   = Math.min(gap * 0.55, 40)
-  const zeroY  = padT + chartH   // línea de cero (en la base)
+  const zeroY  = padT + chartH
 
   labels.forEach((lbl, i) => {
     const val  = values[i]
     const barH = Math.max(Math.abs(val) / maxVal * chartH, 2)
     const x    = padL + i*gap + gap/2 - barW/2
-    // barras positivas crecen hacia arriba, negativas hacia abajo
     const y    = val >= 0 ? zeroY - barH : zeroY
 
     ctx.fillStyle = val >= 0 ? "#22c55e" : "#ef4444"
