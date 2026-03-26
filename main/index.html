@@ -2014,57 +2014,72 @@ async function restorePOS(file){
 
   if(!file) return
 
+  // Leer y parsear el archivo — serializar UNA sola vez en bodyStr
   let data
+  let bodyStr
   try {
     const text = await file.text()
-    data = JSON.parse(text)
+    data    = JSON.parse(text)
+    bodyStr = JSON.stringify(data)
   } catch(_) {
     showToast("❌ El archivo no es un JSON válido", "error")
     return
   }
 
-  // Estimado del tamaño para detectar problemas antes de enviar
-  const sizeKB = Math.round(JSON.stringify(data).length / 1024)
+  const sizeKB = Math.round(bodyStr.length / 1024)
+
+  const modo = confirm(
+    `📦 Backup listo (${sizeKB} KB)\n\n` +
+    `¿Cómo querés restaurar?\n\n` +
+    `OK         → Limpio (borra ventas/gastos actuales y restaura todo)\n` +
+    `Cancelar → Parcial (agrega sin borrar lo que ya hay)`
+  ) ? "limpio" : "parcial"
+
+  showToast("⏳ Restaurando backup...", "info")
 
   try {
 
     const token = localStorage.getItem("token")
-    const raw = await fetch("/api/restore", {
-      method: "POST",
+
+    // Usar originalFetch directamente — el patch-wrapper de window.fetch
+    // reenvía el objeto options ya mutado, lo que en backups grandes
+    // puede truncar o vaciar el body antes de que llegue al servidor.
+    const raw = await originalFetch(`/api/restore?modo=${modo}`, {
+      method:  "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: token
+        "Content-Type":  "application/json",
+        "Authorization": token
       },
-      body: JSON.stringify(data)
+      body: bodyStr
     })
 
-    // Intentar parsear siempre — si falla, armar mensaje con status HTTP
     let result = {}
     try {
       result = await raw.json()
     } catch(_) {
       const msg = raw.status === 413
-        ? `El backup es demasiado grande (${sizeKB}kb). Contactá al administrador.`
-        : `Error HTTP ${raw.status} — sin respuesta del servidor`
+        ? `El backup es demasiado grande (${sizeKB} KB). Aumentar límite en el servidor.`
+        : `Error HTTP ${raw.status} — el servidor no devolvió JSON`
       showToast("❌ " + msg, "error")
       return
     }
 
     if(!raw.ok){
       const detail = result.error || `Error HTTP ${raw.status}`
-      const warns = result.warnings || []
-      const extra = warns.length > 0 ? "\n\nAdvertencias previas:\n" + warns.join("\n") : ""
+      const warns  = result.warnings || []
+      const extra  = warns.length > 0 ? "\n\nAdvertencias:\n" + warns.join("\n") : ""
       alert("❌ Error al restaurar\n\n" + detail + extra)
       return
     }
 
-    // Restore exitoso — mostrar reporte completo
-    const s = result.stats || {}
+    // ── Restore exitoso — reporte completo ──
+    const s     = result.stats || {}
     const lines = []
-    if(s.products)  lines.push(`📦 Productos: ${s.products.inserted} insertados, ${s.products.skipped} omitidos`)
-    if(s.sales)     lines.push(`🧾 Ventas: ${s.sales.inserted} insertadas, ${s.sales.skipped} omitidas`)
-    if(s.expenses)  lines.push(`💸 Gastos: ${s.expenses.inserted} insertados, ${s.expenses.skipped} omitidos`)
+    if(s.products)            lines.push(`📦 Productos: ${s.products.inserted} insertados, ${s.products.skipped} omitidos`)
+    if(s.sales)               lines.push(`🧾 Ventas: ${s.sales.inserted} insertadas, ${s.sales.skipped} omitidas`)
+    if(s.expenses)            lines.push(`💸 Gastos: ${s.expenses.inserted} insertados, ${s.expenses.skipped} omitidos`)
     if(result.backup_version) lines.push(`🏷 Versión: ${result.backup_version}`)
+    lines.push(`📐 Tamaño enviado: ${sizeKB} KB`)
 
     const warns = result.warnings || []
     if(warns.length > 0) lines.push(`⚠️ ${warns.length} advertencia(s)`)
@@ -2079,6 +2094,10 @@ async function restorePOS(file){
     console.error("Error en restore:", err)
     showToast("❌ Error de red al restaurar — revisá la conexión", "error")
 
+  } finally {
+    // Limpiar el input para permitir restaurar el mismo archivo de nuevo
+    const inp = document.getElementById("restoreFile")
+    if(inp) inp.value = ""
   }
 
 }
