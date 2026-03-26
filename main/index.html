@@ -2718,13 +2718,11 @@ async function deleteAllProducts(){
 
   try {
 
-    for(const p of state.products){
-      const res = await fetch("/api/products/" + p.id, { method: "DELETE" })
-      if(!res.ok){
-        let data = {}
-        try { data = await res.json() } catch(_){}
-        throw new Error(data.error || "Error al eliminar " + p.name)
-      }
+    const res = await fetch("/api/products/all", { method: "DELETE" })
+    if(!res.ok){
+      let data = {}
+      try { data = await res.json() } catch(_){}
+      throw new Error(data.error || "Error al eliminar inventario")
     }
 
     await loadProducts()
@@ -3780,4 +3778,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-  </html>
+</html>
