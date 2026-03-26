@@ -2023,40 +2023,61 @@ async function restorePOS(file){
     return
   }
 
+  // Estimado del tamaño para detectar problemas antes de enviar
+  const sizeKB = Math.round(JSON.stringify(data).length / 1024)
+
   try {
 
-    const result = await api("/api/restore",{
-      method:"POST",
-      body:JSON.stringify(data)
+    const token = localStorage.getItem("token")
+    const raw = await fetch("/api/restore", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token
+      },
+      body: JSON.stringify(data)
     })
 
-    // Armar resumen legible del restore
-    const s = result.stats || {}
-    const lines = []
-
-    if(s.products)   lines.push(`📦 Productos: ${s.products.inserted} insertados, ${s.products.skipped} omitidos`)
-    if(s.sales)      lines.push(`🧾 Ventas: ${s.sales.inserted} insertadas, ${s.sales.skipped} omitidas`)
-    if(s.expenses)   lines.push(`💸 Gastos: ${s.expenses.inserted} insertados, ${s.expenses.skipped} omitidos`)
-    if(result.backup_version) lines.push(`🏷 Versión del backup: ${result.backup_version}`)
-
-    const warns = result.warnings || []
-    if(warns.length > 0) lines.push(`⚠️ ${warns.length} advertencia(s) al restaurar`)
-
-    const summary = lines.join("\n")
-
-    if(summary){
-      alert("✅ Backup restaurado\n\n" + summary + (warns.length > 0 ? "\n\nAdvertencias:\n" + warns.join("\n") : ""))
-    } else {
-      showToast("♻️ Backup restaurado correctamente", "ok")
+    // Intentar parsear siempre — si falla, armar mensaje con status HTTP
+    let result = {}
+    try {
+      result = await raw.json()
+    } catch(_) {
+      const msg = raw.status === 413
+        ? `El backup es demasiado grande (${sizeKB}kb). Contactá al administrador.`
+        : `Error HTTP ${raw.status} — sin respuesta del servidor`
+      showToast("❌ " + msg, "error")
+      return
     }
 
-    setTimeout(()=>{ location.reload() },800)
+    if(!raw.ok){
+      const detail = result.error || `Error HTTP ${raw.status}`
+      const warns = result.warnings || []
+      const extra = warns.length > 0 ? "\n\nAdvertencias previas:\n" + warns.join("\n") : ""
+      alert("❌ Error al restaurar\n\n" + detail + extra)
+      return
+    }
+
+    // Restore exitoso — mostrar reporte completo
+    const s = result.stats || {}
+    const lines = []
+    if(s.products)  lines.push(`📦 Productos: ${s.products.inserted} insertados, ${s.products.skipped} omitidos`)
+    if(s.sales)     lines.push(`🧾 Ventas: ${s.sales.inserted} insertadas, ${s.sales.skipped} omitidas`)
+    if(s.expenses)  lines.push(`💸 Gastos: ${s.expenses.inserted} insertados, ${s.expenses.skipped} omitidos`)
+    if(result.backup_version) lines.push(`🏷 Versión: ${result.backup_version}`)
+
+    const warns = result.warnings || []
+    if(warns.length > 0) lines.push(`⚠️ ${warns.length} advertencia(s)`)
+
+    const warningDetail = warns.length > 0 ? "\n\nAdvertencias:\n" + warns.join("\n") : ""
+    alert("✅ Backup restaurado\n\n" + lines.join("\n") + warningDetail)
+
+    setTimeout(()=>{ location.reload() }, 800)
 
   } catch(err) {
 
     console.error("Error en restore:", err)
-    const detail = err.message || "Error desconocido"
-    showToast("❌ Error al restaurar: " + detail, "error")
+    showToast("❌ Error de red al restaurar — revisá la conexión", "error")
 
   }
 
@@ -3797,4 +3818,4 @@ document.addEventListener("visibilitychange", ()=>{
 </script>
 
 </body>
-  </html>
+</html>
