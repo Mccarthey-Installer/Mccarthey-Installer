@@ -3506,8 +3506,9 @@ function drawProfitChart(){
     ctx.fillStyle = val >= 0 ? "#166534" : "#991b1b"
     ctx.font = "bold 9px JetBrains Mono"
     ctx.textAlign = "center"
-    const labelY = val >= 0 ? y - 5 : y + barH + 11
-    ctx.fillText("$"+val.toFixed(2), x+barW/2, labelY)
+    const valLabel = val >= 0 ? "$"+val.toFixed(2) : "-$"+Math.abs(val).toFixed(2)
+    const labelY = val >= 0 ? y - 5 : Math.min(y + barH + 11, H - 20)
+    ctx.fillText(valLabel, x+barW/2, labelY)
 
     ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora"
