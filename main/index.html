@@ -959,6 +959,11 @@ z-index: 1;
         <label class="modal-label">Descripción</label>
         <input id="e-desc" class="input" placeholder="Ej: Pago de luz">
       </div>
+      <div>
+        <label class="modal-label">Fecha del gasto</label>
+        <input id="e-date" class="input" type="date" style="font-family:'Sora',sans-serif;">
+        <div style="font-size:11px; color:#94a3b8; margin-top:4px; font-weight:600;">Dejá en blanco o seleccioná hoy si es un gasto de ahora</div>
+      </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div>
           <label class="modal-label">Monto ($)</label>
@@ -1856,6 +1861,8 @@ function openExpenseModal(){
   document.getElementById("e-desc").value = ""
   document.getElementById("e-amount").value = ""
   document.getElementById("e-cat").value = ""
+  // Fecha por defecto: hoy (en zona horaria local del dispositivo)
+  document.getElementById("e-date").value = new Date().toLocaleDateString("sv-SE")
   clearExpenseError()
   document.getElementById("expenseModal").classList.add("show")
   setTimeout(() => document.getElementById("e-desc").focus(), 100)
@@ -1870,6 +1877,17 @@ function openEditExpenseModal(id){
   document.getElementById("e-desc").value = e.description || ""
   document.getElementById("e-amount").value = e.amount
   document.getElementById("e-cat").value = e.category || ""
+  // Cargar la fecha real del gasto (para poder corregirla si es necesario)
+  if(e.created_at){
+    const d = new Date(e.created_at)
+    if(!isNaN(d.getTime())){
+      document.getElementById("e-date").value = d.toLocaleDateString("sv-SE")
+    } else {
+      document.getElementById("e-date").value = ""
+    }
+  } else {
+    document.getElementById("e-date").value = ""
+  }
   clearExpenseError()
   document.getElementById("expenseModal").classList.add("show")
   setTimeout(() => document.getElementById("e-amount").focus(), 100)
@@ -1915,7 +1933,11 @@ async function saveExpense(){
     return
   }
 
+  // ── Fecha del gasto: se envía al backend para que la use como created_at ──
+  // Si el usuario no seleccionó nada (campo vacío), el backend usa la fecha actual.
+  const dateVal = (document.getElementById("e-date")?.value || "").trim()
   const payload = { description, amount, category: category || "General" }
+  if(dateVal) payload.date = dateVal
 
   const btn = document.getElementById("saveExpenseBtn")
   const original = btn.textContent
