@@ -2169,10 +2169,15 @@ function closeSidebar() {
 }
 
 // =========== SHOW ===========
-async function show(id) {
+// Secciones válidas — cualquier hash fuera de esta lista cae a "pos"
+const VALID_SECTIONS = new Set(["pos", "inventory", "sales", "stats", "expenses"])
+
+// Lógica pura de activación (sin tocar el hash). Llamada por show() y hashchange.
+async function _activateSection(id) {
+  if(!VALID_SECTIONS.has(id)) id = "pos"
 
   document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))
-  document.getElementById(id).classList.remove("hidden")
+  document.getElementById(id)?.classList.remove("hidden")
 
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"))
   document.getElementById("nav-" + id)?.classList.add("active")
@@ -2208,8 +2213,24 @@ async function show(id) {
   if(id === "expenses"){
     await loadExpenses()
   }
-
 }
+
+// Punto de entrada público: actualiza el hash (dispara hashchange → _activateSection)
+function show(id) {
+  if(!VALID_SECTIONS.has(id)) id = "pos"
+  if(location.hash !== "#" + id){
+    location.hash = id
+  } else {
+    // Hash ya es el mismo (p.ej. clic repetido): activar directo sin loop
+    _activateSection(id)
+  }
+}
+
+// Router: reacciona a cambios de hash (navegación y botón Back/Forward del browser)
+window.addEventListener("hashchange", () => {
+  const id = location.hash.replace("#", "") || "pos"
+  _activateSection(id)
+})
 
 // =========== TOGGLE CATEGORIES ===========
 function toggleCategories() {
@@ -3506,9 +3527,8 @@ function drawProfitChart(){
     ctx.fillStyle = val >= 0 ? "#166534" : "#991b1b"
     ctx.font = "bold 9px JetBrains Mono"
     ctx.textAlign = "center"
-    const valLabel = val >= 0 ? "$"+val.toFixed(2) : "-$"+Math.abs(val).toFixed(2)
-    const labelY = val >= 0 ? y - 5 : Math.min(y + barH + 11, H - 20)
-    ctx.fillText(valLabel, x+barW/2, labelY)
+    const labelY = val >= 0 ? y - 5 : y + barH + 11
+    ctx.fillText("$"+val.toFixed(2), x+barW/2, labelY)
 
     ctx.fillStyle = "#64748b"
     ctx.font = "9px Sora"
@@ -3671,7 +3691,9 @@ async function init(){
   markDirty("cart", "sales")
   flushRender()
 
-  show("pos")
+  // Leer sección desde el hash de la URL; si no hay o es inválido, usar "pos"
+  const initialSection = location.hash.replace("#", "") || "pos"
+  _activateSection(initialSection)
 
 }
 
