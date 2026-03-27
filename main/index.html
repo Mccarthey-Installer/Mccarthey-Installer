@@ -3716,8 +3716,9 @@ async function init(){
   markDirty("cart", "sales")
   flushRender()
 
-  // Leer sección desde el hash de la URL; si no hay o es inválido, usar "pos"
-  const initialSection = location.hash.replace("#", "") || "pos"
+  // Misma cadena de prioridades que el script síncrono:
+  // hash → localStorage → "pos"
+  const initialSection = location.hash.replace("#", "") || localStorage.getItem("lastSection") || "pos"
   _activateSection(initialSection)
 
 }
