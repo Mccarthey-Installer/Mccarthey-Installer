@@ -1347,7 +1347,7 @@ z-index: 1;
 <script>
 (function () {
   var VALID = new Set(["pos", "inventory", "sales", "stats", "expenses"])
-  var id = location.hash.replace("#", "") || "pos"
+  var id = location.hash.replace("#", "") || localStorage.getItem("lastSection") || "pos"
   if (!VALID.has(id)) id = "pos"
 
   // Mostrar sección correcta
@@ -2197,6 +2197,9 @@ const VALID_SECTIONS = new Set(["pos", "inventory", "sales", "stats", "expenses"
 // Lógica pura de activación (sin tocar el hash). Llamada por show() y hashchange.
 async function _activateSection(id) {
   if(!VALID_SECTIONS.has(id)) id = "pos"
+
+  // Persistir para restaurar si el usuario vuelve desde URL base (sin hash)
+  localStorage.setItem("lastSection", id)
 
   document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))
   document.getElementById(id)?.classList.remove("hidden")
