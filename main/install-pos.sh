@@ -1035,8 +1035,37 @@ app.post("/api/sales", auth, async (req, res) => {
 
 const EXP_CAT_VALID = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ0-9 \-_&/]+$/
 
+/* ─── HELPER: valida y normaliza fecha de gasto ─────────────────────────────
+   Acepta "YYYY-MM-DD" (desde el frontend) o null/undefined (→ ahora).
+   Devuelve { ok, value } o { ok: false, error }.
+   value = "YYYY-MM-DD 00:00:00" listo para MySQL created_at.
+   ─────────────────────────────────────────────────────────────────────────── */
+function parseExpenseDate(raw) {
+  if (!raw || String(raw).trim() === "") {
+    // Sin fecha → usar la actual como antes
+    return { ok: true, value: new Date().toLocaleString("sv-SE").replace("T", " ") }
+  }
+  const str = String(raw).trim()
+  // Solo aceptamos YYYY-MM-DD (lo que emite <input type="date">)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return { ok: false, error: "Fecha inválida — usar formato YYYY-MM-DD" }
+  }
+  // Parsear como medianoche en tiempo local del servidor
+  const d = new Date(str + "T00:00:00")
+  if (isNaN(d.getTime())) {
+    return { ok: false, error: "Fecha inválida" }
+  }
+  // No permitir fechas futuras (más allá del final del día de hoy)
+  const hoy = new Date()
+  hoy.setHours(23, 59, 59, 999)
+  if (d > hoy) {
+    return { ok: false, error: "La fecha no puede ser futura" }
+  }
+  return { ok: true, value: str + " 00:00:00" }
+}
+
 app.post("/api/expenses", auth, (req, res) => {
-  const { amount, description, category } = req.body
+  const { amount, description, category, date } = req.body
 
   const amt = Number(amount)
   if (isNaN(amt) || amt <= 0)
@@ -1058,15 +1087,22 @@ app.post("/api/expenses", auth, (req, res) => {
     ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
     : "General"
 
+  // ── Fecha: la elegida por el usuario o la actual (comportamiento previo) ──
+  const dateResult = parseExpenseDate(date)
+  if (!dateResult.ok) {
+    return res.status(400).json({ error: dateResult.error })
+  }
+  const expDate = dateResult.value
+
   db.query(
-    "INSERT INTO expenses(amount, description, category) VALUES(?,?,?)",
-    [Math.round(amt * 100) / 100, desc, cat],
+    "INSERT INTO expenses(amount, description, category, created_at) VALUES(?,?,?,?)",
+    [Math.round(amt * 100) / 100, desc, cat, expDate],
     (err) => {
       if (err) {
         logError("CREATE_EXPENSE", err)
         return res.status(500).json({ error: "Error interno" })
       }
-      logInfo("CREATE_EXPENSE", `Gasto $${amt} cat="${cat}" — "${desc}"`)
+      logInfo("CREATE_EXPENSE", `Gasto $${amt} cat="${cat}" fecha="${expDate}" — "${desc}"`)
       res.json({ ok: true })
     }
   )
@@ -1086,7 +1122,7 @@ app.get("/api/expenses", auth, (req, res) => {
 })
 
 app.put("/api/expenses/:id", auth, (req, res) => {
-  const { amount, description, category } = req.body
+  const { amount, description, category, date } = req.body
 
   const amt = Number(amount)
   if (isNaN(amt) || amt <= 0)
@@ -1108,20 +1144,32 @@ app.put("/api/expenses/:id", auth, (req, res) => {
     ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
     : "General"
 
-  db.query(
-    "UPDATE expenses SET amount=?, description=?, category=? WHERE id=?",
-    [Math.round(amt * 100) / 100, desc, cat, req.params.id],
-    (err, result) => {
-      if (err) {
-        logError("UPDATE_EXPENSE", err)
-        return res.status(500).json({ error: "Error interno" })
-      }
-      if (result.affectedRows === 0)
-        return res.status(404).json({ error: "No existe" })
-      logInfo("UPDATE_EXPENSE", `Actualizado id=${req.params.id} $${amt} cat="${cat}"`)
-      res.json({ ok: true })
+  // ── Fecha: si se envía, actualizar created_at también ──
+  const dateResult = parseExpenseDate(date || null)
+  if (!dateResult.ok) {
+    return res.status(400).json({ error: dateResult.error })
+  }
+
+  // Si el cliente mandó fecha explícita, actualizamos created_at.
+  // Si no mandó fecha, no tocamos created_at (conserva la original).
+  const hasDate = date && String(date).trim() !== ""
+  const sql = hasDate
+    ? "UPDATE expenses SET amount=?, description=?, category=?, created_at=? WHERE id=?"
+    : "UPDATE expenses SET amount=?, description=?, category=? WHERE id=?"
+  const params = hasDate
+    ? [Math.round(amt * 100) / 100, desc, cat, dateResult.value, req.params.id]
+    : [Math.round(amt * 100) / 100, desc, cat, req.params.id]
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      logError("UPDATE_EXPENSE", err)
+      return res.status(500).json({ error: "Error interno" })
     }
-  )
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "No existe" })
+    logInfo("UPDATE_EXPENSE", `Actualizado id=${req.params.id} $${amt} cat="${cat}"${hasDate ? ` fecha="${dateResult.value}"` : ""}`)
+    res.json({ ok: true })
+  })
 })
 
 app.delete("/api/expenses/:id", auth, (req, res) => {
