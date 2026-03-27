@@ -1345,15 +1345,21 @@ app.get("/api/stats/daily", auth, async (req, res) => {
       mapa[dia].gastos += Number(e.amount)
     })
 
-    // Ordenar cronológicamente — tomar últimos 14 días
-    const sortedDays = Object.keys(mapa).sort().slice(-14)
+    // Generar siempre los últimos 5 días en zona horaria local (con ceros si no hay datos)
+    const DAYS_TO_SHOW = 5
+    const last5 = []
+    for (let i = DAYS_TO_SHOW - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      last5.push(toLocalDay(d))
+    }
 
     const labels      = []
     const ventasArr   = []
     const gananciaArr = []
 
-    sortedDays.forEach(dia => {
-      const d        = mapa[dia]
+    last5.forEach(dia => {
+      const d = mapa[dia] || { ventas: 0, costos: 0, gastos: 0 }
       const [, m, dd] = dia.split("-")
       labels.push(`${Number(dd)}/${Number(m)}`)
       ventasArr.push(Math.round(d.ventas * 100) / 100)
