@@ -277,6 +277,37 @@ CREATE TABLE IF NOT EXISTS expenses(
   created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS customers(
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  phone      VARCHAR(30)  DEFAULT NULL,
+  status     ENUM('activo','inactivo') DEFAULT 'activo',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS debts(
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id  INT          NOT NULL,
+  sale_id      VARCHAR(36)  NOT NULL,
+  monto_total  DECIMAL(10,2) NOT NULL,
+  monto_pagado DECIMAL(10,2) NOT NULL DEFAULT 0,
+  status       ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente',
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_debt_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
+  CONSTRAINT fk_debt_sale     FOREIGN KEY (sale_id)     REFERENCES sales(id)
+);
+
+CREATE TABLE IF NOT EXISTS debt_payments(
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT          NOT NULL,
+  debt_id     INT          NOT NULL,
+  monto       DECIMAL(10,2) NOT NULL,
+  metodo_pago VARCHAR(50)  DEFAULT 'efectivo',
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_pay_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
+  CONSTRAINT fk_pay_debt     FOREIGN KEY (debt_id)     REFERENCES debts(id)
+);
+
 EOF
 
 # ===========================================================
@@ -399,6 +430,30 @@ ensure_index "sales"      "idx_date"       "(date)"
 ensure_index "sale_items" "idx_product_id" "(product_id)"
 ensure_index "expenses"   "idx_exp_date"   "(created_at)"
 ensure_index "expenses"   "idx_exp_cat"    "(category)"
+
+ensure_column "customers" "name"       "VARCHAR(100) NOT NULL"                          "varchar"
+ensure_column "customers" "phone"      "VARCHAR(30) DEFAULT NULL"                       "varchar"
+ensure_column "customers" "status"     "ENUM('activo','inactivo') DEFAULT 'activo'"     "enum"
+ensure_column "customers" "created_at" "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"            "timestamp"
+
+ensure_column "debts" "customer_id"  "INT NOT NULL"                                     "int"
+ensure_column "debts" "sale_id"      "VARCHAR(36) NOT NULL"                             "varchar"
+ensure_column "debts" "monto_total"  "DECIMAL(10,2) NOT NULL"                          "decimal"
+ensure_column "debts" "monto_pagado" "DECIMAL(10,2) NOT NULL DEFAULT 0"                "decimal"
+ensure_column "debts" "status"       "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'" "enum"
+ensure_column "debts" "created_at"   "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"             "timestamp"
+
+ensure_column "debt_payments" "customer_id" "INT NOT NULL"                              "int"
+ensure_column "debt_payments" "debt_id"     "INT NOT NULL"                              "int"
+ensure_column "debt_payments" "monto"       "DECIMAL(10,2) NOT NULL"                   "decimal"
+ensure_column "debt_payments" "metodo_pago" "VARCHAR(50) DEFAULT 'efectivo'"            "varchar"
+ensure_column "debt_payments" "created_at"  "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"      "timestamp"
+
+ensure_index "customers"     "idx_cust_status"    "(status)"
+ensure_index "debts"         "idx_debt_customer"  "(customer_id)"
+ensure_index "debts"         "idx_debt_status"    "(status)"
+ensure_index "debt_payments" "idx_dpay_debt"      "(debt_id)"
+ensure_index "debt_payments" "idx_dpay_customer"  "(customer_id)"
 
 echo "===== FIN SCHEMA GUARDIAN (bash) ====="
 
@@ -623,6 +678,44 @@ const REQUIRED_SCHEMA = {
     indexes: [
       { name: "idx_exp_date", def: "(created_at)" },
       { name: "idx_exp_cat",  def: "(category)"   }
+    ]
+  },
+  customers: {
+    columns: [
+      { name: "name",       def: "VARCHAR(100) NOT NULL",                        type: "varchar"   },
+      { name: "phone",      def: "VARCHAR(30) DEFAULT NULL",                     type: "varchar"   },
+      { name: "status",     def: "ENUM('activo','inactivo') DEFAULT 'activo'",   type: "enum"      },
+      { name: "created_at", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",          type: "timestamp" }
+    ],
+    indexes: [
+      { name: "idx_cust_status", def: "(status)" }
+    ]
+  },
+  debts: {
+    columns: [
+      { name: "customer_id",  def: "INT NOT NULL",                                                       type: "int"       },
+      { name: "sale_id",      def: "VARCHAR(36) NOT NULL",                                               type: "varchar"   },
+      { name: "monto_total",  def: "DECIMAL(10,2) NOT NULL",                                             type: "decimal"   },
+      { name: "monto_pagado", def: "DECIMAL(10,2) NOT NULL DEFAULT 0",                                   type: "decimal"   },
+      { name: "status",       def: "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'",            type: "enum"      },
+      { name: "created_at",   def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",                                type: "timestamp" }
+    ],
+    indexes: [
+      { name: "idx_debt_customer", def: "(customer_id)" },
+      { name: "idx_debt_status",   def: "(status)"      }
+    ]
+  },
+  debt_payments: {
+    columns: [
+      { name: "customer_id", def: "INT NOT NULL",                               type: "int"       },
+      { name: "debt_id",     def: "INT NOT NULL",                               type: "int"       },
+      { name: "monto",       def: "DECIMAL(10,2) NOT NULL",                     type: "decimal"   },
+      { name: "metodo_pago", def: "VARCHAR(50) DEFAULT 'efectivo'",             type: "varchar"   },
+      { name: "created_at",  def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",        type: "timestamp" }
+    ],
+    indexes: [
+      { name: "idx_dpay_debt",     def: "(debt_id)"     },
+      { name: "idx_dpay_customer", def: "(customer_id)" }
     ]
   }
 }
@@ -1881,6 +1974,367 @@ app.post("/api/restore", auth, async (req, res) => {
       backup_version: version,
       warnings:       allWarnings
     })
+  } finally {
+    conn.release()
+  }
+})
+
+/* =========================================================
+   MÓDULO FIADO — CLIENTES, DEUDAS Y PAGOS
+   =========================================================
+
+   Endpoints:
+     GET  /api/customers           → lista clientes activos con deuda_total calculada en DB
+     POST /api/customers           → crear cliente (name obligatorio)
+     GET  /api/customers/:id       → detalle cliente + deudas + historial de pagos
+     POST /api/sales/fiado         → registrar venta fiada (crea sale + debt en transacción)
+     POST /api/customers/:id/pagos → registrar abono (FIFO, valida límite)
+
+   Reglas de negocio:
+     - monto_pagado nunca puede superar monto_total de la deuda
+     - status se recalcula en cada pago: pendiente / parcial / pagado
+     - deuda_total del cliente = SUM(monto_total - monto_pagado) WHERE status != 'pagado'
+     - Todo cálculo vive en backend — el frontend solo muestra lo que devuelve la API
+   ========================================================= */
+
+/* ─── GET /api/customers ────────────────────────────────────────────────── */
+
+app.get("/api/customers", auth, async (req, res) => {
+  try {
+    const [rows] = await db.promise().query(`
+      SELECT
+        c.id,
+        c.name,
+        c.phone,
+        c.status,
+        c.created_at,
+        COALESCE(SUM(
+          CASE WHEN d.status != 'pagado'
+               THEN d.monto_total - d.monto_pagado
+               ELSE 0 END
+        ), 0) AS deuda_total
+      FROM customers c
+      LEFT JOIN debts d ON d.customer_id = c.id
+      WHERE c.status = 'activo'
+      GROUP BY c.id
+      ORDER BY deuda_total DESC, c.name ASC
+    `)
+    res.json(rows.map(r => ({
+      ...r,
+      deuda_total: Math.round(Number(r.deuda_total) * 100) / 100
+    })))
+  } catch (err) {
+    logError("GET_CUSTOMERS", err)
+    res.status(500).json({ error: "Error interno" })
+  }
+})
+
+/* ─── POST /api/customers ───────────────────────────────────────────────── */
+
+app.post("/api/customers", auth, async (req, res) => {
+  const name  = typeof req.body.name  === "string" ? req.body.name.trim()  : ""
+  const phone = typeof req.body.phone === "string" ? req.body.phone.trim() : ""
+
+  if (!name)          return res.status(400).json({ error: "El nombre es obligatorio" })
+  if (name.length > 100) return res.status(400).json({ error: "Nombre demasiado largo (máx 100)" })
+  if (phone.length > 30) return res.status(400).json({ error: "Teléfono demasiado largo (máx 30)" })
+
+  try {
+    const [result] = await db.promise().query(
+      "INSERT INTO customers(name, phone) VALUES(?, ?)",
+      [name, phone || null]
+    )
+    logInfo("CREATE_CUSTOMER", `id=${result.insertId} name="${name}"`)
+    res.json({ ok: true, id: result.insertId, name, phone: phone || null })
+  } catch (err) {
+    logError("CREATE_CUSTOMER", err)
+    res.status(500).json({ error: "Error interno" })
+  }
+})
+
+/* ─── GET /api/customers/:id ────────────────────────────────────────────── */
+
+app.get("/api/customers/:id", auth, async (req, res) => {
+  const customerId = Number(req.params.id)
+  if (!customerId) return res.status(400).json({ error: "ID inválido" })
+
+  try {
+    // Cliente
+    const [[customer]] = await db.promise().query(
+      "SELECT id, name, phone, status, created_at FROM customers WHERE id = ?",
+      [customerId]
+    )
+    if (!customer) return res.status(404).json({ error: "Cliente no encontrado" })
+
+    // Deudas con pagos
+    const [debts] = await db.promise().query(`
+      SELECT
+        d.id,
+        d.sale_id,
+        d.monto_total,
+        d.monto_pagado,
+        d.status,
+        d.created_at
+      FROM debts d
+      WHERE d.customer_id = ?
+      ORDER BY d.created_at DESC
+    `, [customerId])
+
+    const debtIds = debts.map(d => d.id)
+    let payments = []
+    if (debtIds.length > 0) {
+      const [pRows] = await db.promise().query(
+        `SELECT id, debt_id, monto, metodo_pago, created_at
+         FROM debt_payments
+         WHERE debt_id IN (?)
+         ORDER BY created_at DESC`,
+        [debtIds]
+      )
+      payments = pRows
+    }
+
+    const deuda_total = debts
+      .filter(d => d.status !== "pagado")
+      .reduce((acc, d) => acc + (Number(d.monto_total) - Number(d.monto_pagado)), 0)
+
+    res.json({
+      customer,
+      deuda_total: Math.round(deuda_total * 100) / 100,
+      debts: debts.map(d => ({
+        ...d,
+        monto_total:  Math.round(Number(d.monto_total)  * 100) / 100,
+        monto_pagado: Math.round(Number(d.monto_pagado) * 100) / 100,
+        saldo:        Math.round((Number(d.monto_total) - Number(d.monto_pagado)) * 100) / 100,
+        payments:     payments.filter(p => p.debt_id === d.id).map(p => ({
+          ...p,
+          monto: Math.round(Number(p.monto) * 100) / 100
+        }))
+      }))
+    })
+  } catch (err) {
+    logError("GET_CUSTOMER_DETAIL", err)
+    res.status(500).json({ error: "Error interno" })
+  }
+})
+
+/* ─── POST /api/sales/fiado ─────────────────────────────────────────────── */
+/*
+ * Registra una venta fiada. Reutiliza TODA la lógica de validación y stock
+ * de POST /api/sales, pero sin requerir pago y creando un registro en debts.
+ * Todo ocurre en una única transacción — si falla cualquier paso, rollback total.
+ */
+
+app.post("/api/sales/fiado", auth, async (req, res) => {
+  const { customer_id, items } = req.body
+  const conn = await db.promise().getConnection()
+
+  try {
+    await conn.beginTransaction()
+
+    // Validaciones previas
+    if (!customer_id || isNaN(Number(customer_id)))
+      throw new Error("Se requiere un cliente para vender fiado")
+
+    const [[customer]] = await conn.query(
+      "SELECT id, name, status FROM customers WHERE id = ? FOR SHARE",
+      [Number(customer_id)]
+    )
+    if (!customer)             throw new Error("Cliente no encontrado")
+    if (customer.status !== "activo") throw new Error("El cliente está inactivo")
+
+    if (!Array.isArray(items) || items.length === 0)
+      throw new Error("Carrito vacío")
+    if (items.length > 100)
+      throw new Error("Demasiados productos")
+
+    // Validar stock y calcular total (misma lógica que POST /api/sales)
+    const validated = []
+    let totalReal   = 0
+
+    for (const item of items) {
+      if (!item.id)                   throw new Error("Producto inválido")
+      if (!item.qty || item.qty <= 0) throw new Error("Cantidad inválida")
+
+      const [rows] = await conn.query(
+        "SELECT stock, price, cost, name FROM products WHERE id = ? FOR UPDATE",
+        [item.id]
+      )
+      if (!rows.length)             throw new Error("Producto no existe")
+      if (rows[0].stock < item.qty) throw new Error("Sin stock: " + (item.name || rows[0].name))
+
+      const realPrice = Number(rows[0].price)
+      const realCost  = Number(rows[0].cost)
+      totalReal      += realPrice * item.qty
+      validated.push({
+        id:    item.id,
+        name:  item.name || rows[0].name,
+        qty:   item.qty,
+        price: realPrice,
+        cost:  realCost
+      })
+    }
+
+    totalReal = Math.round(totalReal * 100) / 100
+
+    // Insertar venta (paid = 0, change_amount = 0 para ventas fiadas)
+    const saleId   = uuidv4()
+    const saleDate = new Date().toLocaleString("sv-SE").replace("T", " ")
+
+    const [insertResult] = await conn.query(
+      "INSERT INTO sales(id, date, total, paid, change_amount) VALUES(?, ?, ?, 0, 0)",
+      [saleId, saleDate, totalReal]
+    )
+    const nextNum = insertResult.insertId
+
+    // Insertar items y descontar stock
+    for (const item of validated) {
+      await conn.query(
+        "INSERT INTO sale_items(sale_id, product_id, name, price, cost, qty) VALUES(?, ?, ?, ?, ?, ?)",
+        [saleId, item.id, item.name, item.price, item.cost, item.qty]
+      )
+      const [upd] = await conn.query(
+        "UPDATE products SET stock = stock - ?, sold = sold + ? WHERE id = ? AND stock >= ?",
+        [item.qty, item.qty, item.id, item.qty]
+      )
+      if (upd.affectedRows === 0)
+        throw new Error(`Fallo concurrencia en stock: ${item.name}`)
+    }
+
+    // Crear deuda
+    const [debtResult] = await conn.query(
+      "INSERT INTO debts(customer_id, sale_id, monto_total, monto_pagado, status) VALUES(?, ?, ?, 0, 'pendiente')",
+      [Number(customer_id), saleId, totalReal]
+    )
+
+    await conn.commit()
+
+    logInfo("SALE_FIADO", `sale=${saleId} num=${nextNum} customer=${customer_id} total=${totalReal} debt=${debtResult.insertId}`)
+
+    res.json({
+      ok:      true,
+      id:      saleId,
+      num:     nextNum,
+      debt_id: debtResult.insertId,
+      total:   totalReal,
+      message: `Venta fiada registrada. ${customer.name} debe $${totalReal.toFixed(2)}`
+    })
+
+  } catch (err) {
+    await conn.rollback()
+    logError("SALE_FIADO", err)
+    res.status(400).json({ error: err.message })
+  } finally {
+    conn.release()
+  }
+})
+
+/* ─── POST /api/customers/:id/pagos ────────────────────────────────────────
+ * Registra un abono. Distribuye FIFO (deudas más antiguas primero).
+ * Valida que el monto no supere la deuda total pendiente.
+ * Actualiza status de cada deuda afectada dentro de una transacción.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+app.post("/api/customers/:id/pagos", auth, async (req, res) => {
+  const customerId = Number(req.params.id)
+  if (!customerId) return res.status(400).json({ error: "ID inválido" })
+
+  const monto = Math.round(Number(req.body.monto) * 100) / 100
+  if (isNaN(monto) || monto <= 0)
+    return res.status(400).json({ error: "Monto inválido" })
+  if (monto > 999999)
+    return res.status(400).json({ error: "Monto demasiado alto" })
+
+  const metodo = typeof req.body.metodo_pago === "string"
+    ? req.body.metodo_pago.trim().slice(0, 50)
+    : "efectivo"
+
+  const conn = await db.promise().getConnection()
+  try {
+    await conn.beginTransaction()
+
+    // Verificar que el cliente existe
+    const [[customer]] = await conn.query(
+      "SELECT id, name FROM customers WHERE id = ? FOR SHARE",
+      [customerId]
+    )
+    if (!customer) throw new Error("Cliente no encontrado")
+
+    // Traer deudas pendientes ordenadas FIFO
+    const [pendingDebts] = await conn.query(`
+      SELECT id, monto_total, monto_pagado, status
+      FROM debts
+      WHERE customer_id = ? AND status != 'pagado'
+      ORDER BY created_at ASC
+      FOR UPDATE
+    `, [customerId])
+
+    const deudaTotal = pendingDebts.reduce(
+      (acc, d) => acc + (Number(d.monto_total) - Number(d.monto_pagado)), 0
+    )
+    const deudaTotalR = Math.round(deudaTotal * 100) / 100
+
+    if (deudaTotalR <= 0)
+      throw new Error("Este cliente no tiene deuda pendiente")
+
+    if (monto > deudaTotalR + 0.009) // margen de centavo para float
+      throw new Error(`El pago ($${monto}) supera la deuda total ($${deudaTotalR.toFixed(2)})`)
+
+    // Distribuir FIFO
+    let restante = monto
+    const debtPaymentIds = []
+
+    for (const debt of pendingDebts) {
+      if (restante <= 0) break
+
+      const saldo = Math.round((Number(debt.monto_total) - Number(debt.monto_pagado)) * 100) / 100
+      if (saldo <= 0) continue
+
+      const aAplicar = Math.min(restante, saldo)
+      const nuevoMontoPagado = Math.round((Number(debt.monto_pagado) + aAplicar) * 100) / 100
+      const nuevoStatus = nuevoMontoPagado >= Number(debt.monto_total) - 0.009
+        ? "pagado"
+        : "parcial"
+
+      await conn.query(
+        "UPDATE debts SET monto_pagado = ?, status = ? WHERE id = ?",
+        [nuevoMontoPagado, nuevoStatus, debt.id]
+      )
+
+      const [payResult] = await conn.query(
+        "INSERT INTO debt_payments(customer_id, debt_id, monto, metodo_pago) VALUES(?, ?, ?, ?)",
+        [customerId, debt.id, aAplicar, metodo]
+      )
+      debtPaymentIds.push(payResult.insertId)
+
+      restante = Math.round((restante - aAplicar) * 100) / 100
+    }
+
+    // Recalcular deuda restante post-pago
+    const [[nuevoSaldoRow]] = await conn.query(`
+      SELECT COALESCE(SUM(monto_total - monto_pagado), 0) AS saldo
+      FROM debts
+      WHERE customer_id = ? AND status != 'pagado'
+    `, [customerId])
+    const saldoRestante = Math.round(Number(nuevoSaldoRow.saldo) * 100) / 100
+
+    await conn.commit()
+
+    logInfo("DEBT_PAYMENT", `customer=${customerId} monto=${monto} saldo_restante=${saldoRestante}`)
+
+    res.json({
+      ok:             true,
+      monto_pagado:   monto,
+      saldo_restante: saldoRestante,
+      payment_ids:    debtPaymentIds,
+      message:        saldoRestante === 0
+        ? `${customer.name} quedó al día ✅`
+        : `Pago registrado. Saldo restante: $${saldoRestante.toFixed(2)}`
+    })
+
+  } catch (err) {
+    await conn.rollback()
+    logError("DEBT_PAYMENT", err)
+    res.status(400).json({ error: err.message })
   } finally {
     conn.release()
   }
