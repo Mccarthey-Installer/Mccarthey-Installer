@@ -849,6 +849,7 @@ z-index: 1;
     <button class="nav-btn" id="nav-stats" onclick="show('stats')"><span class="icon">📊</span>Estadísticas</button>
     <div class="nav-divider"></div>
     <button class="nav-btn" id="nav-expenses" onclick="show('expenses')"><span class="icon">💸</span>Gastos</button>
+    <button class="nav-btn" id="nav-fiado" onclick="show('fiado')"><span class="icon">📒</span>Fiado</button>
   </nav>
   <button class="nav-btn" onclick="backupPOS()">
     <span class="icon">💾</span>Backup
@@ -1154,6 +1155,25 @@ z-index: 1;
         <span id="total" style="font-size:26px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#0f172a;">$0.00</span>
       </div>
       <input id="paid" type="number" class="input" placeholder="💵 Monto que paga el cliente..." style="margin-bottom:10px;">
+
+      <!-- ── FIADO TOGGLE ── -->
+      <div id="fiadoToggleArea" style="margin-bottom:10px;">
+        <button id="fiadoBtn" onclick="toggleFiado()" style="
+          width:100%; padding:10px 14px; border-radius:10px; border:2px solid #e2e8f0;
+          background:#f8fafc; font-weight:600; font-size:13px; cursor:pointer;
+          color:#475569; font-family:'Sora',sans-serif; text-align:left; transition:all .2s;
+        ">📒 Vender como Fiado</button>
+        <div id="fiadoClienteArea" style="display:none; margin-top:8px;">
+          <select id="fiadoClienteSelect" class="input" style="width:100%; margin-bottom:6px;">
+            <option value="">— Seleccioná un cliente —</option>
+          </select>
+          <button onclick="openCreateCustomerModal()" style="
+            width:100%; padding:8px; border-radius:8px; border:2px dashed #94a3b8;
+            background:transparent; color:#64748b; font-size:12px; cursor:pointer;
+          ">+ Crear cliente rápido</button>
+        </div>
+      </div>
+      <!-- ── /FIADO TOGGLE ── -->
       <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f0fdf4; border-radius:10px; margin-bottom:14px;">
         <span style="font-weight:600; color:#16a34a; font-size:14px;">Vuelto</span>
         <span id="change" style="font-weight:700; font-family:'JetBrains Mono',monospace; font-size:20px; color:#16a34a;">$0.00</span>
@@ -1331,12 +1351,87 @@ z-index: 1;
     <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; color:#94a3b8; pointer-events:none;">🔍</span>
   </div>
 
-  <!-- Lista -->
-  <div id="expensesList"></div>
+  <!-- Lista -->\n  <div id="expensesList"></div>
+
+</section>
+
+<!-- ========== FIADO ========== -->
+<section id="fiado" class="hidden">
+
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <span class="sec-title">📒 Fiado</span>
+    <button onclick="openCreateCustomerModal()" class="btn-primary" style="width:auto; padding:10px 18px; background:#8b5cf6;">+ Cliente</button>
+  </div>
+
+  <!-- Buscador clientes -->
+  <div style="position:relative; margin-bottom:14px;">
+    <input id="searchFiado" class="input" placeholder="🔎 Buscar cliente..." oninput="renderFiado()">
+  </div>
+
+  <!-- Lista de clientes -->
+  <div id="fiadoList"></div>
+
+  <!-- Detalle cliente (panel) -->
+  <div id="fiadoDetalle" style="display:none; margin-top:16px;"></div>
 
 </section>
 
 </div><!-- /.main-layout -->
+
+<!-- ── MODAL: CREAR CLIENTE RÁPIDO ─────────────────────────────── -->
+<div id="createCustomerModal" style="
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.45);
+  z-index:200; align-items:center; justify-content:center;
+">
+  <div style="
+    background:#fff; border-radius:16px; padding:28px 24px; width:min(380px,94vw);
+    box-shadow:0 20px 60px rgba(0,0,0,.2); animation:fade .25s;
+  ">
+    <h3 style="font-size:17px; font-weight:700; margin-bottom:20px; color:#0f172a;">👤 Nuevo Cliente</h3>
+    <label style="font-size:13px; font-weight:600; color:#64748b; display:block; margin-bottom:6px;">Nombre *</label>
+    <input id="cc-name" class="input" placeholder="Ej: Carlos, La señora del mercado..." style="margin-bottom:12px;">
+    <label style="font-size:13px; font-weight:600; color:#64748b; display:block; margin-bottom:6px;">Teléfono (opcional)</label>
+    <input id="cc-phone" class="input" placeholder="Ej: 7890-1234" style="margin-bottom:16px;">
+    <div id="cc-error" style="color:#ef4444; font-size:13px; margin-bottom:10px; display:none;"></div>
+    <div style="display:flex; gap:10px;">
+      <button onclick="closeCreateCustomerModal()" style="
+        flex:1; padding:12px; border-radius:10px; border:2px solid #e2e8f0;
+        background:#f8fafc; font-weight:600; cursor:pointer; color:#64748b;
+      ">Cancelar</button>
+      <button id="cc-saveBtn" onclick="saveCustomer()" style="
+        flex:1; padding:12px; border-radius:10px; border:none;
+        background:#8b5cf6; color:#fff; font-weight:700; cursor:pointer;
+      ">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: REGISTRAR PAGO ───────────────────────────────────── -->
+<div id="pagoModal" style="
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.45);
+  z-index:200; align-items:center; justify-content:center;
+">
+  <div style="
+    background:#fff; border-radius:16px; padding:28px 24px; width:min(360px,94vw);
+    box-shadow:0 20px 60px rgba(0,0,0,.2); animation:fade .25s;
+  ">
+    <h3 style="font-size:17px; font-weight:700; margin-bottom:6px; color:#0f172a;">💵 Registrar Pago</h3>
+    <p id="pago-deudaLabel" style="font-size:13px; color:#64748b; margin-bottom:18px;"></p>
+    <label style="font-size:13px; font-weight:600; color:#64748b; display:block; margin-bottom:6px;">Monto a abonar *</label>
+    <input id="pago-monto" type="number" class="input" placeholder="$0.00" style="margin-bottom:16px;">
+    <div id="pago-error" style="color:#ef4444; font-size:13px; margin-bottom:10px; display:none;"></div>
+    <div style="display:flex; gap:10px;">
+      <button onclick="closePagoModal()" style="
+        flex:1; padding:12px; border-radius:10px; border:2px solid #e2e8f0;
+        background:#f8fafc; font-weight:600; cursor:pointer; color:#64748b;
+      ">Cancelar</button>
+      <button id="pago-saveBtn" onclick="savePago()" style="
+        flex:1; padding:12px; border-radius:10px; border:none;
+        background:#22c55e; color:#fff; font-weight:700; cursor:pointer;
+      ">Confirmar Pago</button>
+    </div>
+  </div>
+</div>
 
 <!-- =====================================================================
      INICIALIZACIÓN SÍNCRONA DE SECCIÓN
@@ -1346,7 +1441,7 @@ z-index: 1;
      ===================================================================== -->
 <script>
 (function () {
-  var VALID = new Set(["pos", "inventory", "sales", "stats", "expenses"])
+  var VALID = new Set(["pos", "inventory", "sales", "stats", "expenses", "fiado"])
   var id = location.hash.replace("#", "") || localStorage.getItem("lastSection") || "pos"
   if (!VALID.has(id)) id = "pos"
 
@@ -1368,6 +1463,7 @@ const state = {
   cart: [],
   sales: [],
   expenses: [],
+  customers: [],          // ← clientes para fiado
   summary: null,         // ← datos de /api/summary: { ventas, costos, gastos, gananciaReal, expByCat, filter }
   statsOperational: null, // ← datos de /api/stats: panel operativo
   statsDaily: null        // ← datos de /api/stats/daily: gráficas + predicción
@@ -2192,7 +2288,7 @@ function closeSidebar() {
 
 // =========== SHOW ===========
 // Secciones válidas — cualquier hash fuera de esta lista cae a "pos"
-const VALID_SECTIONS = new Set(["pos", "inventory", "sales", "stats", "expenses"])
+const VALID_SECTIONS = new Set(["pos", "inventory", "sales", "stats", "expenses", "fiado"])
 
 // Lógica pura de activación (sin tocar el hash). Llamada por show() y hashchange.
 async function _activateSection(id) {
@@ -2237,6 +2333,11 @@ async function _activateSection(id) {
 
   if(id === "expenses"){
     await loadExpenses()
+  }
+
+  if(id === "fiado"){
+    await loadCustomers()
+    renderFiado()
   }
 }
 
@@ -2474,6 +2575,79 @@ async function confirmSale() {
     return
   }
 
+  // ── MODO FIADO ──────────────────────────────────────────────────────────
+  if (fiadoActivo) {
+    const customerId = document.getElementById("fiadoClienteSelect")?.value
+    if (!customerId) {
+      showToast("❌ Seleccioná un cliente para vender fiado", "error")
+      return
+    }
+
+    const btn = document.getElementById("confirmSaleBtn")
+    lock = true
+    btn.disabled = true
+    btn.style.opacity = "0.6"
+    btn.textContent = "⏳ Procesando..."
+
+    try {
+      const data = await api("/api/sales/fiado", {
+        method: "POST",
+        body: JSON.stringify({
+          customer_id: Number(customerId),
+          items: JSON.parse(JSON.stringify(state.cart))
+        })
+      })
+
+      // Agregar a historial local con flag fiado
+      const now = new Date()
+      const sale = {
+        id:      data.id,
+        num:     data.num,
+        date:    now.toISOString(),
+        dateKey: now.getDate() + "/" + (now.getMonth()+1),
+        items:   JSON.parse(JSON.stringify(state.cart)),
+        total:   data.total,
+        paid:    0,
+        change:  0,
+        fiado:   true
+      }
+      state.sales.unshift(sale)
+
+      state.cart = []
+      localStorage.removeItem("cart")
+      document.getElementById("paid").value = ""
+      if (document.activeElement) document.activeElement.blur()
+
+      // Resetear modo fiado
+      fiadoActivo = false
+      _syncFiadoUI()
+
+      // Refrescar lista de clientes si están cargados
+      await loadCustomers()
+
+      markDirty("cart", "products")
+      flushRender()
+
+      showSaleSummary(sale)
+      showToast(`📒 Venta fiada ${saleNumLabel(data.num)} — ${data.message}`, "ok")
+
+    } catch (err) {
+      console.error(err)
+      showToast("❌ " + err.message, "error")
+      if(err.message && err.message.toLowerCase().includes("stock")){
+        await loadProducts(true)
+      }
+    } finally {
+      lock = false
+      btn.disabled = false
+      btn.style.opacity = "1"
+      btn.textContent = "✅ Confirmar Venta"
+      calculateChange()
+    }
+    return
+  }
+
+  // ── MODO NORMAL (sin cambios al código original) ─────────────────────────
   const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
   const paid = Number(document.getElementById("paid").value) || 0
 
@@ -2551,6 +2725,359 @@ async function confirmSale() {
   }
 
 }
+
+// =========== FIADO MODULE ===========
+
+let fiadoActivo    = false
+let savingCustomer = false
+let savingPago     = false
+let pagoCurrentCustomerId = null
+
+/* ── Sincroniza la UI del toggle en POS ─────────────────────────────────── */
+function _syncFiadoUI() {
+  const btn       = document.getElementById("fiadoBtn")
+  const area      = document.getElementById("fiadoClienteArea")
+  const paidInput = document.getElementById("paid")
+
+  if (!btn) return
+
+  if (fiadoActivo) {
+    btn.style.background   = "#ede9fe"
+    btn.style.borderColor  = "#8b5cf6"
+    btn.style.color        = "#6d28d9"
+    btn.textContent        = "📒 Modo Fiado ACTIVO — click para cancelar"
+    if (area)      area.style.display  = "block"
+    if (paidInput) {
+      paidInput.style.display = "none"
+      // Ocultar vuelto también
+      const vueltoRow = paidInput.nextElementSibling
+      if (vueltoRow) vueltoRow.style.display = "none"
+    }
+    _populateClienteSelect()
+  } else {
+    btn.style.background  = "#f8fafc"
+    btn.style.borderColor = "#e2e8f0"
+    btn.style.color       = "#475569"
+    btn.textContent       = "📒 Vender como Fiado"
+    if (area)      area.style.display  = "none"
+    if (paidInput) {
+      paidInput.style.display = ""
+      const vueltoRow = paidInput.nextElementSibling
+      if (vueltoRow) vueltoRow.style.display = ""
+    }
+  }
+}
+
+function toggleFiado() {
+  fiadoActivo = !fiadoActivo
+  _syncFiadoUI()
+}
+
+/* ── Poblar select con clientes cargados ────────────────────────────────── */
+function _populateClienteSelect() {
+  const sel = document.getElementById("fiadoClienteSelect")
+  if (!sel) return
+  const prev = sel.value
+  sel.innerHTML = '<option value="">— Seleccioná un cliente —</option>'
+  state.customers.forEach(c => {
+    const opt = document.createElement("option")
+    opt.value       = c.id
+    opt.textContent = c.deuda_total > 0
+      ? `${c.name} (debe $${c.deuda_total.toFixed(2)})`
+      : c.name
+    sel.appendChild(opt)
+  })
+  if (prev) sel.value = prev
+}
+
+/* ── Cargar clientes desde backend ─────────────────────────────────────── */
+async function loadCustomers() {
+  try {
+    state.customers = await api("/api/customers")
+  } catch(err) {
+    console.error("loadCustomers:", err)
+    state.customers = []
+  }
+}
+
+/* ── Renderizar lista de clientes en sección Fiado ─────────────────────── */
+function renderFiado() {
+  const container = document.getElementById("fiadoList")
+  const detalle   = document.getElementById("fiadoDetalle")
+  if (!container) return
+
+  const q = (document.getElementById("searchFiado")?.value || "").toLowerCase().trim()
+
+  const clientes = state.customers.filter(c =>
+    !q || c.name.toLowerCase().includes(q) || (c.phone||"").includes(q)
+  )
+
+  if (clientes.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:40px 20px; color:#94a3b8;">
+        <div style="font-size:36px; margin-bottom:12px;">📒</div>
+        <div style="font-weight:600; margin-bottom:6px;">Sin clientes aún</div>
+        <div style="font-size:13px;">Creá un cliente para comenzar a registrar fiados</div>
+      </div>`
+    if (detalle) detalle.style.display = "none"
+    return
+  }
+
+  container.innerHTML = clientes.map(c => {
+    const deuda = Number(c.deuda_total) || 0
+    const badge = deuda > 0
+      ? `<span style="background:#fef2f2; color:#ef4444; border:1px solid #fca5a5; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700;">Debe $${deuda.toFixed(2)}</span>`
+      : `<span style="background:#f0fdf4; color:#16a34a; border:1px solid #86efac; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:700;">Al día ✅</span>`
+    return `
+      <div onclick="openCustomerDetail(${c.id})" style="
+        background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:10px;
+        border:2px solid #e2e8f0; cursor:pointer; display:flex;
+        justify-content:space-between; align-items:center;
+        transition:border-color .15s; box-shadow:0 1px 4px rgba(0,0,0,.04);
+      " onmouseover="this.style.borderColor='#8b5cf6'" onmouseout="this.style.borderColor='#e2e8f0'">
+        <div>
+          <div style="font-weight:700; color:#0f172a; margin-bottom:2px;">${c.name}</div>
+          ${c.phone ? `<div style="font-size:12px; color:#94a3b8;">📞 ${c.phone}</div>` : ""}
+        </div>
+        ${badge}
+      </div>`
+  }).join("")
+
+  if (detalle) detalle.style.display = "none"
+}
+
+/* ── Abrir detalle de cliente ───────────────────────────────────────────── */
+async function openCustomerDetail(customerId) {
+  const detalle = document.getElementById("fiadoDetalle")
+  if (!detalle) return
+
+  detalle.style.display = "block"
+  detalle.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8;">Cargando...</div>`
+  detalle.scrollIntoView({ behavior: "smooth", block: "nearest" })
+
+  try {
+    const data = await api(`/api/customers/${customerId}`)
+    const { customer, deuda_total, debts } = data
+
+    const deudaColor = deuda_total > 0 ? "#ef4444" : "#16a34a"
+    const deudaLabel = deuda_total > 0
+      ? `<span style="color:#ef4444; font-size:22px; font-weight:800; font-family:'JetBrains Mono',monospace;">$${deuda_total.toFixed(2)}</span>`
+      : `<span style="color:#16a34a; font-size:22px; font-weight:800;">Al día ✅</span>`
+
+    const debtRows = debts.length === 0
+      ? `<div style="text-align:center; padding:20px; color:#94a3b8; font-size:13px;">Sin deudas registradas</div>`
+      : debts.map(d => {
+          const statusBadge = {
+            pendiente: `<span style="background:#fef9c3; color:#a16207; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700;">⏳ Pendiente</span>`,
+            parcial:   `<span style="background:#fef2f2; color:#b91c1c; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700;">📉 Parcial</span>`,
+            pagado:    `<span style="background:#f0fdf4; color:#15803d; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700;">✅ Pagado</span>`
+          }[d.status] || ""
+
+          const fecha = new Date(d.created_at).toLocaleDateString("es", { day:"2-digit", month:"short", year:"numeric" })
+
+          const pagosRows = d.payments.length > 0
+            ? d.payments.map(p => `
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#64748b; padding:3px 0; border-bottom:1px solid #f1f5f9;">
+                  <span>${new Date(p.created_at).toLocaleDateString("es", {day:"2-digit",month:"short"})}</span>
+                  <span style="font-family:'JetBrains Mono',monospace; color:#16a34a;">+$${Number(p.monto).toFixed(2)}</span>
+                </div>`).join("")
+            : ""
+
+          return `
+            <div style="border:2px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:10px; background:#fafafa;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+                <div>
+                  <div style="font-size:11px; color:#94a3b8; margin-bottom:2px;">${fecha}</div>
+                  <div style="font-family:'JetBrains Mono',monospace; font-weight:700;">Total: $${d.monto_total.toFixed(2)}</div>
+                  ${d.monto_pagado > 0 ? `<div style="font-size:12px; color:#64748b;">Pagado: $${d.monto_pagado.toFixed(2)} · Saldo: <strong style="color:#ef4444;">$${d.saldo.toFixed(2)}</strong></div>` : ""}
+                </div>
+                ${statusBadge}
+              </div>
+              ${pagosRows}
+            </div>`
+        }).join("")
+
+    detalle.innerHTML = `
+      <div style="background:#fff; border-radius:14px; padding:20px; border:2px solid #ede9fe; box-shadow:0 4px 16px rgba(139,92,246,.08);">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div style="font-weight:800; font-size:18px; color:#0f172a;">${customer.name}</div>
+            ${customer.phone ? `<div style="font-size:13px; color:#94a3b8;">📞 ${customer.phone}</div>` : ""}
+          </div>
+          <button onclick="document.getElementById('fiadoDetalle').style.display='none'" style="
+            background:#f1f5f9; border:none; border-radius:8px; padding:6px 12px;
+            cursor:pointer; font-size:13px; color:#64748b;
+          ">✕ Cerrar</button>
+        </div>
+
+        <div style="background:#f8fafc; border-radius:10px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:600; color:#475569;">Deuda total</span>
+          ${deudaLabel}
+        </div>
+
+        ${deuda_total > 0 ? `
+        <button onclick="openPagoModal(${customer.id}, ${deuda_total})" style="
+          width:100%; padding:12px; border-radius:10px; border:none;
+          background:#22c55e; color:#fff; font-weight:700; font-size:15px;
+          cursor:pointer; margin-bottom:16px; box-shadow:0 2px 8px rgba(34,197,94,.25);
+        ">💵 Registrar Pago</button>` : ""}
+
+        <div style="font-weight:700; color:#0f172a; margin-bottom:10px; font-size:14px;">Historial de deudas</div>
+        ${debtRows}
+      </div>`
+
+  } catch(err) {
+    detalle.innerHTML = `<div style="color:#ef4444; padding:16px; text-align:center;">❌ ${err.message}</div>`
+  }
+}
+
+/* ── Modal: Crear cliente ───────────────────────────────────────────────── */
+function openCreateCustomerModal() {
+  document.getElementById("cc-name").value  = ""
+  document.getElementById("cc-phone").value = ""
+  const errEl = document.getElementById("cc-error")
+  if (errEl) { errEl.style.display = "none"; errEl.textContent = "" }
+  document.getElementById("createCustomerModal").style.display = "flex"
+  setTimeout(() => document.getElementById("cc-name").focus(), 100)
+}
+
+function closeCreateCustomerModal() {
+  document.getElementById("createCustomerModal").style.display = "none"
+  savingCustomer = false
+  const btn = document.getElementById("cc-saveBtn")
+  if (btn) { btn.disabled = false; btn.textContent = "Guardar" }
+}
+
+async function saveCustomer() {
+  if (savingCustomer) return
+  const name  = document.getElementById("cc-name").value.trim()
+  const phone = document.getElementById("cc-phone").value.trim()
+  const errEl = document.getElementById("cc-error")
+
+  const showErr = msg => {
+    errEl.textContent = msg
+    errEl.style.display = "block"
+  }
+
+  if (!name) { showErr("El nombre es obligatorio"); return }
+  errEl.style.display = "none"
+
+  savingCustomer = true
+  const btn = document.getElementById("cc-saveBtn")
+  btn.disabled = true
+  btn.textContent = "Guardando..."
+
+  try {
+    const data = await api("/api/customers", {
+      method: "POST",
+      body: JSON.stringify({ name, phone })
+    })
+
+    // Agregar al estado local
+    state.customers.unshift({
+      id: data.id, name: data.name, phone: data.phone, status: "activo",
+      deuda_total: 0
+    })
+
+    closeCreateCustomerModal()
+    showToast(`✅ Cliente "${name}" creado`, "ok")
+
+    // Si hay un select de fiado abierto en POS, actualizarlo
+    if (fiadoActivo) {
+      _populateClienteSelect()
+      document.getElementById("fiadoClienteSelect").value = data.id
+    }
+
+    // Si estamos en la sección fiado, re-renderizar
+    if (location.hash === "#fiado") renderFiado()
+
+  } catch(err) {
+    showErr(err.message)
+  } finally {
+    savingCustomer = false
+    btn.disabled = false
+    btn.textContent = "Guardar"
+  }
+}
+
+/* ── Modal: Registrar pago ──────────────────────────────────────────────── */
+function openPagoModal(customerId, deudaTotal) {
+  pagoCurrentCustomerId = customerId
+  document.getElementById("pago-monto").value = ""
+  document.getElementById("pago-deudaLabel").textContent =
+    `Deuda pendiente: $${Number(deudaTotal).toFixed(2)}`
+  const errEl = document.getElementById("pago-error")
+  if (errEl) { errEl.style.display = "none"; errEl.textContent = "" }
+  document.getElementById("pagoModal").style.display = "flex"
+  setTimeout(() => document.getElementById("pago-monto").focus(), 100)
+}
+
+function closePagoModal() {
+  document.getElementById("pagoModal").style.display = "none"
+  pagoCurrentCustomerId = null
+  savingPago = false
+  const btn = document.getElementById("pago-saveBtn")
+  if (btn) { btn.disabled = false; btn.textContent = "Confirmar Pago" }
+}
+
+async function savePago() {
+  if (savingPago || !pagoCurrentCustomerId) return
+  const monto = Number(document.getElementById("pago-monto").value)
+  const errEl = document.getElementById("pago-error")
+
+  const showErr = msg => {
+    errEl.textContent = msg
+    errEl.style.display = "block"
+  }
+
+  if (!monto || monto <= 0) { showErr("Ingresá un monto válido"); return }
+  errEl.style.display = "none"
+
+  savingPago = true
+  const btn = document.getElementById("pago-saveBtn")
+  btn.disabled = true
+  btn.textContent = "Guardando..."
+
+  try {
+    const data = await api(`/api/customers/${pagoCurrentCustomerId}/pagos`, {
+      method: "POST",
+      body: JSON.stringify({ monto, metodo_pago: "efectivo" })
+    })
+
+    closePagoModal()
+    showToast(`✅ ${data.message}`, "ok")
+
+    // Refrescar datos
+    await loadCustomers()
+    renderFiado()
+
+    // Refrescar detalle si está abierto
+    const detalle = document.getElementById("fiadoDetalle")
+    if (detalle && detalle.style.display !== "none") {
+      await openCustomerDetail(pagoCurrentCustomerId)
+    }
+
+  } catch(err) {
+    showErr(err.message)
+  } finally {
+    savingPago = false
+    btn.disabled = false
+    btn.textContent = "Confirmar Pago"
+  }
+}
+
+/* ── Cerrar modales de fiado al click en backdrop ───────────────────────── */
+document.getElementById("createCustomerModal")?.addEventListener("click", e => {
+  if (e.target === document.getElementById("createCustomerModal")) closeCreateCustomerModal()
+})
+document.getElementById("pagoModal")?.addEventListener("click", e => {
+  if (e.target === document.getElementById("pagoModal")) closePagoModal()
+})
+
+/* ── Enter en modal crear cliente ───────────────────────────────────────── */
+document.getElementById("cc-name")?.addEventListener("keydown",  e => { if(e.key === "Enter") saveCustomer() })
+document.getElementById("cc-phone")?.addEventListener("keydown", e => { if(e.key === "Enter") saveCustomer() })
+document.getElementById("pago-monto")?.addEventListener("keydown", e => { if(e.key === "Enter") savePago() })
 
 // =========== INVENTORY ===========
 function renderInventory() {
