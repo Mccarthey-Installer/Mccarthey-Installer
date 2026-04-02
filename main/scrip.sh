@@ -3351,42 +3351,66 @@ done
 
 setup_ssl_renewal(){
 
-cat << 'EOF' > /root/renew_ssl.sh
+local DOMAIN="$1"
+
+cat > /root/renew_ssl.sh << RENEWEOF
 #!/bin/bash
 
-CERT="/root/.acme.sh/102.129.137.208_ecc/fullchain.cer"
+DOMAIN="$DOMAIN"
+CERT="/root/.acme.sh/\${DOMAIN}_ecc/fullchain.cer"
 
-# verificar que el certificado exista
-if [ ! -f "$CERT" ]; then
-exit 0
+# Si no existe con _ecc, intentar sin sufijo
+if [ ! -f "\$CERT" ]; then
+    CERT="/root/.acme.sh/\${DOMAIN}/fullchain.cer"
 fi
 
-EXPIRACION=$(openssl x509 -enddate -noout -in $CERT | cut -d= -f2)
-EXPIRA_EN=$(date -d "$EXPIRACION" +%s)
-HOY=$(date +%s)
-
-DIAS=$(( ($EXPIRA_EN - $HOY) / 86400 ))
-
-# si faltan 2 días o menos, renovar
-if [ $DIAS -le 2 ]; then
-
-pkill -f /etc/MCCARTHEY/PDirect.py
-sleep 5
-
-/root/.acme.sh/acme.sh --renew -d 102.129.137.208 --force
-
-sleep 5
-
-nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-
+if [ ! -f "\$CERT" ]; then
+    echo "\$(date): Certificado no encontrado para \$DOMAIN"
+    exit 0
 fi
 
-EOF
+EXPIRACION=\$(openssl x509 -enddate -noout -in "\$CERT" | cut -d= -f2)
+EXPIRA_EN=\$(date -d "\$EXPIRACION" +%s)
+HOY=\$(date +%s)
+DIAS=\$(( (\$EXPIRA_EN - \$HOY) / 86400 ))
+
+echo "\$(date): Certificado \$DOMAIN vence en \$DIAS días"
+
+# renovar si faltan 10 días o menos
+if [ \$DIAS -le 10 ]; then
+    echo "\$(date): Iniciando renovación para \$DOMAIN..."
+
+    # Detener proxy solo durante la renovación
+    pkill -f /etc/MCCARTHEY/PDirect.py 2>/dev/null || true
+    sleep 3
+
+    /root/.acme.sh/acme.sh --renew -d "\$DOMAIN" --standalone --force
+
+    RENEW_EXIT=\$?
+
+    # Reinstalar certificados en rutas usadas por x-ui
+    if [ \$RENEW_EXIT -eq 0 ]; then
+        /root/.acme.sh/acme.sh --install-cert -d "\$DOMAIN" \
+            --key-file /root/private.key \
+            --fullchain-file /root/cert.crt
+        command -v x-ui &>/dev/null && x-ui restart >/dev/null 2>&1
+        echo "\$(date): Renovación exitosa para \$DOMAIN"
+    else
+        echo "\$(date): Error al renovar \$DOMAIN (código \$RENEW_EXIT)"
+    fi
+
+    # Levantar proxy siempre, independientemente del resultado
+    sleep 2
+    nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+    echo "\$(date): Proxy MCCARTHEY reactivado"
+fi
+
+RENEWEOF
 
 chmod +x /root/renew_ssl.sh
 
-# programar revisión diaria
-(crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
+# Revisión diaria a las 3am
+(crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 3 * * * /root/renew_ssl.sh >> /var/log/renew_ssl.log 2>&1") | crontab -
 
 }
 
@@ -3396,21 +3420,77 @@ clear
 echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
 
 # =========================
-# DETENER PROXY MCCARTHEY
+# PEDIR DOMINIO
 # =========================
-PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-
-if [ ! -z "$PROXY_PID" ]; then
-echo -e "${YELLOW}Proxy MCCARTHEY detectado en puerto 80, deteniendo temporalmente...${RESET}"
-kill $PROXY_PID
-sleep 3
-fi
+echo
+while true; do
+    read -p "🌐 Ingrese su dominio (ej: panel.miservidor.com): " DOMAIN
+    if [ -z "$DOMAIN" ]; then
+        echo -e "${RED}El dominio no puede estar vacío. Intente de nuevo.${RESET}"
+    else
+        break
+    fi
+done
+echo -e "${CYAN}Dominio: ${GREEN}$DOMAIN${RESET}"
+echo
 
 # =========================
 # INSTALAR DEPENDENCIAS
 # =========================
 apt update -y >/dev/null 2>&1
-apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
+apt install -y curl sqlite3 sudo wget apache2-utils socat >/dev/null 2>&1
+
+# =========================
+# INSTALAR / VERIFICAR acme.sh
+# =========================
+if [ ! -f /root/.acme.sh/acme.sh ]; then
+    echo -e "${YELLOW}Instalando acme.sh...${RESET}"
+    curl -s https://get.acme.sh | sh -s email=admin@${DOMAIN}
+    source ~/.bashrc 2>/dev/null || true
+fi
+
+# =========================
+# GENERAR SSL CON STANDALONE
+# Proxy se detiene solo durante la emisión del certificado
+# =========================
+echo -e "${YELLOW}Generando SSL para $DOMAIN...${RESET}"
+echo -e "${CYAN}(Deteniendo proxy brevemente para usar puerto 80)${RESET}"
+
+pkill -f /etc/MCCARTHEY/PDirect.py 2>/dev/null || true
+sleep 3
+
+/root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --force 2>&1
+
+SSL_EXIT=$?
+
+# Rutas posibles según si acme.sh usó ECC o RSA
+CERT_PATH_ECC="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
+CERT_PATH_RSA="/root/.acme.sh/${DOMAIN}/fullchain.cer"
+
+if [ $SSL_EXIT -ne 0 ] || ( [ ! -f "$CERT_PATH_ECC" ] && [ ! -f "$CERT_PATH_RSA" ] ); then
+    echo -e "${RED}Error al generar SSL. Verifique que:${RESET}"
+    echo "  · El dominio $DOMAIN apunta a la IP de este servidor"
+    echo "  · El puerto 80 estaba libre durante la emisión"
+    # Levantar proxy antes de salir
+    nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+    echo -e "${CYAN}Proxy MCCARTHEY reactivado${RESET}"
+    read -p "ENTER para continuar"
+    return
+fi
+
+# =========================
+# INSTALAR CERT EN RUTAS FIJAS
+# =========================
+/root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" \
+    --key-file /root/private.key \
+    --fullchain-file /root/cert.crt
+
+# =========================
+# LEVANTAR PROXY
+# =========================
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+sleep 2
+echo -e "${GREEN}Proxy MCCARTHEY reactivado ✅${RESET}"
 
 # =========================
 # INSTALAR PANEL
@@ -3418,17 +3498,17 @@ apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
 printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
 
 echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
-# configurar renovación automática SSL
-setup_ssl_renewal
 
-# =========================
-# REACTIVAR PROXY MCCARTHEY
-# =========================
-if [ ! -z "$PROXY_PID" ]; then
-echo -e "${CYAN}Reactivando Proxy MCCARTHEY...${RESET}"
-nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-sleep 2
-fi
+# Aplicar certificados al panel
+x-ui cert \
+    --domain "$DOMAIN" \
+    --cert /root/cert.crt \
+    --key /root/private.key 2>/dev/null || true
+
+x-ui restart >/dev/null 2>&1
+
+# Configurar renovación automática (pasando dominio)
+setup_ssl_renewal "$DOMAIN"
 
 sleep 3
 
@@ -3443,7 +3523,7 @@ echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"
 HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')
 
 if [ -f /etc/x-ui/x-ui.db ]; then
-sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
+    sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
 fi
 
 x-ui restart >/dev/null 2>&1
@@ -3452,7 +3532,6 @@ sleep 3
 get_port
 
 PATHP=$(x-ui settings | awk '/webBasePath/ {print $2}')
-IP=$(curl -s https://api.ipify.org)
 
 clear
 
@@ -3462,13 +3541,16 @@ echo "       PANEL LISTO 💖"
 echo "════════════════════════════════════"
 echo -e "${RESET}"
 
-echo "Usuario: $USER"
-echo "Password: $PASS"
-echo "Puerto: $PORT"
-echo "Ruta: $PATHP"
+echo "Usuario  : $USER"
+echo "Password : $PASS"
+echo "Dominio  : $DOMAIN"
+echo "Puerto   : $PORT"
+echo "Ruta     : $PATHP"
 echo
 echo "URL DEL PANEL"
-echo "https://$IP:$PORT$PATHP"
+echo "https://$DOMAIN:$PORT$PATHP"
+echo
+echo -e "${GREEN}SSL: Certificado Let's Encrypt válido ✅${RESET}"
 
 else
 
@@ -3497,6 +3579,11 @@ get_port
 PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
 IP=$(curl -s https://api.ipify.org)
 
+# Detectar dominio activo desde directorios de acme.sh
+DOMAIN_ECC=$(ls /root/.acme.sh/ 2>/dev/null | grep '_ecc' | sed 's/_ecc//' | head -1)
+DOMAIN_RSA=$(ls /root/.acme.sh/ 2>/dev/null | grep -v '_ecc\|ca\|account\|http.header\|\.sh\|\.env' | grep '\.' | head -1)
+PANEL_DOMAIN="${DOMAIN_ECC:-${DOMAIN_RSA:-$IP}}"
+
 echo "════════════════════════════════════"
 echo "       DATOS DEL PANEL"
 echo "════════════════════════════════════"
@@ -3505,11 +3592,13 @@ echo
 systemctl status x-ui | grep Active
 
 echo
-echo "Puerto: $PORT"
-echo "Ruta: $PATHP"
+echo "IP     : $IP"
+echo "Dominio: $PANEL_DOMAIN"
+echo "Puerto : $PORT"
+echo "Ruta   : $PATHP"
 echo
 echo "URL:"
-echo "https://$IP:$PORT$PATHP"
+echo "https://$PANEL_DOMAIN:$PORT$PATHP"
 
 read -p "ENTER para continuar"
 return
