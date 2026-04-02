@@ -1011,13 +1011,15 @@ app.get("/api/sales", auth, (req, res) => {
         if (err) { logError("GET_SALE_ITEMS", err); return res.json([]) }
 
         const result = sales.map(s => ({
-          id:      s.id,
-          num:     Number(s.num),
-          date:    s.date,
-          dateKey: s.date,
-          total:   Number(s.total),
-          paid:    Number(s.paid),
-          change:  Number(s.change_amount),
+          id:        s.id,
+          num:       Number(s.num),
+          date:      s.date,
+          dateKey:   s.date,
+          total:     Number(s.total),
+          paid:      Number(s.paid),
+          change:    Number(s.change_amount),
+          is_fiado:  s.is_fiado  ? 1 : 0,
+          client_id: s.client_id ? Number(s.client_id) : null,
           items:   items
             .filter(i => i.sale_id === s.id)
             .map(i => ({
@@ -1072,17 +1074,21 @@ app.post("/api/sales", auth, async (req, res) => {
       throw new Error("Demasiados productos")
 
     // ── FIADO: determinar si es venta a crédito ──────────────────────────────
-    const esFiado  = sale.fiado === true
-    const clientId = esFiado ? Number(sale.client_id) : null
+    const esFiado = sale.fiado === true
+
+    // Normalizar client_id: aceptar tanto "client_id" como "customer_id" por
+    // compatibilidad con versiones anteriores del frontend
+    const rawClientId = sale.client_id ?? sale.customer_id ?? null
+    const clientId    = esFiado ? Number(rawClientId) : null
 
     if (esFiado) {
-      if (!clientId || isNaN(clientId))
-        throw new Error("Fiado requiere seleccionar un cliente")
+      if (!rawClientId || !clientId || isNaN(clientId) || clientId <= 0)
+        throw new Error("Fiado requiere client_id: seleccioná un cliente antes de confirmar")
       const [[clientCheck]] = await conn.query(
         "SELECT id FROM clients WHERE id = ? AND status = 'activo'",
         [clientId]
       )
-      if (!clientCheck) throw new Error("Cliente no encontrado o inactivo")
+      if (!clientCheck) throw new Error(`Cliente id=${clientId} no encontrado o inactivo`)
     }
     // ────────────────────────────────────────────────────────────────────────
 
@@ -1996,7 +2002,11 @@ app.get("/api/clients", auth, async (req, res) => {
       ORDER BY c.name ASC
     `)
     res.json(clients.map(c => ({
-      ...c,
+      id:          c.id,
+      name:        c.name,
+      phone:       c.phone   || null,
+      status:      c.status,
+      created_at:  c.created_at,
       deuda_total: Math.round(Number(c.deuda_total) * 100) / 100
     })))
   } catch (err) {
@@ -2011,10 +2021,20 @@ app.post("/api/clients", auth, async (req, res) => {
   const nameErr = validateClientName(name)
   if (nameErr) return res.status(400).json({ error: nameErr })
   const cleanPhone = typeof phone === "string" ? phone.trim().slice(0, 30) : null
+  const cleanName  = name.trim().slice(0, 100)
   try {
+    // Verificar duplicado exacto (case-insensitive) — evita doble registro accidental
+    const [[existing]] = await db.promise().query(
+      "SELECT id FROM clients WHERE LOWER(name) = LOWER(?) AND status = 'activo'",
+      [cleanName]
+    )
+    if (existing) {
+      return res.status(409).json({ error: `Ya existe un cliente activo llamado "${cleanName}"`, duplicate: true, existing_id: existing.id })
+    }
+
     const [result] = await db.promise().query(
       "INSERT INTO clients(name, phone) VALUES(?, ?)",
-      [name.trim().slice(0, 100), cleanPhone || null]
+      [cleanName, cleanPhone || null]
     )
     const [[client]] = await db.promise().query(
       "SELECT id, name, phone, status, created_at FROM clients WHERE id = ?",
