@@ -2344,11 +2344,17 @@ function closeSidebar() {
 // =========== SHOW ===========
 async function show(id) {
 
+  // Si la sección no existe, volver a pos
+  if(!document.getElementById(id)) id = "pos"
+
   document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))
   document.getElementById(id).classList.remove("hidden")
 
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"))
   document.getElementById("nav-" + id)?.classList.add("active")
+
+  // Persistir sección activa para restaurar al recargar
+  localStorage.setItem("activeSection", id)
 
   closeSidebar()
 
@@ -2681,9 +2687,11 @@ async function confirmSale() {
     if(esFiado){
       const nombreCliente = clienteSeleccionado.name
       showToast(`📒 Fiado registrado para ${nombreCliente}`, "ok")
-      // Resetear estado fiado
+      // Resetear estado fiado en memoria y localStorage
       fiadoActivo = false
       clienteSeleccionado = null
+      localStorage.removeItem("fiadoActivo")
+      localStorage.removeItem("clienteSeleccionado")
       document.getElementById("fiadoClienteSearch").value = ""
       document.getElementById("fiadoClienteSelected").style.display = "none"
       document.getElementById("fiadoClienteBox").style.display = "none"
@@ -3975,6 +3983,8 @@ function toggleFiado(){
     const sugg = document.getElementById("fiadoClienteSugg")
     if(sugg){ sugg.style.display = "none"; sugg.innerHTML = "" }
   }
+  // Persistir estado fiado
+  saveFiadoState()
   calculateChange()
 }
 
@@ -4024,6 +4034,8 @@ function seleccionarClienteFiado(c){
     sel.textContent = `✓ ${c.name}`
     sel.style.display = "block"
   }
+  // Persistir cliente seleccionado
+  saveFiadoState()
   calculateChange()
 }
 
@@ -4060,6 +4072,19 @@ async function guardarClienteRapido(){
   errEl.style.display = "none"
 
   try {
+    // Verificar duplicado en memoria antes de enviar al servidor
+    const existe = state.clients.find(c =>
+      c.name.toLowerCase().trim() === nombre.toLowerCase().trim()
+    )
+    if(existe){
+      if(!confirm(`Ya existe un cliente llamado "${existe.name}". ¿Crear de todas formas?`)){
+        btn.textContent = "Guardar"
+        btn.classList.remove("btn-loading")
+        savingPago = false
+        return
+      }
+    }
+
     const data = await api("/api/clients", {
       method: "POST",
       body: JSON.stringify({ name: nombre, phone: telefono || null })
@@ -4067,7 +4092,13 @@ async function guardarClienteRapido(){
 
     cerrarClienteRapido()
 
-    // Recargar lista
+    // Agregar inmediatamente a memoria sin esperar recarga
+    const clienteNuevo = { ...data.client, deuda_total: 0 }
+    state.clients.push(clienteNuevo)
+    state.clients.sort((a, b) => a.name.localeCompare(b.name))
+    renderClientes()
+
+    // Recargar desde servidor para asegurar consistencia
     await loadClients()
 
     if(!clienteRapidoDesdeClientes){
@@ -4287,14 +4318,66 @@ document.addEventListener("DOMContentLoaded", () => {
   })
 })
 
+// =========== PERSISTENCIA FIADO ===========
+
+function saveFiadoState(){
+  localStorage.setItem("fiadoActivo", JSON.stringify(fiadoActivo))
+  localStorage.setItem("clienteSeleccionado", JSON.stringify(clienteSeleccionado))
+}
+
+function loadFiadoState(){
+  try {
+    const fa = localStorage.getItem("fiadoActivo")
+    const cs = localStorage.getItem("clienteSeleccionado")
+    if(fa !== null) fiadoActivo = JSON.parse(fa)
+    if(cs !== null) clienteSeleccionado = JSON.parse(cs)
+  } catch(_) {
+    fiadoActivo = false
+    clienteSeleccionado = null
+  }
+}
+
+function applyFiadoStateToUI(){
+  const btn = document.getElementById("fiadoToggleBtn")
+  const box = document.getElementById("fiadoClienteBox")
+  const sel = document.getElementById("fiadoClienteSelected")
+  if(!btn || !box) return
+  if(fiadoActivo){
+    btn.textContent = "✅ Fiado activado — click para cancelar"
+    btn.style.background = "#fefce8"
+    btn.style.borderColor = "#f59e0b"
+    btn.style.color = "#92400e"
+    box.style.display = "block"
+    if(clienteSeleccionado && sel){
+      sel.textContent = `✓ ${clienteSeleccionado.name}`
+      sel.style.display = "block"
+    }
+  } else {
+    btn.textContent = "📒 Cobrar luego (Fiado)"
+    btn.style.background = ""
+    btn.style.borderColor = ""
+    btn.style.color = ""
+    box.style.display = "none"
+    if(sel) sel.style.display = "none"
+  }
+  calculateChange()
+}
+
 // =========== INIT ===========
 async function init(){
 
-  await loadProducts()
-  await loadSales()
-
+  // 1. Restaurar estado persistido ANTES de cualquier render
   loadCart()
+  loadFiadoState()
 
+  // 2. Cargar todos los datos necesarios en paralelo
+  await Promise.all([
+    loadProducts(),
+    loadSales(),
+    loadClients()
+  ])
+
+  // 3. Ajustar carrito según stock actual
   const itemsAjustados = []
 
   state.cart = state.cart.filter(item=>{
@@ -4319,7 +4402,12 @@ async function init(){
   markDirty("cart", "sales")
   flushRender()
 
-  show("pos")
+  // 4. Restaurar sección activa (no siempre "pos")
+  const seccionGuardada = localStorage.getItem("activeSection") || "pos"
+  await show(seccionGuardada)
+
+  // 5. Restaurar UI del fiado (elementos ya existen en el DOM)
+  applyFiadoStateToUI()
 
 }
 
