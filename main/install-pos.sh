@@ -431,9 +431,102 @@ ensure_index "sale_items" "idx_product_id" "(product_id)"
 ensure_index "expenses"   "idx_exp_date"   "(created_at)"
 ensure_index "expenses"   "idx_exp_cat"    "(category)"
 
+# ── Migraciones de renombrado (columnas con nombre viejo en BD) ──
+# rename_column TABLE OLD_NAME NEW_NAME NEW_DEFINITION
+rename_column() {
+  local TABLE="$1"
+  local OLD_COL="$2"
+  local NEW_COL="$3"
+  local NEW_DEF="$4"
+
+  local OLD_EXISTS
+  OLD_EXISTS=$(mysql posdb -sN -e "
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$OLD_COL';
+  " 2>/dev/null)
+
+  local NEW_EXISTS
+  NEW_EXISTS=$(mysql posdb -sN -e "
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$NEW_COL';
+  " 2>/dev/null)
+
+  if [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "0" ]; then
+    echo "  → Renombrando: $TABLE.$OLD_COL → $NEW_COL"
+    if mysql posdb -e "ALTER TABLE \`$TABLE\` CHANGE COLUMN \`$OLD_COL\` \`$NEW_COL\` $NEW_DEF;" 2>/dev/null; then
+      echo "  ✓ Renombrado OK: $TABLE.$OLD_COL → $NEW_COL"
+    else
+      echo "  ✗ ERROR al renombrar $TABLE.$OLD_COL — revisar manualmente"
+    fi
+  elif [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "1" ]; then
+    echo "  ⚠ Ambas columnas existen en $TABLE ($OLD_COL y $NEW_COL) — revisión manual requerida"
+  else
+    echo "  · $TABLE.$NEW_COL ya tiene el nombre correcto"
+  fi
+}
+
+# Renombrar columnas con nombres viejos que pueden existir en producción
+rename_column "debts" "monto_total"   "total"  "DECIMAL(10,2) NOT NULL"
+rename_column "debts" "monto_pagado"  "paid"   "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
+rename_column "debts" "estado"        "status" "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'"
+rename_column "debt_payments" "monto" "amount" "DECIMAL(10,2) NOT NULL"
+rename_column "debt_payments" "fecha" "created_at" "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+rename_column "clients" "telefono"    "phone"  "VARCHAR(30) DEFAULT NULL"
+rename_column "sales" "fiado"         "is_fiado" "TINYINT(1) DEFAULT 0"
+rename_column "sales" "customer_id"   "client_id" "INT DEFAULT NULL"
+
+echo "===== FIN MIGRACIONES DE RENOMBRADO ====="
+
 # ── Fiado: columnas nuevas en sales ──
 ensure_column "sales" "is_fiado"  "TINYINT(1) DEFAULT 0"    "tinyint"
 ensure_column "sales" "client_id" "INT DEFAULT NULL"         "int"
+
+# ── MIGRACIÓN: renombrar columnas legacy en debts y debt_payments ──
+# Si la BD tiene nombres viejos de una versión anterior, los renombra
+# antes de que ensure_column intente agregar las columnas nuevas.
+
+rename_column_if_exists() {
+  local TABLE="$1"
+  local OLD_COL="$2"
+  local NEW_COL="$3"
+  local DEFINITION="$4"
+
+  local OLD_EXISTS NEW_EXISTS
+  OLD_EXISTS=$(mysql posdb -sN -e "
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$OLD_COL';
+  " 2>/dev/null)
+  NEW_EXISTS=$(mysql posdb -sN -e "
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$NEW_COL';
+  " 2>/dev/null)
+
+  if [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "0" ]; then
+    echo "  → Renombrando columna legacy: $TABLE.$OLD_COL → $NEW_COL"
+    if mysql posdb -e "ALTER TABLE \`$TABLE\` CHANGE \`$OLD_COL\` \`$NEW_COL\` $DEFINITION;" 2>/dev/null; then
+      echo "  ✓ Renombrada: $TABLE.$OLD_COL → $NEW_COL"
+    else
+      echo "  ✗ ERROR al renombrar $TABLE.$OLD_COL — revisión manual requerida"
+    fi
+  elif [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "1" ]; then
+    echo "  ⚠ Ambas columnas existen ($TABLE.$OLD_COL y $TABLE.$NEW_COL) — eliminando la vieja"
+    mysql posdb -e "ALTER TABLE \`$TABLE\` DROP COLUMN \`$OLD_COL\`;" 2>/dev/null || true
+  else
+    echo "  · Sin migración necesaria: $TABLE.$OLD_COL"
+  fi
+}
+
+# Variantes conocidas de nombres viejos en debts
+rename_column_if_exists "debts" "monto_total"  "total"  "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
+rename_column_if_exists "debts" "monto"        "total"  "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
+rename_column_if_exists "debts" "monto_pagado" "paid"   "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
+rename_column_if_exists "debts" "abonado"      "paid"   "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
+
+# Variantes conocidas en debt_payments
+rename_column_if_exists "debt_payments" "monto"  "amount" "DECIMAL(10,2) NOT NULL"
+rename_column_if_exists "debt_payments" "valor"  "amount" "DECIMAL(10,2) NOT NULL"
+
+echo "  ✓ Migración de columnas legacy completada"
 
 # ── Fiado: tablas clients, debts, debt_payments ──
 ensure_column "clients" "name"       "VARCHAR(100) NOT NULL"                   "varchar"
@@ -467,6 +560,12 @@ echo "===== FIN SCHEMA GUARDIAN (bash) ====="
 echo ""
 echo "Estado final de la tabla sales:"
 mysql posdb -e "DESCRIBE sales;"
+echo ""
+echo "Estado final de la tabla debts:"
+mysql posdb -e "DESCRIBE debts;"
+echo ""
+echo "Estado final de la tabla debt_payments:"
+mysql posdb -e "DESCRIBE debt_payments;"
 echo ""
 echo "Estado final de la tabla expenses:"
 mysql posdb -e "DESCRIBE expenses;"
@@ -730,11 +829,55 @@ const REQUIRED_SCHEMA = {
   }
 }
 
+// ── Tabla de renombrados: columnas con nombre viejo → nombre correcto ──
+const COLUMN_RENAMES = [
+  { table: "debts",         from: "monto_total",  to: "total",      def: "DECIMAL(10,2) NOT NULL"                              },
+  { table: "debts",         from: "monto_pagado", to: "paid",       def: "DECIMAL(10,2) NOT NULL DEFAULT 0.00"                 },
+  { table: "debts",         from: "estado",       to: "status",     def: "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'" },
+  { table: "debt_payments", from: "monto",        to: "amount",     def: "DECIMAL(10,2) NOT NULL"                              },
+  { table: "debt_payments", from: "fecha",        to: "created_at", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"                 },
+  { table: "clients",       from: "telefono",     to: "phone",      def: "VARCHAR(30) DEFAULT NULL"                            },
+  { table: "sales",         from: "fiado",        to: "is_fiado",   def: "TINYINT(1) DEFAULT 0"                                },
+  { table: "sales",         from: "customer_id",  to: "client_id",  def: "INT DEFAULT NULL"                                    },
+]
+
+async function applyColumnRenames(conn) {
+  const renamed = []
+  for (const r of COLUMN_RENAMES) {
+    const [[oldRow]] = await conn.query(
+      `SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME=? AND COLUMN_NAME=?`,
+      [r.table, r.from]
+    )
+    const [[newRow]] = await conn.query(
+      `SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME=? AND COLUMN_NAME=?`,
+      [r.table, r.to]
+    )
+    if (oldRow.n === 1 && newRow.n === 0) {
+      try {
+        await conn.query(
+          `ALTER TABLE \`${r.table}\` CHANGE COLUMN \`${r.from}\` \`${r.to}\` ${r.def}`
+        )
+        renamed.push(`${r.table}.${r.from} → ${r.to}`)
+        logInfo("SCHEMA_RENAME", `✓ Renombrado: ${r.table}.${r.from} → ${r.to}`)
+      } catch (e) {
+        logError("SCHEMA_RENAME", `No pude renombrar ${r.table}.${r.from}: ${e.message}`)
+      }
+    }
+  }
+  return renamed
+}
+
 async function validateSchema() {
   const conn   = db.promise()
   const fixed  = []
   const ok     = []
   const alerts = []
+
+  // Aplicar renombrados ANTES de verificar columnas requeridas
+  const renamed = await applyColumnRenames(conn)
+  fixed.push(...renamed)
 
   for (const [table, spec] of Object.entries(REQUIRED_SCHEMA)) {
     const [existingCols] = await conn.query(
