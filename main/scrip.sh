@@ -3259,13 +3259,6 @@ ${LILA}-------------------------${NC}"
     read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
 }
 
-#!/bin/bash
-
-# ═══════════════════════════════════════════════════════
-#   XHTTP PANEL — XRAY + 3X-UI MANAGER
-#   Sin SSL — HTTP con IP y puerto directo
-# ═══════════════════════════════════════════════════════
-
 xhttp_panel() {
 
 HOT_PINK="\033[1;95m"
@@ -3276,253 +3269,267 @@ YELLOW="\033[1;93m"
 RESET="\033[0m"
 
 panel_installed(){
-    command -v x-ui &>/dev/null
+command -v x-ui &>/dev/null
 }
 
 panel_status(){
-    if systemctl is-active --quiet x-ui
-    then
-        STATUS="Activo 🟢"
-    else
-        STATUS="Inactivo 🔴"
-    fi
+if systemctl is-active --quiet x-ui
+then
+STATUS="Activo 🟢"
+else
+STATUS="Inactivo 🔴"
+fi
 }
 
 get_port(){
-    PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
-    if [ -z "$PORT" ]
-    then
-        PORT="No detectado"
-    fi
-}
+PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
 
-# ── Utilidad: levantar proxy sin duplicados ──────────────────
-start_proxy(){
-    EXISTING=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ -z "$EXISTING" ]; then
-        nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-        sleep 2
-        echo -e "${GREEN}Proxy MCCARTHEY iniciado ✅${RESET}"
-    else
-        echo -e "${CYAN}Proxy MCCARTHEY ya está activo (PID $EXISTING), no se duplica.${RESET}"
-    fi
-}
-
-# ── Utilidad: detener proxy ──────────────────────────────────
-stop_proxy(){
-    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ ! -z "$PROXY_PID" ]; then
-        echo -e "${YELLOW}Deteniendo proxy MCCARTHEY (PID $PROXY_PID)...${RESET}"
-        kill $PROXY_PID
-        sleep 3
-    fi
+if [ -z "$PORT" ]
+then
+PORT="No detectado"
+fi
 }
 
 while true
 do
 
-    panel_status
-    get_port
+panel_status
+get_port
 
-    clear
+clear
 
-    echo -e "${HOT_PINK}"
-    echo "════════════════════════════════════ 💋"
-    echo "     XRAY + 3X-UI MANAGER 🌸👑"
-    echo "════════════════════════════════════ 💋"
-    echo -e "${RESET}"
+echo -e "${HOT_PINK}"
+echo "════════════════════════════════════ 💋"
+echo "     XRAY + 3X-UI MANAGER 🌸👑"
+echo "════════════════════════════════════ 💋"
+echo -e "${RESET}"
 
-    echo
+echo
 
-    if [ "$STATUS" = "Activo 🟢" ]
-    then
-        echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
-    else
-        echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
-    fi
+if [ "$STATUS" = "Activo 🟢" ]
+then
+echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
+else
+echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
+fi
 
-    echo
-    echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
-    echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
-    echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
-    echo -e "${CYAN}0) Salir 💔${RESET}"
+echo
+echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
+echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
+echo -e "${CYAN}3) Eliminar panel 😈🗑️${RESET}"
+echo -e "${CYAN}0) Salir 💔${RESET}"
 
-    echo
-    read -p "👑 Seleccione una opción reina → " op
+echo
+read -p "👑 Seleccione una opción reina → " op
 
-    case "$op" in
+case "$op" in
 
-        1)
-            install_panel
-            ;;
+1)
+install_panel
+;;
 
-        2)
-            show_panel
-            ;;
+2)
+show_panel
+;;
 
-        4)
-            remove_panel
-            ;;
+3)
+remove_panel
+;;
 
-        0)
-            break
-            ;;
+0)
+break
+;;
 
-        *)
-            ;;
+*)
+;;
 
-    esac
+esac
 
 done
 
 }
 
-# ═══════════════════════════════════════════════════════
-#   INSTALL PANEL
-# ═══════════════════════════════════════════════════════
+setup_ssl_renewal(){
+
+cat << 'EOF' > /root/renew_ssl.sh
+#!/bin/bash
+
+CERT="/root/.acme.sh/102.129.137.208_ecc/fullchain.cer"
+
+# verificar que el certificado exista
+if [ ! -f "$CERT" ]; then
+exit 0
+fi
+
+EXPIRACION=$(openssl x509 -enddate -noout -in $CERT | cut -d= -f2)
+EXPIRA_EN=$(date -d "$EXPIRACION" +%s)
+HOY=$(date +%s)
+
+DIAS=$(( ($EXPIRA_EN - $HOY) / 86400 ))
+
+# si faltan 2 días o menos, renovar
+if [ $DIAS -le 2 ]; then
+
+pkill -f /etc/MCCARTHEY/PDirect.py
+sleep 5
+
+/root/.acme.sh/acme.sh --renew -d 102.129.137.208 --force
+
+sleep 5
+
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+
+fi
+
+EOF
+
+chmod +x /root/renew_ssl.sh
+
+# programar revisión diaria
+(crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
+
+}
 
 install_panel(){
 
-    clear
-    echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
+clear
+echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
 
-    # Detener proxy sin duplicar
-    stop_proxy
+# =========================
+# DETENER PROXY MCCARTHEY
+# =========================
+PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
 
-    # Instalar dependencias
-    apt update -y >/dev/null 2>&1
-    apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
+if [ ! -z "$PROXY_PID" ]; then
+echo -e "${YELLOW}Proxy MCCARTHEY detectado en puerto 80, deteniendo temporalmente...${RESET}"
+kill $PROXY_PID
+sleep 3
+fi
 
-    # Instalar panel
-    printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
+# =========================
+# INSTALAR DEPENDENCIAS
+# =========================
+apt update -y >/dev/null 2>&1
+apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
 
-    echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
+# =========================
+# INSTALAR PANEL
+# =========================
+printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
 
-    # Reactivar proxy sin duplicar
-    start_proxy
+echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
+# configurar renovación automática SSL
+setup_ssl_renewal
 
-    sleep 2
+# =========================
+# REACTIVAR PROXY MCCARTHEY
+# =========================
+if [ ! -z "$PROXY_PID" ]; then
+echo -e "${CYAN}Reactivando Proxy MCCARTHEY...${RESET}"
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+sleep 2
+fi
 
-    if panel_installed
-    then
+sleep 3
 
-        USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
-        PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 14)
+if panel_installed
+then
 
-        echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"
+USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
+PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 14)
 
-        HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')
+echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"
 
-        if [ -f /etc/x-ui/x-ui.db ]; then
-            sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
-        fi
+HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')
 
-        x-ui restart >/dev/null 2>&1
+if [ -f /etc/x-ui/x-ui.db ]; then
+sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
+fi
 
-        sleep 3
-        get_port
+x-ui restart >/dev/null 2>&1
 
-        IP=$(curl -s https://api.ipify.org)
-        PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
+sleep 3
+get_port
 
-        clear
+PATHP=$(x-ui settings | awk '/webBasePath/ {print $2}')
+IP=$(curl -s https://api.ipify.org)
 
-        echo -e "${GREEN}"
-        echo "════════════════════════════════════"
-        echo "       PANEL LISTO 💖"
-        echo "════════════════════════════════════"
-        echo -e "${RESET}"
+clear
 
-        echo "Usuario  : $USER"
-        echo "Password : $PASS"
-        echo "Puerto   : $PORT"
-        echo "Ruta     : $PATHP"
-        echo
-        echo "URL DEL PANEL"
-        echo "http://$IP:$PORT$PATHP"
+echo -e "${GREEN}"
+echo "════════════════════════════════════"
+echo "       PANEL LISTO 💖"
+echo "════════════════════════════════════"
+echo -e "${RESET}"
 
-    else
+echo "Usuario: $USER"
+echo "Password: $PASS"
+echo "Puerto: $PORT"
+echo "Ruta: $PATHP"
+echo
+echo "URL DEL PANEL"
+echo "https://$IP:$PORT$PATHP"
 
-        echo -e "${RED}La instalación falló${RESET}"
+else
 
-    fi
+echo -e "${RED}La instalación falló${RESET}"
 
-    read -p "ENTER para continuar"
-    return
+fi
+
+read -p "ENTER para continuar"
+return
 
 }
-
-# ═══════════════════════════════════════════════════════
-#   SHOW PANEL
-# ═══════════════════════════════════════════════════════
 
 show_panel(){
 
-    clear
+clear
 
-    if ! panel_installed
-    then
-        echo "El panel no está instalado"
-        read -p "ENTER"
-        return
-    fi
+if ! panel_installed
+then
+echo "El panel no está instalado"
+read -p "ENTER"
+return
+fi
 
-    get_port
+get_port
 
-    PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
-    IP=$(curl -s https://api.ipify.org)
+PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
+IP=$(curl -s https://api.ipify.org)
 
-    echo "════════════════════════════════════"
-    echo "       DATOS DEL PANEL"
-    echo "════════════════════════════════════"
-    echo
+echo "════════════════════════════════════"
+echo "       DATOS DEL PANEL"
+echo "════════════════════════════════════"
+echo
 
-    systemctl status x-ui | grep Active
+systemctl status x-ui | grep Active
 
-    echo
-    echo "Puerto : $PORT"
-    echo "Ruta   : $PATHP"
-    echo "IP     : $IP"
-    echo
-    echo "URL:"
-    echo "http://$IP:$PORT$PATHP"
+echo
+echo "Puerto: $PORT"
+echo "Ruta: $PATHP"
+echo
+echo "URL:"
+echo "https://$IP:$PORT$PATHP"
 
-    # Estado del proxy
-    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ ! -z "$PROXY_PID" ]; then
-        echo
-        echo "Proxy  : ✅ Activo (PID $PROXY_PID)"
-    else
-        echo
-        echo "Proxy  : ❌ Inactivo"
-    fi
-
-    read -p "ENTER para continuar"
-    return
+read -p "ENTER para continuar"
+return
 
 }
-
-# ═══════════════════════════════════════════════════════
-#   REMOVE PANEL
-# ═══════════════════════════════════════════════════════
 
 remove_panel(){
 
-    clear
+clear
 
-    echo -e "${RED}Eliminando panel...${RESET}"
+echo -e "${RED}Eliminando panel...${RESET}"
 
-    x-ui stop >/dev/null 2>&1
-    x-ui uninstall >/dev/null 2>&1
+x-ui stop >/dev/null 2>&1
+x-ui uninstall >/dev/null 2>&1
 
-    echo -e "${GREEN}Panel eliminado correctamente${RESET}"
+echo -e "${GREEN}Panel eliminado correctamente${RESET}"
 
-    read -p "ENTER para continuar"
-    return
-
+read -p "ENTER para continuar"
+return
 }
-
-
 
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
@@ -3601,3 +3608,5 @@ while true; do
     esac  
 done  
 fi  
+  
+  
