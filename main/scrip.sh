@@ -3259,6 +3259,7 @@ ${LILA}-------------------------${NC}"
     read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
 }
 
+
 xhttp_panel() {
 
 HOT_PINK="\033[1;95m"
@@ -3268,356 +3269,583 @@ RED="\033[1;91m"
 YELLOW="\033[1;93m"
 RESET="\033[0m"
 
+DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
+
 panel_installed(){
-command -v x-ui &>/dev/null
+    command -v x-ui &>/dev/null
 }
 
 panel_status(){
-if systemctl is-active --quiet x-ui
-then
-STATUS="Activo 🟢"
-else
-STATUS="Inactivo 🔴"
-fi
+    if systemctl is-active --quiet x-ui
+    then
+        STATUS="Activo 🟢"
+    else
+        STATUS="Inactivo 🔴"
+    fi
 }
 
 get_port(){
-PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+    PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+    if [ -z "$PORT" ]
+    then
+        PORT="No detectado"
+    fi
+}
 
-if [ -z "$PORT" ]
-then
-PORT="No detectado"
-fi
+# ── Utilidad: leer dominio guardado ─────────────────────────
+get_domain(){
+    if [ -f "$DOMAIN_FILE" ]; then
+        DOMAIN=$(cat "$DOMAIN_FILE")
+    else
+        DOMAIN=""
+    fi
+}
+
+# ── Utilidad: levantar proxy sin duplicados ──────────────────
+start_proxy(){
+    EXISTING=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ -z "$EXISTING" ]; then
+        nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+        sleep 2
+        echo -e "${GREEN}Proxy MCCARTHEY iniciado ✅${RESET}"
+    else
+        echo -e "${CYAN}Proxy MCCARTHEY ya está activo (PID $EXISTING), no se duplica.${RESET}"
+    fi
+}
+
+# ── Utilidad: detener proxy ──────────────────────────────────
+stop_proxy(){
+    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ ! -z "$PROXY_PID" ]; then
+        echo -e "${YELLOW}Deteniendo proxy MCCARTHEY (PID $PROXY_PID)...${RESET}"
+        kill $PROXY_PID
+        sleep 3
+    fi
+}
+
+# ── Utilidad: limpiar certs viejos de acme.sh ───────────────
+cleanup_old_certs(){
+    local CURRENT_DOMAIN="$1"
+    for dir in /root/.acme.sh/*_ecc /root/.acme.sh/*; do
+        [ -d "$dir" ] || continue
+        DIRNAME=$(basename "$dir")
+        # Ignorar carpetas internas de acme.sh
+        [[ "$DIRNAME" == ca ]] && continue
+        [[ "$DIRNAME" == account* ]] && continue
+        # Si no corresponde al dominio actual, borrar
+        if [[ "$DIRNAME" != "${CURRENT_DOMAIN}_ecc" && "$DIRNAME" != "$CURRENT_DOMAIN" ]]; then
+            echo -e "${YELLOW}Eliminando certificado obsoleto: $DIRNAME${RESET}"
+            rm -rf "$dir"
+        fi
+    done
+}
+
+# ── Utilidad: verificar si el cert es válido ────────────────
+cert_is_valid(){
+    local CERT="$1"
+    [ -f "$CERT" ] || return 1
+    openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null
+}
+
+# ── Utilidad: aplicar cert al panel SIEMPRE ─────────────────
+# Llama a x-ui ssl + restart sin importar si el cert es nuevo o viejo.
+# Es la única función que debe hacer esto — nunca duplicar este bloque.
+apply_cert_to_panel(){
+    local DOMAIN="$1"
+    local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+    local CERT="$CERT_DIR/fullchain.cer"
+    local KEY="$CERT_DIR/${DOMAIN}.key"
+
+    if ! command -v x-ui &>/dev/null; then
+        echo -e "${RED}[SSL] x-ui no encontrado, no se puede aplicar el certificado.${RESET}"
+        return 1
+    fi
+
+    if ! cert_is_valid "$CERT"; then
+        echo -e "${RED}[SSL] El certificado no es válido o no existe: $CERT${RESET}"
+        return 1
+    fi
+
+    echo -e "${YELLOW}[SSL] Aplicando certificado al panel...${RESET}"
+    x-ui ssl -domain "$DOMAIN" \
+        -certFile "$CERT" \
+        -keyFile  "$KEY" 2>/dev/null
+
+    echo -e "${YELLOW}[SSL] Reiniciando panel...${RESET}"
+    x-ui restart >/dev/null 2>&1
+    sleep 2
+
+    echo -e "${GREEN}[SSL] Certificado aplicado y panel reiniciado ✅${RESET}"
 }
 
 while true
 do
 
-panel_status
-get_port
+    panel_status
+    get_port
 
-clear
+    clear
 
-echo -e "${HOT_PINK}"
-echo "════════════════════════════════════ 💋"
-echo "     XRAY + 3X-UI MANAGER 🌸👑"
-echo "════════════════════════════════════ 💋"
-echo -e "${RESET}"
+    echo -e "${HOT_PINK}"
+    echo "════════════════════════════════════ 💋"
+    echo "     XRAY + 3X-UI MANAGER 🌸👑"
+    echo "════════════════════════════════════ 💋"
+    echo -e "${RESET}"
 
-echo
+    echo
 
-if [ "$STATUS" = "Activo 🟢" ]
-then
-echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
-else
-echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
-fi
+    if [ "$STATUS" = "Activo 🟢" ]
+    then
+        echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
+    else
+        echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
+    fi
 
-echo
-echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
-echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
-echo -e "${CYAN}3) Eliminar panel 😈🗑️${RESET}"
-echo -e "${CYAN}0) Salir 💔${RESET}"
+    echo
+    echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
+    echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
+    echo -e "${CYAN}3) Renovar SSL manualmente 🔐${RESET}"
+    echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
+    echo -e "${CYAN}0) Salir 💔${RESET}"
 
-echo
-read -p "👑 Seleccione una opción reina → " op
+    echo
+    read -p "👑 Seleccione una opción reina → " op
 
-case "$op" in
+    case "$op" in
 
-1)
-install_panel
-;;
+        1)
+            install_panel
+            ;;
 
-2)
-show_panel
-;;
+        2)
+            show_panel
+            ;;
 
-3)
-remove_panel
-;;
+        3)
+            force_renew_ssl
+            ;;
 
-0)
-break
-;;
+        4)
+            remove_panel
+            ;;
 
-*)
-;;
+        0)
+            break
+            ;;
 
-esac
+        *)
+            ;;
+
+    esac
 
 done
 
 }
+
+# ═══════════════════════════════════════════════════════
+#   SETUP SSL RENEWAL — dominio fijo, cron diario
+# ═══════════════════════════════════════════════════════
 
 setup_ssl_renewal(){
 
-local DOMAIN="$1"
+    local DOMAIN="$1"
 
-cat > /root/renew_ssl.sh << RENEWEOF
+cat << EOF > /root/renew_ssl.sh
 #!/bin/bash
 
-DOMAIN="$DOMAIN"
-CERT="/root/.acme.sh/\${DOMAIN}_ecc/fullchain.cer"
+DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
 
-# Si no existe con _ecc, intentar sin sufijo
-if [ ! -f "\$CERT" ]; then
-    CERT="/root/.acme.sh/\${DOMAIN}/fullchain.cer"
+# ── Leer dominio guardado ────────────────────────────────────
+if [ ! -f "\$DOMAIN_FILE" ]; then
+    echo "[SSL] No se encontró el archivo de dominio en \$DOMAIN_FILE. Abortando."
+    exit 1
 fi
 
-if [ ! -f "\$CERT" ]; then
-    echo "\$(date): Certificado no encontrado para \$DOMAIN"
-    exit 0
+DOMAIN=\$(cat "\$DOMAIN_FILE")
+
+if [ -z "\$DOMAIN" ]; then
+    echo "[SSL] El dominio guardado está vacío. Abortando."
+    exit 1
 fi
 
-EXPIRACION=\$(openssl x509 -enddate -noout -in "\$CERT" | cut -d= -f2)
-EXPIRA_EN=\$(date -d "\$EXPIRACION" +%s)
-HOY=\$(date +%s)
-DIAS=\$(( (\$EXPIRA_EN - \$HOY) / 86400 ))
+CERT_DIR="/root/.acme.sh/\${DOMAIN}_ecc"
+CERT="\$CERT_DIR/fullchain.cer"
 
-echo "\$(date): Certificado \$DOMAIN vence en \$DIAS días"
+# ── Limpiar certs de dominios viejos ────────────────────────
+for dir in /root/.acme.sh/*_ecc /root/.acme.sh/*; do
+    [ -d "\$dir" ] || continue
+    DIRNAME=\$(basename "\$dir")
+    [[ "\$DIRNAME" == ca ]] && continue
+    [[ "\$DIRNAME" == account* ]] && continue
+    if [[ "\$DIRNAME" != "\${DOMAIN}_ecc" && "\$DIRNAME" != "\$DOMAIN" ]]; then
+        echo "[SSL] Eliminando certificado obsoleto: \$DIRNAME"
+        rm -rf "\$dir"
+    fi
+done
 
-# renovar si faltan 10 días o menos
-if [ \$DIAS -le 10 ]; then
-    echo "\$(date): Iniciando renovación para \$DOMAIN..."
+# ── Decidir si crear o renovar ───────────────────────────────
+NECESITA_ACCION=false
 
-    # Detener proxy solo durante la renovación
-    pkill -f /etc/MCCARTHEY/PDirect.py 2>/dev/null || true
-    sleep 3
+if [ ! -f "\$CERT" ]; then
+    echo "[SSL] Certificado no encontrado para \$DOMAIN. Emitiendo uno nuevo."
+    NECESITA_ACCION=true
+else
+    EXPIRACION=\$(openssl x509 -enddate -noout -in "\$CERT" | cut -d= -f2)
+    EXPIRA_EN=\$(date -d "\$EXPIRACION" +%s)
+    HOY=\$(date +%s)
+    DIAS=\$(( (\$EXPIRA_EN - \$HOY) / 86400 ))
+    echo "[SSL] Certificado encontrado. Vence en \$DIAS días."
 
-    /root/.acme.sh/acme.sh --renew -d "\$DOMAIN" --standalone --force
-
-    RENEW_EXIT=\$?
-
-    # Reinstalar certificados en rutas usadas por x-ui
-    if [ \$RENEW_EXIT -eq 0 ]; then
-        /root/.acme.sh/acme.sh --install-cert -d "\$DOMAIN" \
-            --key-file /root/private.key \
-            --fullchain-file /root/cert.crt
-        command -v x-ui &>/dev/null && x-ui restart >/dev/null 2>&1
-        echo "\$(date): Renovación exitosa para \$DOMAIN"
+    if [ \$DIAS -le 7 ]; then
+        echo "[SSL] Faltan \$DIAS días o menos. Renovando..."
+        NECESITA_ACCION=true
     else
-        echo "\$(date): Error al renovar \$DOMAIN (código \$RENEW_EXIT)"
+        echo "[SSL] Certificado vigente. No se requiere acción."
+    fi
+fi
+
+# ── Ejecutar solo si hay algo que hacer ─────────────────────
+if [ "\$NECESITA_ACCION" = true ]; then
+
+    PROXY_PID=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ ! -z "\$PROXY_PID" ]; then
+        echo "[SSL] Deteniendo proxy MCCARTHEY..."
+        kill \$PROXY_PID
+        sleep 5
     fi
 
-    # Levantar proxy siempre, independientemente del resultado
+    if [ ! -f "\$CERT" ]; then
+        /root/.acme.sh/acme.sh --issue -d "\$DOMAIN" --standalone --httpport 80
+    else
+        /root/.acme.sh/acme.sh --renew -d "\$DOMAIN"
+    fi
+
+    ACME_EXIT=\$?
+    sleep 3
+
+    if [ \$ACME_EXIT -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "\$CERT" 2>/dev/null; then
+        echo "[SSL] ❌ Error: el certificado no es válido tras la operación. Abortando aplicación."
+        EXISTING=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+        if [ -z "\$EXISTING" ]; then
+            nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+        fi
+        exit 1
+    fi
+
+    # Aplicar cert al panel SIEMPRE — sin importar si x-ui ya tenía uno cargado
+    echo "[SSL] Aplicando certificado al panel..."
+    x-ui ssl -domain "\$DOMAIN" \
+        -certFile "\$CERT_DIR/fullchain.cer" \
+        -keyFile  "\$CERT_DIR/\${DOMAIN}.key" 2>/dev/null
+    echo "[SSL] Reiniciando panel..."
+    x-ui restart >/dev/null 2>&1
     sleep 2
-    nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-    echo "\$(date): Proxy MCCARTHEY reactivado"
+    echo "[SSL] Certificado aplicado y panel reiniciado."
+
+    EXISTING=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ -z "\$EXISTING" ]; then
+        echo "[SSL] Reactivando proxy MCCARTHEY..."
+        nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+        sleep 2
+    else
+        echo "[SSL] Proxy ya activo (PID \$EXISTING), no se duplica."
+    fi
+
+    echo "[SSL] ✅ Proceso completado para dominio: \$DOMAIN"
 fi
 
-RENEWEOF
+EOF
 
 chmod +x /root/renew_ssl.sh
 
-# Revisión diaria a las 3am
-(crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 3 * * * /root/renew_ssl.sh >> /var/log/renew_ssl.log 2>&1") | crontab -
+# Cron diario a las 4am
+(crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
+
+echo -e "${GREEN}Script de renovación SSL configurado ✅${RESET}"
 
 }
+
+# ═══════════════════════════════════════════════════════
+#   FORCE RENEW — opción manual desde el menú
+# ═══════════════════════════════════════════════════════
+
+force_renew_ssl(){
+
+    clear
+    echo -e "${YELLOW}Iniciando renovación SSL manual... 🔐${RESET}"
+    echo
+
+    get_domain
+
+    if [ -z "$DOMAIN" ]; then
+        echo -e "${YELLOW}No hay dominio guardado. Ingresá el dominio:${RESET}"
+        read -p "Dominio → " DOMAIN
+        if [ -z "$DOMAIN" ]; then
+            echo -e "${RED}No se ingresó un dominio. Abortando.${RESET}"
+            read -p "ENTER para continuar"
+            return
+        fi
+        mkdir -p /etc/MCCARTHEY
+        echo "$DOMAIN" > "$DOMAIN_FILE"
+    fi
+
+    echo -e "${CYAN}Dominio: $DOMAIN${RESET}"
+    echo
+
+    CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+    CERT="$CERT_DIR/fullchain.cer"
+
+    # Detener proxy
+    stop_proxy
+
+    # Emitir o renovar
+    if [ ! -f "$CERT" ]; then
+        echo -e "${YELLOW}Emitiendo certificado nuevo para $DOMAIN...${RESET}"
+        /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
+    else
+        echo -e "${YELLOW}Renovando certificado existente para $DOMAIN...${RESET}"
+        /root/.acme.sh/acme.sh --renew -d "$DOMAIN" --force
+    fi
+
+    ACME_EXIT=$?
+    sleep 3
+
+    if [ $ACME_EXIT -ne 0 ] || ! cert_is_valid "$CERT"; then
+        echo -e "${RED}❌ Error: la emisión/renovación falló o el certificado no es válido.${RESET}"
+        echo -e "${RED}No se aplicaron cambios al panel.${RESET}"
+        start_proxy
+        read -p "ENTER para continuar"
+        return
+    fi
+
+    # Aplicar cert al panel SIEMPRE
+    apply_cert_to_panel "$DOMAIN"
+
+    cleanup_old_certs "$DOMAIN"
+
+    start_proxy
+
+    echo
+    echo -e "${GREEN}✅ SSL renovado correctamente para: $DOMAIN${RESET}"
+    read -p "ENTER para continuar"
+    return
+
+}
+
+# ═══════════════════════════════════════════════════════
+#   INSTALL PANEL
+# ═══════════════════════════════════════════════════════
 
 install_panel(){
 
-clear
-echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
+    clear
+    echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
+    echo
 
-# =========================
-# PEDIR DOMINIO
-# =========================
-echo
-while true; do
-    read -p "🌐 Ingrese su dominio (ej: panel.miservidor.com): " DOMAIN
+    # ── Pedir dominio ────────────────────────────────────────
+    read -p "Ingresá el dominio para el SSL (ej: panel.tudominio.com) → " DOMAIN
+
     if [ -z "$DOMAIN" ]; then
-        echo -e "${RED}El dominio no puede estar vacío. Intente de nuevo.${RESET}"
-    else
-        break
+        echo -e "${RED}No se ingresó un dominio. Abortando instalación.${RESET}"
+        read -p "ENTER para continuar"
+        return
     fi
-done
-echo -e "${CYAN}Dominio: ${GREEN}$DOMAIN${RESET}"
-echo
 
-# =========================
-# INSTALAR DEPENDENCIAS
-# =========================
-apt update -y >/dev/null 2>&1
-apt install -y curl sqlite3 sudo wget apache2-utils socat >/dev/null 2>&1
+    mkdir -p /etc/MCCARTHEY
+    echo "$DOMAIN" > "$DOMAIN_FILE"
+    echo -e "${GREEN}Dominio guardado: $DOMAIN${RESET}"
+    echo
 
-# =========================
-# INSTALAR / VERIFICAR acme.sh
-# =========================
-if [ ! -f /root/.acme.sh/acme.sh ]; then
-    echo -e "${YELLOW}Instalando acme.sh...${RESET}"
-    curl -s https://get.acme.sh | sh -s email=admin@${DOMAIN}
-    source ~/.bashrc 2>/dev/null || true
-fi
+    # Detener proxy sin duplicar
+    stop_proxy
 
-# =========================
-# GENERAR SSL CON STANDALONE
-# Proxy se detiene solo durante la emisión del certificado
-# =========================
-echo -e "${YELLOW}Generando SSL para $DOMAIN...${RESET}"
-echo -e "${CYAN}(Deteniendo proxy brevemente para usar puerto 80)${RESET}"
+    # Instalar dependencias
+    apt update -y >/dev/null 2>&1
+    apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
 
-pkill -f /etc/MCCARTHEY/PDirect.py 2>/dev/null || true
-sleep 3
+    # Instalar panel
+    printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
 
-/root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --force 2>&1
+    echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
 
-SSL_EXIT=$?
+    # Configurar renovación automática SSL (pasa el dominio al setup)
+    setup_ssl_renewal "$DOMAIN"
 
-# Rutas posibles según si acme.sh usó ECC o RSA
-CERT_PATH_ECC="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
-CERT_PATH_RSA="/root/.acme.sh/${DOMAIN}/fullchain.cer"
+    CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+    CERT="$CERT_DIR/fullchain.cer"
 
-if [ $SSL_EXIT -ne 0 ] || ( [ ! -f "$CERT_PATH_ECC" ] && [ ! -f "$CERT_PATH_RSA" ] ); then
-    echo -e "${RED}Error al generar SSL. Verifique que:${RESET}"
-    echo "  · El dominio $DOMAIN apunta a la IP de este servidor"
-    echo "  · El puerto 80 estaba libre durante la emisión"
-    # Levantar proxy antes de salir
-    nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-    echo -e "${CYAN}Proxy MCCARTHEY reactivado${RESET}"
+    # Emitir cert solo si no existe todavía
+    if [ ! -f "$CERT" ]; then
+        echo -e "${YELLOW}Emitiendo certificado SSL para $DOMAIN...${RESET}"
+        /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
+        ACME_EXIT=$?
+        sleep 3
+
+        if [ $ACME_EXIT -ne 0 ] || ! cert_is_valid "$CERT"; then
+            echo -e "${RED}⚠️  Advertencia: no se pudo emitir el certificado SSL. El panel funcionará sin SSL por ahora.${RESET}"
+        fi
+    fi
+
+    # Aplicar cert al panel SIEMPRE — aunque ya existiera antes
+    apply_cert_to_panel "$DOMAIN"
+
+    # Limpiar certs viejos
+    cleanup_old_certs "$DOMAIN"
+
+    # Reactivar proxy sin duplicar
+    start_proxy
+
+    sleep 2
+
+    if panel_installed
+    then
+
+        USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
+        PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 14)
+
+        echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"
+
+        HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')
+
+        if [ -f /etc/x-ui/x-ui.db ]; then
+            sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
+        fi
+
+        x-ui restart >/dev/null 2>&1
+
+        sleep 3
+        get_port
+
+        PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
+
+        clear
+
+        echo -e "${GREEN}"
+        echo "════════════════════════════════════"
+        echo "       PANEL LISTO 💖"
+        echo "════════════════════════════════════"
+        echo -e "${RESET}"
+
+        echo "Usuario  : $USER"
+        echo "Password : $PASS"
+        echo "Puerto   : $PORT"
+        echo "Ruta     : $PATHP"
+        echo "Dominio  : $DOMAIN"
+        echo
+
+        if cert_is_valid "$CERT"; then
+            echo "URL DEL PANEL"
+            echo "https://$DOMAIN:$PORT$PATHP"
+        else
+            echo "URL DEL PANEL (sin SSL)"
+            echo "http://$DOMAIN:$PORT$PATHP"
+        fi
+
+    else
+
+        echo -e "${RED}La instalación falló${RESET}"
+
+    fi
+
     read -p "ENTER para continuar"
     return
-fi
-
-# =========================
-# INSTALAR CERT EN RUTAS FIJAS
-# =========================
-/root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" \
-    --key-file /root/private.key \
-    --fullchain-file /root/cert.crt
-
-# =========================
-# LEVANTAR PROXY
-# =========================
-nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-sleep 2
-echo -e "${GREEN}Proxy MCCARTHEY reactivado ✅${RESET}"
-
-# =========================
-# INSTALAR PANEL
-# =========================
-printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
-
-echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
-
-# Aplicar certificados al panel
-x-ui cert \
-    --domain "$DOMAIN" \
-    --cert /root/cert.crt \
-    --key /root/private.key 2>/dev/null || true
-
-x-ui restart >/dev/null 2>&1
-
-# Configurar renovación automática (pasando dominio)
-setup_ssl_renewal "$DOMAIN"
-
-sleep 3
-
-if panel_installed
-then
-
-USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
-PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 14)
-
-echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"
-
-HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')
-
-if [ -f /etc/x-ui/x-ui.db ]; then
-    sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
-fi
-
-x-ui restart >/dev/null 2>&1
-
-sleep 3
-get_port
-
-PATHP=$(x-ui settings | awk '/webBasePath/ {print $2}')
-
-clear
-
-echo -e "${GREEN}"
-echo "════════════════════════════════════"
-echo "       PANEL LISTO 💖"
-echo "════════════════════════════════════"
-echo -e "${RESET}"
-
-echo "Usuario  : $USER"
-echo "Password : $PASS"
-echo "Dominio  : $DOMAIN"
-echo "Puerto   : $PORT"
-echo "Ruta     : $PATHP"
-echo
-echo "URL DEL PANEL"
-echo "https://$DOMAIN:$PORT$PATHP"
-echo
-echo -e "${GREEN}SSL: Certificado Let's Encrypt válido ✅${RESET}"
-
-else
-
-echo -e "${RED}La instalación falló${RESET}"
-
-fi
-
-read -p "ENTER para continuar"
-return
 
 }
+
+# ═══════════════════════════════════════════════════════
+#   SHOW PANEL
+# ═══════════════════════════════════════════════════════
 
 show_panel(){
 
-clear
+    clear
 
-if ! panel_installed
-then
-echo "El panel no está instalado"
-read -p "ENTER"
-return
-fi
+    if ! panel_installed
+    then
+        echo "El panel no está instalado"
+        read -p "ENTER"
+        return
+    fi
 
-get_port
+    get_port
+    get_domain
 
-PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
-IP=$(curl -s https://api.ipify.org)
+    PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
+    IP=$(curl -s https://api.ipify.org)
 
-# Detectar dominio activo desde directorios de acme.sh
-DOMAIN_ECC=$(ls /root/.acme.sh/ 2>/dev/null | grep '_ecc' | sed 's/_ecc//' | head -1)
-DOMAIN_RSA=$(ls /root/.acme.sh/ 2>/dev/null | grep -v '_ecc\|ca\|account\|http.header\|\.sh\|\.env' | grep '\.' | head -1)
-PANEL_DOMAIN="${DOMAIN_ECC:-${DOMAIN_RSA:-$IP}}"
+    echo "════════════════════════════════════"
+    echo "       DATOS DEL PANEL"
+    echo "════════════════════════════════════"
+    echo
 
-echo "════════════════════════════════════"
-echo "       DATOS DEL PANEL"
-echo "════════════════════════════════════"
-echo
+    systemctl status x-ui | grep Active
 
-systemctl status x-ui | grep Active
+    echo
+    echo "Puerto : $PORT"
+    echo "Ruta   : $PATHP"
+    echo "IP     : $IP"
+    echo "Dominio: ${DOMAIN:-No configurado}"
+    echo
 
-echo
-echo "IP     : $IP"
-echo "Dominio: $PANEL_DOMAIN"
-echo "Puerto : $PORT"
-echo "Ruta   : $PATHP"
-echo
-echo "URL:"
-echo "https://$PANEL_DOMAIN:$PORT$PATHP"
+    if [ -n "$DOMAIN" ]; then
+        CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+        CERT="$CERT_DIR/fullchain.cer"
 
-read -p "ENTER para continuar"
-return
+        if cert_is_valid "$CERT"; then
+            EXPIRACION=$(openssl x509 -enddate -noout -in "$CERT" | cut -d= -f2)
+            EXPIRA_EN=$(date -d "$EXPIRACION" +%s)
+            HOY=$(date +%s)
+            DIAS=$(( ($EXPIRA_EN - $HOY) / 86400 ))
+            echo "SSL    : ✅ Válido — vence en $DIAS días ($EXPIRACION)"
+            echo
+            echo "URL:"
+            echo "https://$DOMAIN:$PORT$PATHP"
+        else
+            echo "SSL    : ❌ Certificado no encontrado o inválido para $DOMAIN"
+            echo
+            echo "URL (sin SSL):"
+            echo "http://$DOMAIN:$PORT$PATHP"
+        fi
+    else
+        echo "SSL    : ❌ Sin dominio configurado"
+        echo
+        echo "URL (sin SSL):"
+        echo "http://$IP:$PORT$PATHP"
+    fi
+
+    # Estado del proxy
+    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ ! -z "$PROXY_PID" ]; then
+        echo
+        echo "Proxy  : ✅ Activo (PID $PROXY_PID)"
+    else
+        echo
+        echo "Proxy  : ❌ Inactivo"
+    fi
+
+    read -p "ENTER para continuar"
+    return
 
 }
 
+# ═══════════════════════════════════════════════════════
+#   REMOVE PANEL
+# ═══════════════════════════════════════════════════════
+
 remove_panel(){
 
-clear
+    clear
 
-echo -e "${RED}Eliminando panel...${RESET}"
+    echo -e "${RED}Eliminando panel...${RESET}"
 
-x-ui stop >/dev/null 2>&1
-x-ui uninstall >/dev/null 2>&1
+    x-ui stop >/dev/null 2>&1
+    x-ui uninstall >/dev/null 2>&1
 
-echo -e "${GREEN}Panel eliminado correctamente${RESET}"
+    echo -e "${GREEN}Panel eliminado correctamente${RESET}"
 
-read -p "ENTER para continuar"
-return
+    read -p "ENTER para continuar"
+    return
+
 }
 
 # ==== MENU ====  
