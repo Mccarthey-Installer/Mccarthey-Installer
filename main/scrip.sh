@@ -3370,31 +3370,32 @@ xhttp_panel() {
         echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
     }
 
-    # ── Aplicar certificado al panel ─────────────────────────
-    # Esta es la única función que debe llamar a x-ui ssl + restart.
+    # ── Aplicar certificado al panel (copia directa a /etc/x-ui/) ───
+    # NO usa "x-ui ssl" — ese comando no aplica el cert de forma confiable.
+    # La única forma segura es parar el servicio, copiar los archivos
+    # directamente y levantarlo de nuevo.
     apply_cert_to_panel() {
         local DOMAIN="$1"
         local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
         local CERT="$CERT_DIR/fullchain.cer"
         local KEY="$CERT_DIR/${DOMAIN}.key"
 
-        if ! command -v x-ui &>/dev/null; then
-            echo -e "${RED}[SSL] x-ui no encontrado, no se puede aplicar el certificado.${RESET}"
-            return 1
-        fi
-
         if ! cert_is_valid "$CERT"; then
             echo -e "${RED}[SSL] El certificado no es válido o no existe: $CERT${RESET}"
             return 1
         fi
 
-        echo -e "${YELLOW}[SSL] Aplicando certificado al panel...${RESET}"
-        x-ui ssl -domain "$DOMAIN" \
-            -certFile "$CERT" \
-            -keyFile  "$KEY" 2>/dev/null
+        echo -e "${YELLOW}[SSL] Deteniendo panel para aplicar certificado...${RESET}"
+        systemctl stop x-ui
 
-        echo -e "${YELLOW}[SSL] Reiniciando panel...${RESET}"
-        x-ui restart >/dev/null 2>&1
+        echo -e "${YELLOW}[SSL] Copiando certificado a /etc/x-ui/...${RESET}"
+        cp "$CERT" /etc/x-ui/cert.crt
+        cp "$KEY"  /etc/x-ui/private.key
+        chmod 644 /etc/x-ui/cert.crt
+        chmod 600 /etc/x-ui/private.key
+
+        echo -e "${YELLOW}[SSL] Levantando panel...${RESET}"
+        systemctl start x-ui
         sleep 2
 
         echo -e "${GREEN}[SSL] Certificado aplicado y panel reiniciado ✅${RESET}"
@@ -3561,13 +3562,20 @@ if [ "$NECESITA_EMITIR" = true ]; then
 fi
 
 # ── Paso 2: aplicar al panel si hace falta ──────────────
+# NO se usa "x-ui ssl" — no aplica el cert de forma confiable.
+# Se copia directo a /etc/x-ui/ con el servicio detenido.
 if [ "$NECESITA_APLICAR" = true ]; then
-    echo "[SSL] Aplicando certificado al panel..."
-    x-ui ssl -domain "$DOMAIN" \
-        -certFile "$CERT_DIR/fullchain.cer" \
-        -keyFile  "$CERT_DIR/${DOMAIN}.key" 2>/dev/null
-    echo "[SSL] Reiniciando panel..."
-    x-ui restart >/dev/null 2>&1
+    echo "[SSL] Deteniendo panel para aplicar certificado..."
+    systemctl stop x-ui
+
+    echo "[SSL] Copiando certificado a /etc/x-ui/..."
+    cp "$CERT_DIR/fullchain.cer"    /etc/x-ui/cert.crt
+    cp "$CERT_DIR/${DOMAIN}.key"    /etc/x-ui/private.key
+    chmod 644 /etc/x-ui/cert.crt
+    chmod 600 /etc/x-ui/private.key
+
+    echo "[SSL] Levantando panel..."
+    systemctl start x-ui
     sleep 2
     echo "[SSL] Certificado aplicado y panel reiniciado."
 fi
