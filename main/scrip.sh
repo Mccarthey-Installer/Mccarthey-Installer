@@ -3370,35 +3370,67 @@ xhttp_panel() {
         echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
     }
 
-    # ── Aplicar certificado al panel (copia directa a /etc/x-ui/) ───
+    # ── Aplicar certificado al panel ─────────────────────────
     # NO usa "x-ui ssl" — ese comando no aplica el cert de forma confiable.
-    # La única forma segura es parar el servicio, copiar los archivos
-    # directamente y levantarlo de nuevo.
+    # Lee las rutas reales desde SQLite (webCertFile / webKeyFile) para no
+    # depender de rutas hardcodeadas que pueden cambiar con updates de x-ui.
     apply_cert_to_panel() {
         local DOMAIN="$1"
         local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
         local CERT="$CERT_DIR/fullchain.cer"
         local KEY="$CERT_DIR/${DOMAIN}.key"
+        local DB="/etc/x-ui/x-ui.db"
 
         if ! cert_is_valid "$CERT"; then
             echo -e "${RED}[SSL] El certificado no es válido o no existe: $CERT${RESET}"
             return 1
         fi
 
+        # Leer rutas desde SQLite
+        local CERT_PATH KEY_PATH
+        CERT_PATH=$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='webCertFile';" 2>/dev/null)
+        KEY_PATH=$(sqlite3  "$DB" "SELECT value FROM settings WHERE key='webKeyFile';"  2>/dev/null)
+
+        # Fallback si SQLite no devuelve nada
+        if [ -z "$CERT_PATH" ] || [ -z "$KEY_PATH" ]; then
+            echo -e "${YELLOW}[SSL] No se pudieron leer rutas desde SQLite. Usando fallback /root/cert/ip/${RESET}"
+            CERT_PATH="/root/cert/ip/fullchain.pem"
+            KEY_PATH="/root/cert/ip/privkey.pem"
+        else
+            echo -e "${CYAN}[SSL] Ruta cert : $CERT_PATH${RESET}"
+            echo -e "${CYAN}[SSL] Ruta key  : $KEY_PATH${RESET}"
+        fi
+
+        mkdir -p "$(dirname "$CERT_PATH")"
+        mkdir -p "$(dirname "$KEY_PATH")"
+
         echo -e "${YELLOW}[SSL] Deteniendo panel para aplicar certificado...${RESET}"
         systemctl stop x-ui
 
-        echo -e "${YELLOW}[SSL] Copiando certificado a /etc/x-ui/...${RESET}"
-        cp "$CERT" /etc/x-ui/cert.crt
-        cp "$KEY"  /etc/x-ui/private.key
-        chmod 644 /etc/x-ui/cert.crt
-        chmod 600 /etc/x-ui/private.key
+        cp "$CERT" "$CERT_PATH"
+        cp "$KEY"  "$KEY_PATH"
+        chmod 644 "$CERT_PATH"
+        chmod 600 "$KEY_PATH"
 
         echo -e "${YELLOW}[SSL] Levantando panel...${RESET}"
         systemctl start x-ui
-        sleep 2
+        sleep 3
 
-        echo -e "${GREEN}[SSL] Certificado aplicado y panel reiniciado ✅${RESET}"
+        # Verificar que el panel realmente sirve el cert nuevo
+        local LIVE_EXP LIVE_DAYS
+        LIVE_EXP=$(openssl s_client \
+                    -connect "${DOMAIN}:${PORT}" \
+                    -servername "${DOMAIN}" \
+                    </dev/null 2>/dev/null \
+                   | openssl x509 -enddate -noout 2>/dev/null \
+                   | cut -d= -f2)
+
+        if [ -n "$LIVE_EXP" ]; then
+            LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
+            echo -e "${GREEN}[SSL] ✅ Cert aplicado correctamente — vence en $LIVE_DAYS días ($LIVE_EXP)${RESET}"
+        else
+            echo -e "${RED}[SSL] ❌ No se pudo verificar el cert en vivo. Revisá si el panel levantó bien en puerto $PORT.${RESET}"
+        fi
     }
 
     # ════════════════════════════════════════════════════════
@@ -3563,21 +3595,50 @@ fi
 
 # ── Paso 2: aplicar al panel si hace falta ──────────────
 # NO se usa "x-ui ssl" — no aplica el cert de forma confiable.
-# Se copia directo a /etc/x-ui/ con el servicio detenido.
+# Lee las rutas reales desde SQLite para no depender de rutas hardcodeadas.
 if [ "$NECESITA_APLICAR" = true ]; then
+    DB="/etc/x-ui/x-ui.db"
+    CERT_PATH=$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='webCertFile';" 2>/dev/null)
+    KEY_PATH=$(sqlite3  "$DB" "SELECT value FROM settings WHERE key='webKeyFile';"  2>/dev/null)
+
+    if [ -z "$CERT_PATH" ] || [ -z "$KEY_PATH" ]; then
+        echo "[SSL] No se pudieron leer rutas desde SQLite. Usando fallback /root/cert/ip/"
+        CERT_PATH="/root/cert/ip/fullchain.pem"
+        KEY_PATH="/root/cert/ip/privkey.pem"
+    else
+        echo "[SSL] Ruta cert : $CERT_PATH"
+        echo "[SSL] Ruta key  : $KEY_PATH"
+    fi
+
+    mkdir -p "$(dirname "$CERT_PATH")"
+    mkdir -p "$(dirname "$KEY_PATH")"
+
     echo "[SSL] Deteniendo panel para aplicar certificado..."
     systemctl stop x-ui
 
-    echo "[SSL] Copiando certificado a /etc/x-ui/..."
-    cp "$CERT_DIR/fullchain.cer"    /etc/x-ui/cert.crt
-    cp "$CERT_DIR/${DOMAIN}.key"    /etc/x-ui/private.key
-    chmod 644 /etc/x-ui/cert.crt
-    chmod 600 /etc/x-ui/private.key
+    cp "$CERT_DIR/fullchain.cer"   "$CERT_PATH"
+    cp "$CERT_DIR/${DOMAIN}.key"   "$KEY_PATH"
+    chmod 644 "$CERT_PATH"
+    chmod 600 "$KEY_PATH"
 
     echo "[SSL] Levantando panel..."
     systemctl start x-ui
-    sleep 2
-    echo "[SSL] Certificado aplicado y panel reiniciado."
+    sleep 3
+
+    # Verificar que el panel realmente sirve el cert nuevo
+    LIVE_EXP=$(openssl s_client \
+                -connect "${DOMAIN}:${PANEL_PORT}" \
+                -servername "${DOMAIN}" \
+                </dev/null 2>/dev/null \
+               | openssl x509 -enddate -noout 2>/dev/null \
+               | cut -d= -f2)
+
+    if [ -n "$LIVE_EXP" ]; then
+        LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
+        echo "[SSL] ✅ Cert aplicado correctamente — vence en $LIVE_DAYS días ($LIVE_EXP)"
+    else
+        echo "[SSL] ❌ No se pudo verificar el cert en vivo. Revisá si el panel levantó bien en puerto $PANEL_PORT."
+    fi
 fi
 
 # ── Reactivar proxy si se detuvo ────────────────────────
