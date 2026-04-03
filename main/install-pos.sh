@@ -277,37 +277,6 @@ CREATE TABLE IF NOT EXISTS expenses(
   created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS clients(
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  name       VARCHAR(100)  NOT NULL,
-  phone      VARCHAR(30)   DEFAULT NULL,
-  status     ENUM('activo','inactivo') DEFAULT 'activo',
-  created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS debts(
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  client_id  INT           NOT NULL,
-  sale_id    VARCHAR(36)   NOT NULL,
-  total      DECIMAL(10,2) NOT NULL,
-  paid       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-  status     ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente',
-  created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_debt_client FOREIGN KEY (client_id) REFERENCES clients(id),
-  CONSTRAINT fk_debt_sale   FOREIGN KEY (sale_id)   REFERENCES sales(id)
-);
-
-CREATE TABLE IF NOT EXISTS debt_payments(
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  client_id  INT           NOT NULL,
-  debt_id    INT           NOT NULL,
-  amount     DECIMAL(10,2) NOT NULL,
-  method     VARCHAR(30)   DEFAULT 'efectivo',
-  created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_pay_client FOREIGN KEY (client_id) REFERENCES clients(id),
-  CONSTRAINT fk_pay_debt   FOREIGN KEY (debt_id)   REFERENCES debts(id)
-);
-
 EOF
 
 # ===========================================================
@@ -431,141 +400,11 @@ ensure_index "sale_items" "idx_product_id" "(product_id)"
 ensure_index "expenses"   "idx_exp_date"   "(created_at)"
 ensure_index "expenses"   "idx_exp_cat"    "(category)"
 
-# ── Migraciones de renombrado (columnas con nombre viejo en BD) ──
-# rename_column TABLE OLD_NAME NEW_NAME NEW_DEFINITION
-rename_column() {
-  local TABLE="$1"
-  local OLD_COL="$2"
-  local NEW_COL="$3"
-  local NEW_DEF="$4"
-
-  local OLD_EXISTS
-  OLD_EXISTS=$(mysql posdb -sN -e "
-    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$OLD_COL';
-  " 2>/dev/null)
-
-  local NEW_EXISTS
-  NEW_EXISTS=$(mysql posdb -sN -e "
-    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$NEW_COL';
-  " 2>/dev/null)
-
-  if [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "0" ]; then
-    echo "  → Renombrando: $TABLE.$OLD_COL → $NEW_COL"
-    if mysql posdb -e "ALTER TABLE \`$TABLE\` CHANGE COLUMN \`$OLD_COL\` \`$NEW_COL\` $NEW_DEF;" 2>/dev/null; then
-      echo "  ✓ Renombrado OK: $TABLE.$OLD_COL → $NEW_COL"
-    else
-      echo "  ✗ ERROR al renombrar $TABLE.$OLD_COL — revisar manualmente"
-    fi
-  elif [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "1" ]; then
-    echo "  ⚠ Ambas columnas existen en $TABLE ($OLD_COL y $NEW_COL) — revisión manual requerida"
-  else
-    echo "  · $TABLE.$NEW_COL ya tiene el nombre correcto"
-  fi
-}
-
-# Renombrar columnas con nombres viejos que pueden existir en producción
-rename_column "debts" "monto_total"   "total"  "DECIMAL(10,2) NOT NULL"
-rename_column "debts" "monto_pagado"  "paid"   "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
-rename_column "debts" "estado"        "status" "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'"
-rename_column "debt_payments" "monto" "amount" "DECIMAL(10,2) NOT NULL"
-rename_column "debt_payments" "fecha" "created_at" "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-rename_column "clients" "telefono"    "phone"  "VARCHAR(30) DEFAULT NULL"
-rename_column "sales" "fiado"         "is_fiado" "TINYINT(1) DEFAULT 0"
-rename_column "sales" "customer_id"   "client_id" "INT DEFAULT NULL"
-
-echo "===== FIN MIGRACIONES DE RENOMBRADO ====="
-
-# ── Fiado: columnas nuevas en sales ──
-ensure_column "sales" "is_fiado"  "TINYINT(1) DEFAULT 0"    "tinyint"
-ensure_column "sales" "client_id" "INT DEFAULT NULL"         "int"
-
-# ── MIGRACIÓN: renombrar columnas legacy en debts y debt_payments ──
-# Si la BD tiene nombres viejos de una versión anterior, los renombra
-# antes de que ensure_column intente agregar las columnas nuevas.
-
-rename_column_if_exists() {
-  local TABLE="$1"
-  local OLD_COL="$2"
-  local NEW_COL="$3"
-  local DEFINITION="$4"
-
-  local OLD_EXISTS NEW_EXISTS
-  OLD_EXISTS=$(mysql posdb -sN -e "
-    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$OLD_COL';
-  " 2>/dev/null)
-  NEW_EXISTS=$(mysql posdb -sN -e "
-    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME='$TABLE' AND COLUMN_NAME='$NEW_COL';
-  " 2>/dev/null)
-
-  if [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "0" ]; then
-    echo "  → Renombrando columna legacy: $TABLE.$OLD_COL → $NEW_COL"
-    if mysql posdb -e "ALTER TABLE \`$TABLE\` CHANGE \`$OLD_COL\` \`$NEW_COL\` $DEFINITION;" 2>/dev/null; then
-      echo "  ✓ Renombrada: $TABLE.$OLD_COL → $NEW_COL"
-    else
-      echo "  ✗ ERROR al renombrar $TABLE.$OLD_COL — revisión manual requerida"
-    fi
-  elif [ "$OLD_EXISTS" -eq "1" ] && [ "$NEW_EXISTS" -eq "1" ]; then
-    echo "  ⚠ Ambas columnas existen ($TABLE.$OLD_COL y $TABLE.$NEW_COL) — eliminando la vieja"
-    mysql posdb -e "ALTER TABLE \`$TABLE\` DROP COLUMN \`$OLD_COL\`;" 2>/dev/null || true
-  else
-    echo "  · Sin migración necesaria: $TABLE.$OLD_COL"
-  fi
-}
-
-# Variantes conocidas de nombres viejos en debts
-rename_column_if_exists "debts" "monto_total"  "total"  "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
-rename_column_if_exists "debts" "monto"        "total"  "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
-rename_column_if_exists "debts" "monto_pagado" "paid"   "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
-rename_column_if_exists "debts" "abonado"      "paid"   "DECIMAL(10,2) NOT NULL DEFAULT 0.00"
-
-# Variantes conocidas en debt_payments
-rename_column_if_exists "debt_payments" "monto"  "amount" "DECIMAL(10,2) NOT NULL"
-rename_column_if_exists "debt_payments" "valor"  "amount" "DECIMAL(10,2) NOT NULL"
-
-echo "  ✓ Migración de columnas legacy completada"
-
-# ── Fiado: tablas clients, debts, debt_payments ──
-ensure_column "clients" "name"       "VARCHAR(100) NOT NULL"                   "varchar"
-ensure_column "clients" "phone"      "VARCHAR(30) DEFAULT NULL"                "varchar"
-ensure_column "clients" "status"     "ENUM('activo','inactivo') DEFAULT 'activo'" "enum"
-ensure_column "clients" "created_at" "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"    "timestamp"
-
-ensure_column "debts" "client_id"  "INT NOT NULL"                              "int"
-ensure_column "debts" "sale_id"    "VARCHAR(36) NOT NULL"                      "varchar"
-ensure_column "debts" "total"      "DECIMAL(10,2) NOT NULL"                    "decimal"
-ensure_column "debts" "paid"       "DECIMAL(10,2) NOT NULL DEFAULT 0.00"       "decimal"
-ensure_column "debts" "status"     "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'" "enum"
-ensure_column "debts" "created_at" "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"       "timestamp"
-
-ensure_column "debt_payments" "client_id"  "INT NOT NULL"                      "int"
-ensure_column "debt_payments" "debt_id"    "INT NOT NULL"                      "int"
-ensure_column "debt_payments" "amount"     "DECIMAL(10,2) NOT NULL"            "decimal"
-ensure_column "debt_payments" "method"     "VARCHAR(30) DEFAULT 'efectivo'"    "varchar"
-ensure_column "debt_payments" "created_at" "TIMESTAMP DEFAULT CURRENT_TIMESTAMP" "timestamp"
-
-ensure_index "sales"         "idx_fiado"       "(is_fiado)"
-ensure_index "sales"         "idx_client"      "(client_id)"
-ensure_index "debts"         "idx_debt_client" "(client_id)"
-ensure_index "debts"         "idx_debt_sale"   "(sale_id)"
-ensure_index "debts"         "idx_debt_status" "(status)"
-ensure_index "debt_payments" "idx_pay_debt"    "(debt_id)"
-ensure_index "debt_payments" "idx_pay_client"  "(client_id)"
-
 echo "===== FIN SCHEMA GUARDIAN (bash) ====="
 
 echo ""
 echo "Estado final de la tabla sales:"
 mysql posdb -e "DESCRIBE sales;"
-echo ""
-echo "Estado final de la tabla debts:"
-mysql posdb -e "DESCRIBE debts;"
-echo ""
-echo "Estado final de la tabla debt_payments:"
-mysql posdb -e "DESCRIBE debt_payments;"
 echo ""
 echo "Estado final de la tabla expenses:"
 mysql posdb -e "DESCRIBE expenses;"
@@ -754,15 +593,11 @@ const REQUIRED_SCHEMA = {
       { name: "date",          def: "DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP", type: "datetime" },
       { name: "total",         def: "DECIMAL(10,2)",                               type: "decimal"  },
       { name: "paid",          def: "DECIMAL(10,2)",                               type: "decimal"  },
-      { name: "change_amount", def: "DECIMAL(10,2)",                               type: "decimal"  },
-      { name: "is_fiado",      def: "TINYINT(1) DEFAULT 0",                        type: "tinyint"  },
-      { name: "client_id",     def: "INT DEFAULT NULL",                            type: "int"      }
+      { name: "change_amount", def: "DECIMAL(10,2)",                               type: "decimal"  }
     ],
     indexes: [
-      { name: "idx_num",    def: "(num)"       },
-      { name: "idx_date",   def: "(date)"      },
-      { name: "idx_fiado",  def: "(is_fiado)"  },
-      { name: "idx_client", def: "(client_id)" }
+      { name: "idx_num",  def: "(num)"  },
+      { name: "idx_date", def: "(date)" }
     ]
   },
   sale_items: {
@@ -789,84 +624,7 @@ const REQUIRED_SCHEMA = {
       { name: "idx_exp_date", def: "(created_at)" },
       { name: "idx_exp_cat",  def: "(category)"   }
     ]
-  },
-  clients: {
-    columns: [
-      { name: "name",       def: "VARCHAR(100) NOT NULL",                  type: "varchar"   },
-      { name: "phone",      def: "VARCHAR(30) DEFAULT NULL",               type: "varchar"   },
-      { name: "status",     def: "ENUM('activo','inactivo') DEFAULT 'activo'", type: "enum" },
-      { name: "created_at", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",    type: "timestamp" }
-    ],
-    indexes: []
-  },
-  debts: {
-    columns: [
-      { name: "client_id",  def: "INT NOT NULL",                           type: "int"       },
-      { name: "sale_id",    def: "VARCHAR(36) NOT NULL",                   type: "varchar"   },
-      { name: "total",      def: "DECIMAL(10,2) NOT NULL",                 type: "decimal"   },
-      { name: "paid",       def: "DECIMAL(10,2) NOT NULL DEFAULT 0.00",    type: "decimal"   },
-      { name: "status",     def: "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'", type: "enum" },
-      { name: "created_at", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",    type: "timestamp" }
-    ],
-    indexes: [
-      { name: "idx_debt_client", def: "(client_id)" },
-      { name: "idx_debt_sale",   def: "(sale_id)"   },
-      { name: "idx_debt_status", def: "(status)"    }
-    ]
-  },
-  debt_payments: {
-    columns: [
-      { name: "client_id",  def: "INT NOT NULL",                           type: "int"       },
-      { name: "debt_id",    def: "INT NOT NULL",                           type: "int"       },
-      { name: "amount",     def: "DECIMAL(10,2) NOT NULL",                 type: "decimal"   },
-      { name: "method",     def: "VARCHAR(30) DEFAULT 'efectivo'",         type: "varchar"   },
-      { name: "created_at", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",    type: "timestamp" }
-    ],
-    indexes: [
-      { name: "idx_pay_debt",   def: "(debt_id)"   },
-      { name: "idx_pay_client", def: "(client_id)" }
-    ]
   }
-}
-
-// ── Tabla de renombrados: columnas con nombre viejo → nombre correcto ──
-const COLUMN_RENAMES = [
-  { table: "debts",         from: "monto_total",  to: "total",      def: "DECIMAL(10,2) NOT NULL"                              },
-  { table: "debts",         from: "monto_pagado", to: "paid",       def: "DECIMAL(10,2) NOT NULL DEFAULT 0.00"                 },
-  { table: "debts",         from: "estado",       to: "status",     def: "ENUM('pendiente','parcial','pagado') DEFAULT 'pendiente'" },
-  { table: "debt_payments", from: "monto",        to: "amount",     def: "DECIMAL(10,2) NOT NULL"                              },
-  { table: "debt_payments", from: "fecha",        to: "created_at", def: "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"                 },
-  { table: "clients",       from: "telefono",     to: "phone",      def: "VARCHAR(30) DEFAULT NULL"                            },
-  { table: "sales",         from: "fiado",        to: "is_fiado",   def: "TINYINT(1) DEFAULT 0"                                },
-  { table: "sales",         from: "customer_id",  to: "client_id",  def: "INT DEFAULT NULL"                                    },
-]
-
-async function applyColumnRenames(conn) {
-  const renamed = []
-  for (const r of COLUMN_RENAMES) {
-    const [[oldRow]] = await conn.query(
-      `SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME=? AND COLUMN_NAME=?`,
-      [r.table, r.from]
-    )
-    const [[newRow]] = await conn.query(
-      `SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA='posdb' AND TABLE_NAME=? AND COLUMN_NAME=?`,
-      [r.table, r.to]
-    )
-    if (oldRow.n === 1 && newRow.n === 0) {
-      try {
-        await conn.query(
-          `ALTER TABLE \`${r.table}\` CHANGE COLUMN \`${r.from}\` \`${r.to}\` ${r.def}`
-        )
-        renamed.push(`${r.table}.${r.from} → ${r.to}`)
-        logInfo("SCHEMA_RENAME", `✓ Renombrado: ${r.table}.${r.from} → ${r.to}`)
-      } catch (e) {
-        logError("SCHEMA_RENAME", `No pude renombrar ${r.table}.${r.from}: ${e.message}`)
-      }
-    }
-  }
-  return renamed
 }
 
 async function validateSchema() {
@@ -874,10 +632,6 @@ async function validateSchema() {
   const fixed  = []
   const ok     = []
   const alerts = []
-
-  // Aplicar renombrados ANTES de verificar columnas requeridas
-  const renamed = await applyColumnRenames(conn)
-  fixed.push(...renamed)
 
   for (const [table, spec] of Object.entries(REQUIRED_SCHEMA)) {
     const [existingCols] = await conn.query(
@@ -1154,15 +908,13 @@ app.get("/api/sales", auth, (req, res) => {
         if (err) { logError("GET_SALE_ITEMS", err); return res.json([]) }
 
         const result = sales.map(s => ({
-          id:        s.id,
-          num:       Number(s.num),
-          date:      s.date,
-          dateKey:   s.date,
-          total:     Number(s.total),
-          paid:      Number(s.paid),
-          change:    Number(s.change_amount),
-          is_fiado:  s.is_fiado  ? 1 : 0,
-          client_id: s.client_id ? Number(s.client_id) : null,
+          id:      s.id,
+          num:     Number(s.num),
+          date:    s.date,
+          dateKey: s.date,
+          total:   Number(s.total),
+          paid:    Number(s.paid),
+          change:  Number(s.change_amount),
           items:   items
             .filter(i => i.sale_id === s.id)
             .map(i => ({
@@ -1216,27 +968,8 @@ app.post("/api/sales", auth, async (req, res) => {
     if (sale.items.length > 100)
       throw new Error("Demasiados productos")
 
-    // ── FIADO: determinar si es venta a crédito ──────────────────────────────
-    const esFiado = sale.fiado === true
-
-    // Normalizar client_id: aceptar tanto "client_id" como "customer_id" por
-    // compatibilidad con versiones anteriores del frontend
-    const rawClientId = sale.client_id ?? sale.customer_id ?? null
-    const clientId    = esFiado ? Number(rawClientId) : null
-
-    if (esFiado) {
-      if (!rawClientId || !clientId || isNaN(clientId) || clientId <= 0)
-        throw new Error("Fiado requiere client_id: seleccioná un cliente antes de confirmar")
-      const [[clientCheck]] = await conn.query(
-        "SELECT id FROM clients WHERE id = ? AND status = 'activo'",
-        [clientId]
-      )
-      if (!clientCheck) throw new Error(`Cliente id=${clientId} no encontrado o inactivo`)
-    }
-    // ────────────────────────────────────────────────────────────────────────
-
-    const paid = esFiado ? 0 : Number(sale.paid)
-    if (!esFiado && (!paid || isNaN(paid) || paid <= 0))
+    const paid = Number(sale.paid)
+    if (!paid || isNaN(paid) || paid <= 0)
       throw new Error("Pago inválido")
 
     const saleId    = uuidv4()
@@ -1261,13 +994,13 @@ app.post("/api/sales", auth, async (req, res) => {
       validated.push({ id: item.id, name: item.name, qty: item.qty, price: realPrice, cost: realCost })
     }
 
-    totalReal = Math.round(totalReal * 100) / 100
-    if (!esFiado && paid < totalReal) throw new Error("Pago insuficiente")
-    const changeReal = esFiado ? 0 : Math.round((paid - totalReal) * 100) / 100
+    totalReal   = Math.round(totalReal * 100) / 100
+    if (paid < totalReal) throw new Error("Pago insuficiente")
+    const changeReal = Math.round((paid - totalReal) * 100) / 100
 
     const [insertResult] = await conn.query(
-      "INSERT INTO sales(id,date,total,paid,change_amount,is_fiado,client_id) VALUES(?,?,?,?,?,?,?)",
-      [saleId, saleDate, totalReal, paid, changeReal, esFiado ? 1 : 0, clientId]
+      "INSERT INTO sales(id,date,total,paid,change_amount) VALUES(?,?,?,?,?)",
+      [saleId, saleDate, totalReal, paid, changeReal]
     )
     const nextNum = insertResult.insertId
 
@@ -1284,17 +1017,8 @@ app.post("/api/sales", auth, async (req, res) => {
         throw new Error(`Fallo concurrencia en stock: ${item.name}`)
     }
 
-    // ── Si es fiado: crear deuda dentro de la misma transacción ─────────────
-    if (esFiado) {
-      await conn.query(
-        "INSERT INTO debts(client_id, sale_id, total, paid, status) VALUES(?,?,?,0,'pendiente')",
-        [clientId, saleId, totalReal]
-      )
-    }
-    // ────────────────────────────────────────────────────────────────────────
-
     await conn.commit()
-    res.json({ ok: true, id: saleId, num: nextNum, fiado: esFiado })
+    res.json({ ok: true, id: saleId, num: nextNum })
 
   } catch (err) {
     await conn.rollback()
@@ -1311,8 +1035,37 @@ app.post("/api/sales", auth, async (req, res) => {
 
 const EXP_CAT_VALID = /^[a-zA-ZáéíóúÁÉÍÓÚüÜñÑ0-9 \-_&/]+$/
 
+/* ─── HELPER: valida y normaliza fecha de gasto ─────────────────────────────
+   Acepta "YYYY-MM-DD" (desde el frontend) o null/undefined (→ ahora).
+   Devuelve { ok, value } o { ok: false, error }.
+   value = "YYYY-MM-DD 00:00:00" listo para MySQL created_at.
+   ─────────────────────────────────────────────────────────────────────────── */
+function parseExpenseDate(raw) {
+  if (!raw || String(raw).trim() === "") {
+    // Sin fecha → usar la actual como antes
+    return { ok: true, value: new Date().toLocaleString("sv-SE").replace("T", " ") }
+  }
+  const str = String(raw).trim()
+  // Solo aceptamos YYYY-MM-DD (lo que emite <input type="date">)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return { ok: false, error: "Fecha inválida — usar formato YYYY-MM-DD" }
+  }
+  // Parsear como medianoche en tiempo local del servidor
+  const d = new Date(str + "T00:00:00")
+  if (isNaN(d.getTime())) {
+    return { ok: false, error: "Fecha inválida" }
+  }
+  // No permitir fechas futuras (más allá del final del día de hoy)
+  const hoy = new Date()
+  hoy.setHours(23, 59, 59, 999)
+  if (d > hoy) {
+    return { ok: false, error: "La fecha no puede ser futura" }
+  }
+  return { ok: true, value: str + " 00:00:00" }
+}
+
 app.post("/api/expenses", auth, (req, res) => {
-  const { amount, description, category } = req.body
+  const { amount, description, category, date } = req.body
 
   const amt = Number(amount)
   if (isNaN(amt) || amt <= 0)
@@ -1334,15 +1087,22 @@ app.post("/api/expenses", auth, (req, res) => {
     ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
     : "General"
 
+  // ── Fecha: la elegida por el usuario o la actual (comportamiento previo) ──
+  const dateResult = parseExpenseDate(date)
+  if (!dateResult.ok) {
+    return res.status(400).json({ error: dateResult.error })
+  }
+  const expDate = dateResult.value
+
   db.query(
-    "INSERT INTO expenses(amount, description, category) VALUES(?,?,?)",
-    [Math.round(amt * 100) / 100, desc, cat],
+    "INSERT INTO expenses(amount, description, category, created_at) VALUES(?,?,?,?)",
+    [Math.round(amt * 100) / 100, desc, cat, expDate],
     (err) => {
       if (err) {
         logError("CREATE_EXPENSE", err)
         return res.status(500).json({ error: "Error interno" })
       }
-      logInfo("CREATE_EXPENSE", `Gasto $${amt} cat="${cat}" — "${desc}"`)
+      logInfo("CREATE_EXPENSE", `Gasto $${amt} cat="${cat}" fecha="${expDate}" — "${desc}"`)
       res.json({ ok: true })
     }
   )
@@ -1362,7 +1122,7 @@ app.get("/api/expenses", auth, (req, res) => {
 })
 
 app.put("/api/expenses/:id", auth, (req, res) => {
-  const { amount, description, category } = req.body
+  const { amount, description, category, date } = req.body
 
   const amt = Number(amount)
   if (isNaN(amt) || amt <= 0)
@@ -1384,20 +1144,32 @@ app.put("/api/expenses/:id", auth, (req, res) => {
     ? rawCat.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
     : "General"
 
-  db.query(
-    "UPDATE expenses SET amount=?, description=?, category=? WHERE id=?",
-    [Math.round(amt * 100) / 100, desc, cat, req.params.id],
-    (err, result) => {
-      if (err) {
-        logError("UPDATE_EXPENSE", err)
-        return res.status(500).json({ error: "Error interno" })
-      }
-      if (result.affectedRows === 0)
-        return res.status(404).json({ error: "No existe" })
-      logInfo("UPDATE_EXPENSE", `Actualizado id=${req.params.id} $${amt} cat="${cat}"`)
-      res.json({ ok: true })
+  // ── Fecha: si se envía, actualizar created_at también ──
+  const dateResult = parseExpenseDate(date || null)
+  if (!dateResult.ok) {
+    return res.status(400).json({ error: dateResult.error })
+  }
+
+  // Si el cliente mandó fecha explícita, actualizamos created_at.
+  // Si no mandó fecha, no tocamos created_at (conserva la original).
+  const hasDate = date && String(date).trim() !== ""
+  const sql = hasDate
+    ? "UPDATE expenses SET amount=?, description=?, category=?, created_at=? WHERE id=?"
+    : "UPDATE expenses SET amount=?, description=?, category=? WHERE id=?"
+  const params = hasDate
+    ? [Math.round(amt * 100) / 100, desc, cat, dateResult.value, req.params.id]
+    : [Math.round(amt * 100) / 100, desc, cat, req.params.id]
+
+  db.query(sql, params, (err, result) => {
+    if (err) {
+      logError("UPDATE_EXPENSE", err)
+      return res.status(500).json({ error: "Error interno" })
     }
-  )
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "No existe" })
+    logInfo("UPDATE_EXPENSE", `Actualizado id=${req.params.id} $${amt} cat="${cat}"${hasDate ? ` fecha="${dateResult.value}"` : ""}`)
+    res.json({ ok: true })
+  })
 })
 
 app.delete("/api/expenses/:id", auth, (req, res) => {
@@ -2109,245 +1881,6 @@ app.post("/api/restore", auth, async (req, res) => {
       backup_version: version,
       warnings:       allWarnings
     })
-  } finally {
-    conn.release()
-  }
-})
-
-
-/* =========================================================
-   FIADO — CLIENTES, DEUDAS, PAGOS
-   ---------------------------------------------------------
-   GET    /api/clients              → lista activa + deuda total calculada
-   POST   /api/clients              → crear cliente
-   GET    /api/clients/:id          → detalle con deudas y pagos
-   PUT    /api/clients/:id          → editar nombre/teléfono
-   POST   /api/clients/:id/payments → registrar abono (FIFO)
-   ========================================================= */
-
-function validateClientName(name) {
-  if (typeof name !== "string" || name.trim().length === 0) return "Nombre requerido"
-  if (name.trim().length > 100) return "Nombre demasiado largo (máx 100 caracteres)"
-  return null
-}
-
-// GET /api/clients
-app.get("/api/clients", auth, async (req, res) => {
-  try {
-    const [clients] = await db.promise().query(`
-      SELECT
-        c.id, c.name, c.phone, c.status, c.created_at,
-        COALESCE(SUM(CASE WHEN d.status != 'pagado' THEN (d.total - d.paid) ELSE 0 END), 0) AS deuda_total
-      FROM clients c
-      LEFT JOIN debts d ON d.client_id = c.id
-      WHERE c.status = 'activo'
-      GROUP BY c.id
-      ORDER BY c.name ASC
-    `)
-    res.json(clients.map(c => ({
-      id:          c.id,
-      name:        c.name,
-      phone:       c.phone   || null,
-      status:      c.status,
-      created_at:  c.created_at,
-      deuda_total: Math.round(Number(c.deuda_total) * 100) / 100
-    })))
-  } catch (err) {
-    logError("GET_CLIENTS", err)
-    res.status(500).json([])
-  }
-})
-
-// POST /api/clients
-app.post("/api/clients", auth, async (req, res) => {
-  const { name, phone } = req.body
-  const nameErr = validateClientName(name)
-  if (nameErr) return res.status(400).json({ error: nameErr })
-  const cleanPhone = typeof phone === "string" ? phone.trim().slice(0, 30) : null
-  const cleanName  = name.trim().slice(0, 100)
-  try {
-    // Verificar duplicado exacto (case-insensitive) — evita doble registro accidental
-    const [[existing]] = await db.promise().query(
-      "SELECT id FROM clients WHERE LOWER(name) = LOWER(?) AND status = 'activo'",
-      [cleanName]
-    )
-    if (existing) {
-      return res.status(409).json({ error: `Ya existe un cliente activo llamado "${cleanName}"`, duplicate: true, existing_id: existing.id })
-    }
-
-    const [result] = await db.promise().query(
-      "INSERT INTO clients(name, phone) VALUES(?, ?)",
-      [cleanName, cleanPhone || null]
-    )
-    const [[client]] = await db.promise().query(
-      "SELECT id, name, phone, status, created_at FROM clients WHERE id = ?",
-      [result.insertId]
-    )
-    logInfo("CREATE_CLIENT", `"${client.name}" id=${client.id}`)
-    res.json({ ok: true, client })
-  } catch (err) {
-    logError("CREATE_CLIENT", err)
-    res.status(500).json({ error: "Error interno" })
-  }
-})
-
-// GET /api/clients/:id — detalle con deudas y pagos
-app.get("/api/clients/:id", auth, async (req, res) => {
-  try {
-    const [[client]] = await db.promise().query(
-      "SELECT * FROM clients WHERE id = ?", [req.params.id]
-    )
-    if (!client) return res.status(404).json({ error: "Cliente no encontrado" })
-
-    const [debts] = await db.promise().query(`
-      SELECT d.id, d.sale_id, d.total, d.paid, d.status, d.created_at,
-             s.date AS sale_date
-      FROM debts d
-      LEFT JOIN sales s ON s.id = d.sale_id
-      WHERE d.client_id = ?
-      ORDER BY d.created_at DESC
-    `, [req.params.id])
-
-    let payments = []
-    if (debts.length > 0) {
-      const debtIds = debts.map(d => d.id)
-      const [rows] = await db.promise().query(
-        "SELECT * FROM debt_payments WHERE debt_id IN (?) ORDER BY created_at ASC",
-        [debtIds]
-      )
-      payments = rows
-    }
-
-    const deudaTotal = debts
-      .filter(d => d.status !== "pagado")
-      .reduce((a, d) => a + (Number(d.total) - Number(d.paid)), 0)
-
-    res.json({
-      id:          client.id,
-      name:        client.name,
-      phone:       client.phone,
-      status:      client.status,
-      created_at:  client.created_at,
-      deuda_total: Math.round(deudaTotal * 100) / 100,
-      debts: debts.map(d => ({
-        id:         d.id,
-        sale_id:    d.sale_id,
-        sale_date:  d.sale_date,
-        total:      Math.round(Number(d.total)  * 100) / 100,
-        paid:       Math.round(Number(d.paid)   * 100) / 100,
-        pendiente:  Math.round((Number(d.total) - Number(d.paid)) * 100) / 100,
-        status:     d.status,
-        created_at: d.created_at,
-        payments: payments
-          .filter(p => p.debt_id === d.id)
-          .map(p => ({
-            id:         p.id,
-            amount:     Math.round(Number(p.amount) * 100) / 100,
-            method:     p.method,
-            created_at: p.created_at
-          }))
-      }))
-    })
-  } catch (err) {
-    logError("GET_CLIENT_DETAIL", err)
-    res.status(500).json({ error: "Error interno" })
-  }
-})
-
-// PUT /api/clients/:id — editar nombre/teléfono
-app.put("/api/clients/:id", auth, async (req, res) => {
-  const { name, phone } = req.body
-  const nameErr = validateClientName(name)
-  if (nameErr) return res.status(400).json({ error: nameErr })
-  const cleanPhone = typeof phone === "string" ? phone.trim().slice(0, 30) : null
-  try {
-    const [result] = await db.promise().query(
-      "UPDATE clients SET name = ?, phone = ? WHERE id = ? AND status = 'activo'",
-      [name.trim().slice(0, 100), cleanPhone || null, req.params.id]
-    )
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Cliente no encontrado" })
-    logInfo("UPDATE_CLIENT", `id=${req.params.id} name="${name.trim()}"`)
-    res.json({ ok: true })
-  } catch (err) {
-    logError("UPDATE_CLIENT", err)
-    res.status(500).json({ error: "Error interno" })
-  }
-})
-
-// POST /api/clients/:id/payments — registrar abono FIFO
-app.post("/api/clients/:id/payments", auth, async (req, res) => {
-  const { monto } = req.body
-  const clientId  = Number(req.params.id)
-
-  const amount = Math.round(Number(monto) * 100) / 100
-  if (isNaN(amount) || amount <= 0) return res.status(400).json({ error: "Monto inválido" })
-  if (amount > 999999)              return res.status(400).json({ error: "Monto demasiado alto" })
-
-  const conn = await db.promise().getConnection()
-  try {
-    await conn.beginTransaction()
-
-    const [[client]] = await conn.query(
-      "SELECT id, name FROM clients WHERE id = ? AND status = 'activo' FOR UPDATE",
-      [clientId]
-    )
-    if (!client) throw new Error("Cliente no encontrado o inactivo")
-
-    // Deudas pendientes FIFO (más antiguas primero)
-    const [pendingDebts] = await conn.query(`
-      SELECT * FROM debts
-      WHERE client_id = ? AND status != 'pagado'
-      ORDER BY created_at ASC
-      FOR UPDATE
-    `, [clientId])
-
-    if (pendingDebts.length === 0) throw new Error("El cliente no tiene deudas pendientes")
-
-    const totalPendiente = Math.round(
-      pendingDebts.reduce((a, d) => a + (Number(d.total) - Number(d.paid)), 0) * 100
-    ) / 100
-
-    if (amount > totalPendiente)
-      throw new Error(`El pago ($${amount.toFixed(2)}) supera la deuda total ($${totalPendiente.toFixed(2)})`)
-
-    let restante = amount
-
-    for (const deuda of pendingDebts) {
-      if (restante <= 0) break
-
-      const pendienteDeuda = Math.round((Number(deuda.total) - Number(deuda.paid)) * 100) / 100
-      const abono          = Math.min(restante, pendienteDeuda)
-      const nuevoPagado    = Math.round((Number(deuda.paid) + abono) * 100) / 100
-      const nuevoEstado    = nuevoPagado >= Number(deuda.total) ? "pagado" : "parcial"
-
-      await conn.query(
-        "UPDATE debts SET paid = ?, status = ? WHERE id = ?",
-        [nuevoPagado, nuevoEstado, deuda.id]
-      )
-      await conn.query(
-        "INSERT INTO debt_payments(client_id, debt_id, amount, method) VALUES(?,?,?,'efectivo')",
-        [clientId, deuda.id, abono]
-      )
-
-      restante = Math.round((restante - abono) * 100) / 100
-    }
-
-    await conn.commit()
-
-    // Deuda actualizada
-    const [[deudaRow]] = await db.promise().query(`
-      SELECT COALESCE(SUM(total - paid), 0) AS deuda_total
-      FROM debts WHERE client_id = ? AND status != 'pagado'
-    `, [clientId])
-
-    const nuevaDeuda = Math.round(Number(deudaRow.deuda_total) * 100) / 100
-    logInfo("PAYMENT", `Pago $${amount} → "${client.name}" — saldo: $${nuevaDeuda}`)
-    res.json({ ok: true, deuda_total: nuevaDeuda })
-
-  } catch (err) {
-    await conn.rollback()
-    logError("PAYMENT", err)
-    res.status(400).json({ error: err.message })
   } finally {
     conn.release()
   }
