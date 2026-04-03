@@ -843,13 +843,12 @@ z-index: 1;
     <span style="font-weight:700; font-size:18px; color:#fff;">POS <span style="color:var(--accent);">PRO</span></span>
   </div>
   <nav style="padding:12px; flex:1; display:flex; flex-direction:column; gap:4px;">
-    <button class="nav-btn active" id="nav-pos" onclick="show('pos')"><span class="icon">🛒</span>Caja</button>
+    <button class="nav-btn" id="nav-pos" onclick="show('pos')"><span class="icon">🛒</span>Caja</button>
     <button class="nav-btn" id="nav-inventory" onclick="show('inventory')"><span class="icon">📦</span>Inventario</button>
     <button class="nav-btn" id="nav-sales" onclick="show('sales')"><span class="icon">📋</span>Ventas</button>
     <button class="nav-btn" id="nav-stats" onclick="show('stats')"><span class="icon">📊</span>Estadísticas</button>
     <div class="nav-divider"></div>
     <button class="nav-btn" id="nav-expenses" onclick="show('expenses')"><span class="icon">💸</span>Gastos</button>
-    <button class="nav-btn" id="nav-clients" onclick="show('clients')"><span class="icon">📒</span>Fiado</button>
   </nav>
   <button class="nav-btn" onclick="backupPOS()">
     <span class="icon">💾</span>Backup
@@ -959,6 +958,11 @@ z-index: 1;
       <div>
         <label class="modal-label">Descripción</label>
         <input id="e-desc" class="input" placeholder="Ej: Pago de luz">
+      </div>
+      <div>
+        <label class="modal-label">Fecha del gasto</label>
+        <input id="e-date" class="input" type="date" style="font-family:'Sora',sans-serif;">
+        <div style="font-size:11px; color:#94a3b8; margin-top:4px; font-weight:600;">Dejá en blanco o seleccioná hoy si es un gasto de ahora</div>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div>
@@ -1106,121 +1110,8 @@ z-index: 1;
 </div>
 </div>
 
-
-<!-- ── MODAL CREAR CLIENTE RÁPIDO ────────────────────────── -->
-<div id="clienteRapidoModal" style="
-  display:none; position:fixed; inset:0;
-  background:rgba(0,0,0,.5); z-index:200;
-  align-items:center; justify-content:center; padding:16px;
-">
-  <div style="
-    background:#fff; border-radius:20px; padding:24px;
-    width:100%; max-width:380px;
-    box-shadow:0 20px 60px rgba(0,0,0,.25);
-    animation:slideUp .25s ease;
-  ">
-    <h3 style="font-size:16px; font-weight:700; margin-bottom:18px; color:#0f172a;">
-      👤 Nuevo Cliente
-    </h3>
-    <div style="display:flex; flex-direction:column; gap:12px;">
-      <div>
-        <label class="modal-label">Nombre *</label>
-        <input id="crNombre" class="input" placeholder="Ej: Carlos García">
-      </div>
-      <div>
-        <label class="modal-label">Teléfono (opcional)</label>
-        <input id="crTelefono" class="input" placeholder="Ej: 7777-1234">
-      </div>
-    </div>
-    <div id="crError" style="
-      display:none; background:#fef2f2; border:2px solid #fca5a5;
-      border-radius:8px; padding:8px 12px; margin-top:12px;
-      font-size:12px; font-weight:700; color:#dc2626;
-    "></div>
-    <div style="display:flex; gap:10px; margin-top:16px;">
-      <button class="btn-ghost" onclick="cerrarClienteRapido()" style="flex:1;">Cancelar</button>
-      <button id="crGuardarBtn" class="btn-primary" onclick="guardarClienteRapido()" style="flex:2;">Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── MODAL DETALLE CLIENTE ─────────────────────────────── -->
-<div id="clienteDetailModal" style="
-  display:none; position:fixed; inset:0;
-  background:rgba(0,0,0,.5); z-index:200;
-  align-items:flex-start; justify-content:center;
-  padding:16px; overflow-y:auto;
-">
-  <div style="
-    background:#fff; border-radius:20px; padding:24px;
-    width:100%; max-width:480px; margin:auto;
-    box-shadow:0 20px 60px rgba(0,0,0,.25);
-    animation:slideUp .25s ease;
-  ">
-    <!-- Header cliente -->
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; gap:10px;">
-      <div style="flex:1; min-width:0;">
-        <h3 id="cdNombre" style="font-size:18px; font-weight:700; color:#0f172a; margin:0 0 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></h3>
-        <div id="cdTelefono" style="font-size:12px; color:#64748b; font-weight:600;"></div>
-      </div>
-      <div style="text-align:right; flex-shrink:0;">
-        <div style="font-size:11px; font-weight:700; color:#dc2626; letter-spacing:0.5px; margin-bottom:2px;">DEBE</div>
-        <div id="cdDeudaTotal" style="font-family:'JetBrains Mono',monospace; font-size:26px; font-weight:700; color:#dc2626;">$0.00</div>
-      </div>
-    </div>
-
-    <!-- Lista de deudas -->
-    <div id="cdDeudasList" style="max-height:320px; overflow-y:auto;"></div>
-
-    <!-- Botones -->
-    <div style="display:flex; gap:10px; margin-top:16px;">
-      <button class="btn-ghost" onclick="cerrarClienteDetail()" style="flex:1;">Cerrar</button>
-      <button id="cdPagarBtn" class="btn-primary" onclick="abrirPagoModal()"
-        style="flex:2; background:#22c55e; display:none;">
-        💵 Registrar Pago
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- ── MODAL REGISTRAR PAGO ──────────────────────────────── -->
-<div id="pagoModal" style="
-  display:none; position:fixed; inset:0;
-  background:rgba(0,0,0,.5); z-index:210;
-  align-items:center; justify-content:center; padding:16px;
-">
-  <div style="
-    background:#fff; border-radius:20px; padding:24px;
-    width:100%; max-width:360px;
-    box-shadow:0 20px 60px rgba(0,0,0,.25);
-    animation:slideUp .25s ease;
-  ">
-    <h3 style="font-size:16px; font-weight:700; margin-bottom:6px; color:#0f172a;">💵 Registrar Pago</h3>
-    <div id="pagoClienteNombre" style="font-size:13px; color:#64748b; font-weight:600; margin-bottom:16px;"></div>
-    <label class="modal-label">Monto a pagar</label>
-    <input id="pagoMonto" class="input" type="number" min="0.01" step="0.01"
-      placeholder="0.00" style="margin-bottom:6px;">
-    <div id="pagoDeudaRef" style="font-size:11px; color:#94a3b8; font-weight:600; margin-bottom:8px;"></div>
-    <button id="pagoMaxBtn" onclick="usarDeudaCompleta()" style="
-      font-size:11px; font-weight:700; color:#3b82f6; background:none;
-      border:none; cursor:pointer; padding:0; margin-bottom:12px;
-      font-family:'Sora',sans-serif;
-    ">→ Pagar deuda completa</button>
-    <div id="pagoError" style="
-      display:none; background:#fef2f2; border:2px solid #fca5a5;
-      border-radius:8px; padding:8px 12px; margin-bottom:12px;
-      font-size:12px; font-weight:700; color:#dc2626;
-    "></div>
-    <div style="display:flex; gap:10px;">
-      <button class="btn-ghost" onclick="cerrarPagoModal()" style="flex:1;">Cancelar</button>
-      <button id="pagoConfirmarBtn" class="btn-primary" onclick="confirmarPago()"
-        style="flex:2; background:#22c55e;">Confirmar</button>
-    </div>
-  </div>
-</div>
-
 <!-- ========== CAJA ========== -->
-<section id="pos">
+<section id="pos" class="hidden">
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <span class="sec-title">🛒 Productos</span>
@@ -1270,52 +1161,6 @@ z-index: 1;
       <button id="confirmSaleBtn" onclick="confirmSale()" class="btn-confirm">
         ✅ Confirmar Venta
       </button>
-
-      <!-- ── FIADO ─────────────────────────────────── -->
-      <button id="fiadoToggleBtn" onclick="toggleFiado()" style="
-        width:100%; margin-top:8px; padding:10px 14px;
-        border:2px solid #e2e8f0; border-radius:10px;
-        background:#fff; font-weight:700; font-size:13px;
-        cursor:pointer; color:#475569;
-        font-family:'Sora',sans-serif; transition:all .2s;
-      ">📒 Cobrar luego (Fiado)</button>
-
-      <div id="fiadoClienteBox" style="display:none; margin-top:10px;
-        background:#fefce8; border:2px solid #fde047;
-        border-radius:12px; padding:12px;">
-        <div style="font-size:12px; font-weight:700; color:#92400e; margin-bottom:8px;">
-          👤 ¿A nombre de quién?
-        </div>
-        <div style="position:relative;">
-          <input id="fiadoClienteSearch" class="input"
-            placeholder="Buscar cliente por nombre..."
-            style="background:#fff;"
-            oninput="buscarClienteFiado(this.value)"
-            autocomplete="off">
-          <div id="fiadoClienteSugg" style="
-            position:absolute; top:44px; left:0; right:0;
-            background:#fff; border:2px solid #e2e8f0;
-            border-radius:10px; display:none;
-            max-height:180px; overflow:auto; z-index:50;
-            box-shadow:0 4px 16px rgba(0,0,0,.10);
-          "></div>
-        </div>
-        <div id="fiadoClienteSelected" style="
-          display:none; margin-top:8px; padding:8px 12px;
-          background:#fff; border:2px solid #22c55e;
-          border-radius:8px; font-size:13px;
-          font-weight:700; color:#15803d;
-        "></div>
-        <button onclick="abrirClienteRapido()" style="
-          width:100%; margin-top:8px; padding:8px;
-          border:2px dashed #d97706; border-radius:8px;
-          background:transparent; color:#d97706;
-          font-size:12px; font-weight:700; cursor:pointer;
-          font-family:'Sora',sans-serif;
-        ">+ Crear cliente nuevo</button>
-      </div>
-      <!-- ── /FIADO ─────────────────────────────────── -->
-
     </div>
   </div>
 </section>
@@ -1491,34 +1336,29 @@ z-index: 1;
 
 </section>
 
-<!-- ========== FIADO / CLIENTES ========== -->
-<section id="clients" class="hidden">
-
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-    <span class="sec-title">📒 Fiado</span>
-    <button onclick="abrirClienteRapido(true)" class="btn-primary"
-      style="width:auto; padding:10px 18px;">+ Nuevo cliente</button>
-  </div>
-
-  <!-- Resumen global -->
-  <div id="clientesSummaryBar" style="
-    display:grid; grid-template-columns:1fr 1fr;
-    gap:10px; margin-bottom:16px;
-  "></div>
-
-  <!-- Buscador -->
-  <input id="searchClients" class="input"
-    placeholder="🔎 Buscar cliente..."
-    style="margin-bottom:14px;"
-    oninput="renderClientes()">
-
-  <!-- Lista -->
-  <div id="clientesList"></div>
-
-</section>
-
-
 </div><!-- /.main-layout -->
+
+<!-- =====================================================================
+     INICIALIZACIÓN SÍNCRONA DE SECCIÓN
+     Se ejecuta en el mismo tick del parser, antes de cualquier llamada
+     async. Lee el hash y revela la sección correcta de inmediato, de
+     modo que nunca se pinta el default antes de la sección real.
+     ===================================================================== -->
+<script>
+(function () {
+  var VALID = new Set(["pos", "inventory", "sales", "stats", "expenses"])
+  var id = location.hash.replace("#", "") || localStorage.getItem("lastSection") || "pos"
+  if (!VALID.has(id)) id = "pos"
+
+  // Mostrar sección correcta
+  var target = document.getElementById(id)
+  if (target) target.classList.remove("hidden")
+
+  // Activar botón de nav correcto
+  var nav = document.getElementById("nav-" + id)
+  if (nav) nav.classList.add("active")
+})()
+</script>
 
 <script>
 
@@ -1528,7 +1368,6 @@ const state = {
   cart: [],
   sales: [],
   expenses: [],
-  clients: [],           // ← lista de clientes activos con deuda_total
   summary: null,         // ← datos de /api/summary: { ventas, costos, gastos, gananciaReal, expByCat, filter }
   statsOperational: null, // ← datos de /api/stats: panel operativo
   statsDaily: null        // ← datos de /api/stats/daily: gráficas + predicción
@@ -1540,13 +1379,6 @@ let syncing = false
 let loadingProducts = false
 let lastSyncTime = null
 let savingExpense = false   // ← bloquea doble submit en gastos
-
-// ── FIADO ──
-let fiadoActivo       = false          // toggle activo/inactivo
-let clienteSeleccionado = null         // { id, name } del cliente elegido en carrito
-let clienteDetailId   = null           // id del cliente abierto en detalle
-let savingPago        = false          // bloquea doble submit en pagos
-let clienteRapidoDesdeClientes = false // flag para saber de dónde se abre
 
 const dirty = {
   products: false,
@@ -2051,6 +1883,8 @@ function openExpenseModal(){
   document.getElementById("e-desc").value = ""
   document.getElementById("e-amount").value = ""
   document.getElementById("e-cat").value = ""
+  // Fecha por defecto: hoy (en zona horaria local del dispositivo)
+  document.getElementById("e-date").value = new Date().toLocaleDateString("sv-SE")
   clearExpenseError()
   document.getElementById("expenseModal").classList.add("show")
   setTimeout(() => document.getElementById("e-desc").focus(), 100)
@@ -2065,6 +1899,17 @@ function openEditExpenseModal(id){
   document.getElementById("e-desc").value = e.description || ""
   document.getElementById("e-amount").value = e.amount
   document.getElementById("e-cat").value = e.category || ""
+  // Cargar la fecha real del gasto (para poder corregirla si es necesario)
+  if(e.created_at){
+    const d = new Date(e.created_at)
+    if(!isNaN(d.getTime())){
+      document.getElementById("e-date").value = d.toLocaleDateString("sv-SE")
+    } else {
+      document.getElementById("e-date").value = ""
+    }
+  } else {
+    document.getElementById("e-date").value = ""
+  }
   clearExpenseError()
   document.getElementById("expenseModal").classList.add("show")
   setTimeout(() => document.getElementById("e-amount").focus(), 100)
@@ -2110,7 +1955,11 @@ async function saveExpense(){
     return
   }
 
+  // ── Fecha del gasto: se envía al backend para que la use como created_at ──
+  // Si el usuario no seleccionó nada (campo vacío), el backend usa la fecha actual.
+  const dateVal = (document.getElementById("e-date")?.value || "").trim()
   const payload = { description, amount, category: category || "General" }
+  if(dateVal) payload.date = dateVal
 
   const btn = document.getElementById("saveExpenseBtn")
   const original = btn.textContent
@@ -2342,19 +2191,21 @@ function closeSidebar() {
 }
 
 // =========== SHOW ===========
-async function show(id) {
+// Secciones válidas — cualquier hash fuera de esta lista cae a "pos"
+const VALID_SECTIONS = new Set(["pos", "inventory", "sales", "stats", "expenses"])
 
-  // Si la sección no existe, volver a pos
-  if(!document.getElementById(id)) id = "pos"
+// Lógica pura de activación (sin tocar el hash). Llamada por show() y hashchange.
+async function _activateSection(id) {
+  if(!VALID_SECTIONS.has(id)) id = "pos"
+
+  // Persistir para restaurar si el usuario vuelve desde URL base (sin hash)
+  localStorage.setItem("lastSection", id)
 
   document.querySelectorAll("section").forEach(s => s.classList.add("hidden"))
-  document.getElementById(id).classList.remove("hidden")
+  document.getElementById(id)?.classList.remove("hidden")
 
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"))
   document.getElementById("nav-" + id)?.classList.add("active")
-
-  // Persistir sección activa para restaurar al recargar
-  localStorage.setItem("activeSection", id)
 
   closeSidebar()
 
@@ -2387,12 +2238,24 @@ async function show(id) {
   if(id === "expenses"){
     await loadExpenses()
   }
-
-  if(id === "clients"){
-    await loadClients()
-  }
-
 }
+
+// Punto de entrada público: actualiza el hash (dispara hashchange → _activateSection)
+function show(id) {
+  if(!VALID_SECTIONS.has(id)) id = "pos"
+  if(location.hash !== "#" + id){
+    location.hash = id
+  } else {
+    // Hash ya es el mismo (p.ej. clic repetido): activar directo sin loop
+    _activateSection(id)
+  }
+}
+
+// Router: reacciona a cambios de hash (navegación y botón Back/Forward del browser)
+window.addEventListener("hashchange", () => {
+  const id = location.hash.replace("#", "") || "pos"
+  _activateSection(id)
+})
 
 // =========== TOGGLE CATEGORIES ===========
 function toggleCategories() {
@@ -2543,20 +2406,12 @@ function changeQty(id, delta) {
 }
 
 function calculateChange() {
-  const paid  = Number(document.getElementById("paid").value) || 0
+  const paid = Number(document.getElementById("paid").value) || 0
   const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
   const change = Math.max(paid - total, 0)
   document.getElementById("change").textContent = `$${change.toFixed(2)}`
 
   const btn = document.querySelector("#confirmSaleBtn")
-
-  // Si fiado activo con cliente seleccionado: el botón se habilita sin importar el pago
-  if (fiadoActivo && clienteSeleccionado && total > 0) {
-    btn.disabled = false
-    btn.style.opacity = "1"
-    btn.style.cursor = "pointer"
-    return
-  }
 
   if (paid < total || total === 0) {
     btn.disabled = true
@@ -2620,19 +2475,11 @@ async function confirmSale() {
   }
 
   const total = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
-  const paid  = Number(document.getElementById("paid").value) || 0
+  const paid = Number(document.getElementById("paid").value) || 0
 
-  // ── validaciones dependiendo del modo ──
-  if (fiadoActivo) {
-    if (!clienteSeleccionado) {
-      showToast("❌ Seleccioná un cliente para el fiado")
-      return
-    }
-  } else {
-    if (paid < total) {
-      showToast("❌ Pago insuficiente")
-      return
-    }
+  if (paid < total) {
+    showToast("❌ Pago insuficiente")
+    return
   }
 
   const btn = document.getElementById("confirmSaleBtn")
@@ -2644,21 +2491,18 @@ async function confirmSale() {
 
   try {
 
-    const esFiado    = fiadoActivo && clienteSeleccionado !== null
     const finalTotal = state.cart.reduce((a, item) => a + item.price * item.qty, 0)
     const now        = new Date()
 
     const sale = {
-      id:        null,
-      num:       null,
-      date:      now.toISOString(),
-      dateKey:   now.getDate() + "/" + (now.getMonth()+1),
-      items:     JSON.parse(JSON.stringify(state.cart)),
-      total:     finalTotal,
-      paid:      esFiado ? 0 : paid,
-      change:    esFiado ? 0 : paid - finalTotal,
-      fiado:     esFiado,
-      client_id: esFiado ? clienteSeleccionado.id : undefined
+      id:      null,
+      num:     null,
+      date:    now.toISOString(),
+      dateKey: now.getDate() + "/" + (now.getMonth()+1),
+      items:   JSON.parse(JSON.stringify(state.cart)),
+      total:   finalTotal,
+      paid,
+      change:  paid - finalTotal
     }
 
     const data = await api("/api/sales",{
@@ -2684,27 +2528,7 @@ async function confirmSale() {
     flushRender()
 
     showSaleSummary(sale)
-    if(esFiado){
-      const nombreCliente = clienteSeleccionado.name
-      showToast(`📒 Fiado registrado para ${nombreCliente}`, "ok")
-      // Resetear estado fiado en memoria y localStorage
-      fiadoActivo = false
-      clienteSeleccionado = null
-      localStorage.removeItem("fiadoActivo")
-      localStorage.removeItem("clienteSeleccionado")
-      document.getElementById("fiadoClienteSearch").value = ""
-      document.getElementById("fiadoClienteSelected").style.display = "none"
-      document.getElementById("fiadoClienteBox").style.display = "none"
-      const ftb = document.getElementById("fiadoToggleBtn")
-      if(ftb){
-        ftb.textContent = "📒 Cobrar luego (Fiado)"
-        ftb.style.background = ""
-        ftb.style.borderColor = ""
-        ftb.style.color = ""
-      }
-    } else {
-      showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`, "ok")
-    }
+    showToast(`✅ Venta ${saleNumLabel(sale.num)} realizada`, "ok")
 
   } catch (err) {
 
@@ -3860,524 +3684,14 @@ if (dateEl) {
   })
 }
 
-
-// =========================================================
-// FIADO — CLIENTES, DEUDAS, PAGOS
-// =========================================================
-
-// ── Cargar lista de clientes ──────────────────────────────
-async function loadClients(){
-  try {
-    state.clients = await api("/api/clients") || []
-  } catch(err) {
-    state.clients = []
-    console.error("Error cargando clientes:", err)
-  }
-  renderClientes()
-}
-
-// ── Render lista de clientes ──────────────────────────────
-function renderClientes(){
-  const container = document.getElementById("clientesList")
-  if(!container) return
-
-  const search = (document.getElementById("searchClients")?.value || "").toLowerCase().trim()
-  const lista  = state.clients.filter(c =>
-    c.name.toLowerCase().includes(search) ||
-    (c.phone || "").toLowerCase().includes(search)
-  )
-
-  // Summary bar
-  const bar = document.getElementById("clientesSummaryBar")
-  if(bar){
-    const totalDeuda     = state.clients.reduce((a, c) => a + Number(c.deuda_total), 0)
-    const conDeuda       = state.clients.filter(c => Number(c.deuda_total) > 0).length
-    bar.innerHTML = `
-      <div class="stat-card" style="background:#fef2f2;">
-        <div style="font-size:11px; color:#dc2626; font-weight:700; letter-spacing:0.5px;">TOTAL POR COBRAR</div>
-        <div class="stat-value" style="color:#991b1b;">$${totalDeuda.toFixed(2)}</div>
-      </div>
-      <div class="stat-card" style="background:#fff7ed;">
-        <div style="font-size:11px; color:#c2410c; font-weight:700; letter-spacing:0.5px;">CON DEUDA</div>
-        <div class="stat-value" style="color:#9a3412;">${conDeuda} cliente${conDeuda !== 1 ? "s" : ""}</div>
-      </div>
-    `
-  }
-
-  container.innerHTML = ""
-
-  if(lista.length === 0){
-    container.innerHTML = `
-      <div style="text-align:center; padding:48px 0; color:#94a3b8;">
-        <div style="font-size:36px; margin-bottom:12px;">📒</div>
-        <div style="font-size:14px; font-weight:600;">${search ? "Sin resultados" : "No hay clientes registrados"}</div>
-        <div style="font-size:12px; margin-top:4px;">Presioná "+ Nuevo cliente" para agregar uno</div>
-      </div>
-    `
-    return
-  }
-
-  lista.forEach(c => {
-    const deuda = Number(c.deuda_total)
-    const card  = document.createElement("div")
-    card.style.cssText = `
-      background:#fff; border:2px solid ${deuda > 0 ? "#fca5a5" : "#e2e8f0"};
-      border-radius:14px; padding:16px; margin-bottom:12px;
-      transition:border-color .2s, box-shadow .2s; cursor:pointer;
-    `
-    card.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-        <div style="flex:1; min-width:0;">
-          <div style="font-weight:700; font-size:16px; color:#0f172a;
-            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${c.name}</div>
-          ${c.phone ? `<div style="font-size:12px; color:#94a3b8; font-weight:600; margin-top:2px;">📱 ${c.phone}</div>` : ""}
-        </div>
-        <div style="text-align:right; flex-shrink:0;">
-          ${deuda > 0
-            ? `<div style="font-size:10px; font-weight:700; color:#dc2626; letter-spacing:0.5px; margin-bottom:2px;">DEBE</div>
-               <div style="font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; color:#dc2626;">$${deuda.toFixed(2)}</div>`
-            : `<div style="font-size:12px; font-weight:700; color:#22c55e;">✅ Al día</div>`
-          }
-        </div>
-      </div>
-      <button style="
-        width:100%; margin-top:10px; padding:8px;
-        background:${deuda > 0 ? "#fef2f2" : "#f0fdf4"};
-        border:2px solid ${deuda > 0 ? "#fca5a5" : "#86efac"};
-        border-radius:8px; font-size:13px; font-weight:700;
-        color:${deuda > 0 ? "#dc2626" : "#15803d"}; cursor:pointer;
-        font-family:'Sora',sans-serif;
-      " onclick="abrirClienteDetail(${c.id})">
-        ${deuda > 0 ? "📋 Ver deudas y pagar" : "📋 Ver historial"}
-      </button>
-    `
-    card.addEventListener("mouseenter", () => { card.style.boxShadow = "0 4px 16px rgba(0,0,0,.08)" })
-    card.addEventListener("mouseleave", () => { card.style.boxShadow = "" })
-    container.appendChild(card)
-  })
-}
-
-// ── Toggle fiado en carrito ───────────────────────────────
-function toggleFiado(){
-  fiadoActivo = !fiadoActivo
-  const btn = document.getElementById("fiadoToggleBtn")
-  const box = document.getElementById("fiadoClienteBox")
-
-  if(fiadoActivo){
-    btn.textContent = "✅ Fiado activado — click para cancelar"
-    btn.style.background = "#fefce8"
-    btn.style.borderColor = "#f59e0b"
-    btn.style.color = "#92400e"
-    box.style.display = "block"
-  } else {
-    btn.textContent = "📒 Cobrar luego (Fiado)"
-    btn.style.background = ""
-    btn.style.borderColor = ""
-    btn.style.color = ""
-    box.style.display = "none"
-    // Limpiar selección
-    clienteSeleccionado = null
-    document.getElementById("fiadoClienteSearch").value = ""
-    const sel = document.getElementById("fiadoClienteSelected")
-    if(sel) sel.style.display = "none"
-    const sugg = document.getElementById("fiadoClienteSugg")
-    if(sugg){ sugg.style.display = "none"; sugg.innerHTML = "" }
-  }
-  // Persistir estado fiado
-  saveFiadoState()
-  calculateChange()
-}
-
-// ── Búsqueda de cliente en el carrito ────────────────────
-function buscarClienteFiado(query){
-  const sugg = document.getElementById("fiadoClienteSugg")
-  if(!sugg) return
-
-  const q = query.toLowerCase().trim()
-  if(!q){ sugg.style.display = "none"; sugg.innerHTML = ""; return }
-
-  const results = state.clients
-    .filter(c => c.name.toLowerCase().includes(q) || (c.phone||"").includes(q))
-    .slice(0, 6)
-
-  if(results.length === 0){
-    sugg.innerHTML = `<div style="padding:10px 12px; font-size:13px; color:#94a3b8; font-weight:600;">Sin resultados</div>`
-    sugg.style.display = "block"
-    return
-  }
-
-  sugg.innerHTML = ""
-  results.forEach(c => {
-    const row = document.createElement("div")
-    row.style.cssText = "padding:10px 12px; cursor:pointer; border-bottom:1px solid #f1f5f9; font-size:13px;"
-    row.innerHTML = `
-      <span style="font-weight:700; color:#0f172a;">${c.name}</span>
-      ${c.phone ? `<span style="color:#94a3b8; margin-left:6px; font-size:11px;">📱 ${c.phone}</span>` : ""}
-      ${Number(c.deuda_total) > 0 ? `<span style="color:#dc2626; font-weight:700; margin-left:6px; font-size:11px;">Debe $${Number(c.deuda_total).toFixed(2)}</span>` : ""}
-    `
-    row.addEventListener("mouseenter", () => { row.style.background = "#f8fafc" })
-    row.addEventListener("mouseleave", () => { row.style.background = "" })
-    row.onclick = () => { seleccionarClienteFiado(c) }
-    sugg.appendChild(row)
-  })
-  sugg.style.display = "block"
-}
-
-function seleccionarClienteFiado(c){
-  clienteSeleccionado = { id: c.id, name: c.name }
-  const search = document.getElementById("fiadoClienteSearch")
-  const sel    = document.getElementById("fiadoClienteSelected")
-  const sugg   = document.getElementById("fiadoClienteSugg")
-  if(search) search.value = ""
-  if(sugg){ sugg.style.display = "none"; sugg.innerHTML = "" }
-  if(sel){
-    sel.textContent = `✓ ${c.name}`
-    sel.style.display = "block"
-  }
-  // Persistir cliente seleccionado
-  saveFiadoState()
-  calculateChange()
-}
-
-// ── Crear cliente rápido ──────────────────────────────────
-function abrirClienteRapido(desdeClientes = false){
-  clienteRapidoDesdeClientes = desdeClientes
-  document.getElementById("crNombre").value = ""
-  document.getElementById("crTelefono").value = ""
-  const err = document.getElementById("crError")
-  if(err){ err.style.display = "none"; err.textContent = "" }
-  const modal = document.getElementById("clienteRapidoModal")
-  modal.style.display = "flex"
-  setTimeout(() => document.getElementById("crNombre").focus(), 100)
-}
-
-function cerrarClienteRapido(){
-  document.getElementById("clienteRapidoModal").style.display = "none"
-}
-
-async function guardarClienteRapido(){
-  const nombre   = document.getElementById("crNombre").value.trim()
-  const telefono = document.getElementById("crTelefono").value.trim()
-  const errEl    = document.getElementById("crError")
-  const btn      = document.getElementById("crGuardarBtn")
-
-  if(!nombre){
-    errEl.textContent = "❌ El nombre es requerido"
-    errEl.style.display = "block"
-    return
-  }
-
-  btn.textContent = "⏳ Guardando..."
-  btn.classList.add("btn-loading")
-  errEl.style.display = "none"
-
-  try {
-    // Verificar duplicado en memoria antes de enviar al servidor
-    const existe = state.clients.find(c =>
-      c.name.toLowerCase().trim() === nombre.toLowerCase().trim()
-    )
-    if(existe){
-      if(!confirm(`Ya existe un cliente llamado "${existe.name}". ¿Crear de todas formas?`)){
-        btn.textContent = "Guardar"
-        btn.classList.remove("btn-loading")
-        savingPago = false
-        return
-      }
-    }
-
-    const data = await api("/api/clients", {
-      method: "POST",
-      body: JSON.stringify({ name: nombre, phone: telefono || null })
-    })
-
-    cerrarClienteRapido()
-
-    // Agregar inmediatamente a memoria sin esperar recarga
-    const clienteNuevo = { ...data.client, deuda_total: 0 }
-    state.clients.push(clienteNuevo)
-    state.clients.sort((a, b) => a.name.localeCompare(b.name))
-    renderClientes()
-
-    // Recargar desde servidor para asegurar consistencia
-    await loadClients()
-
-    if(!clienteRapidoDesdeClientes){
-      // Vino desde el carrito: seleccionar el cliente recién creado
-      seleccionarClienteFiado(data.client)
-    }
-
-    showToast(`✅ Cliente "${data.client.name}" creado`, "ok")
-
-  } catch(err) {
-    errEl.textContent = "❌ " + err.message
-    errEl.style.display = "block"
-  } finally {
-    btn.textContent = "Guardar"
-    btn.classList.remove("btn-loading")
-  }
-}
-
-// ── Detalle de cliente ────────────────────────────────────
-async function abrirClienteDetail(id){
-  clienteDetailId = id
-  const modal = document.getElementById("clienteDetailModal")
-  modal.style.display = "flex"
-  document.getElementById("cdNombre").textContent = "Cargando..."
-  document.getElementById("cdDeudaTotal").textContent = "$..."
-  document.getElementById("cdDeudasList").innerHTML = `
-    <div style="text-align:center; padding:24px; color:#94a3b8; font-size:13px;">⏳ Cargando...</div>
-  `
-  document.getElementById("cdPagarBtn").style.display = "none"
-
-  try {
-    const c = await api(`/api/clients/${id}`)
-    document.getElementById("cdNombre").textContent = c.name
-    document.getElementById("cdTelefono").textContent = c.phone ? `📱 ${c.phone}` : ""
-    document.getElementById("cdDeudaTotal").textContent = `$${c.deuda_total.toFixed(2)}`
-    document.getElementById("cdDeudaTotal").style.color = c.deuda_total > 0 ? "#dc2626" : "#22c55e"
-
-    if(c.deuda_total > 0){
-      document.getElementById("cdPagarBtn").style.display = ""
-      document.getElementById("cdPagarBtn").dataset.deuda = c.deuda_total
-    }
-
-    const list = document.getElementById("cdDeudasList")
-    list.innerHTML = ""
-
-    if(c.debts.length === 0){
-      list.innerHTML = `<div style="text-align:center; padding:24px; color:#94a3b8; font-size:13px;">Sin historial de deudas</div>`
-      return
-    }
-
-    const statusColors = {
-      pendiente: { bg:"#fef2f2", border:"#fca5a5", color:"#dc2626", label:"Pendiente" },
-      parcial:   { bg:"#fff7ed", border:"#fed7aa", color:"#c2410c", label:"Parcial"   },
-      pagado:    { bg:"#f0fdf4", border:"#86efac", color:"#15803d", label:"Pagado"    }
-    }
-
-    c.debts.forEach(d => {
-      const sc   = statusColors[d.status] || statusColors.pendiente
-      const card = document.createElement("div")
-      card.style.cssText = `
-        background:${sc.bg}; border:2px solid ${sc.border};
-        border-radius:12px; padding:14px; margin-bottom:10px;
-      `
-
-      const pagosHtml = d.payments.length > 0
-        ? `<div style="margin-top:8px; border-top:1px solid ${sc.border}; padding-top:8px;">
-            <div style="font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px; letter-spacing:0.3px;">ABONOS</div>
-            ${d.payments.map(p => `
-              <div style="display:flex; justify-content:space-between; font-size:12px; padding:2px 0;">
-                <span style="color:#475569;">${formatDate(p.created_at)}</span>
-                <span style="font-family:'JetBrains Mono',monospace; font-weight:700; color:#15803d;">+$${p.amount.toFixed(2)}</span>
-              </div>
-            `).join("")}
-          </div>`
-        : ""
-
-      card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-          <div>
-            <span style="
-              background:${sc.color}; color:#fff;
-              padding:2px 8px; border-radius:20px;
-              font-size:11px; font-weight:700;
-            ">${sc.label}</span>
-            <div style="font-size:11px; color:#64748b; margin-top:4px;">
-              ${formatDate(d.sale_date || d.created_at)}
-            </div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:${sc.color};">
-              $${d.pendiente.toFixed(2)}
-            </div>
-            <div style="font-size:10px; color:#94a3b8;">de $${d.total.toFixed(2)}</div>
-          </div>
-        </div>
-        ${pagosHtml}
-      `
-      list.appendChild(card)
-    })
-
-  } catch(err) {
-    document.getElementById("cdDeudasList").innerHTML = `
-      <div style="text-align:center; padding:24px; color:#dc2626; font-size:13px; font-weight:600;">
-        ❌ ${err.message}
-      </div>
-    `
-  }
-}
-
-function cerrarClienteDetail(){
-  document.getElementById("clienteDetailModal").style.display = "none"
-  clienteDetailId = null
-}
-
-// ── Modal de pago ─────────────────────────────────────────
-function abrirPagoModal(){
-  const btn  = document.getElementById("cdPagarBtn")
-  const deuda = Number(btn?.dataset.deuda || 0)
-  const nombre = document.getElementById("cdNombre")?.textContent || ""
-
-  document.getElementById("pagoClienteNombre").textContent = `Cliente: ${nombre}`
-  document.getElementById("pagoDeudaRef").textContent = `Deuda total: $${deuda.toFixed(2)}`
-  document.getElementById("pagoMaxBtn").dataset.max = deuda
-  document.getElementById("pagoMonto").value = ""
-  const errEl = document.getElementById("pagoError")
-  if(errEl){ errEl.style.display = "none"; errEl.textContent = "" }
-
-  document.getElementById("pagoModal").style.display = "flex"
-  setTimeout(() => document.getElementById("pagoMonto").focus(), 100)
-}
-
-function cerrarPagoModal(){
-  document.getElementById("pagoModal").style.display = "none"
-  savingPago = false
-}
-
-function usarDeudaCompleta(){
-  const max = Number(document.getElementById("pagoMaxBtn")?.dataset.max || 0)
-  if(max > 0) document.getElementById("pagoMonto").value = max.toFixed(2)
-}
-
-async function confirmarPago(){
-  if(savingPago) return
-  savingPago = true
-
-  const monto = parseFloat(document.getElementById("pagoMonto").value)
-  const errEl = document.getElementById("pagoError")
-  const btn   = document.getElementById("pagoConfirmarBtn")
-
-  errEl.style.display = "none"
-
-  if(isNaN(monto) || monto <= 0){
-    errEl.textContent = "❌ Ingresá un monto válido mayor a 0"
-    errEl.style.display = "block"
-    savingPago = false
-    return
-  }
-
-  btn.textContent = "⏳ Procesando..."
-  btn.classList.add("btn-loading")
-
-  try {
-    const data = await api(`/api/clients/${clienteDetailId}/payments`, {
-      method: "POST",
-      body: JSON.stringify({ monto })
-    })
-
-    cerrarPagoModal()
-    showToast(`✅ Pago de $${monto.toFixed(2)} registrado`, "ok")
-
-    // Refrescar detalle del cliente
-    await abrirClienteDetail(clienteDetailId)
-
-    // Refrescar lista si está visible
-    await loadClients()
-
-  } catch(err) {
-    errEl.textContent = "❌ " + err.message
-    errEl.style.display = "block"
-  } finally {
-    btn.textContent = "Confirmar"
-    btn.classList.remove("btn-loading")
-    savingPago = false
-  }
-}
-
-// Cerrar sugerencias fiado al hacer click fuera
-document.addEventListener("click", e => {
-  const sugg  = document.getElementById("fiadoClienteSugg")
-  const input = document.getElementById("fiadoClienteSearch")
-  if(!sugg || !input) return
-  if(!sugg.contains(e.target) && e.target !== input){
-    sugg.style.display = "none"
-  }
-})
-
-// Teclas en modal cliente rápido
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("crTelefono")?.addEventListener("keydown", e => {
-    if(e.key === "Enter") guardarClienteRapido()
-  })
-  document.getElementById("crNombre")?.addEventListener("keydown", e => {
-    if(e.key === "Enter") document.getElementById("crTelefono").focus()
-  })
-  document.getElementById("pagoMonto")?.addEventListener("keydown", e => {
-    if(e.key === "Enter") confirmarPago()
-  })
-  // Cerrar modales fiado al hacer click en backdrop
-  document.getElementById("clienteRapidoModal")?.addEventListener("click", e => {
-    if(e.target === document.getElementById("clienteRapidoModal")) cerrarClienteRapido()
-  })
-  document.getElementById("clienteDetailModal")?.addEventListener("click", e => {
-    if(e.target === document.getElementById("clienteDetailModal")) cerrarClienteDetail()
-  })
-  document.getElementById("pagoModal")?.addEventListener("click", e => {
-    if(e.target === document.getElementById("pagoModal")) cerrarPagoModal()
-  })
-})
-
-// =========== PERSISTENCIA FIADO ===========
-
-function saveFiadoState(){
-  localStorage.setItem("fiadoActivo", JSON.stringify(fiadoActivo))
-  localStorage.setItem("clienteSeleccionado", JSON.stringify(clienteSeleccionado))
-}
-
-function loadFiadoState(){
-  try {
-    const fa = localStorage.getItem("fiadoActivo")
-    const cs = localStorage.getItem("clienteSeleccionado")
-    if(fa !== null) fiadoActivo = JSON.parse(fa)
-    if(cs !== null) clienteSeleccionado = JSON.parse(cs)
-  } catch(_) {
-    fiadoActivo = false
-    clienteSeleccionado = null
-  }
-}
-
-function applyFiadoStateToUI(){
-  const btn = document.getElementById("fiadoToggleBtn")
-  const box = document.getElementById("fiadoClienteBox")
-  const sel = document.getElementById("fiadoClienteSelected")
-  if(!btn || !box) return
-  if(fiadoActivo){
-    btn.textContent = "✅ Fiado activado — click para cancelar"
-    btn.style.background = "#fefce8"
-    btn.style.borderColor = "#f59e0b"
-    btn.style.color = "#92400e"
-    box.style.display = "block"
-    if(clienteSeleccionado && sel){
-      sel.textContent = `✓ ${clienteSeleccionado.name}`
-      sel.style.display = "block"
-    }
-  } else {
-    btn.textContent = "📒 Cobrar luego (Fiado)"
-    btn.style.background = ""
-    btn.style.borderColor = ""
-    btn.style.color = ""
-    box.style.display = "none"
-    if(sel) sel.style.display = "none"
-  }
-  calculateChange()
-}
-
 // =========== INIT ===========
 async function init(){
 
-  // 1. Restaurar estado persistido ANTES de cualquier render
+  await loadProducts()
+  await loadSales()
+
   loadCart()
-  loadFiadoState()
 
-  // 2. Cargar todos los datos necesarios en paralelo
-  await Promise.all([
-    loadProducts(),
-    loadSales(),
-    loadClients()
-  ])
-
-  // 3. Ajustar carrito según stock actual
   const itemsAjustados = []
 
   state.cart = state.cart.filter(item=>{
@@ -4402,12 +3716,10 @@ async function init(){
   markDirty("cart", "sales")
   flushRender()
 
-  // 4. Restaurar sección activa (no siempre "pos")
-  const seccionGuardada = localStorage.getItem("activeSection") || "pos"
-  await show(seccionGuardada)
-
-  // 5. Restaurar UI del fiado (elementos ya existen en el DOM)
-  applyFiadoStateToUI()
+  // Misma cadena de prioridades que el script síncrono:
+  // hash → localStorage → "pos"
+  const initialSection = location.hash.replace("#", "") || localStorage.getItem("lastSection") || "pos"
+  _activateSection(initialSection)
 
 }
 
