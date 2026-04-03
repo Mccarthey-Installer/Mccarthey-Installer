@@ -3260,14 +3260,6 @@ ${LILA}-------------------------${NC}"
 }
 
 
-#!/bin/bash
-
-# ── Modo paranoico — cualquier error no manejado rompe ejecución ─
-# FIX: set -e + pipefail evita que el script siga adelante si algo falla
-# OJO: esto aplica fuera de las funciones del menú; dentro de los case/if
-#      el manejo explícito sigue siendo necesario.
-set -e
-set -o pipefail
 
 xhttp_panel() {
 
