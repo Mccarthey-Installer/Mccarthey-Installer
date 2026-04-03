@@ -3261,11 +3261,8 @@ ${LILA}-------------------------${NC}"
 
 
 
-xhttp_panel() {
 
-# Dentro del loop interactivo desactivamos set -e para que un error
-# en una opción del menú no mate toda la sesión.
-set +e
+xhttp_panel() {
 
 HOT_PINK="\033[1;95m"
 CYAN="\033[1;96m"
@@ -3274,507 +3271,389 @@ RED="\033[1;91m"
 YELLOW="\033[1;93m"
 RESET="\033[0m"
 
-# ── Archivos de configuración persistente ───────────────────
-MCCARTHEY_DIR="/etc/MCCARTHEY"
-DOMAIN_FILE="$MCCARTHEY_DIR/ssl_domain"
-PORT_FILE="$MCCARTHEY_DIR/panel_port"
-PATH_FILE="$MCCARTHEY_DIR/panel_path"
-
-# ── Valores fijos — se escriben en disco, nunca cambian ─────
-FIXED_PORT="26383"
-FIXED_PATH="/panel"
-
-# ── Modo debug ──────────────────────────────────────────────
-DEBUG=false
-LOG_FILE="/var/log/xhttp_panel.log"
-
-# ── Cooldown ACME — evita reintentos seguidos y quema del rate limit ─
-ACME_FAIL_FILE="/tmp/acme_last_fail"
-ACME_COOLDOWN=300   # 5 minutos entre intentos fallidos
-
-# ── Rotación del log con timestamp — nunca se pierde historial ──
-# FIX: en lugar de .old fijo (se sobreescribe), usamos timestamp único
-_rotate_log(){
-    if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE" 2>/dev/null)" -gt 1048576 ]; then
-        mv "$LOG_FILE" "${LOG_FILE}.$(date +%s)"
-        echo "[$(date '+%F %T')] Log rotado — anterior guardado con timestamp" >> "$LOG_FILE"
-    fi
-}
-
-# ── Helper: ejecuta un comando y loguea según DEBUG ─────────
-_run(){
-    if [ "$DEBUG" = true ]; then
-        "$@" 2>&1 | tee -a "$LOG_FILE"
-        return ${PIPESTATUS[0]}
-    else
-        "$@" >> "$LOG_FILE" 2>&1
-        return $?
-    fi
-}
-
-# ── Helper: mostrar últimas líneas del log ante un error ────
-_show_log(){
-    if [ -f "$LOG_FILE" ]; then
-        echo -e "${YELLOW}── Últimas 50 líneas del log ───────────────${RESET}"
-        tail -n 50 "$LOG_FILE"
-        echo -e "${YELLOW}────────────────────────────────────────────${RESET}"
-        echo -e "${CYAN}Log completo: $LOG_FILE${RESET}"
-    fi
-}
-
-# ── Helper: verificar cooldown ACME antes de intentar emitir/renovar ─
-# FIX: evita quemar el rate limit de Let's Encrypt con reintentos seguidos
-_acme_check_cooldown(){
-    local LAST_FAIL
-    LAST_FAIL=$(cat "$ACME_FAIL_FILE" 2>/dev/null)
-    if [ -n "$LAST_FAIL" ]; then
-        local NOW ELAPSED
-        NOW=$(date +%s)
-        ELAPSED=$(( NOW - LAST_FAIL ))
-        if [ "$ELAPSED" -lt "$ACME_COOLDOWN" ]; then
-            local WAIT=$(( ACME_COOLDOWN - ELAPSED ))
-            echo -e "${RED}⚠️  El último intento de ACME falló hace ${ELAPSED}s.${RESET}"
-            echo -e "${YELLOW}Esperá ${WAIT}s más antes de reintentar (cooldown de ${ACME_COOLDOWN}s).${RESET}"
-            echo -e "${CYAN}Esto evita quemar el rate limit de Let's Encrypt.${RESET}"
-            return 1
-        fi
-    fi
-    return 0
-}
-
-# ── Helper: registrar fallo ACME ────────────────────────────
-_acme_mark_fail(){
-    date +%s > "$ACME_FAIL_FILE"
-}
-
-# ── Helper: limpiar fallo ACME tras éxito ───────────────────
-_acme_clear_fail(){
-    rm -f "$ACME_FAIL_FILE"
-}
-
-# ── Helper: check real de que el panel responde ─────────────
-# FIX: curl real al endpoint — no asumimos que x-ui levantó solo por systemctl
-_check_panel_responds(){
-    local PORT="$1"
-    local PATH_="$2"
-    if curl -k -s --max-time 5 "https://localhost:${PORT}${PATH_}" >/dev/null 2>&1; then
-        echo -e "${GREEN}✅ Panel responde en https://localhost:${PORT}${PATH_}${RESET}"
-        return 0
-    else
-        echo -e "${RED}❌ Panel no responde en https://localhost:${PORT}${PATH_}${RESET}"
-        _show_log
-        return 1
-    fi
-}
-
-# ── Utilidad: cargar config desde disco (o usar fijos) ──────
-load_config(){
-    mkdir -p "$MCCARTHEY_DIR"
-
-    if [ -f "$PORT_FILE" ] && [ -s "$PORT_FILE" ]; then
-        FIXED_PORT=$(cat "$PORT_FILE")
-    else
-        echo "$FIXED_PORT" > "$PORT_FILE"
-    fi
-
-    if [ -f "$PATH_FILE" ] && [ -s "$PATH_FILE" ]; then
-        FIXED_PATH=$(cat "$PATH_FILE")
-    else
-        echo "$FIXED_PATH" > "$PATH_FILE"
-    fi
-}
+DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
 
 panel_installed(){
-    command -v x-ui &>/dev/null
+command -v x-ui &>/dev/null
 }
 
 panel_status(){
-    if systemctl is-active --quiet x-ui; then
-        STATUS="Activo 🟢"
-    else
-        STATUS="Inactivo 🔴"
-    fi
+if systemctl is-active --quiet x-ui
+then
+STATUS="Activo 🟢"
+else
+STATUS="Inactivo 🔴"
+fi
 }
 
-# ── Utilidad: leer dominio guardado ─────────────────────────
+get_port(){
+PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+if [ -z "$PORT" ]
+then
+PORT="No detectado"
+fi
+}
+
+── Utilidad: leer dominio guardado ─────────────────────────
+
 get_domain(){
-    if [ -f "$DOMAIN_FILE" ]; then
-        DOMAIN=$(cat "$DOMAIN_FILE")
-    else
-        DOMAIN=""
-    fi
+if [ -f "$DOMAIN_FILE" ]; then
+DOMAIN=$(cat "$DOMAIN_FILE")
+else
+DOMAIN=""
+fi
 }
 
-# ── Utilidad: levantar proxy ─────────────────────────────────
+── Utilidad: levantar proxy sin duplicados ──────────────────
+
 start_proxy(){
-    if pgrep -f /etc/MCCARTHEY/PDirect.py >/dev/null; then
-        echo -e "${CYAN}Proxy MCCARTHEY ya está activo, no se duplica.${RESET}"
-        return
-    fi
-
-    stop_proxy
-    while pgrep -f /etc/MCCARTHEY/PDirect.py >/dev/null; do
-        sleep 1
-    done
-
-    nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-    sleep 2
-
-    if pgrep -f /etc/MCCARTHEY/PDirect.py >/dev/null; then
-        echo -e "${GREEN}Proxy MCCARTHEY iniciado ✅${RESET}"
-    else
-        echo -e "${RED}❌ ERROR: el proxy no levantó. Revisá /root/nohup.out${RESET}"
-    fi
+EXISTING=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+if [ -z "$EXISTING" ]; then
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+sleep 2
+echo -e "${GREEN}Proxy MCCARTHEY iniciado ✅${RESET}"
+else
+echo -e "${CYAN}Proxy MCCARTHEY ya está activo (PID $EXISTING), no se duplica.${RESET}"
+fi
 }
 
-# ── Utilidad: detener proxy ──────────────────────────────────
+── Utilidad: detener proxy ──────────────────────────────────
+
 stop_proxy(){
-    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ -n "$PROXY_PID" ]; then
-        echo -e "${YELLOW}Deteniendo proxy MCCARTHEY (PID $PROXY_PID)...${RESET}"
-        kill $PROXY_PID
-        sleep 3
-    fi
+PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+if [ ! -z "$PROXY_PID" ]; then
+echo -e "${YELLOW}Deteniendo proxy MCCARTHEY (PID $PROXY_PID)...${RESET}"
+kill $PROXY_PID
+sleep 3
+fi
 }
 
-# ── Utilidad: limpiar certs viejos de acme.sh ───────────────
+── Utilidad: limpiar certs viejos de acme.sh ───────────────
+
 cleanup_old_certs(){
-    local CURRENT_DOMAIN="$1"
-    for dir in /root/.acme.sh/*_ecc /root/.acme.sh/*; do
-        [ -d "$dir" ] || continue
-        DIRNAME=$(basename "$dir")
-        [[ "$DIRNAME" == ca ]] && continue
-        [[ "$DIRNAME" == account* ]] && continue
-        if [[ "$DIRNAME" != "${CURRENT_DOMAIN}_ecc" && "$DIRNAME" != "$CURRENT_DOMAIN" ]]; then
-            echo -e "${YELLOW}Eliminando certificado obsoleto: $DIRNAME${RESET}"
-            rm -rf "$dir"
-        fi
-    done
+local CURRENT_DOMAIN="$1"
+for dir in /root/.acme.sh/_ecc /root/.acme.sh/; do
+[ -d "$dir" ] || continue
+DIRNAME=$(basename "$dir")
+
+Ignorar carpetas internas de acme.sh
+
+[[ "$DIRNAME" == ca ]] && continue
+[[ "$DIRNAME" == account* ]] && continue
+
+Si no corresponde al dominio actual, borrar
+
+if [[ "$DIRNAME" != "${CURRENT_DOMAIN}_ecc" && "$DIRNAME" != "$CURRENT_DOMAIN" ]]; then
+echo -e "${YELLOW}Eliminando certificado obsoleto: $DIRNAME${RESET}"
+rm -rf "$dir"
+fi
+done
 }
 
-# ── Utilidad: verificar si el cert es válido ────────────────
+── Utilidad: verificar si el cert es válido ────────────────
+
 cert_is_valid(){
-    local CERT="$1"
-    [ -f "$CERT" ] || return 1
-    openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null
+local CERT="$1"
+[ -f "$CERT" ] || return 1
+openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null
 }
 
-# ── Utilidad: días de vida del cert que sirve el panel EN VIVO ──
+── Utilidad: días de vida del cert que sirve el panel EN VIVO ──
+
+Conecta al dominio real y lee la fecha de expiración del cert servido.
+
+Devuelve el número de días restantes, o -1 si no se pudo conectar.
+
 get_live_cert_days(){
-    local DOMAIN="$1"
-    local PORT="$2"
-    local EXP
-    EXP=$(openssl s_client -connect "${DOMAIN}:${PORT}" -servername "${DOMAIN}" \
-        </dev/null 2>/dev/null \
-        | openssl x509 -enddate -noout 2>/dev/null \
-        | cut -d= -f2)
+local DOMAIN="$1"
+local PORT="$2"
+local EXP
+EXP=$(openssl s_client -connect "${DOMAIN}:${PORT}" -servername "${DOMAIN}" \
+</dev/null 2>/dev/null \
+| openssl x509 -enddate -noout 2>/dev/null \
+| cut -d= -f2)
 
-    if [ -z "$EXP" ]; then
-        echo -1
-        return
-    fi
-    echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
+if [ -z "$EXP" ]; then
+echo -1
+return
+fi
+echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
+
 }
 
-# ── Utilidad: aplicar cert al panel ─────────────────────────
+── Utilidad: aplicar cert al panel SIEMPRE ─────────────────
+
+Llama a x-ui ssl + restart sin importar si el cert es nuevo o viejo.
+
+Es la única función que debe hacer esto — nunca duplicar este bloque.
+
 apply_cert_to_panel(){
-    local DOMAIN="$1"
-    local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-    local CERT="$CERT_DIR/fullchain.cer"
-    local KEY="$CERT_DIR/${DOMAIN}.key"
+local DOMAIN="$1"
+local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+local CERT="$CERT_DIR/fullchain.cer"
+local KEY="$CERT_DIR/${DOMAIN}.key"
 
-    if ! cert_is_valid "$CERT"; then
-        echo -e "${RED}[SSL] El certificado no es válido o no existe: $CERT${RESET}"
-        return 1
-    fi
+if ! command -v x-ui &>/dev/null; then
+echo -e "${RED}[SSL] x-ui no encontrado, no se puede aplicar el certificado.${RESET}"
+return 1
+fi
 
-    echo -e "${YELLOW}[SSL] Copiando certificado a /etc/x-ui/...${RESET}"
-    mkdir -p /etc/x-ui
-    _run cp "$CERT" /etc/x-ui/cert.crt
-    _run cp "$KEY"  /etc/x-ui/private.key
+if ! cert_is_valid "$CERT"; then
+echo -e "${RED}[SSL] El certificado no es válido o no existe: $CERT${RESET}"
+return 1
+fi
 
-    echo -e "${YELLOW}[SSL] Reiniciando panel...${RESET}"
-    _run x-ui restart
-    sleep 3
+echo -e "${YELLOW}[SSL] Aplicando certificado al panel...${RESET}"
+x-ui ssl -domain "$DOMAIN" \
+-certFile "$CERT" \
+-keyFile  "$KEY" 2>/dev/null
 
-    if ! systemctl is-active --quiet x-ui; then
-        echo -e "${RED}[SSL] ❌ x-ui no levantó tras aplicar el cert.${RESET}"
-        _show_log
-        return 1
-    fi
+echo -e "${YELLOW}[SSL] Reiniciando panel...${RESET}"
+x-ui restart >/dev/null 2>&1
+sleep 2
 
-    echo -e "${GREEN}[SSL] Certificado aplicado y panel reiniciado ✅${RESET}"
-}
+echo -e "${GREEN}[SSL] Certificado aplicado y panel reiniciado ✅${RESET}"
 
-# ── Utilidad: liberar puerto 80 con validación y abort ──────
-# Retorna 0 si el puerto quedó libre, 1 si sigue ocupado.
-_free_port_80(){
-    local PORT80_PROC
-    PORT80_PROC=$(ss -tulnp 2>/dev/null | grep ":80 ")
-    if [ -z "$PORT80_PROC" ]; then
-        return 0
-    fi
-
-    echo -e "${RED}⚠️  Puerto 80 ocupado — acme.sh no podrá verificar el dominio:${RESET}"
-    echo "$PORT80_PROC"
-    echo -e "${YELLOW}Intentando liberar con fuser...${RESET}"
-    fuser -k 80/tcp >/dev/null 2>&1
-    sleep 2
-
-    if ss -tulnp 2>/dev/null | grep -q ":80 "; then
-        echo -e "${RED}❌ Puerto 80 sigue ocupado. Abortando para no quemar el rate limit de acme.sh.${RESET}"
-        return 1
-    fi
-
-    return 0
 }
 
 while true
 do
 
-    load_config
-    panel_status
+panel_status
+get_port
 
-    clear
+clear
 
-    echo -e "${HOT_PINK}"
-    echo "════════════════════════════════════ 💋"
-    echo "     XRAY + 3X-UI MANAGER 🌸👑"
-    echo "════════════════════════════════════ 💋"
-    echo -e "${RESET}"
+echo -e "${HOT_PINK}"
+echo "════════════════════════════════════ 💋"
+echo "     XRAY + 3X-UI MANAGER 🌸👑"
+echo "════════════════════════════════════ 💋"
+echo -e "${RESET}"
 
-    echo
+echo
 
-    if [ "$STATUS" = "Activo 🟢" ]; then
-        echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
-    else
-        echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
-    fi
+if [ "$STATUS" = "Activo 🟢" ]
+then
+echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
+else
+echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
+fi
 
-    echo
-    echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
-    echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
-    echo -e "${CYAN}3) Renovar SSL manualmente 🔐${RESET}"
-    echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
-    echo -e "${CYAN}0) Salir 💔${RESET}"
+echo
+echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
+echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
+echo -e "${CYAN}3) Renovar SSL manualmente 🔐${RESET}"
+echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
+echo -e "${CYAN}0) Salir 💔${RESET}"
 
-    echo
-    read -p "👑 Seleccione una opción reina → " op
+echo
+read -p "👑 Seleccione una opción reina → " op
 
-    case "$op" in
-        1) install_panel ;;
-        2) show_panel ;;
-        3) force_renew_ssl ;;
-        4) remove_panel ;;
-        0) break ;;
-        *) ;;
-    esac
+case "$op" in
+
+1)    
+    install_panel    
+    ;;    
+
+2)    
+    show_panel    
+    ;;    
+
+3)    
+    force_renew_ssl    
+    ;;    
+
+4)    
+    remove_panel    
+    ;;    
+
+0)    
+    break    
+    ;;    
+
+*)    
+    ;;
+
+esac
 
 done
 
 }
 
-# ═══════════════════════════════════════════════════════
-#   SETUP SSL RENEWAL — dominio fijo, cron diario
-# ═══════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════
+
+SETUP SSL RENEWAL — dominio fijo, cron diario
+
+═══════════════════════════════════════════════════════
 
 setup_ssl_renewal(){
 
-    local DOMAIN="$1"
+local DOMAIN="$1"
 
 cat << EOF > /root/renew_ssl.sh
 #!/bin/bash
 
 DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
-ACME_FAIL_FILE="/tmp/acme_last_fail"
-ACME_COOLDOWN=300
 
-if [ ! -f "\$DOMAIN_FILE" ]; then
-    echo "[SSL] No se encontró el archivo de dominio en \$DOMAIN_FILE. Abortando."
-    exit 1
+── Leer dominio guardado ────────────────────────────────────
+
+if [ ! -f "$DOMAIN_FILE" ]; then
+echo "[SSL] No se encontró el archivo de dominio en $DOMAIN_FILE. Abortando."
+exit 1
 fi
 
-DOMAIN=\$(cat "\$DOMAIN_FILE")
+DOMAIN=$(cat "$DOMAIN_FILE")
 
-if [ -z "\$DOMAIN" ]; then
-    echo "[SSL] El dominio guardado está vacío. Abortando."
-    exit 1
+if [ -z "$DOMAIN" ]; then
+echo "[SSL] El dominio guardado está vacío. Abortando."
+exit 1
 fi
 
-CERT_DIR="/root/.acme.sh/\${DOMAIN}_ecc"
-CERT="\$CERT_DIR/fullchain.cer"
+CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+CERT="$CERT_DIR/fullchain.cer"
+
+── Función: días del cert que sirve el panel EN VIVO ────────
 
 get_live_cert_days(){
-    local D="\$1"
-    local P="\$2"
-    local EXP
-    EXP=\$(openssl s_client -connect "\${D}:\${P}" -servername "\${D}" \
-        </dev/null 2>/dev/null \
-        | openssl x509 -enddate -noout 2>/dev/null \
-        | cut -d= -f2)
-    if [ -z "\$EXP" ]; then echo -1; return; fi
-    echo \$(( ( \$(date -d "\$EXP" +%s) - \$(date +%s) ) / 86400 ))
+local D="$1"
+local P="$2"
+local EXP
+EXP=$(openssl s_client -connect "${D}:${P}" -servername "${D}" \
+</dev/null 2>/dev/null \
+| openssl x509 -enddate -noout 2>/dev/null \
+| cut -d= -f2)
+if [ -z "$EXP" ]; then echo -1; return; fi
+echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
 }
 
-# FIX: cooldown ACME — no reintentar si falló hace menos de 5 minutos
-_acme_check_cooldown(){
-    local LAST_FAIL
-    LAST_FAIL=\$(cat "\$ACME_FAIL_FILE" 2>/dev/null)
-    if [ -n "\$LAST_FAIL" ]; then
-        local NOW ELAPSED
-        NOW=\$(date +%s)
-        ELAPSED=\$(( NOW - LAST_FAIL ))
-        if [ "\$ELAPSED" -lt "\$ACME_COOLDOWN" ]; then
-            local WAIT=\$(( ACME_COOLDOWN - ELAPSED ))
-            echo "[SSL] ⚠️  Cooldown activo — último fallo hace \${ELAPSED}s. Esperá \${WAIT}s más."
-            return 1
-        fi
-    fi
-    return 0
-}
+── Leer el puerto actual del panel ─────────────────────────
 
-if ! systemctl is-active --quiet x-ui; then
-    echo "[SSL] x-ui no está activo. Intentando levantar..."
-    x-ui start >/dev/null 2>&1
-    sleep 5
-    if ! systemctl is-active --quiet x-ui; then
-        echo "[SSL] ❌ No se pudo levantar x-ui. Abortando."
-        exit 1
-    fi
-    echo "[SSL] x-ui levantado correctamente."
+PANEL_PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+[ -z "$PANEL_PORT" ] && PANEL_PORT="443"
+
+── Limpiar certs de dominios viejos ────────────────────────
+
+for dir in /root/.acme.sh/_ecc /root/.acme.sh/; do
+[ -d "$dir" ] || continue
+DIRNAME=$(basename "$dir")
+[[ "$DIRNAME" == ca ]] && continue
+[[ "$DIRNAME" == account* ]] && continue
+if [[ "$DIRNAME" != "${DOMAIN}_ecc" && "$DIRNAME" != "$DOMAIN" ]]; then
+echo "[SSL] Eliminando certificado obsoleto: $DIRNAME"
+rm -rf "$dir"
 fi
-
-PORT_FILE="/etc/MCCARTHEY/panel_port"
-if [ -f "\$PORT_FILE" ] && [ -s "\$PORT_FILE" ]; then
-    PANEL_PORT=\$(cat "\$PORT_FILE")
-else
-    PANEL_PORT=\$(x-ui settings 2>/dev/null | awk '/port:/ {print \$2}')
-    [ -z "\$PANEL_PORT" ] && PANEL_PORT="26383"
-fi
-
-for dir in /root/.acme.sh/*_ecc /root/.acme.sh/*; do
-    [ -d "\$dir" ] || continue
-    DIRNAME=\$(basename "\$dir")
-    [[ "\$DIRNAME" == ca ]] && continue
-    [[ "\$DIRNAME" == account* ]] && continue
-    if [[ "\$DIRNAME" != "\${DOMAIN}_ecc" && "\$DIRNAME" != "\$DOMAIN" ]]; then
-        echo "[SSL] Eliminando certificado obsoleto: \$DIRNAME"
-        rm -rf "\$dir"
-    fi
 done
+
+── Decidir si crear, renovar, o solo reaplicar ─────────────
 
 NECESITA_EMITIR=false
 NECESITA_APLICAR=false
 
-if [ ! -f "\$CERT" ]; then
-    echo "[SSL] Certificado no encontrado para \$DOMAIN. Emitiendo uno nuevo."
-    NECESITA_EMITIR=true
-    NECESITA_APLICAR=true
+if [ ! -f "$CERT" ]; then
+echo "[SSL] Certificado no encontrado para $DOMAIN. Emitiendo uno nuevo."
+NECESITA_EMITIR=true
+NECESITA_APLICAR=true
 else
-    EXPIRACION=\$(openssl x509 -enddate -noout -in "\$CERT" | cut -d= -f2)
-    EXPIRA_EN=\$(date -d "\$EXPIRACION" +%s)
-    HOY=\$(date +%s)
-    DIAS=\$(( (\$EXPIRA_EN - \$HOY) / 86400 ))
-    echo "[SSL] Cert en disco: vence en \$DIAS días."
+EXPIRACION=$(openssl x509 -enddate -noout -in "$CERT" | cut -d= -f2)
+EXPIRA_EN=$(date -d "$EXPIRACION" +%s)
+HOY=$(date +%s)
+DIAS=$(( ($EXPIRA_EN - $HOY) / 86400 ))
+echo "[SSL] Cert en disco: vence en $DIAS días."
 
-    if [ \$DIAS -le 7 ]; then
-        echo "[SSL] Faltan \$DIAS días. Renovando..."
-        NECESITA_EMITIR=true
-        NECESITA_APLICAR=true
-    fi
+if [ $DIAS -le 7 ]; then
+echo "[SSL] Faltan $DIAS días. Renovando..."
+NECESITA_EMITIR=true
+NECESITA_APLICAR=true
 fi
 
-LIVE_DAYS=\$(get_live_cert_days "\$DOMAIN" "\$PANEL_PORT")
-if [ "\$LIVE_DAYS" -lt 0 ]; then
-    echo "[SSL] No se pudo verificar cert vivo (no hay conexión al panel en puerto \$PANEL_PORT)."
-elif [ "\$LIVE_DAYS" -lt 10 ]; then
-    echo "[SSL] ⚠️  Cert vivo del panel vence en \$LIVE_DAYS días — panel desfasado. Forzando reaplicación."
-    NECESITA_APLICAR=true
+fi
+
+── Check secundario: cert que sirve el panel EN VIVO ────────
+
+Corre siempre, independiente del estado del disco.
+
+LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PANEL_PORT")
+if [ "$LIVE_DAYS" -lt 0 ]; then
+echo "[SSL] No se pudo verificar cert vivo (no hay conexión al panel en puerto $PANEL_PORT)."
+elif [ "$LIVE_DAYS" -lt 10 ]; then
+echo "[SSL] ⚠️  Cert vivo del panel vence en $LIVE_DAYS días — panel desfasado. Forzando reaplicación."
+NECESITA_APLICAR=true
 else
-    echo "[SSL] Cert vivo OK: \$LIVE_DAYS días restantes."
+echo "[SSL] Cert vivo OK: $LIVE_DAYS días restantes."
 fi
 
-if [ "\$NECESITA_EMITIR" = true ]; then
+── Paso 1: emitir/renovar si hace falta ────────────────────
 
-    # FIX: verificar cooldown antes de intentar con acme.sh
-    if ! _acme_check_cooldown; then
-        exit 1
-    fi
+if [ "$NECESITA_EMITIR" = true ]; then
 
-    PROXY_PID=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ -n "\$PROXY_PID" ]; then
-        echo "[SSL] Deteniendo proxy MCCARTHEY..."
-        kill \$PROXY_PID
-        sleep 5
-    fi
-
-    if [ ! -f "\$CERT" ]; then
-        /root/.acme.sh/acme.sh --issue -d "\$DOMAIN" --standalone --httpport 80
-    else
-        /root/.acme.sh/acme.sh --renew -d "\$DOMAIN"
-    fi
-
-    ACME_EXIT=\$?
-    sleep 3
-
-    if [ \$ACME_EXIT -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "\$CERT" 2>/dev/null; then
-        echo "[SSL] ❌ Error: el certificado no es válido tras la operación."
-        # FIX: registrar timestamp de fallo para el cooldown
-        date +%s > "\$ACME_FAIL_FILE"
-        EXISTING=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-        if [ -z "\$EXISTING" ]; then
-            nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-        fi
-        exit 1
-    fi
-
-    # FIX: limpiar fallo tras éxito
-    rm -f "\$ACME_FAIL_FILE"
-
+PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+if [ ! -z "$PROXY_PID" ]; then
+echo "[SSL] Deteniendo proxy MCCARTHEY..."
+kill $PROXY_PID
+sleep 5
 fi
 
-if [ "\$NECESITA_APLICAR" = true ]; then
-
-    echo "[SSL] Copiando certificado a /etc/x-ui/..."
-    mkdir -p /etc/x-ui
-    cp "\$CERT_DIR/fullchain.cer" /etc/x-ui/cert.crt
-    cp "\$CERT_DIR/\${DOMAIN}.key" /etc/x-ui/private.key
-    echo "[SSL] Reiniciando panel..."
-    x-ui restart >/dev/null 2>&1
-    sleep 3
-    echo "[SSL] Certificado aplicado y panel reiniciado."
-
-    # FIX: check real de que el panel responde tras reaplicar cert
-    PATH_FILE="/etc/MCCARTHEY/panel_path"
-    PANEL_PATH=\$(cat "\$PATH_FILE" 2>/dev/null || echo "/panel")
-    if curl -k -s --max-time 5 "https://localhost:\${PANEL_PORT}\${PANEL_PATH}" >/dev/null 2>&1; then
-        echo "[SSL] ✅ Panel responde correctamente en https://localhost:\${PANEL_PORT}\${PANEL_PATH}"
-    else
-        echo "[SSL] ⚠️  Panel no responde tras reaplicar cert. Revisá x-ui manualmente."
-    fi
-
-fi
-
-if [ "\$NECESITA_EMITIR" = true ]; then
-    EXISTING=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ -z "\$EXISTING" ]; then
-        echo "[SSL] Reactivando proxy MCCARTHEY..."
-        nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-        sleep 2
-    else
-        echo "[SSL] Proxy ya activo (PID \$EXISTING), no se duplica."
-    fi
-fi
-
-if [ "\$NECESITA_EMITIR" = false ] && [ "\$NECESITA_APLICAR" = false ]; then
-    echo "[SSL] ✅ Todo en orden. Sin acciones necesarias."
+if [ ! -f "$CERT" ]; then
+/root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
 else
-    echo "[SSL] ✅ Proceso completado para dominio: \$DOMAIN"
+/root/.acme.sh/acme.sh --renew -d "$DOMAIN"
+fi
+
+ACME_EXIT=$?
+sleep 3
+
+if [ $ACME_EXIT -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null; then
+echo "[SSL] ❌ Error: el certificado no es válido tras la operación. Abortando aplicación."
+EXISTING=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+if [ -z "$EXISTING" ]; then
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+fi
+exit 1
+fi
+
+fi
+
+── Paso 2: aplicar al panel si hace falta ──────────────────
+
+if [ "$NECESITA_APLICAR" = true ]; then
+
+Aplicar cert al panel SIEMPRE — sin importar si x-ui ya tenía uno cargado
+
+echo "[SSL] Aplicando certificado al panel..."
+x-ui ssl -domain "$DOMAIN" \
+-certFile "$CERT_DIR/fullchain.cer" \
+-keyFile  "$CERT_DIR/${DOMAIN}.key" 2>/dev/null
+echo "[SSL] Reiniciando panel..."
+x-ui restart >/dev/null 2>&1
+sleep 2
+echo "[SSL] Certificado aplicado y panel reiniciado."
+
+fi
+
+── Reactivar proxy si se detuvo ────────────────────────────
+
+if [ "$NECESITA_EMITIR" = true ]; then
+EXISTING=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+if [ -z "$EXISTING" ]; then
+echo "[SSL] Reactivando proxy MCCARTHEY..."
+nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
+sleep 2
+else
+echo "[SSL] Proxy ya activo (PID $EXISTING), no se duplica."
+fi
+fi
+
+if [ "$NECESITA_EMITIR" = false ] && [ "$NECESITA_APLICAR" = false ]; then
+echo "[SSL] ✅ Todo en orden. Sin acciones necesarias."
+else
+echo "[SSL] ✅ Proceso completado para dominio: $DOMAIN"
 fi
 
 EOF
 
 chmod +x /root/renew_ssl.sh
+
+Cron diario a las 4am
 
 (crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
 
@@ -3782,445 +3661,322 @@ echo -e "${GREEN}Script de renovación SSL configurado ✅${RESET}"
 
 }
 
-# ═══════════════════════════════════════════════════════
-#   FORCE RENEW — opción manual desde el menú
-# ═══════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════
+
+FORCE RENEW — opción manual desde el menú
+
+═══════════════════════════════════════════════════════
 
 force_renew_ssl(){
 
-    clear
-    echo -e "${YELLOW}Iniciando renovación SSL manual... 🔐${RESET}"
-    echo
+clear
+echo -e "${YELLOW}Iniciando renovación SSL manual... 🔐${RESET}"
+echo
 
-    get_domain
+get_domain
 
-    if [ -z "$DOMAIN" ]; then
-        echo -e "${YELLOW}No hay dominio guardado. Ingresá el dominio:${RESET}"
-        read -p "Dominio → " DOMAIN
-        if [ -z "$DOMAIN" ]; then
-            echo -e "${RED}No se ingresó un dominio. Abortando.${RESET}"
-            read -p "ENTER para continuar"
-            return
-        fi
-        mkdir -p /etc/MCCARTHEY
-        echo "$DOMAIN" > "$DOMAIN_FILE"
-    fi
+if [ -z "$DOMAIN" ]; then
+echo -e "${YELLOW}No hay dominio guardado. Ingresá el dominio:${RESET}"
+read -p "Dominio → " DOMAIN
+if [ -z "$DOMAIN" ]; then
+echo -e "${RED}No se ingresó un dominio. Abortando.${RESET}"
+read -p "ENTER para continuar"
+return
+fi
+mkdir -p /etc/MCCARTHEY
+echo "$DOMAIN" > "$DOMAIN_FILE"
+fi
 
-    echo -e "${CYAN}Dominio: $DOMAIN${RESET}"
-    echo
+echo -e "${CYAN}Dominio: $DOMAIN${RESET}"
+echo
 
-    CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-    CERT="$CERT_DIR/fullchain.cer"
+CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+CERT="$CERT_DIR/fullchain.cer"
 
-    # FIX: verificar cooldown antes de intentar acme.sh
-    if ! _acme_check_cooldown; then
-        read -p "ENTER para continuar"
-        return
-    fi
+Detener proxy
 
-    stop_proxy
-    sleep 2
+stop_proxy
 
-    if ! _free_port_80; then
-        start_proxy
-        read -p "ENTER para continuar"
-        return
-    fi
+Emitir o renovar
 
-    if [ ! -f "$CERT" ]; then
-        echo -e "${YELLOW}Emitiendo certificado nuevo para $DOMAIN...${RESET}"
-        _run /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
-    else
-        DIAS_RESTANTES=0
-        EXPIRACION=$(openssl x509 -enddate -noout -in "$CERT" 2>/dev/null | cut -d= -f2)
-        if [ -n "$EXPIRACION" ]; then
-            DIAS_RESTANTES=$(( ( $(date -d "$EXPIRACION" +%s) - $(date +%s) ) / 86400 ))
-        fi
+if [ ! -f "$CERT" ]; then
+echo -e "${YELLOW}Emitiendo certificado nuevo para $DOMAIN...${RESET}"
+/root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
+else
+echo -e "${YELLOW}Renovando certificado existente para $DOMAIN...${RESET}"
+/root/.acme.sh/acme.sh --renew -d "$DOMAIN" --force
+fi
 
-        if [ "$DIAS_RESTANTES" -le 10 ]; then
-            echo -e "${YELLOW}Renovando certificado ($DIAS_RESTANTES días restantes)...${RESET}"
-            _run /root/.acme.sh/acme.sh --renew -d "$DOMAIN" --force
-        else
-            echo -e "${CYAN}Certificado vigente ($DIAS_RESTANTES días). Reaplicando sin renovar...${RESET}"
-            ACME_EXIT=0
-        fi
-    fi
+ACME_EXIT=$?
+sleep 3
 
-    ACME_EXIT=${ACME_EXIT:-$?}
-    sleep 3
+if [ $ACME_EXIT -ne 0 ] || ! cert_is_valid "$CERT"; then
+echo -e "${RED}❌ Error: la emisión/renovación falló o el certificado no es válido.${RESET}"
+echo -e "${RED}No se aplicaron cambios al panel.${RESET}"
+start_proxy
+read -p "ENTER para continuar"
+return
+fi
 
-    if [ $ACME_EXIT -ne 0 ] || ! cert_is_valid "$CERT"; then
-        echo -e "${RED}❌ La emisión/renovación falló o el certificado no es válido.${RESET}"
-        # FIX: registrar fallo para cooldown
-        _acme_mark_fail
-        _show_log
-        if cert_is_valid "$CERT"; then
-            echo -e "${YELLOW}⚠️  Usando último cert válido disponible en disco...${RESET}"
-            apply_cert_to_panel "$DOMAIN"
-        else
-            echo -e "${RED}No hay cert válido disponible. El panel sigue sin SSL.${RESET}"
-        fi
-        start_proxy
-        read -p "ENTER para continuar"
-        return
-    fi
+Aplicar cert al panel SIEMPRE
 
-    # FIX: limpiar fallo tras éxito
-    _acme_clear_fail
+apply_cert_to_panel "$DOMAIN"
 
-    apply_cert_to_panel "$DOMAIN"
+Verificar que el panel realmente está sirviendo el cert actualizado
 
-    systemctl is-active --quiet x-ui || x-ui start >/dev/null 2>&1
-    sleep 3
+get_port
+LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PORT")
+if [ "$LIVE_DAYS" -lt 0 ]; then
+echo -e "${YELLOW}⚠️  No se pudo conectar al panel para verificar el cert vivo (puerto $PORT).${RESET}"
+elif [ "$LIVE_DAYS" -lt 10 ]; then
+echo -e "${RED}⚠️  El panel sigue sirviendo un cert con $LIVE_DAYS días. Reaplicando...${RESET}"
+apply_cert_to_panel "$DOMAIN"
+else
+echo -e "${GREEN}✅ Cert vivo verificado: $LIVE_DAYS días restantes.${RESET}"
+fi
 
-    load_config
+cleanup_old_certs "$DOMAIN"
 
-    # FIX: check real de que el panel responde
-    _check_panel_responds "$FIXED_PORT" "$FIXED_PATH"
+start_proxy
 
-    LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$FIXED_PORT")
-    if [ "$LIVE_DAYS" -lt 0 ]; then
-        echo -e "${YELLOW}⚠️  No se pudo conectar al panel para verificar el cert vivo (puerto $FIXED_PORT).${RESET}"
-    elif [ "$LIVE_DAYS" -lt 10 ]; then
-        echo -e "${RED}⚠️  El panel sigue sirviendo un cert con $LIVE_DAYS días. Reaplicando...${RESET}"
-        apply_cert_to_panel "$DOMAIN"
-    else
-        echo -e "${GREEN}✅ Cert vivo verificado: $LIVE_DAYS días restantes.${RESET}"
-    fi
-
-    cleanup_old_certs "$DOMAIN"
-    start_proxy
-
-    echo
-    echo -e "${GREEN}✅ SSL renovado correctamente para: $DOMAIN${RESET}"
-    read -p "ENTER para continuar"
-    return
+echo
+echo -e "${GREEN}✅ SSL renovado correctamente para: $DOMAIN${RESET}"
+read -p "ENTER para continuar"
+return
 
 }
 
-# ═══════════════════════════════════════════════════════
-#   INSTALL PANEL
-# ═══════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════
+
+INSTALL PANEL
+
+═══════════════════════════════════════════════════════
 
 install_panel(){
 
-    clear
-    echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
-    echo
+clear
+echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
+echo
 
-    _rotate_log
-    load_config
+── Pedir dominio ────────────────────────────────────────
 
-    read -p "Ingresá el dominio para el SSL (ej: panel.tudominio.com) → " DOMAIN
+read -p "Ingresá el dominio para el SSL (ej: panel.tudominio.com) → " DOMAIN
 
-    if [ -z "$DOMAIN" ]; then
-        echo -e "${RED}No se ingresó un dominio. Abortando instalación.${RESET}"
-        read -p "ENTER para continuar"
-        return
-    fi
+if [ -z "$DOMAIN" ]; then
+echo -e "${RED}No se ingresó un dominio. Abortando instalación.${RESET}"
+read -p "ENTER para continuar"
+return
+fi
 
-    mkdir -p /etc/MCCARTHEY
-    echo "$DOMAIN" > "$DOMAIN_FILE"
-    echo -e "${GREEN}Dominio guardado: $DOMAIN${RESET}"
-    echo
+mkdir -p /etc/MCCARTHEY
+echo "$DOMAIN" > "$DOMAIN_FILE"
+echo -e "${GREEN}Dominio guardado: $DOMAIN${RESET}"
+echo
 
-    PORT_IN_USE=$(ss -tulnp 2>/dev/null | grep ":$FIXED_PORT ")
-    if [ -n "$PORT_IN_USE" ]; then
-        echo -e "${RED}⚠️  El puerto $FIXED_PORT ya está ocupado:${RESET}"
-        echo "$PORT_IN_USE"
-        echo -e "${RED}Abortando — liberá ese puerto antes de continuar.${RESET}"
-        read -p "ENTER para continuar"
-        return
-    fi
+Detener proxy sin duplicar
 
-    stop_proxy
+stop_proxy
 
-    _run apt update -y
-    _run apt install -y curl sqlite3 sudo wget apache2-utils
+Instalar dependencias
 
-    if [ "$DEBUG" = true ]; then
-        echo -e "${YELLOW}[DEBUG] Mostrando logs de instalación. Log completo en $LOG_FILE${RESET}"
-        printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) 2>&1 | tee -a "$LOG_FILE"
-    else
-        printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
-    fi
+apt update -y >/dev/null 2>&1
+apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
 
-    echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
+Instalar panel
 
-    if ! command -v x-ui &>/dev/null; then
-        echo -e "${RED}❌ x-ui no quedó instalado. Abortando configuración.${RESET}"
-        _show_log
-        start_proxy
-        read -p "ENTER para continuar"
-        return
-    fi
+printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
 
-    echo -e "${YELLOW}Verificando que el servicio x-ui esté activo...${RESET}"
-    for i in 1 2 3 4 5; do
-        if systemctl is-active --quiet x-ui; then
-            echo -e "${GREEN}x-ui activo ✅${RESET}"
-            break
-        fi
-        echo -e "${YELLOW}Esperando x-ui... intento $i/5${RESET}"
-        sleep 3
-    done
+echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
 
-    if ! systemctl is-active --quiet x-ui; then
-        echo -e "${RED}❌ x-ui no levantó después de la instalación.${RESET}"
-        _show_log
-        start_proxy
-        read -p "ENTER para continuar"
-        return
-    fi
+Configurar renovación automática SSL (pasa el dominio al setup)
 
-    setup_ssl_renewal "$DOMAIN"
+setup_ssl_renewal "$DOMAIN"
 
-    CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-    CERT="$CERT_DIR/fullchain.cer"
+CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+CERT="$CERT_DIR/fullchain.cer"
 
-    if [ ! -f "$CERT" ]; then
-        echo -e "${YELLOW}Emitiendo certificado SSL para $DOMAIN...${RESET}"
+Emitir cert solo si no existe todavía
 
-        # FIX: verificar cooldown antes de acme.sh
-        if ! _acme_check_cooldown; then
-            echo -e "${YELLOW}⚠️  El panel funcionará sin SSL por ahora. Usá la opción 3 cuando pase el cooldown.${RESET}"
-            start_proxy
-            read -p "ENTER para continuar"
-            return
-        fi
+if [ ! -f "$CERT" ]; then
+echo -e "${YELLOW}Emitiendo certificado SSL para $DOMAIN...${RESET}"
+/root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
+ACME_EXIT=$?
+sleep 3
 
-        stop_proxy
-        sleep 2
+if [ $ACME_EXIT -ne 0 ] || ! cert_is_valid "$CERT"; then    
+    echo -e "${RED}⚠️  Advertencia: no se pudo emitir el certificado SSL. El panel funcionará sin SSL por ahora.${RESET}"    
+fi
 
-        if ! _free_port_80; then
-            echo -e "${YELLOW}⚠️  El panel funcionará sin SSL por ahora. Liberá el puerto 80 y usá la opción 3.${RESET}"
-            _show_log
-            start_proxy
-            read -p "ENTER para continuar"
-            return
-        fi
+fi
 
-        _run /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
-        ACME_EXIT=$?
-        sleep 3
+Aplicar cert al panel SIEMPRE — aunque ya existiera antes
 
-        if [ $ACME_EXIT -ne 0 ] || ! cert_is_valid "$CERT"; then
-            echo -e "${RED}⚠️  No se pudo emitir el certificado SSL. El panel funcionará sin SSL por ahora.${RESET}"
-            _acme_mark_fail
-            _show_log
-        else
-            _acme_clear_fail
-        fi
-    fi
+apply_cert_to_panel "$DOMAIN"
 
-    apply_cert_to_panel "$DOMAIN"
-    cleanup_old_certs "$DOMAIN"
-    start_proxy
+Limpiar certs viejos
 
-    echo -e "${YELLOW}Esperando que el panel termine de iniciar...${RESET}"
-    sleep 5
+cleanup_old_certs "$DOMAIN"
 
-    if panel_installed; then
+Reactivar proxy sin duplicar
 
-        USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)
-        PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 14)
+start_proxy
 
-        echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"
+sleep 2
 
-        HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')
+if panel_installed
+then
 
-        if [ -f /etc/x-ui/x-ui.db ]; then
-            _run sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"
+USER=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 10)    
+PASS=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 14)    
 
-            PORT_EXISTS=$(sqlite3 /etc/x-ui/x-ui.db "SELECT COUNT(*) FROM settings WHERE key='webPort';")
-            if [ "$PORT_EXISTS" -gt 0 ]; then
-                _run sqlite3 /etc/x-ui/x-ui.db "UPDATE settings SET value='$FIXED_PORT' WHERE key='webPort';"
-            else
-                _run sqlite3 /etc/x-ui/x-ui.db "INSERT INTO settings (key, value) VALUES ('webPort', '$FIXED_PORT');"
-            fi
+echo -e "${YELLOW}Configurando credenciales del panel...${RESET}"    
 
-            PATH_EXISTS=$(sqlite3 /etc/x-ui/x-ui.db "SELECT COUNT(*) FROM settings WHERE key='webBasePath';")
-            if [ "$PATH_EXISTS" -gt 0 ]; then
-                _run sqlite3 /etc/x-ui/x-ui.db "UPDATE settings SET value='$FIXED_PATH' WHERE key='webBasePath';"
-            else
-                _run sqlite3 /etc/x-ui/x-ui.db "INSERT INTO settings (key, value) VALUES ('webBasePath', '$FIXED_PATH');"
-            fi
+HASH=$(htpasswd -bnBC 10 "" "$PASS" | tr -d ':\n')    
 
-            echo -e "${GREEN}Puerto ($FIXED_PORT) y ruta ($FIXED_PATH) fijados en la DB ✅${RESET}"
+if [ -f /etc/x-ui/x-ui.db ]; then    
+    sqlite3 /etc/x-ui/x-ui.db "UPDATE users SET username='$USER', password='$HASH' WHERE id=1;"    
+fi    
 
-            echo "$FIXED_PORT" > "$PORT_FILE"
-            echo "$FIXED_PATH" > "$PATH_FILE"
-        else
-            echo -e "${RED}⚠️  No se encontró x-ui.db — el panel puede no haber iniciado aún.${RESET}"
-            _show_log
-        fi
+x-ui restart >/dev/null 2>&1    
 
-        _run x-ui restart
-        sleep 3
+sleep 3    
+get_port    
 
-        REAL_PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
-        REAL_PATH=$(x-ui settings 2>/dev/null | awk '/webBasePath:/ {print $2}')
+PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')    
 
-        if [ "$REAL_PORT" = "$FIXED_PORT" ]; then
-            echo -e "${GREEN}Puerto verificado: x-ui escucha en $REAL_PORT ✅${RESET}"
-        else
-            echo -e "${RED}⚠️  Puerto esperado $FIXED_PORT pero x-ui reporta '$REAL_PORT'. Revisá la DB o reiniciá manualmente.${RESET}"
-        fi
+clear    
 
-        DISPLAY_PATH="${REAL_PATH:-$FIXED_PATH}"
+echo -e "${GREEN}"    
+echo "════════════════════════════════════"    
+echo "       PANEL LISTO 💖"    
+echo "════════════════════════════════════"    
+echo -e "${RESET}"    
 
-        # FIX: check real de que el panel responde antes de mostrar la URL
-        _check_panel_responds "${REAL_PORT:-$FIXED_PORT}" "$DISPLAY_PATH"
+echo "Usuario  : $USER"    
+echo "Password : $PASS"    
+echo "Puerto   : $PORT"    
+echo "Ruta     : $PATHP"    
+echo "Dominio  : $DOMAIN"    
+echo    
 
-        clear
+if cert_is_valid "$CERT"; then    
+    echo "URL DEL PANEL"    
+    echo "https://$DOMAIN:$PORT$PATHP"    
+else    
+    echo "URL DEL PANEL (sin SSL)"    
+    echo "http://$DOMAIN:$PORT$PATHP"    
+fi
 
-        echo -e "${GREEN}"
-        echo "════════════════════════════════════"
-        echo "       PANEL LISTO 💖"
-        echo "════════════════════════════════════"
-        echo -e "${RESET}"
+else
 
-        echo "Usuario  : $USER"
-        echo "Password : $PASS"
-        echo "Puerto   : ${REAL_PORT:-$FIXED_PORT}"
-        echo "Ruta     : $DISPLAY_PATH"
-        echo "Dominio  : $DOMAIN"
-        echo
+echo -e "${RED}La instalación falló${RESET}"
 
-        if cert_is_valid "$CERT"; then
-            echo "URL DEL PANEL"
-            echo "https://$DOMAIN:${REAL_PORT:-$FIXED_PORT}$DISPLAY_PATH"
-        else
-            echo "URL DEL PANEL (sin SSL)"
-            echo "http://$DOMAIN:${REAL_PORT:-$FIXED_PORT}$DISPLAY_PATH"
-        fi
+fi
 
-    else
-
-        echo -e "${RED}La instalación falló${RESET}"
-
-    fi
-
-    read -p "ENTER para continuar"
-    return
+read -p "ENTER para continuar"
+return
 
 }
 
-# ═══════════════════════════════════════════════════════
-#   SHOW PANEL
-# ═══════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════
+
+SHOW PANEL
+
+═══════════════════════════════════════════════════════
 
 show_panel(){
 
-    clear
+clear
 
-    if ! panel_installed; then
-        echo "El panel no está instalado"
-        read -p "ENTER"
-        return
-    fi
+if ! panel_installed
+then
+echo "El panel no está instalado"
+read -p "ENTER"
+return
+fi
 
-    load_config
-    get_domain
+get_port
+get_domain
 
-    REAL_PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
-    REAL_PATH=$(x-ui settings 2>/dev/null | awk '/webBasePath:/ {print $2}')
-    DISPLAY_PORT="${REAL_PORT:-$FIXED_PORT}"
-    DISPLAY_PATH="${REAL_PATH:-$FIXED_PATH}"
+PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
+IP=$(curl -s https://api.ipify.org)
 
-    IP=$(curl -s https://api.ipify.org)
+echo "════════════════════════════════════"
+echo "       DATOS DEL PANEL"
+echo "════════════════════════════════════"
+echo
 
-    echo "════════════════════════════════════"
-    echo "       DATOS DEL PANEL"
-    echo "════════════════════════════════════"
-    echo
+systemctl status x-ui | grep Active
 
-    systemctl status x-ui | grep Active
+echo
+echo "Puerto : $PORT"
+echo "Ruta   : $PATHP"
+echo "IP     : $IP"
+echo "Dominio: ${DOMAIN:-No configurado}"
+echo
 
-    echo
-    echo "Puerto : $DISPLAY_PORT"
-    echo "Ruta   : $DISPLAY_PATH"
-    echo "IP     : $IP"
-    echo "Dominio: ${DOMAIN:-No configurado}"
-    echo
+if [ -n "$DOMAIN" ]; then
+CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
+CERT="$CERT_DIR/fullchain.cer"
 
-    if [ -n "$DOMAIN" ]; then
-        CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-        CERT="$CERT_DIR/fullchain.cer"
+if cert_is_valid "$CERT"; then    
+    EXPIRACION=$(openssl x509 -enddate -noout -in "$CERT" | cut -d= -f2)    
+    EXPIRA_EN=$(date -d "$EXPIRACION" +%s)    
+    HOY=$(date +%s)    
+    DIAS=$(( ($EXPIRA_EN - $HOY) / 86400 ))    
+    echo "SSL    : ✅ Válido — vence en $DIAS días ($EXPIRACION)"    
+    echo    
+    echo "URL:"    
+    echo "https://$DOMAIN:$PORT$PATHP"    
+else    
+    echo "SSL    : ❌ Certificado no encontrado o inválido para $DOMAIN"    
+    echo    
+    echo "URL (sin SSL):"    
+    echo "http://$DOMAIN:$PORT$PATHP"    
+fi
 
-        if cert_is_valid "$CERT"; then
-            EXPIRACION=$(openssl x509 -enddate -noout -in "$CERT" | cut -d= -f2)
-            EXPIRA_EN=$(date -d "$EXPIRACION" +%s)
-            HOY=$(date +%s)
-            DIAS=$(( ($EXPIRA_EN - $HOY) / 86400 ))
-            echo "SSL    : ✅ Válido — vence en $DIAS días ($EXPIRACION)"
-            echo
-            echo "URL:"
-            echo "https://$DOMAIN:$DISPLAY_PORT$DISPLAY_PATH"
-        else
-            echo "SSL    : ❌ Certificado no encontrado o inválido para $DOMAIN"
-            echo
-            echo "URL (sin SSL):"
-            echo "http://$DOMAIN:$DISPLAY_PORT$DISPLAY_PATH"
-        fi
-    else
-        echo "SSL    : ❌ Sin dominio configurado"
-        echo
-        echo "URL (sin SSL):"
-        echo "http://$IP:$DISPLAY_PORT$DISPLAY_PATH"
-    fi
+else
+echo "SSL    : ❌ Sin dominio configurado"
+echo
+echo "URL (sin SSL):"
+echo "http://$IP:$PORT$PATHP"
+fi
 
-    # Estado del proxy
-    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ -n "$PROXY_PID" ]; then
-        echo
-        echo "Proxy  : ✅ Activo (PID $PROXY_PID)"
-    else
-        echo
-        echo "Proxy  : ❌ Inactivo"
-    fi
+Estado del proxy
 
-    # FIX: check real HTTP del panel — no solo systemctl
-    echo
-    if curl -k -s --max-time 5 "https://localhost:${DISPLAY_PORT}${DISPLAY_PATH}" >/dev/null 2>&1; then
-        echo "HTTP   : ✅ Panel responde"
-    else
-        echo "HTTP   : ⚠️  Panel no responde en https://localhost:${DISPLAY_PORT}${DISPLAY_PATH}"
-    fi
+PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+if [ ! -z "$PROXY_PID" ]; then
+echo
+echo "Proxy  : ✅ Activo (PID $PROXY_PID)"
+else
+echo
+echo "Proxy  : ❌ Inactivo"
+fi
 
-    # Mostrar cooldown ACME si está activo
-    if [ -f "$ACME_FAIL_FILE" ]; then
-        LAST_FAIL=$(cat "$ACME_FAIL_FILE")
-        ELAPSED=$(( $(date +%s) - LAST_FAIL ))
-        if [ "$ELAPSED" -lt "$ACME_COOLDOWN" ]; then
-            WAIT=$(( ACME_COOLDOWN - ELAPSED ))
-            echo
-            echo -e "${YELLOW}⚠️  Cooldown ACME activo — esperá ${WAIT}s antes de renovar SSL${RESET}"
-        fi
-    fi
-
-    read -p "ENTER para continuar"
-    return
+read -p "ENTER para continuar"
+return
 
 }
 
-# ═══════════════════════════════════════════════════════
-#   REMOVE PANEL
-# ═══════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════
+
+REMOVE PANEL
+
+═══════════════════════════════════════════════════════
 
 remove_panel(){
 
-    clear
+clear
 
-    echo -e "${RED}Eliminando panel...${RESET}"
+echo -e "${RED}Eliminando panel...${RESET}"
 
-    x-ui stop >/dev/null 2>&1
-    x-ui uninstall >/dev/null 2>&1
+x-ui stop >/dev/null 2>&1
+x-ui uninstall >/dev/null 2>&1
 
-    echo -e "${GREEN}Panel eliminado correctamente${RESET}"
+echo -e "${GREEN}Panel eliminado correctamente${RESET}"
 
-    read -p "ENTER para continuar"
-    return
+read -p "ENTER para continuar"
+return
 
 }
 
