@@ -3260,6 +3260,7 @@ ${LILA}-------------------------${NC}"
 }
 
 
+
 xhttp_panel() {
 
 HOT_PINK="\033[1;95m"
@@ -3345,6 +3346,25 @@ cert_is_valid(){
     local CERT="$1"
     [ -f "$CERT" ] || return 1
     openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null
+}
+
+# ── Utilidad: días de vida del cert que sirve el panel EN VIVO ──
+# Conecta al dominio real y lee la fecha de expiración del cert servido.
+# Devuelve el número de días restantes, o -1 si no se pudo conectar.
+get_live_cert_days(){
+    local DOMAIN="$1"
+    local PORT="$2"
+    local EXP
+    EXP=$(openssl s_client -connect "${DOMAIN}:${PORT}" -servername "${DOMAIN}" \
+        </dev/null 2>/dev/null \
+        | openssl x509 -enddate -noout 2>/dev/null \
+        | cut -d= -f2)
+
+    if [ -z "$EXP" ]; then
+        echo -1
+        return
+    fi
+    echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
 }
 
 # ── Utilidad: aplicar cert al panel SIEMPRE ─────────────────
@@ -3471,6 +3491,23 @@ fi
 CERT_DIR="/root/.acme.sh/\${DOMAIN}_ecc"
 CERT="\$CERT_DIR/fullchain.cer"
 
+# ── Función: días del cert que sirve el panel EN VIVO ────────
+get_live_cert_days(){
+    local D="\$1"
+    local P="\$2"
+    local EXP
+    EXP=\$(openssl s_client -connect "\${D}:\${P}" -servername "\${D}" \
+        </dev/null 2>/dev/null \
+        | openssl x509 -enddate -noout 2>/dev/null \
+        | cut -d= -f2)
+    if [ -z "\$EXP" ]; then echo -1; return; fi
+    echo \$(( ( \$(date -d "\$EXP" +%s) - \$(date +%s) ) / 86400 ))
+}
+
+# ── Leer el puerto actual del panel ─────────────────────────
+PANEL_PORT=\$(x-ui settings 2>/dev/null | awk '/port:/ {print \$2}')
+[ -z "\$PANEL_PORT" ] && PANEL_PORT="443"
+
 # ── Limpiar certs de dominios viejos ────────────────────────
 for dir in /root/.acme.sh/*_ecc /root/.acme.sh/*; do
     [ -d "\$dir" ] || continue
@@ -3483,29 +3520,42 @@ for dir in /root/.acme.sh/*_ecc /root/.acme.sh/*; do
     fi
 done
 
-# ── Decidir si crear o renovar ───────────────────────────────
-NECESITA_ACCION=false
+# ── Decidir si crear, renovar, o solo reaplicar ─────────────
+NECESITA_EMITIR=false
+NECESITA_APLICAR=false
 
 if [ ! -f "\$CERT" ]; then
     echo "[SSL] Certificado no encontrado para \$DOMAIN. Emitiendo uno nuevo."
-    NECESITA_ACCION=true
+    NECESITA_EMITIR=true
+    NECESITA_APLICAR=true
 else
     EXPIRACION=\$(openssl x509 -enddate -noout -in "\$CERT" | cut -d= -f2)
     EXPIRA_EN=\$(date -d "\$EXPIRACION" +%s)
     HOY=\$(date +%s)
     DIAS=\$(( (\$EXPIRA_EN - \$HOY) / 86400 ))
-    echo "[SSL] Certificado encontrado. Vence en \$DIAS días."
+    echo "[SSL] Cert en disco: vence en \$DIAS días."
 
     if [ \$DIAS -le 7 ]; then
-        echo "[SSL] Faltan \$DIAS días o menos. Renovando..."
-        NECESITA_ACCION=true
-    else
-        echo "[SSL] Certificado vigente. No se requiere acción."
+        echo "[SSL] Faltan \$DIAS días. Renovando..."
+        NECESITA_EMITIR=true
+        NECESITA_APLICAR=true
     fi
 fi
 
-# ── Ejecutar solo si hay algo que hacer ─────────────────────
-if [ "\$NECESITA_ACCION" = true ]; then
+# ── Check secundario: cert que sirve el panel EN VIVO ────────
+# Corre siempre, independiente del estado del disco.
+LIVE_DAYS=\$(get_live_cert_days "\$DOMAIN" "\$PANEL_PORT")
+if [ "\$LIVE_DAYS" -lt 0 ]; then
+    echo "[SSL] No se pudo verificar cert vivo (no hay conexión al panel en puerto \$PANEL_PORT)."
+elif [ "\$LIVE_DAYS" -lt 10 ]; then
+    echo "[SSL] ⚠️  Cert vivo del panel vence en \$LIVE_DAYS días — panel desfasado. Forzando reaplicación."
+    NECESITA_APLICAR=true
+else
+    echo "[SSL] Cert vivo OK: \$LIVE_DAYS días restantes."
+fi
+
+# ── Paso 1: emitir/renovar si hace falta ────────────────────
+if [ "\$NECESITA_EMITIR" = true ]; then
 
     PROXY_PID=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
     if [ ! -z "\$PROXY_PID" ]; then
@@ -3532,6 +3582,11 @@ if [ "\$NECESITA_ACCION" = true ]; then
         exit 1
     fi
 
+fi
+
+# ── Paso 2: aplicar al panel si hace falta ──────────────────
+if [ "\$NECESITA_APLICAR" = true ]; then
+
     # Aplicar cert al panel SIEMPRE — sin importar si x-ui ya tenía uno cargado
     echo "[SSL] Aplicando certificado al panel..."
     x-ui ssl -domain "\$DOMAIN" \
@@ -3542,6 +3597,10 @@ if [ "\$NECESITA_ACCION" = true ]; then
     sleep 2
     echo "[SSL] Certificado aplicado y panel reiniciado."
 
+fi
+
+# ── Reactivar proxy si se detuvo ────────────────────────────
+if [ "\$NECESITA_EMITIR" = true ]; then
     EXISTING=\$(pgrep -f /etc/MCCARTHEY/PDirect.py)
     if [ -z "\$EXISTING" ]; then
         echo "[SSL] Reactivando proxy MCCARTHEY..."
@@ -3550,7 +3609,11 @@ if [ "\$NECESITA_ACCION" = true ]; then
     else
         echo "[SSL] Proxy ya activo (PID \$EXISTING), no se duplica."
     fi
+fi
 
+if [ "\$NECESITA_EMITIR" = false ] && [ "\$NECESITA_APLICAR" = false ]; then
+    echo "[SSL] ✅ Todo en orden. Sin acciones necesarias."
+else
     echo "[SSL] ✅ Proceso completado para dominio: \$DOMAIN"
 fi
 
@@ -3620,6 +3683,18 @@ force_renew_ssl(){
 
     # Aplicar cert al panel SIEMPRE
     apply_cert_to_panel "$DOMAIN"
+
+    # Verificar que el panel realmente está sirviendo el cert actualizado
+    get_port
+    LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PORT")
+    if [ "$LIVE_DAYS" -lt 0 ]; then
+        echo -e "${YELLOW}⚠️  No se pudo conectar al panel para verificar el cert vivo (puerto $PORT).${RESET}"
+    elif [ "$LIVE_DAYS" -lt 10 ]; then
+        echo -e "${RED}⚠️  El panel sigue sirviendo un cert con $LIVE_DAYS días. Reaplicando...${RESET}"
+        apply_cert_to_panel "$DOMAIN"
+    else
+        echo -e "${GREEN}✅ Cert vivo verificado: $LIVE_DAYS días restantes.${RESET}"
+    fi
 
     cleanup_old_certs "$DOMAIN"
 
@@ -3847,6 +3922,7 @@ remove_panel(){
     return
 
 }
+
 
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
