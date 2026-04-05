@@ -3341,8 +3341,15 @@ xhttp_panel() {
 
     # ── Obtener puerto del panel ─────────────────────────────
     get_port() {
-        PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
-        [ -z "$PORT" ] && PORT="No detectado"
+        local ATTEMPTS=0
+        PORT=""
+        while [ $ATTEMPTS -lt 5 ]; do
+            PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+            [ -n "$PORT" ] && return
+            sleep 2
+            ATTEMPTS=$(( ATTEMPTS + 1 ))
+        done
+        PORT=""  # sigue vacío si x-ui no respondió — nunca "No detectado"
     }
 
     # ── Leer dominio guardado ────────────────────────────────
@@ -3470,6 +3477,11 @@ xhttp_panel() {
         sleep 3
 
         # Verificar que el panel realmente sirve el cert nuevo
+        if [ -z "$PORT" ]; then
+            echo -e "${YELLOW}[SSL] ⚠️  Puerto no disponible aún — verificación en vivo omitida.${RESET}"
+            return
+        fi
+
         local LIVE_EXP LIVE_DAYS
         LIVE_EXP=$(openssl s_client \
                     -connect "${DOMAIN}:${PORT}" \
@@ -3882,17 +3894,19 @@ install_panel() {
         echo
 
         echo -e "${HOT_PINK}${BOLD}  CONFIGURACIÓN${RESET}"
-        echo -e "  ${CYAN}🌐 Puerto   ${RESET}: $PORT"
+        echo -e "  ${CYAN}🌐 Puerto   ${RESET}: ${PORT:-${YELLOW}(aún no disponible — revisá con opción 2)${RESET}}"
         echo -e "  ${CYAN}📂 Ruta     ${RESET}: $PATHP"
         echo -e "  ${CYAN}🌍 Dominio  ${RESET}: $DOMAIN"
         echo
 
-        if cert_is_valid "$CERT"; then
+        if cert_is_valid "$CERT" && [ -n "$PORT" ]; then
             echo -e "${HOT_PINK}${BOLD}  ACCESO  🔒 SSL ACTIVO${RESET}"
             echo -e "  ${CYAN}🔗 URL      ${RESET}: ${GREEN}${BOLD}https://$DOMAIN:$PORT$PATHP${RESET}"
-        else
+        elif [ -n "$PORT" ]; then
             echo -e "${HOT_PINK}${BOLD}  ACCESO  ⚠️  SIN SSL${RESET}"
             echo -e "  ${CYAN}🔗 URL      ${RESET}: ${YELLOW}http://$DOMAIN:$PORT$PATHP${RESET}"
+        else
+            echo -e "${YELLOW}  ⚠️  URL no disponible hasta que x-ui reporte el puerto. Usá la opción 2 para verla.${RESET}"
         fi
 
         echo
