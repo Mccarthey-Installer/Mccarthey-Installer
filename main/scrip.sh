@@ -3864,26 +3864,39 @@ install_panel() {
         get_port
         PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
 
+        read -rp "$(echo -e "${CYAN}ENTER para ver los datos del panel 👑 →${RESET} ")"
         clear
-        echo -e "${GREEN}"
-        echo "════════════════════════════════════"
-        echo "       PANEL LISTO 💖"
-        echo "════════════════════════════════════"
-        echo -e "${RESET}"
-        echo "Usuario  : $USER"
-        echo "Password : $PASS"
-        echo "Puerto   : $PORT"
-        echo "Ruta     : $PATHP"
-        echo "Dominio  : $DOMAIN"
+
+        local MAGENTA="\033[1;35m"
+        local BOLD="\033[1m"
+
+        echo
+        echo -e "${MAGENTA}╔══════════════════════════════════════╗${RESET}"
+        echo -e "${MAGENTA}║  ✨  PANEL LISTO — TODO OK  💖  ✨   ║${RESET}"
+        echo -e "${MAGENTA}╚══════════════════════════════════════╝${RESET}"
+        echo
+
+        echo -e "${HOT_PINK}${BOLD}  CREDENCIALES${RESET}"
+        echo -e "  ${CYAN}👤 Usuario  ${RESET}: ${GREEN}${BOLD}$USER${RESET}"
+        echo -e "  ${CYAN}🔑 Password ${RESET}: ${YELLOW}${BOLD}$PASS${RESET}"
+        echo
+
+        echo -e "${HOT_PINK}${BOLD}  CONFIGURACIÓN${RESET}"
+        echo -e "  ${CYAN}🌐 Puerto   ${RESET}: $PORT"
+        echo -e "  ${CYAN}📂 Ruta     ${RESET}: $PATHP"
+        echo -e "  ${CYAN}🌍 Dominio  ${RESET}: $DOMAIN"
         echo
 
         if cert_is_valid "$CERT"; then
-            echo "URL DEL PANEL"
-            echo "https://$DOMAIN:$PORT$PATHP"
+            echo -e "${HOT_PINK}${BOLD}  ACCESO  🔒 SSL ACTIVO${RESET}"
+            echo -e "  ${CYAN}🔗 URL      ${RESET}: ${GREEN}${BOLD}https://$DOMAIN:$PORT$PATHP${RESET}"
         else
-            echo "URL DEL PANEL (sin SSL)"
-            echo "http://$DOMAIN:$PORT$PATHP"
+            echo -e "${HOT_PINK}${BOLD}  ACCESO  ⚠️  SIN SSL${RESET}"
+            echo -e "  ${CYAN}🔗 URL      ${RESET}: ${YELLOW}http://$DOMAIN:$PORT$PATHP${RESET}"
         fi
+
+        echo
+        echo -e "${MAGENTA}══════════════════════════════════════${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
     fi
@@ -3969,12 +3982,14 @@ remove_panel() {
     clear
     echo -e "${RED}Eliminando panel...${RESET}"
 
-    x-ui stop      >/dev/null 2>&1
-    x-ui uninstall >/dev/null 2>&1
+    x-ui stop               >/dev/null 2>&1
+    printf "y\n" | x-ui uninstall >/dev/null 2>&1
 
     echo -e "${GREEN}Panel eliminado correctamente ✅${RESET}"
     read -rp "ENTER para continuar"
 }
+
+
 
 
 
