@@ -3001,147 +3001,99 @@ if ! grep -q "/root/scrip.sh" /root/.bash_profile; then
 fi
 
 # ==== FUNCIONES SWAP ====
-
 activar_desactivar_swap() {
-    while true; do
-        clear
-        echo
-        echo -e "${VIOLETA}======💾 PANEL SWAP ======${NC}"
-        echo -e "${AMARILLO_SUAVE}1. Activar Swap${NC}"
-        echo -e "${AMARILLO_SUAVE}2. Eliminar Swap${NC}"
-        echo -e "${AMARILLO_SUAVE}0. Volver al menú principal${NC}"
-        echo
-        read -p "$(echo -e "${ROSA}➡️  Selecciona una opción: ${NC}")" SUBOPCION
+    clear
+    echo
+    echo -e "${VIOLETA}======💾 PANEL SWAP ======${NC}"
+    echo -e "${AMARILLO_SUAVE}1. Activar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}2. Eliminar Swap${NC}"
+    echo -e "${AMARILLO_SUAVE}0. Volver al menú principal${NC}"
+    echo
+    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
+    read -p "$PROMPT" SUBOPCION
 
-        case $SUBOPCION in
-            1) instalar_swap ;;
-            2) eliminar_swap ;;
-            0) return ;;
-            *)
-                echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-                read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-                ;;
-        esac
-    done
+    case $SUBOPCION in
+        1) instalar_swap ;;
+        2) eliminar_swap ;;
+        0) return ;;
+        *) 
+            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+            activar_desactivar_swap
+            ;;
+    esac
 }
 
 instalar_swap() {
     clear
     echo
     echo -e "${VIOLETA}======💾 ACTIVAR SWAP ======${NC}"
-    echo
+    echo -e "${AMARILLO_SUAVE}Instalando dependencias para Stress...${NC}"
+    apt update -y &>/dev/null
+    apt install stress -y &>/dev/null
 
-    [ "$EUID" -ne 0 ] && {
-        echo -e "${ROJO}❌ Esta operación requiere permisos de root.${NC}"
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    }
-
-    if swapon --show | grep -q "/swapfile"; then
-        echo -e "${ROJO}❌ Ya existe un swapfile activo. Elimínalo primero antes de crear uno nuevo.${NC}"
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    fi
-
-    read -p "$(echo -e "${AMARILLO_SUAVE}Tamaño de Swap en GB (ej: 1, 2, 3): ${ROSA}➡️  ${NC}")" SIZE_GB
-
-    if ! [[ "$SIZE_GB" =~ ^[1-9][0-9]*$ ]]; then
-        echo -e "${ROJO}❌ Valor inválido. Ingresa un número entero positivo.${NC}"
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    fi
-
-    ESPACIO_LIBRE_MB=$(df / --output=avail -BM | tail -1 | tr -d 'M')
+    echo -e "${AMARILLO_SUAVE}Tamaño de Swap en GB (ej: 1, 2, 3): ${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " SIZE_GB
     SIZE_MB=$((SIZE_GB * 1024))
-    MARGEN_MB=200
 
-    if [ "$((SIZE_MB + MARGEN_MB))" -ge "$ESPACIO_LIBRE_MB" ]; then
-        ESPACIO_GB=$(( ESPACIO_LIBRE_MB / 1024 ))
-        echo -e "${ROJO}❌ Espacio insuficiente. Disponible: ~${ESPACIO_GB}GB — Solicitado: ${SIZE_GB}GB (se reservan 200MB de margen)${NC}"
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    fi
-
-    [ -f /swapfile ] && rm -f /swapfile
-
-    echo
-    echo -e "${AMARILLO_SUAVE}Creando swapfile de ${SIZE_GB}GB...${NC}"
-
-    fallocate -l "${SIZE_GB}G" /swapfile || {
-        echo -e "${ROJO}❌ Error al crear el swapfile con fallocate.${NC}"
-        rm -f /swapfile
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    }
-
+    echo -e "${AMARILLO_SUAVE}Creando archivo de swap de ${SIZE_GB}GB...${NC}"
+    dd if=/dev/zero of=/swapfile bs=1M count=$SIZE_MB status=progress &>/dev/null
     chmod 600 /swapfile
+    mkswap /swapfile &>/dev/null
+    swapon /swapfile &>/dev/null
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-    mkswap /swapfile || {
-        echo -e "${ROJO}❌ Error al formatear el swapfile (mkswap).${NC}"
-        rm -f /swapfile
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    }
+    echo -e "${AMARILLO_SUAVE}Número de procesos para Stress (ej: 1, 2, 3, 4): ${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " NUM_PROCS
 
-    swapon /swapfile || {
-        echo -e "${ROJO}❌ Error al activar el swapfile (swapon).${NC}"
-        rm -f /swapfile
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    }
+    echo -e "${AMARILLO_SUAVE}Intervalo en horas para ejecutar Stress (ej: 6): ${NC}"
+    read -p "$(echo -e ${ROSA}➡️ ) " INTERVAL_HOURS
 
-    if ! grep -q "^/swapfile" /etc/fstab; then
-        echo '/swapfile none swap sw 0 0' >> /etc/fstab
-    fi
+    # Forzar vm-bytes siempre a 1400M
+    VM_BYTES=1400
 
-    sysctl vm.swappiness=10
-    grep -q "^vm.swappiness" /etc/sysctl.conf || echo "vm.swappiness=10" >> /etc/sysctl.conf
+    echo -e "${AMARILLO_SUAVE}Presiona Enter para confirmar instalación y configuración...${NC}"
+    read
 
-    echo
-    echo -e "${VERDE}✅ Swap de ${SIZE_GB}GB activado — swappiness=10 aplicado y persistente.${NC}"
-    echo
-    swapon --show
-    free -h
-    echo
+    cat > /root/run_stress.sh << EOF
+#!/bin/bash
+stress --vm $NUM_PROCS --vm-bytes ${VM_BYTES}M --timeout 30s
+EOF
+    chmod +x /root/run_stress.sh
 
-    read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+    (crontab -l 2>/dev/null; echo "0 */$INTERVAL_HOURS * * * /root/run_stress.sh") | crontab -
+    echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas (vm-bytes fijo en 1400M).${NC}"
+
+    # 🚀 Ejecutar stress inmediatamente para liberar RAM ya mismo
+    echo -e "${AMARILLO_SUAVE}Ejecutando Stress inicial...${NC}"
+    stress --vm $NUM_PROCS --vm-bytes ${VM_BYTES}M --timeout 30s
+
+    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+    activar_desactivar_swap
 }
 
 eliminar_swap() {
     clear
     echo
     echo -e "${VIOLETA}======💾 ELIMINAR SWAP ======${NC}"
-    echo
-
-    [ "$EUID" -ne 0 ] && {
-        echo -e "${ROJO}❌ Esta operación requiere permisos de root.${NC}"
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    }
-
-    if ! [ -f /swapfile ]; then
-        echo -e "${ROJO}❌ No se encontró ningún swapfile activo.${NC}"
-        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
-        return
-    fi
-
-    echo -e "${AMARILLO_SUAVE}Se eliminará el swapfile y se removerá de /etc/fstab.${NC}"
-    echo -e "${ROJO}Presiona Enter para confirmar, o Ctrl+C para cancelar.${NC}"
+    echo -e "${AMARILLO_SUAVE}Confirmar eliminación de Swap (Enter para continuar, Ctrl+C para cancelar)${NC}"
     read
 
-    swapoff /swapfile || echo -e "${AMARILLO_SUAVE}⚠️  No se pudo desactivar el swap (puede que ya esté inactivo).${NC}"
+    swapoff /swapfile &>/dev/null
     rm -f /swapfile
-    sed -i '/^\/swapfile/d' /etc/fstab
+    sed -i '/\/swapfile/d' /etc/fstab &>/dev/null
 
-    echo
-    echo -e "${VERDE}✅ Swap eliminado correctamente.${NC}"
-    echo
-    free -h
-    echo
+    # Remover cron job de stress
+    crontab -l | grep -v "run_stress.sh" | crontab - &>/dev/null
+    rm -f /root/run_stress.sh
 
-    read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+    apt remove stress -y &>/dev/null
+
+    echo -e "${VERDE}✅ Swap eliminado y configuraciones removidas.${NC}"
+
+    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
+    activar_desactivar_swap
 }
-
 
 function usuarios_ssh() {
     clear
