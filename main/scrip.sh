@@ -3308,7 +3308,6 @@ ${LILA}-------------------------${NC}"
 }
 
 
-
 xhttp_panel() {
 
     HOT_PINK="\033[1;95m"
@@ -3859,7 +3858,7 @@ install_panel() {
         get_port
         PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
 
-        clear
+        read -rp "$(echo -e "${CYAN}ENTER para ver los datos del panel 👑 →${RESET} ")"
         echo -e "${GREEN}"
         echo "════════════════════════════════════"
         echo "       PANEL LISTO 💖"
@@ -3964,12 +3963,15 @@ remove_panel() {
     clear
     echo -e "${RED}Eliminando panel...${RESET}"
 
-    x-ui stop      >/dev/null 2>&1
-    x-ui uninstall >/dev/null 2>&1
+    x-ui stop               >/dev/null 2>&1
+    printf "y\n" | x-ui uninstall >/dev/null 2>&1
 
     echo -e "${GREEN}Panel eliminado correctamente ✅${RESET}"
     read -rp "ENTER para continuar"
 }
+
+
+
 
 
 # ==== MENU ====  
