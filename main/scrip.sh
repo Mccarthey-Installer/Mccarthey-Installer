@@ -3001,99 +3001,147 @@ if ! grep -q "/root/scrip.sh" /root/.bash_profile; then
 fi
 
 # ==== FUNCIONES SWAP ====
-activar_desactivar_swap() {
-    clear
-    echo
-    echo -e "${VIOLETA}======💾 PANEL SWAP ======${NC}"
-    echo -e "${AMARILLO_SUAVE}1. Activar Swap${NC}"
-    echo -e "${AMARILLO_SUAVE}2. Eliminar Swap${NC}"
-    echo -e "${AMARILLO_SUAVE}0. Volver al menú principal${NC}"
-    echo
-    PROMPT=$(echo -e "${ROSA}➡️ Selecciona una opción: ${NC}")
-    read -p "$PROMPT" SUBOPCION
 
-    case $SUBOPCION in
-        1) instalar_swap ;;
-        2) eliminar_swap ;;
-        0) return ;;
-        *) 
-            echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
-            read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
-            activar_desactivar_swap
-            ;;
-    esac
+activar_desactivar_swap() {
+    while true; do
+        clear
+        echo
+        echo -e "${VIOLETA}======💾 PANEL SWAP ======${NC}"
+        echo -e "${AMARILLO_SUAVE}1. Activar Swap${NC}"
+        echo -e "${AMARILLO_SUAVE}2. Eliminar Swap${NC}"
+        echo -e "${AMARILLO_SUAVE}0. Volver al menú principal${NC}"
+        echo
+        read -p "$(echo -e "${ROSA}➡️  Selecciona una opción: ${NC}")" SUBOPCION
+
+        case $SUBOPCION in
+            1) instalar_swap ;;
+            2) eliminar_swap ;;
+            0) return ;;
+            *)
+                echo -e "${ROJO}❌ ¡Opción inválida!${NC}"
+                read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+                ;;
+        esac
+    done
 }
 
 instalar_swap() {
     clear
     echo
     echo -e "${VIOLETA}======💾 ACTIVAR SWAP ======${NC}"
-    echo -e "${AMARILLO_SUAVE}Instalando dependencias para Stress...${NC}"
-    apt update -y &>/dev/null
-    apt install stress -y &>/dev/null
+    echo
 
-    echo -e "${AMARILLO_SUAVE}Tamaño de Swap en GB (ej: 1, 2, 3): ${NC}"
-    read -p "$(echo -e ${ROSA}➡️ ) " SIZE_GB
+    [ "$EUID" -ne 0 ] && {
+        echo -e "${ROJO}❌ Esta operación requiere permisos de root.${NC}"
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    }
+
+    if swapon --show | grep -q "/swapfile"; then
+        echo -e "${ROJO}❌ Ya existe un swapfile activo. Elimínalo primero antes de crear uno nuevo.${NC}"
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    fi
+
+    read -p "$(echo -e "${AMARILLO_SUAVE}Tamaño de Swap en GB (ej: 1, 2, 3): ${ROSA}➡️  ${NC}")" SIZE_GB
+
+    if ! [[ "$SIZE_GB" =~ ^[1-9][0-9]*$ ]]; then
+        echo -e "${ROJO}❌ Valor inválido. Ingresa un número entero positivo.${NC}"
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    fi
+
+    ESPACIO_LIBRE_MB=$(df / --output=avail -BM | tail -1 | tr -d 'M')
     SIZE_MB=$((SIZE_GB * 1024))
+    MARGEN_MB=200
 
-    echo -e "${AMARILLO_SUAVE}Creando archivo de swap de ${SIZE_GB}GB...${NC}"
-    dd if=/dev/zero of=/swapfile bs=1M count=$SIZE_MB status=progress &>/dev/null
+    if [ "$((SIZE_MB + MARGEN_MB))" -ge "$ESPACIO_LIBRE_MB" ]; then
+        ESPACIO_GB=$(( ESPACIO_LIBRE_MB / 1024 ))
+        echo -e "${ROJO}❌ Espacio insuficiente. Disponible: ~${ESPACIO_GB}GB — Solicitado: ${SIZE_GB}GB (se reservan 200MB de margen)${NC}"
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    fi
+
+    [ -f /swapfile ] && rm -f /swapfile
+
+    echo
+    echo -e "${AMARILLO_SUAVE}Creando swapfile de ${SIZE_GB}GB...${NC}"
+
+    fallocate -l "${SIZE_GB}G" /swapfile || {
+        echo -e "${ROJO}❌ Error al crear el swapfile con fallocate.${NC}"
+        rm -f /swapfile
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    }
+
     chmod 600 /swapfile
-    mkswap /swapfile &>/dev/null
-    swapon /swapfile &>/dev/null
-    echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-    echo -e "${AMARILLO_SUAVE}Número de procesos para Stress (ej: 1, 2, 3, 4): ${NC}"
-    read -p "$(echo -e ${ROSA}➡️ ) " NUM_PROCS
+    mkswap /swapfile || {
+        echo -e "${ROJO}❌ Error al formatear el swapfile (mkswap).${NC}"
+        rm -f /swapfile
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    }
 
-    echo -e "${AMARILLO_SUAVE}Intervalo en horas para ejecutar Stress (ej: 6): ${NC}"
-    read -p "$(echo -e ${ROSA}➡️ ) " INTERVAL_HOURS
+    swapon /swapfile || {
+        echo -e "${ROJO}❌ Error al activar el swapfile (swapon).${NC}"
+        rm -f /swapfile
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    }
 
-    # Forzar vm-bytes siempre a 1400M
-    VM_BYTES=1400
+    if ! grep -q "^/swapfile" /etc/fstab; then
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
 
-    echo -e "${AMARILLO_SUAVE}Presiona Enter para confirmar instalación y configuración...${NC}"
-    read
+    sysctl vm.swappiness=10
+    grep -q "^vm.swappiness" /etc/sysctl.conf || echo "vm.swappiness=10" >> /etc/sysctl.conf
 
-    cat > /root/run_stress.sh << EOF
-#!/bin/bash
-stress --vm $NUM_PROCS --vm-bytes ${VM_BYTES}M --timeout 30s
-EOF
-    chmod +x /root/run_stress.sh
+    echo
+    echo -e "${VERDE}✅ Swap de ${SIZE_GB}GB activado — swappiness=10 aplicado y persistente.${NC}"
+    echo
+    swapon --show
+    free -h
+    echo
 
-    (crontab -l 2>/dev/null; echo "0 */$INTERVAL_HOURS * * * /root/run_stress.sh") | crontab -
-    echo -e "${VERDE}✅ Swap activado y Stress programado cada ${INTERVAL_HOURS} horas (vm-bytes fijo en 1400M).${NC}"
-
-    # 🚀 Ejecutar stress inmediatamente para liberar RAM ya mismo
-    echo -e "${AMARILLO_SUAVE}Ejecutando Stress inicial...${NC}"
-    stress --vm $NUM_PROCS --vm-bytes ${VM_BYTES}M --timeout 30s
-
-    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
-    activar_desactivar_swap
+    read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
 }
 
 eliminar_swap() {
     clear
     echo
     echo -e "${VIOLETA}======💾 ELIMINAR SWAP ======${NC}"
-    echo -e "${AMARILLO_SUAVE}Confirmar eliminación de Swap (Enter para continuar, Ctrl+C para cancelar)${NC}"
+    echo
+
+    [ "$EUID" -ne 0 ] && {
+        echo -e "${ROJO}❌ Esta operación requiere permisos de root.${NC}"
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    }
+
+    if ! [ -f /swapfile ]; then
+        echo -e "${ROJO}❌ No se encontró ningún swapfile activo.${NC}"
+        read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
+        return
+    fi
+
+    echo -e "${AMARILLO_SUAVE}Se eliminará el swapfile y se removerá de /etc/fstab.${NC}"
+    echo -e "${ROJO}Presiona Enter para confirmar, o Ctrl+C para cancelar.${NC}"
     read
 
-    swapoff /swapfile &>/dev/null
+    swapoff /swapfile || echo -e "${AMARILLO_SUAVE}⚠️  No se pudo desactivar el swap (puede que ya esté inactivo).${NC}"
     rm -f /swapfile
-    sed -i '/\/swapfile/d' /etc/fstab &>/dev/null
+    sed -i '/^\/swapfile/d' /etc/fstab
 
-    # Remover cron job de stress
-    crontab -l | grep -v "run_stress.sh" | crontab - &>/dev/null
-    rm -f /root/run_stress.sh
+    echo
+    echo -e "${VERDE}✅ Swap eliminado correctamente.${NC}"
+    echo
+    free -h
+    echo
 
-    apt remove stress -y &>/dev/null
-
-    echo -e "${VERDE}✅ Swap eliminado y configuraciones removidas.${NC}"
-
-    read -p "$(echo -e ${ROSA_CLARO}Presiona Enter para continuar...${NC})"
-    activar_desactivar_swap
+    read -p "$(echo -e "${ROSA_CLARO}Presiona Enter para continuar...${NC}")"
 }
+
 
 function usuarios_ssh() {
     clear
@@ -3260,7 +3308,6 @@ ${LILA}-------------------------${NC}"
 }
 
 
-
 xhttp_panel() {
 
     HOT_PINK="\033[1;95m"
@@ -3370,35 +3417,67 @@ xhttp_panel() {
         echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
     }
 
-    # ── Aplicar certificado al panel (copia directa a /etc/x-ui/) ───
+    # ── Aplicar certificado al panel ─────────────────────────
     # NO usa "x-ui ssl" — ese comando no aplica el cert de forma confiable.
-    # La única forma segura es parar el servicio, copiar los archivos
-    # directamente y levantarlo de nuevo.
+    # Lee las rutas reales desde SQLite (webCertFile / webKeyFile) para no
+    # depender de rutas hardcodeadas que pueden cambiar con updates de x-ui.
     apply_cert_to_panel() {
         local DOMAIN="$1"
         local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
         local CERT="$CERT_DIR/fullchain.cer"
         local KEY="$CERT_DIR/${DOMAIN}.key"
+        local DB="/etc/x-ui/x-ui.db"
 
         if ! cert_is_valid "$CERT"; then
             echo -e "${RED}[SSL] El certificado no es válido o no existe: $CERT${RESET}"
             return 1
         fi
 
+        # Leer rutas desde SQLite
+        local CERT_PATH KEY_PATH
+        CERT_PATH=$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='webCertFile';" 2>/dev/null)
+        KEY_PATH=$(sqlite3  "$DB" "SELECT value FROM settings WHERE key='webKeyFile';"  2>/dev/null)
+
+        # Fallback si SQLite no devuelve nada
+        if [ -z "$CERT_PATH" ] || [ -z "$KEY_PATH" ]; then
+            echo -e "${YELLOW}[SSL] No se pudieron leer rutas desde SQLite. Usando fallback /root/cert/ip/${RESET}"
+            CERT_PATH="/root/cert/ip/fullchain.pem"
+            KEY_PATH="/root/cert/ip/privkey.pem"
+        else
+            echo -e "${CYAN}[SSL] Ruta cert : $CERT_PATH${RESET}"
+            echo -e "${CYAN}[SSL] Ruta key  : $KEY_PATH${RESET}"
+        fi
+
+        mkdir -p "$(dirname "$CERT_PATH")"
+        mkdir -p "$(dirname "$KEY_PATH")"
+
         echo -e "${YELLOW}[SSL] Deteniendo panel para aplicar certificado...${RESET}"
         systemctl stop x-ui
 
-        echo -e "${YELLOW}[SSL] Copiando certificado a /etc/x-ui/...${RESET}"
-        cp "$CERT" /etc/x-ui/cert.crt
-        cp "$KEY"  /etc/x-ui/private.key
-        chmod 644 /etc/x-ui/cert.crt
-        chmod 600 /etc/x-ui/private.key
+        cp "$CERT" "$CERT_PATH"
+        cp "$KEY"  "$KEY_PATH"
+        chmod 644 "$CERT_PATH"
+        chmod 600 "$KEY_PATH"
 
         echo -e "${YELLOW}[SSL] Levantando panel...${RESET}"
         systemctl start x-ui
-        sleep 2
+        sleep 3
 
-        echo -e "${GREEN}[SSL] Certificado aplicado y panel reiniciado ✅${RESET}"
+        # Verificar que el panel realmente sirve el cert nuevo
+        local LIVE_EXP LIVE_DAYS
+        LIVE_EXP=$(openssl s_client \
+                    -connect "${DOMAIN}:${PORT}" \
+                    -servername "${DOMAIN}" \
+                    </dev/null 2>/dev/null \
+                   | openssl x509 -enddate -noout 2>/dev/null \
+                   | cut -d= -f2)
+
+        if [ -n "$LIVE_EXP" ]; then
+            LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
+            echo -e "${GREEN}[SSL] ✅ Cert aplicado correctamente — vence en $LIVE_DAYS días ($LIVE_EXP)${RESET}"
+        else
+            echo -e "${RED}[SSL] ❌ No se pudo verificar el cert en vivo. Revisá si el panel levantó bien en puerto $PORT.${RESET}"
+        fi
     }
 
     # ════════════════════════════════════════════════════════
@@ -3563,21 +3642,50 @@ fi
 
 # ── Paso 2: aplicar al panel si hace falta ──────────────
 # NO se usa "x-ui ssl" — no aplica el cert de forma confiable.
-# Se copia directo a /etc/x-ui/ con el servicio detenido.
+# Lee las rutas reales desde SQLite para no depender de rutas hardcodeadas.
 if [ "$NECESITA_APLICAR" = true ]; then
+    DB="/etc/x-ui/x-ui.db"
+    CERT_PATH=$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='webCertFile';" 2>/dev/null)
+    KEY_PATH=$(sqlite3  "$DB" "SELECT value FROM settings WHERE key='webKeyFile';"  2>/dev/null)
+
+    if [ -z "$CERT_PATH" ] || [ -z "$KEY_PATH" ]; then
+        echo "[SSL] No se pudieron leer rutas desde SQLite. Usando fallback /root/cert/ip/"
+        CERT_PATH="/root/cert/ip/fullchain.pem"
+        KEY_PATH="/root/cert/ip/privkey.pem"
+    else
+        echo "[SSL] Ruta cert : $CERT_PATH"
+        echo "[SSL] Ruta key  : $KEY_PATH"
+    fi
+
+    mkdir -p "$(dirname "$CERT_PATH")"
+    mkdir -p "$(dirname "$KEY_PATH")"
+
     echo "[SSL] Deteniendo panel para aplicar certificado..."
     systemctl stop x-ui
 
-    echo "[SSL] Copiando certificado a /etc/x-ui/..."
-    cp "$CERT_DIR/fullchain.cer"    /etc/x-ui/cert.crt
-    cp "$CERT_DIR/${DOMAIN}.key"    /etc/x-ui/private.key
-    chmod 644 /etc/x-ui/cert.crt
-    chmod 600 /etc/x-ui/private.key
+    cp "$CERT_DIR/fullchain.cer"   "$CERT_PATH"
+    cp "$CERT_DIR/${DOMAIN}.key"   "$KEY_PATH"
+    chmod 644 "$CERT_PATH"
+    chmod 600 "$KEY_PATH"
 
     echo "[SSL] Levantando panel..."
     systemctl start x-ui
-    sleep 2
-    echo "[SSL] Certificado aplicado y panel reiniciado."
+    sleep 3
+
+    # Verificar que el panel realmente sirve el cert nuevo
+    LIVE_EXP=$(openssl s_client \
+                -connect "${DOMAIN}:${PANEL_PORT}" \
+                -servername "${DOMAIN}" \
+                </dev/null 2>/dev/null \
+               | openssl x509 -enddate -noout 2>/dev/null \
+               | cut -d= -f2)
+
+    if [ -n "$LIVE_EXP" ]; then
+        LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
+        echo "[SSL] ✅ Cert aplicado correctamente — vence en $LIVE_DAYS días ($LIVE_EXP)"
+    else
+        echo "[SSL] ❌ No se pudo verificar el cert en vivo. Revisá si el panel levantó bien en puerto $PANEL_PORT."
+    fi
 fi
 
 # ── Reactivar proxy si se detuvo ────────────────────────
@@ -3750,26 +3858,39 @@ install_panel() {
         get_port
         PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
 
+        read -rp "$(echo -e "${CYAN}ENTER para ver los datos del panel 👑 →${RESET} ")"
         clear
-        echo -e "${GREEN}"
-        echo "════════════════════════════════════"
-        echo "       PANEL LISTO 💖"
-        echo "════════════════════════════════════"
-        echo -e "${RESET}"
-        echo "Usuario  : $USER"
-        echo "Password : $PASS"
-        echo "Puerto   : $PORT"
-        echo "Ruta     : $PATHP"
-        echo "Dominio  : $DOMAIN"
+
+        local MAGENTA="\033[1;35m"
+        local BOLD="\033[1m"
+
+        echo
+        echo -e "${MAGENTA}╔══════════════════════════════════════╗${RESET}"
+        echo -e "${MAGENTA}║  ✨  PANEL LISTO — TODO OK  💖  ✨   ║${RESET}"
+        echo -e "${MAGENTA}╚══════════════════════════════════════╝${RESET}"
+        echo
+
+        echo -e "${HOT_PINK}${BOLD}  CREDENCIALES${RESET}"
+        echo -e "  ${CYAN}👤 Usuario  ${RESET}: ${GREEN}${BOLD}$USER${RESET}"
+        echo -e "  ${CYAN}🔑 Password ${RESET}: ${YELLOW}${BOLD}$PASS${RESET}"
+        echo
+
+        echo -e "${HOT_PINK}${BOLD}  CONFIGURACIÓN${RESET}"
+        echo -e "  ${CYAN}🌐 Puerto   ${RESET}: $PORT"
+        echo -e "  ${CYAN}📂 Ruta     ${RESET}: $PATHP"
+        echo -e "  ${CYAN}🌍 Dominio  ${RESET}: $DOMAIN"
         echo
 
         if cert_is_valid "$CERT"; then
-            echo "URL DEL PANEL"
-            echo "https://$DOMAIN:$PORT$PATHP"
+            echo -e "${HOT_PINK}${BOLD}  ACCESO  🔒 SSL ACTIVO${RESET}"
+            echo -e "  ${CYAN}🔗 URL      ${RESET}: ${GREEN}${BOLD}https://$DOMAIN:$PORT$PATHP${RESET}"
         else
-            echo "URL DEL PANEL (sin SSL)"
-            echo "http://$DOMAIN:$PORT$PATHP"
+            echo -e "${HOT_PINK}${BOLD}  ACCESO  ⚠️  SIN SSL${RESET}"
+            echo -e "  ${CYAN}🔗 URL      ${RESET}: ${YELLOW}http://$DOMAIN:$PORT$PATHP${RESET}"
         fi
+
+        echo
+        echo -e "${MAGENTA}══════════════════════════════════════${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
     fi
@@ -3855,12 +3976,15 @@ remove_panel() {
     clear
     echo -e "${RED}Eliminando panel...${RESET}"
 
-    x-ui stop      >/dev/null 2>&1
-    x-ui uninstall >/dev/null 2>&1
+    x-ui stop               >/dev/null 2>&1
+    printf "y\n" | x-ui uninstall >/dev/null 2>&1
 
     echo -e "${GREEN}Panel eliminado correctamente ✅${RESET}"
     read -rp "ENTER para continuar"
 }
+
+
+
 
 
 # ==== MENU ====  
