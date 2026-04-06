@@ -3317,6 +3317,7 @@ ${LILA}-------------------------${NC}"
 
 
 
+
 xhttp_panel() {
 
     HOT_PINK="\033[1;95m"
@@ -3446,11 +3447,11 @@ xhttp_panel() {
         chmod 644 "$DEST_CERT"
         chmod 600 "$DEST_KEY"
 
-        echo -e "${CYAN}[SSL] Escribiendo rutas fijas en la DB...${RESET}"
+        echo -e "${CYAN}[SSL] Limpiando entradas viejas y escribiendo rutas en la DB...${RESET}"
         sqlite3 "$DB" "
-            INSERT OR REPLACE INTO settings (key, value) VALUES
-            ('webCertFile', '$DEST_CERT'),
-            ('webKeyFile',  '$DEST_KEY');
+            DELETE FROM settings WHERE key IN ('webCertFile', 'webKeyFile');
+            INSERT INTO settings (key, value) VALUES ('webCertFile', '$DEST_CERT');
+            INSERT INTO settings (key, value) VALUES ('webKeyFile',  '$DEST_KEY');
         "
 
         echo -e "${YELLOW}[SSL] Reiniciando panel para aplicar certificado...${RESET}"
@@ -3634,7 +3635,7 @@ if [ "$NECESITA_EMITIR" = true ]; then
     fi
 fi
 
-# ── Paso 2: copiar a /etc/x-ui/ssl y actualizar DB ──────
+# ── Paso 2: copiar a /etc/x-ui/ssl y limpiar + escribir DB ──
 if [ "$NECESITA_APLICAR" = true ]; then
     DB="/etc/x-ui/x-ui.db"
 
@@ -3645,11 +3646,11 @@ if [ "$NECESITA_APLICAR" = true ]; then
     chmod 644 "$DEST_CERT"
     chmod 600 "$DEST_KEY"
 
-    echo "[SSL] Escribiendo rutas fijas en la DB..."
+    echo "[SSL] Limpiando entradas viejas y escribiendo rutas en la DB..."
     sqlite3 "$DB" "
-        INSERT OR REPLACE INTO settings (key, value) VALUES
-        ('webCertFile', '$DEST_CERT'),
-        ('webKeyFile',  '$DEST_KEY');
+        DELETE FROM settings WHERE key IN ('webCertFile', 'webKeyFile');
+        INSERT INTO settings (key, value) VALUES ('webCertFile', '$DEST_CERT');
+        INSERT INTO settings (key, value) VALUES ('webKeyFile',  '$DEST_KEY');
     "
 
     echo "[SSL] Reiniciando panel..."
@@ -3745,7 +3746,7 @@ force_renew_ssl() {
         return
     fi
 
-    # Copiar a /etc/x-ui/ssl y registrar en DB
+    # Copiar a /etc/x-ui/ssl, limpiar DB y registrar rutas limpias
     apply_cert_to_panel "$DOMAIN"
     get_port
 
@@ -3824,7 +3825,7 @@ install_panel() {
         fi
     fi
 
-    # Copiar a /etc/x-ui/ssl y registrar en DB
+    # Copiar a /etc/x-ui/ssl, limpiar DB y registrar rutas limpias
     apply_cert_to_panel "$DOMAIN"
     cleanup_old_certs "$DOMAIN"
     start_proxy
@@ -3964,7 +3965,6 @@ remove_panel() {
     echo -e "${GREEN}Panel eliminado correctamente ✅${RESET}"
     read -rp "ENTER para continuar"
 }
-
 
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
