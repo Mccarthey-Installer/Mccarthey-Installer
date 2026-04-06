@@ -3315,6 +3315,8 @@ ${LILA}-------------------------${NC}"
 #   XHTTP PANEL — XRAY + 3X-UI MANAGER
 # ═══════════════════════════════════════════════════════
 
+
+
 xhttp_panel() {
 
     HOT_PINK="\033[1;95m"
@@ -3324,6 +3326,7 @@ xhttp_panel() {
     YELLOW="\033[1;93m"
     RESET="\033[0m"
     DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
+    SSL_DIR="/etc/x-ui/ssl"
 
     # ── Verificar si el panel está instalado ─────────────────
     panel_installed() {
@@ -3394,7 +3397,8 @@ xhttp_panel() {
         done
     }
 
-    # ── Verificar si el certificado en disco es válido ───────
+    # ── Verificar si un certificado es válido ────────────────
+    # Siempre se llama con ruta de /etc/x-ui/ssl
     cert_is_valid() {
         local CERT="$1"
         [ -f "$CERT" ] || return 1
@@ -3420,44 +3424,37 @@ xhttp_panel() {
     }
 
     # ── Aplicar certificado al panel ─────────────────────────
+    # acme.sh solo entra aquí para copiar — después no se vuelve a leer
     apply_cert_to_panel() {
         local DOMAIN="$1"
-        local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-        local CERT="$CERT_DIR/fullchain.cer"
-        local KEY="$CERT_DIR/${DOMAIN}.key"
+        local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
+        local ACME_KEY="/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key"
+        local DEST_CERT="$SSL_DIR/fullchain.cer"
+        local DEST_KEY="$SSL_DIR/${DOMAIN}.key"
         local DB="/etc/x-ui/x-ui.db"
 
-        if ! cert_is_valid "$CERT"; then
-            echo -e "${RED}[SSL] El certificado no es válido o no existe: $CERT${RESET}"
+        # Validar salida de acme antes de copiar
+        if ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
+            echo -e "${RED}[SSL] El certificado de acme no es válido o no existe: $ACME_CERT${RESET}"
             return 1
         fi
 
-        local CERT_PATH KEY_PATH
-        CERT_PATH=$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='webCertFile';" 2>/dev/null)
-        KEY_PATH=$(sqlite3  "$DB" "SELECT value FROM settings WHERE key='webKeyFile';"  2>/dev/null)
+        echo -e "${CYAN}[SSL] Copiando certificados a $SSL_DIR...${RESET}"
+        mkdir -p "$SSL_DIR"
+        cp "$ACME_CERT" "$DEST_CERT"
+        cp "$ACME_KEY"  "$DEST_KEY"
+        chmod 644 "$DEST_CERT"
+        chmod 600 "$DEST_KEY"
 
-        if [ -z "$CERT_PATH" ] || [ -z "$KEY_PATH" ]; then
-            echo -e "${YELLOW}[SSL] No se pudieron leer rutas desde SQLite. Usando fallback /root/cert/ip/${RESET}"
-            CERT_PATH="/root/cert/ip/fullchain.pem"
-            KEY_PATH="/root/cert/ip/privkey.pem"
-        else
-            echo -e "${CYAN}[SSL] Ruta cert : $CERT_PATH${RESET}"
-            echo -e "${CYAN}[SSL] Ruta key  : $KEY_PATH${RESET}"
-        fi
+        echo -e "${CYAN}[SSL] Escribiendo rutas fijas en la DB...${RESET}"
+        sqlite3 "$DB" "
+            INSERT OR REPLACE INTO settings (key, value) VALUES
+            ('webCertFile', '$DEST_CERT'),
+            ('webKeyFile',  '$DEST_KEY');
+        "
 
-        mkdir -p "$(dirname "$CERT_PATH")"
-        mkdir -p "$(dirname "$KEY_PATH")"
-
-        echo -e "${YELLOW}[SSL] Deteniendo panel para aplicar certificado...${RESET}"
-        systemctl stop x-ui
-
-        cp "$CERT" "$CERT_PATH"
-        cp "$KEY"  "$KEY_PATH"
-        chmod 644 "$CERT_PATH"
-        chmod 600 "$KEY_PATH"
-
-        echo -e "${YELLOW}[SSL] Levantando panel...${RESET}"
-        systemctl start x-ui
+        echo -e "${YELLOW}[SSL] Reiniciando panel para aplicar certificado...${RESET}"
+        systemctl restart x-ui
         sleep 3
 
         local LIVE_EXP LIVE_DAYS
@@ -3470,9 +3467,9 @@ xhttp_panel() {
 
         if [ -n "$LIVE_EXP" ]; then
             LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
-            echo -e "${GREEN}[SSL] ✅  Cert aplicado correctamente — vence en $LIVE_DAYS días ($LIVE_EXP)${RESET}"
+            echo -e "${GREEN}[SSL] ✅  Cert aplicado — vence en $LIVE_DAYS días ($LIVE_EXP)${RESET}"
         else
-            echo -e "${RED}[SSL] ❌  No se pudo verificar el cert en vivo. Revisá si el panel levantó bien en puerto $PORT.${RESET}"
+            echo -e "${RED}[SSL] ❌  No se pudo verificar el cert vivo en puerto $PORT.${RESET}"
         fi
     }
 
@@ -3527,6 +3524,7 @@ setup_ssl_renewal() {
 #!/bin/bash
 
 DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
+SSL_DIR="/etc/x-ui/ssl"
 
 # ── Leer dominio guardado ────────────────────────────────
 if [ ! -f "$DOMAIN_FILE" ]; then
@@ -3541,8 +3539,10 @@ if [ -z "$DOMAIN" ]; then
     exit 1
 fi
 
-CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-CERT="$CERT_DIR/fullchain.cer"
+ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
+ACME_KEY="/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key"
+DEST_CERT="$SSL_DIR/fullchain.cer"
+DEST_KEY="$SSL_DIR/${DOMAIN}.key"
 
 # ── Función: días del cert que sirve el panel EN VIVO ────
 get_live_cert_days() {
@@ -3576,17 +3576,18 @@ for dir in /root/.acme.sh/*; do
 done
 
 # ── Decidir si crear, renovar, o solo reaplicar ─────────
+# Fuente de verdad: /etc/x-ui/ssl
 NECESITA_EMITIR=false
 NECESITA_APLICAR=false
 
-if [ ! -f "$CERT" ]; then
-    echo "[SSL] Certificado no encontrado para $DOMAIN. Emitiendo uno nuevo."
+if [ ! -f "$DEST_CERT" ]; then
+    echo "[SSL] Certificado no encontrado en $SSL_DIR. Emitiendo uno nuevo."
     NECESITA_EMITIR=true
     NECESITA_APLICAR=true
 else
-    EXPIRACION=$(openssl x509 -enddate -noout -in "$CERT" | cut -d= -f2)
+    EXPIRACION=$(openssl x509 -enddate -noout -in "$DEST_CERT" | cut -d= -f2)
     DIAS=$(( ( $(date -d "$EXPIRACION" +%s) - $(date +%s) ) / 86400 ))
-    echo "[SSL] Cert en disco: vence en $DIAS días."
+    echo "[SSL] Cert en $SSL_DIR: vence en $DIAS días."
     if [ "$DIAS" -le 7 ]; then
         echo "[SSL] Faltan $DIAS días. Renovando..."
         NECESITA_EMITIR=true
@@ -3615,7 +3616,7 @@ if [ "$NECESITA_EMITIR" = true ]; then
         sleep 5
     fi
 
-    if [ ! -f "$CERT" ]; then
+    if [ ! -f "$ACME_CERT" ]; then
         /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
     else
         /root/.acme.sh/acme.sh --renew -d "$DOMAIN"
@@ -3624,8 +3625,8 @@ if [ "$NECESITA_EMITIR" = true ]; then
     ACME_EXIT=$?
     sleep 3
 
-    if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null; then
-        echo "[SSL] ❌  Error: el certificado no es válido tras la operación. Abortando."
+    if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
+        echo "[SSL] ❌  Error: acme no emitió un cert válido. Abortando."
         if [ -z "$(pgrep -f /etc/MCCARTHEY/PDirect.py)" ]; then
             nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
         fi
@@ -3633,34 +3634,26 @@ if [ "$NECESITA_EMITIR" = true ]; then
     fi
 fi
 
-# ── Paso 2: aplicar al panel si hace falta ──────────────
+# ── Paso 2: copiar a /etc/x-ui/ssl y actualizar DB ──────
 if [ "$NECESITA_APLICAR" = true ]; then
     DB="/etc/x-ui/x-ui.db"
-    CERT_PATH=$(sqlite3 "$DB" "SELECT value FROM settings WHERE key='webCertFile';" 2>/dev/null)
-    KEY_PATH=$(sqlite3  "$DB" "SELECT value FROM settings WHERE key='webKeyFile';"  2>/dev/null)
 
-    if [ -z "$CERT_PATH" ] || [ -z "$KEY_PATH" ]; then
-        echo "[SSL] No se pudieron leer rutas desde SQLite. Usando fallback /root/cert/ip/"
-        CERT_PATH="/root/cert/ip/fullchain.pem"
-        KEY_PATH="/root/cert/ip/privkey.pem"
-    else
-        echo "[SSL] Ruta cert : $CERT_PATH"
-        echo "[SSL] Ruta key  : $KEY_PATH"
-    fi
+    echo "[SSL] Copiando certificados a $SSL_DIR..."
+    mkdir -p "$SSL_DIR"
+    cp "$ACME_CERT" "$DEST_CERT"
+    cp "$ACME_KEY"  "$DEST_KEY"
+    chmod 644 "$DEST_CERT"
+    chmod 600 "$DEST_KEY"
 
-    mkdir -p "$(dirname "$CERT_PATH")"
-    mkdir -p "$(dirname "$KEY_PATH")"
+    echo "[SSL] Escribiendo rutas fijas en la DB..."
+    sqlite3 "$DB" "
+        INSERT OR REPLACE INTO settings (key, value) VALUES
+        ('webCertFile', '$DEST_CERT'),
+        ('webKeyFile',  '$DEST_KEY');
+    "
 
-    echo "[SSL] Deteniendo panel para aplicar certificado..."
-    systemctl stop x-ui
-
-    cp "$CERT_DIR/fullchain.cer" "$CERT_PATH"
-    cp "$CERT_DIR/${DOMAIN}.key" "$KEY_PATH"
-    chmod 644 "$CERT_PATH"
-    chmod 600 "$KEY_PATH"
-
-    echo "[SSL] Levantando panel..."
-    systemctl start x-ui
+    echo "[SSL] Reiniciando panel..."
+    systemctl restart x-ui
     sleep 3
 
     LIVE_EXP=$(openssl s_client \
@@ -3672,9 +3665,9 @@ if [ "$NECESITA_APLICAR" = true ]; then
 
     if [ -n "$LIVE_EXP" ]; then
         LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
-        echo "[SSL] ✅  Cert aplicado correctamente — vence en $LIVE_DAYS días ($LIVE_EXP)"
+        echo "[SSL] ✅  Cert aplicado — vence en $LIVE_DAYS días ($LIVE_EXP)"
     else
-        echo "[SSL] ❌  No se pudo verificar el cert en vivo. Revisá si el panel levantó bien en puerto $PANEL_PORT."
+        echo "[SSL] ❌  No se pudo verificar cert vivo en puerto $PANEL_PORT."
     fi
 fi
 
@@ -3729,12 +3722,11 @@ force_renew_ssl() {
     echo -e "${CYAN}Dominio: $DOMAIN${RESET}"
     echo
 
-    local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-    local CERT="$CERT_DIR/fullchain.cer"
+    local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
 
     stop_proxy
 
-    if [ ! -f "$CERT" ]; then
+    if [ ! -f "$ACME_CERT" ]; then
         echo -e "${YELLOW}Emitiendo certificado nuevo para $DOMAIN...${RESET}"
         /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
     else
@@ -3745,24 +3737,33 @@ force_renew_ssl() {
     local ACME_EXIT=$?
     sleep 3
 
-    if [ "$ACME_EXIT" -ne 0 ] || ! cert_is_valid "$CERT"; then
-        echo -e "${RED}❌  Error: la emisión/renovación falló o el certificado no es válido.${RESET}"
-        echo -e "${RED}No se aplicaron cambios al panel.${RESET}"
+    # Validar salida de acme antes de copiar — único uso legítimo de esa ruta
+    if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
+        echo -e "${RED}❌  Error: acme no emitió un cert válido. No se aplicaron cambios.${RESET}"
         start_proxy
         read -rp "ENTER para continuar"
         return
     fi
 
+    # Copiar a /etc/x-ui/ssl y registrar en DB
     apply_cert_to_panel "$DOMAIN"
     get_port
 
+    # Toda verificación posterior usa /etc/x-ui/ssl — no acme
+    local DEST_CERT="$SSL_DIR/fullchain.cer"
     local LIVE_DAYS
     LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PORT")
 
     if [ "$LIVE_DAYS" -lt 0 ]; then
-        echo -e "${YELLOW}⚠️  No se pudo conectar al panel para verificar el cert vivo (puerto $PORT).${RESET}"
+        echo -e "${YELLOW}⚠️  No se pudo conectar al panel (puerto $PORT). Verificando archivo local...${RESET}"
+        if cert_is_valid "$DEST_CERT"; then
+            local EXP DIAS
+            EXP=$(openssl x509 -enddate -noout -in "$DEST_CERT" | cut -d= -f2)
+            DIAS=$(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
+            echo -e "${CYAN}Cert en $SSL_DIR: válido, vence en $DIAS días ($EXP)${RESET}"
+        fi
     elif [ "$LIVE_DAYS" -lt 10 ]; then
-        echo -e "${RED}⚠️  El panel sigue sirviendo un cert con $LIVE_DAYS días. Reaplicando...${RESET}"
+        echo -e "${RED}⚠️  Panel sirviendo cert con $LIVE_DAYS días. Reaplicando...${RESET}"
         apply_cert_to_panel "$DOMAIN"
     else
         echo -e "${GREEN}✅  Cert vivo verificado: $LIVE_DAYS días restantes.${RESET}"
@@ -3810,20 +3811,20 @@ install_panel() {
     # Configurar renovación automática SSL
     setup_ssl_renewal "$DOMAIN"
 
-    local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-    local CERT="$CERT_DIR/fullchain.cer"
+    local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
 
     # Emitir cert solo si no existe todavía
-    if [ ! -f "$CERT" ]; then
+    if [ ! -f "$ACME_CERT" ]; then
         echo -e "${YELLOW}Emitiendo certificado SSL para $DOMAIN...${RESET}"
         /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
         local ACME_EXIT=$?
         sleep 3
-        if [ "$ACME_EXIT" -ne 0 ] || ! cert_is_valid "$CERT"; then
-            echo -e "${RED}⚠️  Advertencia: no se pudo emitir el certificado SSL. El panel funcionará sin SSL por ahora.${RESET}"
+        if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
+            echo -e "${RED}⚠️  Advertencia: no se pudo emitir el SSL. El panel funcionará sin SSL por ahora.${RESET}"
         fi
     fi
 
+    # Copiar a /etc/x-ui/ssl y registrar en DB
     apply_cert_to_panel "$DOMAIN"
     cleanup_old_certs "$DOMAIN"
     start_proxy
@@ -3848,6 +3849,9 @@ install_panel() {
         get_port
         PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
 
+        # Estado del cert leído desde /etc/x-ui/ssl — fuente de verdad
+        local DEST_CERT="$SSL_DIR/fullchain.cer"
+
         clear
         echo -e "${GREEN}"
         echo "════════════════════════════════════"
@@ -3861,7 +3865,7 @@ install_panel() {
         echo "Dominio  : $DOMAIN"
         echo
 
-        if cert_is_valid "$CERT"; then
+        if cert_is_valid "$DEST_CERT"; then
             echo "URL DEL PANEL"
             echo "https://$DOMAIN:$PORT$PATHP"
         else
@@ -3908,29 +3912,31 @@ show_panel() {
     echo "Dominio: ${DOMAIN:-No configurado}"
     echo
 
-    if [ -n "$DOMAIN" ]; then
-        local CERT_DIR="/root/.acme.sh/${DOMAIN}_ecc"
-        local CERT="$CERT_DIR/fullchain.cer"
+    # SSL: siempre desde /etc/x-ui/ssl — fuente de verdad
+    local DEST_CERT="$SSL_DIR/fullchain.cer"
 
-        if cert_is_valid "$CERT"; then
-            local EXPIRACION DIAS
-            EXPIRACION=$(openssl x509 -enddate -noout -in "$CERT" | cut -d= -f2)
-            DIAS=$(( ( $(date -d "$EXPIRACION" +%s) - $(date +%s) ) / 86400 ))
-            echo "SSL    : ✅  Válido — vence en $DIAS días ($EXPIRACION)"
-            echo
+    if cert_is_valid "$DEST_CERT"; then
+        local EXPIRACION DIAS
+        EXPIRACION=$(openssl x509 -enddate -noout -in "$DEST_CERT" | cut -d= -f2)
+        DIAS=$(( ( $(date -d "$EXPIRACION" +%s) - $(date +%s) ) / 86400 ))
+        echo "SSL    : ✅  Válido — vence en $DIAS días ($EXPIRACION)"
+        echo
+        if [ -n "$DOMAIN" ]; then
             echo "URL:"
             echo "https://$DOMAIN:$PORT$PATHP"
         else
-            echo "SSL    : ❌  Certificado no encontrado o inválido para $DOMAIN"
-            echo
-            echo "URL (sin SSL):"
-            echo "http://$DOMAIN:$PORT$PATHP"
+            echo "URL:"
+            echo "https://$IP:$PORT$PATHP"
         fi
     else
-        echo "SSL    : ❌  Sin dominio configurado"
+        echo "SSL    : ❌  Certificado no encontrado o inválido en $SSL_DIR"
         echo
         echo "URL (sin SSL):"
-        echo "http://$IP:$PORT$PATHP"
+        if [ -n "$DOMAIN" ]; then
+            echo "http://$DOMAIN:$PORT$PATHP"
+        else
+            echo "http://$IP:$PORT$PATHP"
+        fi
     fi
 
     local PROXY_PID
