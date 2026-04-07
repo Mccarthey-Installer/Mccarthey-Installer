@@ -3311,13 +3311,109 @@ ${LILA}-------------------------${NC}"
 
 
 
-# ═══════════════════════════════════════════════════════
-#   XHTTP PANEL — XRAY + 3X-UI MANAGER
-# ═══════════════════════════════════════════════════════
 
 
+# ═══════════════════════════════════════════════════════════════════════
+#   AUTO PATCH XHTTP — PRO VERSION (con cron automático)
+# ═══════════════════════════════════════════════════════════════════════
+setup_auto_patch_cron() {
 
+    cat > /root/auto_patch_xhttp.sh << 'EOF'
+#!/bin/bash
 
+DB="/etc/x-ui/x-ui.db"
+LOG="/var/log/auto_patch_xhttp.log"
+LOCK="/tmp/auto_patch_xhttp.lock"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+}
+
+# ── LOCK ──
+exec 200>"$LOCK"
+flock -n 200 || exit 0
+
+# ── Validaciones ──
+[ ! -f "$DB" ] && log "ERROR: DB no encontrada" && exit 1
+! command -v sqlite3 &>/dev/null && log "ERROR: sqlite3 no instalado" && exit 1
+
+log "INFO: Escaneando inbounds xhttp..."
+
+# ── Aplicar parche SOLO si hace falta + detectar cambios reales ──
+CHANGES=$(sqlite3 "$DB" "
+UPDATE inbounds
+SET stream_settings = json_set(
+    stream_settings,
+    '$.xhttpSettings.scMaxBufferedPosts',
+    CASE
+        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts'), 0) AS INTEGER) > 5
+        THEN 5
+        ELSE json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts')
+    END,
+    '$.xhttpSettings.scMaxEachPostBytes',
+    CASE
+        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes'), 0) AS INTEGER) > 200000
+        THEN '200000'
+        ELSE json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes')
+    END
+)
+WHERE json_extract(stream_settings, '$.network') = 'xhttp';
+
+SELECT changes();
+")
+
+# ── Validar resultado ──
+if ! [[ "$CHANGES" =~ ^[0-9]+$ ]]; then
+    log "ERROR: Resultado inválido de changes(): $CHANGES"
+    exit 1
+fi
+
+if [ "$CHANGES" -eq 0 ]; then
+    log "INFO: Sin cambios reales → no se reinicia Xray"
+    exit 0
+fi
+
+log "PATCH: Se aplicaron $CHANGES cambios reales"
+
+# ── Ver conexiones activas ──
+XRAY_PORTS=$(sqlite3 "$DB" \
+    "SELECT GROUP_CONCAT(port, '|') FROM inbounds WHERE enable=1;" \
+    2>/dev/null)
+
+if [ -n "$XRAY_PORTS" ]; then
+    ACTIVE=$(ss -ant | grep ESTAB | grep -E ":($XRAY_PORTS)" | wc -l)
+else
+    ACTIVE=0
+fi
+
+if [ "$ACTIVE" -gt 10 ]; then
+    log "INFO: $ACTIVE conexiones activas → se evita reinicio"
+    exit 0
+fi
+
+# ── Reiniciar SOLO si hubo cambios ──
+log "INFO: Reiniciando Xray..."
+x-ui restart-xray
+
+if [ $? -eq 0 ]; then
+    log "OK: Xray reiniciado correctamente"
+else
+    log "ERROR: Falló reinicio de Xray"
+fi
+
+exit 0
+EOF
+
+    chmod +x /root/auto_patch_xhttp.sh
+
+    (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "*/15 * * * * /root/auto_patch_xhttp.sh") | crontab -
+
+    echo -e "Auto-patch xhttp PRO activo 😏 (sin reinicios innecesarios)"
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+#   PANEL XHTTP
+# ═══════════════════════════════════════════════════════════════════════
 xhttp_panel() {
 
     HOT_PINK="\033[1;95m"
@@ -3399,7 +3495,6 @@ xhttp_panel() {
     }
 
     # ── Verificar si un certificado es válido ────────────────
-    # Siempre se llama con ruta de /etc/x-ui/ssl
     cert_is_valid() {
         local CERT="$1"
         [ -f "$CERT" ] || return 1
@@ -3425,7 +3520,6 @@ xhttp_panel() {
     }
 
     # ── Aplicar certificado al panel ─────────────────────────
-    # acme.sh solo entra aquí para copiar — después no se vuelve a leer
     apply_cert_to_panel() {
         local DOMAIN="$1"
         local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
@@ -3434,7 +3528,6 @@ xhttp_panel() {
         local DEST_KEY="$SSL_DIR/${DOMAIN}.key"
         local DB="/etc/x-ui/x-ui.db"
 
-        # Validar salida de acme antes de copiar
         if ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
             echo -e "${RED}[SSL] El certificado de acme no es válido o no existe: $ACME_CERT${RESET}"
             return 1
@@ -3475,6 +3568,96 @@ xhttp_panel() {
     }
 
     # ════════════════════════════════════════════════════════
+    #   PATCH XHTTP SETTINGS — opción manual desde el menú
+    # ════════════════════════════════════════════════════════
+    patch_xhttp_settings() {
+        clear
+        local DB="/etc/x-ui/x-ui.db"
+
+        echo -e "${HOT_PINK}"
+        echo "════════════════════════════════════ 💋"
+        echo "     PATCH xhttpSettings 🔧👑"
+        echo "════════════════════════════════════ 💋"
+        echo -e "${RESET}"
+
+        if [ ! -f "$DB" ]; then
+            echo -e "${RED}❌  No se encontró la base de datos en: $DB${RESET}"
+            echo -e "${YELLOW}Asegurate de que el panel esté instalado.${RESET}"
+            read -rp "ENTER para continuar"
+            return 1
+        fi
+
+        local TOTAL
+        TOTAL=$(sqlite3 "$DB" \
+            "SELECT COUNT(*) FROM inbounds
+             WHERE json_extract(stream_settings, '$.network') = 'xhttp';" \
+            2>/dev/null)
+
+        if [ -z "$TOTAL" ] || [ "$TOTAL" -eq 0 ]; then
+            echo -e "${YELLOW}⚠️  No se encontraron inbounds con network = xhttp en la DB.${RESET}"
+            echo -e "${CYAN}Creá el inbound desde el panel y volvé a ejecutar esta opción.${RESET}"
+            read -rp "ENTER para continuar"
+            return 0
+        fi
+
+        echo -e "${CYAN}Inbounds xhttp encontrados: ${GREEN}$TOTAL${RESET}"
+        echo
+        echo -e "${YELLOW}Aplicando cambios:${RESET}"
+        echo -e "  ${CYAN}scMaxBufferedPosts${RESET}  : 30  →  ${GREEN}5${RESET}"
+        echo -e "  ${CYAN}scMaxEachPostBytes${RESET}  : \"1000000\"  →  ${GREEN}\"200000\"${RESET}"
+        echo
+
+        sqlite3 "$DB" "
+            UPDATE inbounds
+            SET stream_settings = json_set(
+                stream_settings,
+                '$.xhttpSettings.scMaxBufferedPosts', 5,
+                '$.xhttpSettings.scMaxEachPostBytes', '200000'
+            )
+            WHERE json_extract(stream_settings, '$.network') = 'xhttp';
+        "
+
+        local EXIT_CODE=$?
+
+        if [ "$EXIT_CODE" -ne 0 ]; then
+            echo -e "${RED}❌  Error al modificar la DB (código $EXIT_CODE).${RESET}"
+            read -rp "ENTER para continuar"
+            return 1
+        fi
+
+        echo -e "${GREEN}✅  DB actualizada correctamente.${RESET}"
+        echo
+        echo -e "${CYAN}Verificando valores aplicados...${RESET}"
+        echo
+
+        sqlite3 "$DB" \
+            "SELECT
+                id,
+                remark,
+                json_extract(stream_settings, '$.network')                          AS network,
+                json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts') AS scMaxBufferedPosts,
+                json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes') AS scMaxEachPostBytes
+             FROM inbounds
+             WHERE json_extract(stream_settings, '$.network') = 'xhttp';" \
+            2>/dev/null \
+        | while IFS='|' read -r id remark network posts bytes; do
+            echo -e "  ID ${CYAN}$id${RESET} │ ${HOT_PINK}$remark${RESET}"
+            echo -e "    network            : ${GREEN}$network${RESET}"
+            echo -e "    scMaxBufferedPosts : ${GREEN}$posts${RESET}"
+            echo -e "    scMaxEachPostBytes : ${GREEN}$bytes${RESET}"
+            echo
+        done
+
+        echo -e "${YELLOW}Reiniciando Xray para aplicar cambios...${RESET}"
+        x-ui restart-xray
+        sleep 2
+
+        echo
+        echo -e "${GREEN}✅  Xray reiniciado. Cambios activos.${RESET}"
+        read -rp "ENTER para continuar"
+    }
+
+    # ════════════════════════════════════════════════════════
     #   BUCLE PRINCIPAL DEL MENÚ
     # ════════════════════════════════════════════════════════
     while true; do
@@ -3500,17 +3683,19 @@ xhttp_panel() {
         echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
         echo -e "${CYAN}3) Renovar SSL manualmente 🔐${RESET}"
         echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
+        echo -e "${CYAN}5) Parchear xhttpSettings 🔧${RESET}"
         echo -e "${CYAN}0) Salir 💔${RESET}"
         echo
 
         read -rp "👑 Seleccione una opción reina → " op
 
         case "$op" in
-            1) install_panel    ;;
-            2) show_panel       ;;
-            3) force_renew_ssl  ;;
-            4) remove_panel     ;;
-            0) break            ;;
+            1) install_panel         ;;
+            2) show_panel            ;;
+            3) force_renew_ssl       ;;
+            4) remove_panel          ;;
+            5) patch_xhttp_settings  ;;
+            0) break                 ;;
         esac
     done
 }
@@ -3527,7 +3712,6 @@ setup_ssl_renewal() {
 DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
 SSL_DIR="/etc/x-ui/ssl"
 
-# ── Leer dominio guardado ────────────────────────────────
 if [ ! -f "$DOMAIN_FILE" ]; then
     echo "[SSL] No se encontró el archivo de dominio en $DOMAIN_FILE. Abortando."
     exit 1
@@ -3545,7 +3729,6 @@ ACME_KEY="/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key"
 DEST_CERT="$SSL_DIR/fullchain.cer"
 DEST_KEY="$SSL_DIR/${DOMAIN}.key"
 
-# ── Función: días del cert que sirve el panel EN VIVO ────
 get_live_cert_days() {
     local D="$1"
     local P="$2"
@@ -3560,11 +3743,9 @@ get_live_cert_days() {
     echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
 }
 
-# ── Leer el puerto actual del panel ─────────────────────
 PANEL_PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
 [ -z "$PANEL_PORT" ] && PANEL_PORT="443"
 
-# ── Limpiar certs de dominios viejos ────────────────────
 for dir in /root/.acme.sh/*; do
     [ -d "$dir" ] || continue
     DIRNAME=$(basename "$dir")
@@ -3576,8 +3757,6 @@ for dir in /root/.acme.sh/*; do
     fi
 done
 
-# ── Decidir si crear, renovar, o solo reaplicar ─────────
-# Fuente de verdad: /etc/x-ui/ssl
 NECESITA_EMITIR=false
 NECESITA_APLICAR=false
 
@@ -3596,7 +3775,6 @@ else
     fi
 fi
 
-# ── Check secundario: cert que sirve el panel EN VIVO ────
 LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PANEL_PORT")
 
 if [ "$LIVE_DAYS" -lt 0 ]; then
@@ -3608,7 +3786,6 @@ else
     echo "[SSL] Cert vivo OK: $LIVE_DAYS días restantes."
 fi
 
-# ── Paso 1: emitir/renovar si hace falta ────────────────
 if [ "$NECESITA_EMITIR" = true ]; then
     PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
     if [ -n "$PROXY_PID" ]; then
@@ -3635,7 +3812,6 @@ if [ "$NECESITA_EMITIR" = true ]; then
     fi
 fi
 
-# ── Paso 2: copiar a /etc/x-ui/ssl y limpiar + escribir DB ──
 if [ "$NECESITA_APLICAR" = true ]; then
     DB="/etc/x-ui/x-ui.db"
 
@@ -3672,7 +3848,6 @@ if [ "$NECESITA_APLICAR" = true ]; then
     fi
 fi
 
-# ── Reactivar proxy si se detuvo ────────────────────────
 if [ "$NECESITA_EMITIR" = true ]; then
     if [ -z "$(pgrep -f /etc/MCCARTHEY/PDirect.py)" ]; then
         echo "[SSL] Reactivando proxy MCCARTHEY..."
@@ -3692,7 +3867,6 @@ SCRIPT
 
     chmod +x /root/renew_ssl.sh
 
-    # Cron diario a las 4am
     (crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
 
     echo -e "${GREEN}Script de renovación SSL configurado ✅${RESET}"
@@ -3738,7 +3912,6 @@ force_renew_ssl() {
     local ACME_EXIT=$?
     sleep 3
 
-    # Validar salida de acme antes de copiar — único uso legítimo de esa ruta
     if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
         echo -e "${RED}❌  Error: acme no emitió un cert válido. No se aplicaron cambios.${RESET}"
         start_proxy
@@ -3746,11 +3919,9 @@ force_renew_ssl() {
         return
     fi
 
-    # Copiar a /etc/x-ui/ssl, limpiar DB y registrar rutas limpias
     apply_cert_to_panel "$DOMAIN"
     get_port
 
-    # Toda verificación posterior usa /etc/x-ui/ssl — no acme
     local DEST_CERT="$SSL_DIR/fullchain.cer"
     local LIVE_DAYS
     LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PORT")
@@ -3801,20 +3972,17 @@ install_panel() {
 
     stop_proxy
 
-    # Instalar dependencias
     apt update -y >/dev/null 2>&1
     apt install -y curl sqlite3 sudo wget apache2-utils >/dev/null 2>&1
 
-    # Instalar panel 3x-ui
     printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
     echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
 
-    # Configurar renovación automática SSL
     setup_ssl_renewal "$DOMAIN"
+    setup_auto_patch_cron
 
     local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
 
-    # Emitir cert solo si no existe todavía
     if [ ! -f "$ACME_CERT" ]; then
         echo -e "${YELLOW}Emitiendo certificado SSL para $DOMAIN...${RESET}"
         /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
@@ -3825,7 +3993,6 @@ install_panel() {
         fi
     fi
 
-    # Copiar a /etc/x-ui/ssl, limpiar DB y registrar rutas limpias
     apply_cert_to_panel "$DOMAIN"
     cleanup_old_certs "$DOMAIN"
     start_proxy
@@ -3850,7 +4017,6 @@ install_panel() {
         get_port
         PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
 
-        # Estado del cert leído desde /etc/x-ui/ssl — fuente de verdad
         local DEST_CERT="$SSL_DIR/fullchain.cer"
 
         clear
@@ -3873,6 +4039,12 @@ install_panel() {
             echo "URL DEL PANEL (sin SSL)"
             echo "http://$DOMAIN:$PORT$PATHP"
         fi
+
+        echo
+        echo -e "${CYAN}💡 El auto-patch de xhttpSettings está activo (cada 15 min).${RESET}"
+        echo -e "${CYAN}   Creá el inbound xhttp desde el panel y se autocorregirá solo.${RESET}"
+        echo -e "${CYAN}   También podés forzarlo con la opción ${HOT_PINK}5) Parchear xhttpSettings${CYAN}.${RESET}"
+        echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
     fi
@@ -3913,7 +4085,6 @@ show_panel() {
     echo "Dominio: ${DOMAIN:-No configurado}"
     echo
 
-    # SSL: siempre desde /etc/x-ui/ssl — fuente de verdad
     local DEST_CERT="$SSL_DIR/fullchain.cer"
 
     if cert_is_valid "$DEST_CERT"; then
@@ -3951,6 +4122,15 @@ show_panel() {
         echo "Proxy  : ❌  Inactivo"
     fi
 
+    # ── Estado del auto-patch ────────────────────────────
+    echo
+    if [ -f /root/auto_patch_xhttp.sh ]; then
+        echo "AutoPatch xhttp : ✅  Instalado (/root/auto_patch_xhttp.sh)"
+        echo "Log             : /var/log/auto_patch_xhttp.log"
+    else
+        echo "AutoPatch xhttp : ❌  No instalado (ejecutá install_panel)"
+    fi
+
     read -rp "ENTER para continuar"
 }
 
@@ -3962,9 +4142,19 @@ remove_panel() {
     echo -e "${RED}Eliminando panel...${RESET}"
     x-ui stop      >/dev/null 2>&1
     x-ui uninstall >/dev/null 2>&1
+
+    # Limpiar también el cron de auto-patch
+    crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh | crontab -
+    rm -f /root/auto_patch_xhttp.sh
+
     echo -e "${GREEN}Panel eliminado correctamente ✅${RESET}"
     read -rp "ENTER para continuar"
 }
+
+# ═══════════════════════════════════════════════════════
+#   PUNTO DE ENTRADA
+# ═══════════════════════════════════════════════════════
+
 
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
