@@ -3432,9 +3432,9 @@ DB="/etc/x-ui/x-ui.db"
 LOG="/var/log/xray_watchdog.log"
 LOCK="/tmp/xray_watchdog.lock"
 
-RAM_THRESHOLD=80     # % de RAM para considerar "inflada"
-CONN_THRESHOLD=5     # conexiones activas máximas para permitir reinicio
-COOLDOWN=900         # segundos entre reinicios (15 min)
+RAM_THRESHOLD=80
+CONN_THRESHOLD=5
+COOLDOWN=900
 LAST_RUN_FILE="/tmp/xray_watchdog_last"
 
 log() {
@@ -3453,22 +3453,15 @@ if (( NOW - LAST < COOLDOWN )); then
     exit 0
 fi
 
-# ── Leer RAM compatible con Ubuntu 20/22 ──
-RAM_USED=$(free | awk '
-/^Mem:/ {
-    if ($7 == "" || $7 == 0) {
-        printf "%.0f", ($3/$2)*100
-    } else {
-        printf "%.0f", (1 - $7/$2)*100
-    }
-}')
+# ── Leer RAM (compatible real Ubuntu 20/22) ──
+RAM_USED=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
 
 if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
-    log "ERROR: No se pudo leer RAM ($RAM_USED)"
+    log "ERROR: RAM inválida ($RAM_USED)"
     exit 1
 fi
 
-log "INFO: RAM real usada = ${RAM_USED}%"
+log "INFO: RAM usada = ${RAM_USED}%"
 
 if [ "$RAM_USED" -lt "$RAM_THRESHOLD" ]; then
     log "INFO: RAM normal (${RAM_USED}% < ${RAM_THRESHOLD}%) → sin acción"
@@ -3504,7 +3497,7 @@ if [ "$ACTIVE" -ge "$CONN_THRESHOLD" ]; then
     exit 0
 fi
 
-# ── Reinicio controlado ──
+# ── Reinicio inteligente ──
 log "ACTION: RAM=${RAM_USED}% + conexiones=${ACTIVE} → reiniciando Xray..."
 
 x-ui restart-xray >> "$LOG" 2>&1
@@ -3514,15 +3507,7 @@ if [ "$EXIT_CODE" -eq 0 ]; then
     sleep 3
     date +%s > "$LAST_RUN_FILE"
 
-    RAM_POST=$(free | awk '
-    /^Mem:/ {
-        if ($7 == "" || $7 == 0) {
-            printf "%.0f", ($3/$2)*100
-        } else {
-            printf "%.0f", (1 - $7/$2)*100
-        }
-    }')
-
+    RAM_POST=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
     log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
 else
     log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
@@ -3535,9 +3520,8 @@ EOF
 
     (crontab -l 2>/dev/null | grep -v xray_watchdog.sh; echo "*/5 * * * * /root/xray_watchdog.sh") | crontab -
 
-    echo -e "Watchdog RAM activo ✅ (inteligente, sin reinicios innecesarios)"
+    echo "Watchdog RAM activo ✅ (real, limpio y estable)"
 }
-
 # ═══════════════════════════════════════════════════════════════════════
 #   HELPERS INTERNOS
 # ═══════════════════════════════════════════════════════════════════════
