@@ -3453,7 +3453,7 @@ if (( NOW - LAST < COOLDOWN )); then
     exit 0
 fi
 
-RAM_USED=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
+RAM_USED=$(free | awk '/^Mem:/ { printf "%.0f", (($2-$7)/$2)*100 }')
 
 if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
     log "ERROR: No se pudo leer RAM ($RAM_USED)"
