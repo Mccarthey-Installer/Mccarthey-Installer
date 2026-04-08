@@ -3310,11 +3310,24 @@ ${LILA}-------------------------${NC}"
 
 
 
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════════════════
+#   MCCARTHEY — XRAY + 3X-UI MANAGER
+#   auto_patch xhttp + watchdog RAM + SSL + panel completo
+# ═══════════════════════════════════════════════════════════════════════
 
+HOT_PINK="\033[1;95m"
+CYAN="\033[1;96m"
+GREEN="\033[1;92m"
+RED="\033[1;91m"
+YELLOW="\033[1;93m"
+RESET="\033[0m"
 
+DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
+SSL_DIR="/etc/x-ui/ssl"
 
 # ═══════════════════════════════════════════════════════════════════════
-#   AUTO PATCH XHTTP — PRO VERSION (con cron automático)
+#   AUTO PATCH XHTTP — cron cada 15 min
 # ═══════════════════════════════════════════════════════════════════════
 setup_auto_patch_cron() {
 
@@ -3329,17 +3342,14 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
 }
 
-# ── LOCK ──
 exec 200>"$LOCK"
 flock -n 200 || exit 0
 
-# ── Validaciones ──
 [ ! -f "$DB" ] && log "ERROR: DB no encontrada" && exit 1
 ! command -v sqlite3 &>/dev/null && log "ERROR: sqlite3 no instalado" && exit 1
 
 log "INFO: Escaneando inbounds xhttp..."
 
-# ── Aplicar parche SOLO si hace falta + detectar cambios reales ──
 CHANGES=$(sqlite3 "$DB" "
 UPDATE inbounds
 SET stream_settings = json_set(
@@ -3362,7 +3372,6 @@ WHERE json_extract(stream_settings, '$.network') = 'xhttp';
 SELECT changes();
 ")
 
-# ── Validar resultado ──
 if ! [[ "$CHANGES" =~ ^[0-9]+$ ]]; then
     log "ERROR: Resultado inválido de changes(): $CHANGES"
     exit 1
@@ -3375,13 +3384,12 @@ fi
 
 log "PATCH: Se aplicaron $CHANGES cambios reales"
 
-# ── Ver conexiones activas ──
 XRAY_PORTS=$(sqlite3 "$DB" \
     "SELECT GROUP_CONCAT(port, '|') FROM inbounds WHERE enable=1;" \
     2>/dev/null)
 
 if [ -n "$XRAY_PORTS" ]; then
-    ACTIVE=$(ss -ant | grep ESTAB | grep -E ":($XRAY_PORTS)" | wc -l)
+    ACTIVE=$(ss -ant | awk '/ESTAB/' | grep -E ":($XRAY_PORTS)[[:space:]]" | wc -l)
 else
     ACTIVE=0
 fi
@@ -3391,7 +3399,6 @@ if [ "$ACTIVE" -gt 10 ]; then
     exit 0
 fi
 
-# ── Reiniciar SOLO si hubo cambios ──
 log "INFO: Reiniciando Xray..."
 x-ui restart-xray
 
@@ -3408,301 +3415,338 @@ EOF
 
     (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "*/15 * * * * /root/auto_patch_xhttp.sh") | crontab -
 
-    echo -e "Auto-patch xhttp PRO activo 😏 (sin reinicios innecesarios)"
+    echo -e "${GREEN}Auto-patch xhttp activo ✅ (cada 15 min, sin reinicios innecesarios)${RESET}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-#   PANEL XHTTP
+#   WATCHDOG RAM — cron cada 5 min
+#   Reinicia Xray solo cuando: RAM > 80% Y conexiones < 10
 # ═══════════════════════════════════════════════════════════════════════
-xhttp_panel() {
+setup_watchdog_cron() {
 
-    HOT_PINK="\033[1;95m"
-    CYAN="\033[1;96m"
-    GREEN="\033[1;92m"
-    RED="\033[1;91m"
-    YELLOW="\033[1;93m"
-    RESET="\033[0m"
-    DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
-    SSL_DIR="/etc/x-ui/ssl"
+    cat > /root/xray_watchdog.sh << 'EOF'
+#!/bin/bash
+# ── Watchdog: libera RAM de Xray solo cuando no hay carga real ──
 
-    # ── Verificar si el panel está instalado ─────────────────
-    panel_installed() {
-        command -v x-ui &>/dev/null
-    }
+DB="/etc/x-ui/x-ui.db"
+LOG="/var/log/xray_watchdog.log"
+LOCK="/tmp/xray_watchdog.lock"
 
-    # ── Obtener estado del servicio ──────────────────────────
-    panel_status() {
-        if systemctl is-active --quiet x-ui; then
-            STATUS="Activo 🟢"
-        else
-            STATUS="Inactivo 🔴"
-        fi
-    }
+RAM_THRESHOLD=80     # % de RAM para considerar "inflada"
+CONN_THRESHOLD=5     # conexiones activas máximas para permitir reinicio
+COOLDOWN=900         # segundos entre reinicios (15 min)
+LAST_RUN_FILE="/tmp/xray_watchdog_last"
 
-    # ── Obtener puerto del panel ─────────────────────────────
-    get_port() {
-        PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
-        [ -z "$PORT" ] && PORT="No detectado"
-    }
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+}
 
-    # ── Leer dominio guardado ────────────────────────────────
-    get_domain() {
-        if [ -f "$DOMAIN_FILE" ]; then
-            DOMAIN=$(cat "$DOMAIN_FILE")
-        else
-            DOMAIN=""
-        fi
-    }
+exec 200>"$LOCK"
+flock -n 200 || exit 0
 
-    # ── Levantar proxy sin duplicados ────────────────────────
-    start_proxy() {
-        local EXISTING
-        EXISTING=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-        if [ -z "$EXISTING" ]; then
-            nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-            sleep 2
-            echo -e "${GREEN}Proxy MCCARTHEY iniciado ✅${RESET}"
-        else
-            echo -e "${CYAN}Proxy MCCARTHEY ya está activo (PID $EXISTING), no se duplica.${RESET}"
-        fi
-    }
+# ── Cooldown: evita loop de reinicios ──
+NOW=$(date +%s)
+LAST=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
+if (( NOW - LAST < COOLDOWN )); then
+    RESTANTE=$(( COOLDOWN - (NOW - LAST) ))
+    log "INFO: En cooldown — faltan ${RESTANTE}s para próximo reinicio permitido → sin acción"
+    exit 0
+fi
 
-    # ── Detener proxy ────────────────────────────────────────
-    stop_proxy() {
-        local PROXY_PID
-        PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-        if [ -n "$PROXY_PID" ]; then
-            echo -e "${YELLOW}Deteniendo proxy MCCARTHEY (PID $PROXY_PID)...${RESET}"
-            kill "$PROXY_PID"
-            sleep 3
-        fi
-    }
+RAM_USED=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
 
-    # ── Limpiar certificados viejos de acme.sh ───────────────
-    cleanup_old_certs() {
-        local CURRENT_DOMAIN="$1"
-        local DIRNAME
-        for dir in /root/.acme.sh/*; do
-            [ -d "$dir" ] || continue
-            DIRNAME=$(basename "$dir")
-            [[ "$DIRNAME" == ca ]]       && continue
-            [[ "$DIRNAME" == account* ]] && continue
-            if [[ "$DIRNAME" != "${CURRENT_DOMAIN}_ecc" && "$DIRNAME" != "$CURRENT_DOMAIN" ]]; then
-                echo -e "${YELLOW}Eliminando certificado obsoleto: $DIRNAME${RESET}"
-                rm -rf "$dir"
-            fi
-        done
-    }
+if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
+    log "ERROR: No se pudo leer RAM ($RAM_USED)"
+    exit 1
+fi
 
-    # ── Verificar si un certificado es válido ────────────────
-    cert_is_valid() {
-        local CERT="$1"
-        [ -f "$CERT" ] || return 1
-        openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null
-    }
+log "INFO: RAM real usada = ${RAM_USED}% (sin cache/buffers)"
 
-    # ── Días de vida del cert que sirve el panel EN VIVO ─────
-    get_live_cert_days() {
-        local DOMAIN="$1"
-        local PORT="$2"
-        local EXP
-        EXP=$(openssl s_client \
-                -connect "${DOMAIN}:${PORT}" \
-                -servername "${DOMAIN}" \
-                </dev/null 2>/dev/null \
-              | openssl x509 -enddate -noout 2>/dev/null \
-              | cut -d= -f2)
-        if [ -z "$EXP" ]; then
-            echo -1
-            return
-        fi
-        echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
-    }
+if [ "$RAM_USED" -lt "$RAM_THRESHOLD" ]; then
+    log "INFO: RAM normal (${RAM_USED}% < ${RAM_THRESHOLD}%) → sin acción"
+    exit 0
+fi
 
-    # ── Aplicar certificado al panel ─────────────────────────
-    apply_cert_to_panel() {
-        local DOMAIN="$1"
-        local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
-        local ACME_KEY="/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key"
-        local DEST_CERT="$SSL_DIR/fullchain.cer"
-        local DEST_KEY="$SSL_DIR/${DOMAIN}.key"
-        local DB="/etc/x-ui/x-ui.db"
+log "WARN: RAM real alta (${RAM_USED}% ≥ ${RAM_THRESHOLD}%) — verificando conexiones..."
 
-        if ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
-            echo -e "${RED}[SSL] El certificado de acme no es válido o no existe: $ACME_CERT${RESET}"
-            return 1
-        fi
+XRAY_PORTS=""
+if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
+    XRAY_PORTS=$(sqlite3 "$DB" \
+        "SELECT GROUP_CONCAT(port, '|') FROM inbounds WHERE enable=1;" \
+        2>/dev/null)
+fi
 
-        echo -e "${CYAN}[SSL] Copiando certificados a $SSL_DIR...${RESET}"
-        mkdir -p "$SSL_DIR"
-        cp "$ACME_CERT" "$DEST_CERT"
-        cp "$ACME_KEY"  "$DEST_KEY"
-        chmod 644 "$DEST_CERT"
-        chmod 600 "$DEST_KEY"
+if [ -n "$XRAY_PORTS" ]; then
+    ACTIVE=0
+    for PORT_ITEM in $(echo "$XRAY_PORTS" | tr '|' ' '); do
+        COUNT=$(ss -ant state established "( sport = :$PORT_ITEM or dport = :$PORT_ITEM )" 2>/dev/null | tail -n +2 | wc -l)
+        ACTIVE=$(( ACTIVE + COUNT ))
+    done
+else
+    ACTIVE=$(ss -ant state established 2>/dev/null | tail -n +2 | wc -l)
+    log "WARN: No se leyeron puertos de la DB — usando total ESTAB como referencia"
+fi
 
-        echo -e "${CYAN}[SSL] Limpiando entradas viejas y escribiendo rutas en la DB...${RESET}"
-        sqlite3 "$DB" "
-            DELETE FROM settings WHERE key IN ('webCertFile', 'webKeyFile');
-            INSERT INTO settings (key, value) VALUES ('webCertFile', '$DEST_CERT');
-            INSERT INTO settings (key, value) VALUES ('webKeyFile',  '$DEST_KEY');
-        "
+log "INFO: Conexiones activas = $ACTIVE"
 
-        echo -e "${YELLOW}[SSL] Reiniciando panel para aplicar certificado...${RESET}"
-        systemctl restart x-ui
-        sleep 3
+if [ "$ACTIVE" -ge "$CONN_THRESHOLD" ]; then
+    log "INFO: $ACTIVE conexiones activas (≥ ${CONN_THRESHOLD}) → NO se reinicia (hay carga real)"
+    exit 0
+fi
 
-        local LIVE_EXP LIVE_DAYS
-        LIVE_EXP=$(openssl s_client \
-                    -connect "${DOMAIN}:${PORT}" \
-                    -servername "${DOMAIN}" \
-                    </dev/null 2>/dev/null \
-                   | openssl x509 -enddate -noout 2>/dev/null \
-                   | cut -d= -f2)
+log "ACTION: RAM=${RAM_USED}%, conexiones=${ACTIVE} → reiniciando Xray para liberar memoria..."
 
-        if [ -n "$LIVE_EXP" ]; then
-            LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
-            echo -e "${GREEN}[SSL] ✅  Cert aplicado — vence en $LIVE_DAYS días ($LIVE_EXP)${RESET}"
-        else
-            echo -e "${RED}[SSL] ❌  No se pudo verificar el cert vivo en puerto $PORT.${RESET}"
-        fi
-    }
+x-ui restart-xray >> "$LOG" 2>&1
+EXIT_CODE=$?
 
-    # ════════════════════════════════════════════════════════
-    #   PATCH XHTTP SETTINGS — opción manual desde el menú
-    # ════════════════════════════════════════════════════════
-    patch_xhttp_settings() {
-        clear
-        local DB="/etc/x-ui/x-ui.db"
+if [ "$EXIT_CODE" -eq 0 ]; then
+    sleep 3
+    date +%s > "$LAST_RUN_FILE"
+    RAM_POST=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
+    log "OK: Xray reiniciado. RAM real post-reinicio = ${RAM_POST}% — cooldown activado (${COOLDOWN}s)"
+else
+    log "ERROR: Falló el reinicio de Xray (código $EXIT_CODE)"
+fi
 
-        echo -e "${HOT_PINK}"
-        echo "════════════════════════════════════ 💋"
-        echo "     PATCH xhttpSettings 🔧👑"
-        echo "════════════════════════════════════ 💋"
-        echo -e "${RESET}"
+exit 0
+EOF
 
-        if [ ! -f "$DB" ]; then
-            echo -e "${RED}❌  No se encontró la base de datos en: $DB${RESET}"
-            echo -e "${YELLOW}Asegurate de que el panel esté instalado.${RESET}"
-            read -rp "ENTER para continuar"
-            return 1
-        fi
+    chmod +x /root/xray_watchdog.sh
 
-        local TOTAL
-        TOTAL=$(sqlite3 "$DB" \
-            "SELECT COUNT(*) FROM inbounds
-             WHERE json_extract(stream_settings, '$.network') = 'xhttp';" \
-            2>/dev/null)
+    (crontab -l 2>/dev/null | grep -v xray_watchdog.sh; echo "*/5 * * * * /root/xray_watchdog.sh") | crontab -
 
-        if [ -z "$TOTAL" ] || [ "$TOTAL" -eq 0 ]; then
-            echo -e "${YELLOW}⚠️  No se encontraron inbounds con network = xhttp en la DB.${RESET}"
-            echo -e "${CYAN}Creá el inbound desde el panel y volvé a ejecutar esta opción.${RESET}"
-            read -rp "ENTER para continuar"
-            return 0
-        fi
+    echo -e "${GREEN}Watchdog RAM activo ✅ (cada 5 min, reinicia solo cuando RAM > 80% + conexiones < 5 + cooldown 15min)${RESET}"
+}
 
-        echo -e "${CYAN}Inbounds xhttp encontrados: ${GREEN}$TOTAL${RESET}"
-        echo
-        echo -e "${YELLOW}Aplicando cambios:${RESET}"
-        echo -e "  ${CYAN}scMaxBufferedPosts${RESET}  : 30  →  ${GREEN}5${RESET}"
-        echo -e "  ${CYAN}scMaxEachPostBytes${RESET}  : \"1000000\"  →  ${GREEN}\"200000\"${RESET}"
-        echo
+# ═══════════════════════════════════════════════════════════════════════
+#   HELPERS INTERNOS
+# ═══════════════════════════════════════════════════════════════════════
 
-        sqlite3 "$DB" "
-            UPDATE inbounds
-            SET stream_settings = json_set(
-                stream_settings,
-                '$.xhttpSettings.scMaxBufferedPosts', 5,
-                '$.xhttpSettings.scMaxEachPostBytes', '200000'
-            )
-            WHERE json_extract(stream_settings, '$.network') = 'xhttp';
-        "
+panel_installed() {
+    command -v x-ui &>/dev/null
+}
 
-        local EXIT_CODE=$?
+panel_status() {
+    if systemctl is-active --quiet x-ui; then
+        STATUS="Activo 🟢"
+    else
+        STATUS="Inactivo 🔴"
+    fi
+}
 
-        if [ "$EXIT_CODE" -ne 0 ]; then
-            echo -e "${RED}❌  Error al modificar la DB (código $EXIT_CODE).${RESET}"
-            read -rp "ENTER para continuar"
-            return 1
-        fi
+get_port() {
+    PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+    [ -z "$PORT" ] && PORT="No detectado"
+}
 
-        echo -e "${GREEN}✅  DB actualizada correctamente.${RESET}"
-        echo
-        echo -e "${CYAN}Verificando valores aplicados...${RESET}"
-        echo
+get_domain() {
+    if [ -f "$DOMAIN_FILE" ]; then
+        DOMAIN=$(cat "$DOMAIN_FILE")
+    else
+        DOMAIN=""
+    fi
+}
 
-        sqlite3 "$DB" \
-            "SELECT
-                id,
-                remark,
-                json_extract(stream_settings, '$.network')                          AS network,
-                json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts') AS scMaxBufferedPosts,
-                json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes') AS scMaxEachPostBytes
-             FROM inbounds
-             WHERE json_extract(stream_settings, '$.network') = 'xhttp';" \
-            2>/dev/null \
-        | while IFS='|' read -r id remark network posts bytes; do
-            echo -e "  ID ${CYAN}$id${RESET} │ ${HOT_PINK}$remark${RESET}"
-            echo -e "    network            : ${GREEN}$network${RESET}"
-            echo -e "    scMaxBufferedPosts : ${GREEN}$posts${RESET}"
-            echo -e "    scMaxEachPostBytes : ${GREEN}$bytes${RESET}"
-            echo
-        done
-
-        echo -e "${YELLOW}Reiniciando Xray para aplicar cambios...${RESET}"
-        x-ui restart-xray
+start_proxy() {
+    local EXISTING
+    EXISTING=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ -z "$EXISTING" ]; then
+        nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
         sleep 2
+        echo -e "${GREEN}Proxy MCCARTHEY iniciado ✅${RESET}"
+    else
+        echo -e "${CYAN}Proxy MCCARTHEY ya está activo (PID $EXISTING), no se duplica.${RESET}"
+    fi
+}
 
-        echo
-        echo -e "${GREEN}✅  Xray reiniciado. Cambios activos.${RESET}"
-        read -rp "ENTER para continuar"
-    }
+stop_proxy() {
+    local PROXY_PID
+    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ -n "$PROXY_PID" ]; then
+        echo -e "${YELLOW}Deteniendo proxy MCCARTHEY (PID $PROXY_PID)...${RESET}"
+        kill "$PROXY_PID"
+        sleep 3
+    fi
+}
 
-    # ════════════════════════════════════════════════════════
-    #   BUCLE PRINCIPAL DEL MENÚ
-    # ════════════════════════════════════════════════════════
-    while true; do
-        panel_status
-        get_port
-        clear
-
-        echo -e "${HOT_PINK}"
-        echo "════════════════════════════════════ 💋"
-        echo "     XRAY + 3X-UI MANAGER 🌸👑"
-        echo "════════════════════════════════════ 💋"
-        echo -e "${RESET}"
-        echo
-
-        if [ "$STATUS" = "Activo 🟢" ]; then
-            echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
-        else
-            echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
+cleanup_old_certs() {
+    local CURRENT_DOMAIN="$1"
+    local DIRNAME
+    for dir in /root/.acme.sh/*; do
+        [ -d "$dir" ] || continue
+        DIRNAME=$(basename "$dir")
+        [[ "$DIRNAME" == ca ]]       && continue
+        [[ "$DIRNAME" == account* ]] && continue
+        if [[ "$DIRNAME" != "${CURRENT_DOMAIN}_ecc" && "$DIRNAME" != "$CURRENT_DOMAIN" ]]; then
+            echo -e "${YELLOW}Eliminando certificado obsoleto: $DIRNAME${RESET}"
+            rm -rf "$dir"
         fi
-
-        echo
-        echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
-        echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
-        echo -e "${CYAN}3) Renovar SSL manualmente 🔐${RESET}"
-        echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
-        echo -e "${CYAN}5) Parchear xhttpSettings 🔧${RESET}"
-        echo -e "${CYAN}0) Salir 💔${RESET}"
-        echo
-
-        read -rp "👑 Seleccione una opción reina → " op
-
-        case "$op" in
-            1) install_panel         ;;
-            2) show_panel            ;;
-            3) force_renew_ssl       ;;
-            4) remove_panel          ;;
-            5) patch_xhttp_settings  ;;
-            0) break                 ;;
-        esac
     done
 }
 
-# ═══════════════════════════════════════════════════════
-#   SETUP SSL RENEWAL — dominio fijo, cron diario
-# ═══════════════════════════════════════════════════════
+cert_is_valid() {
+    local CERT="$1"
+    [ -f "$CERT" ] || return 1
+    openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null
+}
+
+get_live_cert_days() {
+    local DOMAIN="$1"
+    local PORT="$2"
+    local EXP
+    EXP=$(openssl s_client \
+            -connect "${DOMAIN}:${PORT}" \
+            -servername "${DOMAIN}" \
+            </dev/null 2>/dev/null \
+          | openssl x509 -enddate -noout 2>/dev/null \
+          | cut -d= -f2)
+    if [ -z "$EXP" ]; then
+        echo -1
+        return
+    fi
+    echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
+}
+
+apply_cert_to_panel() {
+    local DOMAIN="$1"
+    local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
+    local ACME_KEY="/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key"
+    local DEST_CERT="$SSL_DIR/fullchain.cer"
+    local DEST_KEY="$SSL_DIR/${DOMAIN}.key"
+    local DB="/etc/x-ui/x-ui.db"
+
+    if ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
+        echo -e "${RED}[SSL] El certificado de acme no es válido o no existe: $ACME_CERT${RESET}"
+        return 1
+    fi
+
+    echo -e "${CYAN}[SSL] Copiando certificados a $SSL_DIR...${RESET}"
+    mkdir -p "$SSL_DIR"
+    cp "$ACME_CERT" "$DEST_CERT"
+    cp "$ACME_KEY"  "$DEST_KEY"
+    chmod 644 "$DEST_CERT"
+    chmod 600 "$DEST_KEY"
+
+    echo -e "${CYAN}[SSL] Limpiando entradas viejas y escribiendo rutas en la DB...${RESET}"
+    sqlite3 "$DB" "
+        DELETE FROM settings WHERE key IN ('webCertFile', 'webKeyFile');
+        INSERT INTO settings (key, value) VALUES ('webCertFile', '$DEST_CERT');
+        INSERT INTO settings (key, value) VALUES ('webKeyFile',  '$DEST_KEY');
+    "
+
+    echo -e "${YELLOW}[SSL] Reiniciando panel para aplicar certificado...${RESET}"
+    systemctl restart x-ui
+    sleep 3
+
+    local LIVE_EXP LIVE_DAYS
+    LIVE_EXP=$(openssl s_client \
+                -connect "${DOMAIN}:${PORT}" \
+                -servername "${DOMAIN}" \
+                </dev/null 2>/dev/null \
+               | openssl x509 -enddate -noout 2>/dev/null \
+               | cut -d= -f2)
+
+    if [ -n "$LIVE_EXP" ]; then
+        LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
+        echo -e "${GREEN}[SSL] ✅  Cert aplicado — vence en $LIVE_DAYS días ($LIVE_EXP)${RESET}"
+    else
+        echo -e "${RED}[SSL] ❌  No se pudo verificar el cert vivo en puerto $PORT.${RESET}"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+#   PATCH XHTTP — opción manual desde el menú
+# ═══════════════════════════════════════════════════════════════════════
+patch_xhttp_settings() {
+    clear
+    local DB="/etc/x-ui/x-ui.db"
+
+    echo -e "${HOT_PINK}"
+    echo "════════════════════════════════════ 💋"
+    echo "     PATCH xhttpSettings 🔧👑"
+    echo "════════════════════════════════════ 💋"
+    echo -e "${RESET}"
+
+    if [ ! -f "$DB" ]; then
+        echo -e "${RED}❌  No se encontró la base de datos en: $DB${RESET}"
+        echo -e "${YELLOW}Asegurate de que el panel esté instalado.${RESET}"
+        read -rp "ENTER para continuar"
+        return 1
+    fi
+
+    local TOTAL
+    TOTAL=$(sqlite3 "$DB" \
+        "SELECT COUNT(*) FROM inbounds
+         WHERE json_extract(stream_settings, '$.network') = 'xhttp';" \
+        2>/dev/null)
+
+    if [ -z "$TOTAL" ] || [ "$TOTAL" -eq 0 ]; then
+        echo -e "${YELLOW}⚠️  No se encontraron inbounds con network = xhttp en la DB.${RESET}"
+        echo -e "${CYAN}Creá el inbound desde el panel y volvé a ejecutar esta opción.${RESET}"
+        read -rp "ENTER para continuar"
+        return 0
+    fi
+
+    echo -e "${CYAN}Inbounds xhttp encontrados: ${GREEN}$TOTAL${RESET}"
+    echo
+    echo -e "${YELLOW}Aplicando cambios:${RESET}"
+    echo -e "  ${CYAN}scMaxBufferedPosts${RESET}  →  ${GREEN}5${RESET}"
+    echo -e "  ${CYAN}scMaxEachPostBytes${RESET}  →  ${GREEN}200000${RESET}"
+    echo
+
+    sqlite3 "$DB" "
+        UPDATE inbounds
+        SET stream_settings = json_set(
+            stream_settings,
+            '$.xhttpSettings.scMaxBufferedPosts', 5,
+            '$.xhttpSettings.scMaxEachPostBytes', '200000'
+        )
+        WHERE json_extract(stream_settings, '$.network') = 'xhttp';
+    "
+
+    local EXIT_CODE=$?
+
+    if [ "$EXIT_CODE" -ne 0 ]; then
+        echo -e "${RED}❌  Error al modificar la DB (código $EXIT_CODE).${RESET}"
+        read -rp "ENTER para continuar"
+        return 1
+    fi
+
+    echo -e "${GREEN}✅  DB actualizada correctamente.${RESET}"
+    echo
+    echo -e "${CYAN}Verificando valores aplicados...${RESET}"
+    echo
+
+    sqlite3 "$DB" \
+        "SELECT
+            id,
+            remark,
+            json_extract(stream_settings, '$.network')                          AS network,
+            json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts') AS scMaxBufferedPosts,
+            json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes') AS scMaxEachPostBytes
+         FROM inbounds
+         WHERE json_extract(stream_settings, '$.network') = 'xhttp';" \
+        2>/dev/null \
+    | while IFS='|' read -r id remark network posts bytes; do
+        echo -e "  ID ${CYAN}$id${RESET} │ ${HOT_PINK}$remark${RESET}"
+        echo -e "    network            : ${GREEN}$network${RESET}"
+        echo -e "    scMaxBufferedPosts : ${GREEN}$posts${RESET}"
+        echo -e "    scMaxEachPostBytes : ${GREEN}$bytes${RESET}"
+        echo
+    done
+
+    echo -e "${YELLOW}Reiniciando Xray para aplicar cambios...${RESET}"
+    x-ui restart-xray
+    sleep 2
+
+    echo
+    echo -e "${GREEN}✅  Xray reiniciado. Cambios activos.${RESET}"
+    read -rp "ENTER para continuar"
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+#   SETUP SSL RENEWAL — cron diario a las 4am
+# ═══════════════════════════════════════════════════════════════════════
 setup_ssl_renewal() {
     local DOMAIN="$1"
 
@@ -3872,9 +3916,9 @@ SCRIPT
     echo -e "${GREEN}Script de renovación SSL configurado ✅${RESET}"
 }
 
-# ═══════════════════════════════════════════════════════
-#   FORCE RENEW — opción manual desde el menú
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+#   FORCE RENEW SSL — opción manual desde el menú
+# ═══════════════════════════════════════════════════════════════════════
 force_renew_ssl() {
     clear
     echo -e "${YELLOW}Iniciando renovación SSL manual... 🔐${RESET}"
@@ -3949,9 +3993,9 @@ force_renew_ssl() {
     read -rp "ENTER para continuar"
 }
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
 #   INSTALL PANEL
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
 install_panel() {
     clear
     echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
@@ -3980,6 +4024,7 @@ install_panel() {
 
     setup_ssl_renewal "$DOMAIN"
     setup_auto_patch_cron
+    setup_watchdog_cron
 
     local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
 
@@ -4041,10 +4086,12 @@ install_panel() {
         fi
 
         echo
-        echo -e "${CYAN}💡 El auto-patch de xhttpSettings está activo (cada 15 min).${RESET}"
-        echo -e "${CYAN}   Creá el inbound xhttp desde el panel y se autocorregirá solo.${RESET}"
-        echo -e "${CYAN}   También podés forzarlo con la opción ${HOT_PINK}5) Parchear xhttpSettings${CYAN}.${RESET}"
+        echo -e "${CYAN}💡 Auto-patch xhttp activo (cada 15 min).${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
+        echo
+        echo -e "${CYAN}💡 Watchdog RAM activo (cada 5 min).${RESET}"
+        echo -e "${CYAN}   Reinicia Xray solo si RAM > 80%, conexiones < 5 y cooldown > 15min.${RESET}"
+        echo -e "${CYAN}   Log: tail -f /var/log/xray_watchdog.log${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
     fi
@@ -4052,9 +4099,9 @@ install_panel() {
     read -rp "ENTER para continuar"
 }
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
 #   SHOW PANEL
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
 show_panel() {
     clear
 
@@ -4094,66 +4141,123 @@ show_panel() {
         echo "SSL    : ✅  Válido — vence en $DIAS días ($EXPIRACION)"
         echo
         if [ -n "$DOMAIN" ]; then
-            echo "URL:"
-            echo "https://$DOMAIN:$PORT$PATHP"
+            echo "URL: https://$DOMAIN:$PORT$PATHP"
         else
-            echo "URL:"
-            echo "https://$IP:$PORT$PATHP"
+            echo "URL: https://$IP:$PORT$PATHP"
         fi
     else
         echo "SSL    : ❌  Certificado no encontrado o inválido en $SSL_DIR"
         echo
-        echo "URL (sin SSL):"
         if [ -n "$DOMAIN" ]; then
-            echo "http://$DOMAIN:$PORT$PATHP"
+            echo "URL (sin SSL): http://$DOMAIN:$PORT$PATHP"
         else
-            echo "http://$IP:$PORT$PATHP"
+            echo "URL (sin SSL): http://$IP:$PORT$PATHP"
         fi
     fi
 
     local PROXY_PID
     PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-
+    echo
     if [ -n "$PROXY_PID" ]; then
-        echo
         echo "Proxy  : ✅  Activo (PID $PROXY_PID)"
     else
-        echo
         echo "Proxy  : ❌  Inactivo"
     fi
 
-    # ── Estado del auto-patch ────────────────────────────
     echo
     if [ -f /root/auto_patch_xhttp.sh ]; then
-        echo "AutoPatch xhttp : ✅  Instalado (/root/auto_patch_xhttp.sh)"
-        echo "Log             : /var/log/auto_patch_xhttp.log"
+        echo "AutoPatch xhttp : ✅  Activo  → log: /var/log/auto_patch_xhttp.log"
     else
-        echo "AutoPatch xhttp : ❌  No instalado (ejecutá install_panel)"
+        echo "AutoPatch xhttp : ❌  No instalado"
+    fi
+
+    echo
+    if [ -f /root/xray_watchdog.sh ]; then
+        local RAM_NOW
+        RAM_NOW=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
+        echo "Watchdog RAM    : ✅  Activo  → log: /var/log/xray_watchdog.log"
+        echo "RAM actual      : ${RAM_NOW}%  (umbral: >80% RAM + <5 conexiones + cooldown 15min)"
+    else
+        echo "Watchdog RAM    : ❌  No instalado"
     fi
 
     read -rp "ENTER para continuar"
 }
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
 #   REMOVE PANEL
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
 remove_panel() {
     clear
     echo -e "${RED}Eliminando panel...${RESET}"
+
     x-ui stop      >/dev/null 2>&1
     x-ui uninstall >/dev/null 2>&1
 
-    # Limpiar también el cron de auto-patch
-    crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh | crontab -
-    rm -f /root/auto_patch_xhttp.sh
+    crontab -l 2>/dev/null \
+        | grep -v auto_patch_xhttp.sh \
+        | grep -v xray_watchdog.sh \
+        | grep -v renew_ssl.sh \
+        | crontab -
 
-    echo -e "${GREEN}Panel eliminado correctamente ✅${RESET}"
+    rm -f /root/auto_patch_xhttp.sh
+    rm -f /root/xray_watchdog.sh
+    rm -f /root/renew_ssl.sh
+
+    echo -e "${GREEN}Panel y scripts eliminados correctamente ✅${RESET}"
     read -rp "ENTER para continuar"
 }
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+#   MENÚ PRINCIPAL
+# ═══════════════════════════════════════════════════════════════════════
+xhttp_panel() {
+    while true; do
+        panel_status
+        get_port
+        clear
+
+        echo -e "${HOT_PINK}"
+        echo "════════════════════════════════════ 💋"
+        echo "     XRAY + 3X-UI MANAGER 🌸👑"
+        echo "════════════════════════════════════ 💋"
+        echo -e "${RESET}"
+        echo
+
+        if [ "$STATUS" = "Activo 🟢" ]; then
+            echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
+        else
+            echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
+        fi
+
+        echo
+        echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
+        echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
+        echo -e "${CYAN}3) Renovar SSL manualmente 🔐${RESET}"
+        echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
+        echo -e "${CYAN}5) Parchear xhttpSettings 🔧${RESET}"
+        echo -e "${CYAN}0) Salir 💔${RESET}"
+        echo
+
+        read -rp "👑 Seleccione una opción reina → " op
+
+        case "$op" in
+            1) install_panel        ;;
+            2) show_panel           ;;
+            3) force_renew_ssl      ;;
+            4) remove_panel         ;;
+            5) patch_xhttp_settings ;;
+            0) break                ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════════════
 #   PUNTO DE ENTRADA
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+
+
+
 
 
 # ==== MENU ====  
