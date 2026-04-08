@@ -3444,31 +3444,40 @@ log() {
 exec 200>"$LOCK"
 flock -n 200 || exit 0
 
-# ── Cooldown: evita loop de reinicios ──
+# ── Cooldown ──
 NOW=$(date +%s)
 LAST=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
 if (( NOW - LAST < COOLDOWN )); then
     RESTANTE=$(( COOLDOWN - (NOW - LAST) ))
-    log "INFO: En cooldown — faltan ${RESTANTE}s para próximo reinicio permitido → sin acción"
+    log "INFO: En cooldown — faltan ${RESTANTE}s → sin acción"
     exit 0
 fi
 
-RAM_USED=$(free | awk '/^Mem:/ { printf "%.0f", (($2-$7)/$2)*100 }')
+# ── Leer RAM compatible con Ubuntu 20/22 ──
+RAM_USED=$(free | awk '
+/^Mem:/ {
+    if ($7 == "" || $7 == 0) {
+        printf "%.0f", ($3/$2)*100
+    } else {
+        printf "%.0f", (1 - $7/$2)*100
+    }
+}')
 
 if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
     log "ERROR: No se pudo leer RAM ($RAM_USED)"
     exit 1
 fi
 
-log "INFO: RAM real usada = ${RAM_USED}% (sin cache/buffers)"
+log "INFO: RAM real usada = ${RAM_USED}%"
 
 if [ "$RAM_USED" -lt "$RAM_THRESHOLD" ]; then
     log "INFO: RAM normal (${RAM_USED}% < ${RAM_THRESHOLD}%) → sin acción"
     exit 0
 fi
 
-log "WARN: RAM real alta (${RAM_USED}% ≥ ${RAM_THRESHOLD}%) — verificando conexiones..."
+log "WARN: RAM alta (${RAM_USED}%) — verificando conexiones..."
 
+# ── Leer puertos de Xray ──
 XRAY_PORTS=""
 if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
     XRAY_PORTS=$(sqlite3 "$DB" \
@@ -3476,6 +3485,7 @@ if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
         2>/dev/null)
 fi
 
+# ── Contar conexiones ──
 if [ -n "$XRAY_PORTS" ]; then
     ACTIVE=0
     for PORT_ITEM in $(echo "$XRAY_PORTS" | tr '|' ' '); do
@@ -3484,17 +3494,18 @@ if [ -n "$XRAY_PORTS" ]; then
     done
 else
     ACTIVE=$(ss -ant state established 2>/dev/null | tail -n +2 | wc -l)
-    log "WARN: No se leyeron puertos de la DB — usando total ESTAB como referencia"
+    log "WARN: Usando total conexiones del sistema"
 fi
 
 log "INFO: Conexiones activas = $ACTIVE"
 
 if [ "$ACTIVE" -ge "$CONN_THRESHOLD" ]; then
-    log "INFO: $ACTIVE conexiones activas (≥ ${CONN_THRESHOLD}) → NO se reinicia (hay carga real)"
+    log "INFO: Hay carga real ($ACTIVE conexiones) → NO se reinicia"
     exit 0
 fi
 
-log "ACTION: RAM=${RAM_USED}%, conexiones=${ACTIVE} → reiniciando Xray para liberar memoria..."
+# ── Reinicio controlado ──
+log "ACTION: RAM=${RAM_USED}% + conexiones=${ACTIVE} → reiniciando Xray..."
 
 x-ui restart-xray >> "$LOG" 2>&1
 EXIT_CODE=$?
@@ -3502,10 +3513,19 @@ EXIT_CODE=$?
 if [ "$EXIT_CODE" -eq 0 ]; then
     sleep 3
     date +%s > "$LAST_RUN_FILE"
-    RAM_POST=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
-    log "OK: Xray reiniciado. RAM real post-reinicio = ${RAM_POST}% — cooldown activado (${COOLDOWN}s)"
+
+    RAM_POST=$(free | awk '
+    /^Mem:/ {
+        if ($7 == "" || $7 == 0) {
+            printf "%.0f", ($3/$2)*100
+        } else {
+            printf "%.0f", (1 - $7/$2)*100
+        }
+    }')
+
+    log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
 else
-    log "ERROR: Falló el reinicio de Xray (código $EXIT_CODE)"
+    log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
 fi
 
 exit 0
@@ -3515,7 +3535,7 @@ EOF
 
     (crontab -l 2>/dev/null | grep -v xray_watchdog.sh; echo "*/5 * * * * /root/xray_watchdog.sh") | crontab -
 
-    echo -e "${GREEN}Watchdog RAM activo ✅ (cada 5 min, reinicia solo cuando RAM > 80% + conexiones < 5 + cooldown 15min)${RESET}"
+    echo -e "Watchdog RAM activo ✅ (inteligente, sin reinicios innecesarios)"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
