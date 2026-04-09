@@ -3327,7 +3327,7 @@ DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
 SSL_DIR="/etc/x-ui/ssl"
 
 # ═══════════════════════════════════════════════════════════════════════
-#   AUTO PATCH XHTTP — cron cada 15 min
+#   AUTO PATCH XHTTP — cron cada 6 horas
 # ═══════════════════════════════════════════════════════════════════════
 setup_auto_patch_cron() {
 
@@ -3356,14 +3356,14 @@ SET stream_settings = json_set(
     stream_settings,
     '$.xhttpSettings.scMaxBufferedPosts',
     CASE
-        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts'), 0) AS INTEGER) > 5
-        THEN 5
+        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts'), 0) AS INTEGER) > 10
+        THEN 10
         ELSE json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts')
     END,
     '$.xhttpSettings.scMaxEachPostBytes',
     CASE
-        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes'), 0) AS INTEGER) > 200000
-        THEN '200000'
+        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes'), 0) AS INTEGER) > 500000
+        THEN '500000'
         ELSE json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes')
     END
 )
@@ -3413,14 +3413,14 @@ EOF
 
     chmod +x /root/auto_patch_xhttp.sh
 
-    (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "*/15 * * * * /root/auto_patch_xhttp.sh") | crontab -
+    (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "0 */6 * * * /root/auto_patch_xhttp.sh") | crontab -
 
-    echo -e "${GREEN}Auto-patch xhttp activo ✅ (cada 15 min, sin reinicios innecesarios)${RESET}"
+    echo -e "${GREEN}Auto-patch xhttp activo ✅ (cada 6 horas, sin reinicios innecesarios)${RESET}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
 #   WATCHDOG RAM — cron cada 5 min
-#   Reinicia Xray solo cuando: RAM > 80% Y conexiones < 10
+#   Reinicia Xray solo cuando: RAM > 85% Y conexiones < 8
 # ═══════════════════════════════════════════════════════════════════════
 setup_watchdog_cron() {
 
@@ -3432,8 +3432,8 @@ DB="/etc/x-ui/x-ui.db"
 LOG="/var/log/xray_watchdog.log"
 LOCK="/tmp/xray_watchdog.lock"
 
-RAM_THRESHOLD=80
-CONN_THRESHOLD=5
+RAM_THRESHOLD=85
+CONN_THRESHOLD=8
 COOLDOWN=900
 LAST_RUN_FILE="/tmp/xray_watchdog_last"
 
@@ -3694,16 +3694,16 @@ patch_xhttp_settings() {
     echo -e "${CYAN}Inbounds xhttp encontrados: ${GREEN}$TOTAL${RESET}"
     echo
     echo -e "${YELLOW}Aplicando cambios:${RESET}"
-    echo -e "  ${CYAN}scMaxBufferedPosts${RESET}  →  ${GREEN}5${RESET}"
-    echo -e "  ${CYAN}scMaxEachPostBytes${RESET}  →  ${GREEN}200000${RESET}"
+    echo -e "  ${CYAN}scMaxBufferedPosts${RESET}  →  ${GREEN}10${RESET}"
+    echo -e "  ${CYAN}scMaxEachPostBytes${RESET}  →  ${GREEN}500000${RESET}"
     echo
 
     sqlite3 "$DB" "
         UPDATE inbounds
         SET stream_settings = json_set(
             stream_settings,
-            '$.xhttpSettings.scMaxBufferedPosts', 5,
-            '$.xhttpSettings.scMaxEachPostBytes', '200000'
+            '$.xhttpSettings.scMaxBufferedPosts', 10,
+            '$.xhttpSettings.scMaxEachPostBytes', '500000'
         )
         WHERE json_extract(stream_settings, '$.network') = 'xhttp';
     "
@@ -4090,11 +4090,11 @@ install_panel() {
         fi
 
         echo
-        echo -e "${CYAN}💡 Auto-patch xhttp activo (cada 15 min).${RESET}"
+        echo -e "${CYAN}💡 Auto-patch xhttp activo (cada 6 horas).${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
         echo
         echo -e "${CYAN}💡 Watchdog RAM activo (cada 5 min).${RESET}"
-        echo -e "${CYAN}   Reinicia Xray solo si RAM > 80%, conexiones < 5 y cooldown > 15min.${RESET}"
+        echo -e "${CYAN}   Reinicia Xray solo si RAM > 85%, conexiones < 8 y cooldown > 15min.${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/xray_watchdog.log${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
@@ -4180,7 +4180,7 @@ show_panel() {
         local RAM_NOW
         RAM_NOW=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
         echo "Watchdog RAM    : ✅  Activo  → log: /var/log/xray_watchdog.log"
-        echo "RAM actual      : ${RAM_NOW}%  (umbral: >80% RAM + <5 conexiones + cooldown 15min)"
+        echo "RAM actual      : ${RAM_NOW}%  (umbral: >85% RAM + <8 conexiones + cooldown 15min)"
     else
         echo "Watchdog RAM    : ❌  No instalado"
     fi
