@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ACTIVATION_FLAG="/etc/.activated"
-BACKEND="http://102.129.137.139:8080/check.php"
+BACKEND="http://102.129.137.139:8282/check.php"
 
 # === VERIFICAR SI YA ESTÁ ACTIVADO ===
 if [[ -f "$ACTIVATION_FLAG" ]]; then
