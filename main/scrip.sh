@@ -3420,21 +3420,23 @@ EOF
 
 # ═══════════════════════════════════════════════════════════════════════
 #   WATCHDOG RAM — cron cada 5 min
-#   Reinicia Xray solo cuando: RAM > 85% Y conexiones < 8
+#   Reinicia Xray solo cuando: RAM > 85% sostenida por 3 ciclos seguidos
+#   (~15 min continuos) — ignora picos momentáneos y conexiones infladas
 # ═══════════════════════════════════════════════════════════════════════
 setup_watchdog_cron() {
 
     cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
-# ── Watchdog: libera RAM de Xray solo cuando no hay carga real ──
+# ── Watchdog: reinicia Xray solo ante RAM alta sostenida (3 ciclos = ~15 min) ──
+# ── No usa conteo de conexiones: en XHTTP el multiplexing infla ese número ──
 
-DB="/etc/x-ui/x-ui.db"
 LOG="/var/log/xray_watchdog.log"
 LOCK="/tmp/xray_watchdog.lock"
 
-RAM_THRESHOLD=85
-CONN_THRESHOLD=8
-COOLDOWN=900
+RAM_THRESHOLD=85       # % de RAM para considerar que hay presión
+CYCLES_REQUIRED=3      # ciclos consecutivos necesarios antes de actuar
+COUNTER_FILE="/tmp/xray_watchdog_counter"
+COOLDOWN=900           # segundos de espera mínima post-reinicio
 LAST_RUN_FILE="/tmp/xray_watchdog_last"
 
 log() {
@@ -3444,7 +3446,7 @@ log() {
 exec 200>"$LOCK"
 flock -n 200 || exit 0
 
-# ── Cooldown ──
+# ── Cooldown post-reinicio ──
 NOW=$(date +%s)
 LAST=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
 if (( NOW - LAST < COOLDOWN )); then
@@ -3453,7 +3455,7 @@ if (( NOW - LAST < COOLDOWN )); then
     exit 0
 fi
 
-# ── Leer RAM (compatible real Ubuntu 20/22) ──
+# ── Leer RAM ──
 RAM_USED=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
 
 if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
@@ -3463,42 +3465,34 @@ fi
 
 log "INFO: RAM usada = ${RAM_USED}%"
 
+# ── Si RAM está bien → resetear contador y salir ──
 if [ "$RAM_USED" -lt "$RAM_THRESHOLD" ]; then
-    log "INFO: RAM normal (${RAM_USED}% < ${RAM_THRESHOLD}%) → sin acción"
+    PREV=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+    if [ "$PREV" -gt 0 ]; then
+        log "INFO: RAM bajó a ${RAM_USED}% — contador reseteado (era $PREV)"
+        echo 0 > "$COUNTER_FILE"
+    else
+        log "INFO: RAM normal (${RAM_USED}% < ${RAM_THRESHOLD}%) → sin acción"
+    fi
     exit 0
 fi
 
-log "WARN: RAM alta (${RAM_USED}%) — verificando conexiones..."
+# ── RAM alta → incrementar contador ──
+COUNTER=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+COUNTER=$(( COUNTER + 1 ))
+echo "$COUNTER" > "$COUNTER_FILE"
 
-# ── Leer puertos de Xray ──
-XRAY_PORTS=""
-if [ -f "$DB" ] && command -v sqlite3 &>/dev/null; then
-    XRAY_PORTS=$(sqlite3 "$DB" \
-        "SELECT GROUP_CONCAT(port, '|') FROM inbounds WHERE enable=1;" \
-        2>/dev/null)
-fi
+log "WARN: RAM alta (${RAM_USED}%) — ciclo $COUNTER/$CYCLES_REQUIRED"
 
-# ── Contar conexiones ──
-if [ -n "$XRAY_PORTS" ]; then
-    ACTIVE=0
-    for PORT_ITEM in $(echo "$XRAY_PORTS" | tr '|' ' '); do
-        COUNT=$(ss -ant state established "( sport = :$PORT_ITEM or dport = :$PORT_ITEM )" 2>/dev/null | tail -n +2 | wc -l)
-        ACTIVE=$(( ACTIVE + COUNT ))
-    done
-else
-    ACTIVE=$(ss -ant state established 2>/dev/null | tail -n +2 | wc -l)
-    log "WARN: Usando total conexiones del sistema"
-fi
-
-log "INFO: Conexiones activas = $ACTIVE"
-
-if [ "$ACTIVE" -ge "$CONN_THRESHOLD" ]; then
-    log "INFO: Hay carga real ($ACTIVE conexiones) → NO se reinicia"
+if [ "$COUNTER" -lt "$CYCLES_REQUIRED" ]; then
+    log "INFO: Esperando más ciclos para confirmar presión sostenida → sin acción"
     exit 0
 fi
 
-# ── Reinicio inteligente ──
-log "ACTION: RAM=${RAM_USED}% + conexiones=${ACTIVE} → reiniciando Xray..."
+# ── 3 ciclos consecutivos con RAM alta → reiniciar ──
+log "ACTION: RAM sostenida ${RAM_USED}% por $COUNTER ciclos (~$(( COUNTER * 5 )) min) → reiniciando Xray..."
+
+echo 0 > "$COUNTER_FILE"
 
 x-ui restart-xray >> "$LOG" 2>&1
 EXIT_CODE=$?
@@ -3506,7 +3500,6 @@ EXIT_CODE=$?
 if [ "$EXIT_CODE" -eq 0 ]; then
     sleep 3
     date +%s > "$LAST_RUN_FILE"
-
     RAM_POST=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
     log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
 else
@@ -3520,7 +3513,7 @@ EOF
 
     (crontab -l 2>/dev/null | grep -v xray_watchdog.sh; echo "*/5 * * * * /root/xray_watchdog.sh") | crontab -
 
-    echo "Watchdog RAM activo ✅ (real, limpio y estable)"
+    echo "Watchdog RAM activo ✅ (ciclos sostenidos, sin falsos positivos)"
 }
 # ═══════════════════════════════════════════════════════════════════════
 #   HELPERS INTERNOS
@@ -4094,7 +4087,7 @@ install_panel() {
         echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
         echo
         echo -e "${CYAN}💡 Watchdog RAM activo (cada 5 min).${RESET}"
-        echo -e "${CYAN}   Reinicia Xray solo si RAM > 85%, conexiones < 8 y cooldown > 15min.${RESET}"
+        echo -e "${CYAN}   Reinicia Xray solo si RAM > 85% sostenida por 3 ciclos (~15 min).${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/xray_watchdog.log${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
@@ -4179,8 +4172,9 @@ show_panel() {
     if [ -f /root/xray_watchdog.sh ]; then
         local RAM_NOW
         RAM_NOW=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
+        WCOUNTER=$(cat /tmp/xray_watchdog_counter 2>/dev/null || echo 0)
         echo "Watchdog RAM    : ✅  Activo  → log: /var/log/xray_watchdog.log"
-        echo "RAM actual      : ${RAM_NOW}%  (umbral: >85% RAM + <8 conexiones + cooldown 15min)"
+        echo "RAM actual      : ${RAM_NOW}%  (umbral: >85% por 3 ciclos ~15min | ciclo actual: $WCOUNTER/3)"
     else
         echo "Watchdog RAM    : ❌  No instalado"
     fi
@@ -4255,12 +4249,6 @@ xhttp_panel() {
         esac
     done
 }
-
-# ═══════════════════════════════════════════════════════════════════════
-#   PUNTO DE ENTRADA
-# ═══════════════════════════════════════════════════════════════════════
-
-
 
 
 
