@@ -3324,9 +3324,7 @@ ${LILA}-------------------------${NC}"
 
 
 
-
-#!/bin/bash
-# ═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════════
 #   MCCARTHEY — XRAY + 3X-UI MANAGER
 #   auto_patch xhttp + watchdog RAM + SSL + panel completo
 # ═══════════════════════════════════════════════════════════════════════
@@ -3434,22 +3432,23 @@ EOF
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG RAM — cron cada 5 min
-#   Reinicia Xray solo cuando: RAM > 85% sostenida por 3 ciclos seguidos
-#   (~15 min continuos) — ignora picos momentáneos y conexiones infladas
+#   WATCHDOG RAM v2 — cron cada 5 min
+#   RAM real (sin cache/buffers) | umbral 75% | crítico 80% inmediato
+#   Contador pegajoso: decrementa de a 1, no resetea a 0
+#   2 ciclos sostenidos (~10 min) para reinicio normal
 # ═══════════════════════════════════════════════════════════════════════
 setup_watchdog_cron() {
 
     cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
-# ── Watchdog: reinicia Xray solo ante RAM alta sostenida (3 ciclos = ~15 min) ──
-# ── No usa conteo de conexiones: en XHTTP el multiplexing infla ese número ──
+# ── Watchdog v2: RAM real (sin cache), umbral 75%, pico 80%, contador pegajoso ──
 
 LOG="/var/log/xray_watchdog.log"
 LOCK="/tmp/xray_watchdog.lock"
 
-RAM_THRESHOLD=85       # % de RAM para considerar que hay presión
-CYCLES_REQUIRED=3      # ciclos consecutivos necesarios antes de actuar
+RAM_THRESHOLD=75       # % RAM real para acumular ciclos
+RAM_CRITICAL=80        # % RAM real para reinicio inmediato sin esperar ciclos
+CYCLES_REQUIRED=2      # ciclos consecutivos necesarios (10 min)
 COUNTER_FILE="/tmp/xray_watchdog_counter"
 COOLDOWN=900           # segundos de espera mínima post-reinicio
 LAST_RUN_FILE="/tmp/xray_watchdog_last"
@@ -3470,55 +3469,74 @@ if (( NOW - LAST < COOLDOWN )); then
     exit 0
 fi
 
-# ── Leer RAM ──
-RAM_USED=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
+# ── RAM real: (total - available) / total ──
+# 'available' es lo que el kernel reporta como realmente libre (descuenta cache/buffers recuperables)
+RAM_USED=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
 
 if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
     log "ERROR: RAM inválida ($RAM_USED)"
     exit 1
 fi
 
-log "INFO: RAM usada = ${RAM_USED}%"
+COUNTER=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
+log "INFO: RAM real = ${RAM_USED}% | Contador = $COUNTER/$CYCLES_REQUIRED"
 
-# ── Si RAM está bien → resetear contador y salir ──
-if [ "$RAM_USED" -lt "$RAM_THRESHOLD" ]; then
-    PREV=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
-    if [ "$PREV" -gt 0 ]; then
-        log "INFO: RAM bajó a ${RAM_USED}% — contador reseteado (era $PREV)"
-        echo 0 > "$COUNTER_FILE"
+# ── Carril rápido: RAM crítica → reinicio inmediato sin esperar ciclos ──
+if [ "$RAM_USED" -ge "$RAM_CRITICAL" ]; then
+    log "ACTION: RAM crítica (${RAM_USED}% ≥ ${RAM_CRITICAL}%) → reinicio inmediato"
+    echo 0 > "$COUNTER_FILE"
+
+    x-ui restart-xray >> "$LOG" 2>&1
+    EXIT_CODE=$?
+
+    if [ "$EXIT_CODE" -eq 0 ]; then
+        sleep 3
+        date +%s > "$LAST_RUN_FILE"
+        RAM_POST=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
+        log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
     else
-        log "INFO: RAM normal (${RAM_USED}% < ${RAM_THRESHOLD}%) → sin acción"
+        log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
     fi
     exit 0
 fi
 
-# ── RAM alta → incrementar contador ──
-COUNTER=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
-COUNTER=$(( COUNTER + 1 ))
-echo "$COUNTER" > "$COUNTER_FILE"
+# ── RAM alta (entre umbral y crítico) → incrementar contador ──
+if [ "$RAM_USED" -ge "$RAM_THRESHOLD" ]; then
+    COUNTER=$(( COUNTER + 1 ))
+    echo "$COUNTER" > "$COUNTER_FILE"
+    log "WARN: RAM alta (${RAM_USED}%) — ciclo $COUNTER/$CYCLES_REQUIRED"
 
-log "WARN: RAM alta (${RAM_USED}%) — ciclo $COUNTER/$CYCLES_REQUIRED"
+    if [ "$COUNTER" -lt "$CYCLES_REQUIRED" ]; then
+        log "INFO: Esperando más ciclos → sin acción"
+        exit 0
+    fi
 
-if [ "$COUNTER" -lt "$CYCLES_REQUIRED" ]; then
-    log "INFO: Esperando más ciclos para confirmar presión sostenida → sin acción"
+    # Ciclos suficientes → reiniciar
+    log "ACTION: RAM sostenida ${RAM_USED}% por $COUNTER ciclos (~$(( COUNTER * 5 )) min) → reiniciando Xray"
+    echo 0 > "$COUNTER_FILE"
+
+    x-ui restart-xray >> "$LOG" 2>&1
+    EXIT_CODE=$?
+
+    if [ "$EXIT_CODE" -eq 0 ]; then
+        sleep 3
+        date +%s > "$LAST_RUN_FILE"
+        RAM_POST=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
+        log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
+    else
+        log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
+    fi
     exit 0
 fi
 
-# ── 3 ciclos consecutivos con RAM alta → reiniciar ──
-log "ACTION: RAM sostenida ${RAM_USED}% por $COUNTER ciclos (~$(( COUNTER * 5 )) min) → reiniciando Xray..."
-
-echo 0 > "$COUNTER_FILE"
-
-x-ui restart-xray >> "$LOG" 2>&1
-EXIT_CODE=$?
-
-if [ "$EXIT_CODE" -eq 0 ]; then
-    sleep 3
-    date +%s > "$LAST_RUN_FILE"
-    RAM_POST=$(free | awk '/Mem:/ {printf "%.0f", $3/$2 * 100}')
-    log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
+# ── RAM normal: decrementar contador de a 1 (no resetear a 0) ──
+# Evita que un ciclo de 74% borre toda la presión acumulada
+if [ "$COUNTER" -gt 0 ]; then
+    COUNTER=$(( COUNTER - 1 ))
+    echo "$COUNTER" > "$COUNTER_FILE"
+    log "INFO: RAM bajó a ${RAM_USED}% — contador decrementado a $COUNTER (no reseteado)"
 else
-    log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
+    log "INFO: RAM normal (${RAM_USED}%) → sin acción"
 fi
 
 exit 0
@@ -3528,8 +3546,9 @@ EOF
 
     (crontab -l 2>/dev/null | grep -v xray_watchdog.sh; echo "*/5 * * * * /root/xray_watchdog.sh") | crontab -
 
-    echo "Watchdog RAM activo ✅ (ciclos sostenidos, sin falsos positivos)"
+    echo "Watchdog RAM activo ✅ (RAM real, umbral 75%, crítico 80%, contador pegajoso)"
 }
+
 # ═══════════════════════════════════════════════════════════════════════
 #   HELPERS INTERNOS
 # ═══════════════════════════════════════════════════════════════════════
@@ -4101,8 +4120,9 @@ install_panel() {
         echo -e "${CYAN}💡 Auto-patch xhttp activo (cada 6 horas).${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
         echo
-        echo -e "${CYAN}💡 Watchdog RAM activo (cada 5 min).${RESET}"
-        echo -e "${CYAN}   Reinicia Xray solo si RAM > 85% sostenida por 3 ciclos (~15 min).${RESET}"
+        echo -e "${CYAN}💡 Watchdog RAM v2 activo (cada 5 min).${RESET}"
+        echo -e "${CYAN}   RAM real (sin cache) | umbral 75% | crítico 80% inmediato${RESET}"
+        echo -e "${CYAN}   Reinicia Xray si RAM ≥ 80% en 1 ciclo, o ≥ 75% en 2 ciclos (~10 min).${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/xray_watchdog.log${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
@@ -4186,10 +4206,10 @@ show_panel() {
     echo
     if [ -f /root/xray_watchdog.sh ]; then
         local RAM_NOW
-        RAM_NOW=$(free | awk '/^Mem:/ { printf "%.0f", (($3-$6-$7)/$2)*100 }')
+        RAM_NOW=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
         WCOUNTER=$(cat /tmp/xray_watchdog_counter 2>/dev/null || echo 0)
         echo "Watchdog RAM    : ✅  Activo  → log: /var/log/xray_watchdog.log"
-        echo "RAM actual      : ${RAM_NOW}%  (umbral: >85% por 3 ciclos ~15min | ciclo actual: $WCOUNTER/3)"
+        echo "RAM real actual : ${RAM_NOW}%  (umbral: ≥75% × 2 ciclos | crítico: ≥80% inmediato | ciclo: $WCOUNTER/2)"
     else
         echo "Watchdog RAM    : ❌  No instalado"
     fi
