@@ -2,14 +2,16 @@
 
 ACTIVATION_FLAG="/etc/.activated"
 BACKEND="http://102.129.137.139:8282/check.php"
+SCRIPT_OBJETIVO="./scrip.sh"
 
-# === VERIFICAR SI YA ESTÁ ACTIVADO ===
+# === SI YA ESTÁ ACTIVADO → ENTRA DIRECTO ===
 if [[ -f "$ACTIVATION_FLAG" ]]; then
   echo "✅ Sistema ya activado"
   sleep 1
-  exit 0
+  exec "$SCRIPT_OBJETIVO"
 fi
 
+# === SI NO → PEDIR TOKEN ===
 clear
 echo "🔐 Activación requerida"
 read -p "Ingresa tu token: " TOKEN
@@ -20,11 +22,8 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-# Llamada al backend
+# Validar contra backend
 RESP=$(curl -s --max-time 5 "$BACKEND?token=$TOKEN")
-
-# Debug opcional (si querés ver qué responde)
-# echo "DEBUG: $RESP"
 
 if [[ "$RESP" == "OK" ]]; then
   touch "$ACTIVATION_FLAG"
@@ -32,8 +31,11 @@ if [[ "$RESP" == "OK" ]]; then
 
   echo "✅ Activación correcta"
   sleep 1
+
+  # 💥 AQUÍ ESTÁ LA CLAVE
+  exec "$SCRIPT_OBJETIVO"
 else
-  echo "❌ Token inválido, usado o sin conexión"
+  echo "❌ Token inválido o usado"
   exit 1
 fi
 
