@@ -2,43 +2,46 @@
 
 ACTIVATION_FLAG="/etc/.activated"
 BACKEND="http://102.129.137.139:8282/check.php"
-SCRIPT_OBJETIVO="/root/scrip.sh"
 
-# === SI YA ESTÁ ACTIVADO ===
-if [[ -f "$ACTIVATION_FLAG" ]]; then
-  echo "✅ Sistema ya activado"
-  bash "$SCRIPT_OBJETIVO"
-  exit 0
-fi
+main() {
+  echo "🔥 Bienvenido al sistema"
+  # 👉 aquí ponés TODO tu sistema real
+}
 
-# === PEDIR TOKEN ===
-clear
-echo "🔐 Activación requerida"
-read -p "Ingresa tu token: " TOKEN
+check_activation() {
+  # === SI YA ESTÁ ACTIVADO ===
+  if [[ -f "$ACTIVATION_FLAG" ]]; then
+    echo "✅ Sistema ya activado"
+    return
+  fi
 
-# Validación básica
-if [[ -z "$TOKEN" ]]; then
-  echo "❌ Token vacío"
-  exit 1
-fi
+  # === PEDIR TOKEN ===
+  clear
+  echo "🔐 Activación requerida"
+  read -p "Ingresa tu token: " TOKEN
 
-# Validar contra backend
-RESP=$(curl -s --max-time 5 "$BACKEND?token=$TOKEN")
+  if [[ -z "$TOKEN" ]]; then
+    echo "❌ Token vacío"
+    exit 1
+  fi
 
-if [[ "$RESP" == "OK" ]]; then
-  touch "$ACTIVATION_FLAG"
-  chmod 600 "$ACTIVATION_FLAG"
+  RESP=$(curl -s --max-time 5 "$BACKEND?token=$TOKEN")
 
-  echo "✅ Activado"
-  sleep 1
+  if [[ "$RESP" == "OK" ]]; then
+    touch "$ACTIVATION_FLAG"
+    chmod 600 "$ACTIVATION_FLAG"
 
-  # 🔥 EJECUTA SIN LOOP
-  bash "$SCRIPT_OBJETIVO"
-  exit 0
-else
-  echo "❌ Token inválido"
-  exit 1
-fi
+    echo "✅ Activado"
+    sleep 1
+  else
+    echo "❌ Token inválido"
+    exit 1
+  fi
+}
+
+# 🔥 FLUJO CORRECTO
+check_activation
+main
 
 
 # === AQUÍ EMPIEZA TU SCRIPT NORMAL ===
