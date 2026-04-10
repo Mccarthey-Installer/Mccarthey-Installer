@@ -7,25 +7,34 @@ BACKEND="http://102.129.137.139:8282/check.php"
 if [[ -f "$ACTIVATION_FLAG" ]]; then
   echo "✅ Sistema ya activado"
   sleep 1
-else
-  clear
-  echo "🔐 Activación requerida"
-  read -p "Ingresa tu token: " TOKEN
+  exit 0
+fi
 
-  IP=$(curl -s https://api.ipify.org)
-  RESP=$(curl -s "$BACKEND?token=$TOKEN&ip=$IP")
+clear
+echo "🔐 Activación requerida"
+read -p "Ingresa tu token: " TOKEN
 
-  if [[ "$RESP" != "OK" ]]; then
-    echo "❌ Token inválido o ya usado"
-    exit 1
-  fi
+# Validación básica
+if [[ -z "$TOKEN" ]]; then
+  echo "❌ Token vacío"
+  exit 1
+fi
 
-  # MARCAR VPS COMO ACTIVADO
+# Llamada al backend
+RESP=$(curl -s --max-time 5 "$BACKEND?token=$TOKEN")
+
+# Debug opcional (si querés ver qué responde)
+# echo "DEBUG: $RESP"
+
+if [[ "$RESP" == "OK" ]]; then
   touch "$ACTIVATION_FLAG"
   chmod 600 "$ACTIVATION_FLAG"
 
   echo "✅ Activación correcta"
   sleep 1
+else
+  echo "❌ Token inválido, usado o sin conexión"
+  exit 1
 fi
 
 
