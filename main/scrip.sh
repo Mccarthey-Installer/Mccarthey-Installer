@@ -3326,7 +3326,7 @@ ${LILA}-------------------------${NC}"
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
 #   MCCARTHEY — XRAY + 3X-UI MANAGER
-#   auto_patch xhttp v2 + watchdog RAM + SSL + panel completo
+#   auto_patch xhttp v2 + watchdog v3 (RAM + CPU) + SSL + panel completo
 # ═══════════════════════════════════════════════════════════════════════
 
 HOT_PINK="\033[1;95m"
@@ -3412,13 +3412,6 @@ fi
 log "PATCH: $CHANGES inbound(s) corregido(s) → evaluando carga para decidir reinicio"
 
 # ── PASO 2: Métricas reales del sistema ──────────────────────────────
-# RAM real: (total - available) / total * 100
-#   'available' = lo que el kernel reporta como realmente libre
-#   descuenta cache/buffers recuperables, no los cuenta como ocupados
-#
-# CPU: load average 1 min / nproc * 100
-#   Normalizado por núcleos → 100% = todos los cores al máximo sostenido
-#   Más confiable que snapshot de top para decisiones de reinicio
 RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
 
 LOAD_1=$(awk '{print $1}' /proc/loadavg)
@@ -3474,25 +3467,47 @@ EOF
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG RAM v2 — cron cada 5 min
-#   RAM real (sin cache/buffers) | umbral 75% | crítico 80% inmediato
-#   Contador pegajoso: decrementa de a 1, no resetea a 0
-#   2 ciclos sostenidos (~10 min) para reinicio normal
+#   WATCHDOG v3 — cron cada 5 min
+#
+#   Evalúa RAM real Y CPU load de forma independiente.
+#   Cada métrica tiene su propio carril crítico y su propio contador.
+#
+#   RAM real (total - available) / total:
+#     ≥ 80%  → reinicio inmediato
+#     ≥ 70%  → contador RAM: 2 ciclos sostenidos (~10 min) → reinicio
+#
+#   CPU load normalizado (load1 / nproc * 100):
+#     ≥ 75%  → reinicio inmediato
+#     ≥ 70%  → contador CPU: 2 ciclos sostenidos (~10 min) → reinicio
+#
+#   Contadores son independientes y pegajosos (decrement de a 1, no reset a 0).
+#   Cooldown de 15 min post-reinicio para evitar bucles.
+#   Log incluye RAM, CPU, contadores y motivo exacto de cada acción.
 # ═══════════════════════════════════════════════════════════════════════
 setup_watchdog_cron() {
 
     cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
-# ── Watchdog v2: RAM real (sin cache), umbral 75%, pico 80%, contador pegajoso ──
+# ── Watchdog v3: RAM real + CPU load — contadores independientes y pegajosos ──
 
 LOG="/var/log/xray_watchdog.log"
 LOCK="/tmp/xray_watchdog.lock"
 
-RAM_THRESHOLD=75       # % RAM real para acumular ciclos
-RAM_CRITICAL=80        # % RAM real para reinicio inmediato sin esperar ciclos
-CYCLES_REQUIRED=2      # ciclos consecutivos necesarios (~10 min)
-COUNTER_FILE="/tmp/xray_watchdog_counter"
-COOLDOWN=900           # segundos de espera mínima post-reinicio
+# ── Umbrales RAM ──────────────────────────────────────────────────────
+RAM_WARN=70            # % → acumular ciclos
+RAM_CRIT=80            # % → reinicio inmediato
+
+# ── Umbrales CPU (load1 / nproc * 100) ───────────────────────────────
+CPU_WARN=70            # % → acumular ciclos
+CPU_CRIT=75            # % → reinicio inmediato
+
+# ── Lógica de ciclos ──────────────────────────────────────────────────
+CYCLES_REQUIRED=2      # ciclos sostenidos para reinicio por warning (~10 min)
+
+# ── Archivos de estado ────────────────────────────────────────────────
+RAM_COUNTER_FILE="/tmp/watchdog_counter_ram"
+CPU_COUNTER_FILE="/tmp/watchdog_counter_cpu"
+COOLDOWN=900           # segundos mínimos entre reinicios (15 min)
 LAST_RUN_FILE="/tmp/xray_watchdog_last"
 
 log() {
@@ -3502,7 +3517,7 @@ log() {
 exec 200>"$LOCK"
 flock -n 200 || exit 0
 
-# ── Cooldown post-reinicio ──
+# ── Cooldown post-reinicio ────────────────────────────────────────────
 NOW=$(date +%s)
 LAST=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
 if (( NOW - LAST < COOLDOWN )); then
@@ -3511,73 +3526,125 @@ if (( NOW - LAST < COOLDOWN )); then
     exit 0
 fi
 
-# ── RAM real: (total - available) / total ──
-RAM_USED=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
+# ── Métricas actuales ─────────────────────────────────────────────────
+# RAM real: (total - available) / total
+# 'available' = lo que el kernel reporta como realmente libre,
+# descuenta cache/buffers recuperables, no los cuenta como usados.
+RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
 
-if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
-    log "ERROR: RAM inválida ($RAM_USED)"
+# CPU: load average 1 min / nproc * 100
+# Normalizado por cores → 100% = todos saturados de forma sostenida.
+# Más confiable que snapshots de top para decisiones de reinicio.
+LOAD_1=$(awk '{print $1}' /proc/loadavg)
+NCPU=$(nproc)
+CPU_PCT=$(awk "BEGIN {printf \"%.0f\", ($LOAD_1/$NCPU)*100}")
+
+# Sanidad numérica
+if ! [[ "$RAM_PCT" =~ ^[0-9]+$ ]] || ! [[ "$CPU_PCT" =~ ^[0-9]+$ ]]; then
+    log "ERROR: Métricas inválidas — RAM='$RAM_PCT' CPU='$CPU_PCT' — abortando"
     exit 1
 fi
 
-COUNTER=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
-log "INFO: RAM real = ${RAM_USED}% | Contador = $COUNTER/$CYCLES_REQUIRED"
+# Contadores actuales
+RAM_CTR=$(cat "$RAM_COUNTER_FILE" 2>/dev/null || echo 0)
+CPU_CTR=$(cat "$CPU_COUNTER_FILE" 2>/dev/null || echo 0)
 
-# ── Carril rápido: RAM crítica → reinicio inmediato ──
-if [ "$RAM_USED" -ge "$RAM_CRITICAL" ]; then
-    log "ACTION: RAM crítica (${RAM_USED}% ≥ ${RAM_CRITICAL}%) → reinicio inmediato"
-    echo 0 > "$COUNTER_FILE"
+log "INFO: RAM=${RAM_PCT}% (crit≥${RAM_CRIT}% warn≥${RAM_WARN}%) | CPU=${CPU_PCT}% (crit≥${CPU_CRIT}% warn≥${CPU_WARN}%) | load1=${LOAD_1} nproc=${NCPU} | ctrs RAM=${RAM_CTR} CPU=${CPU_CTR}"
+
+# ════════════════════════════════════════════════════════════════════
+#   Función de reinicio — centraliza acción + cooldown + log post
+# ════════════════════════════════════════════════════════════════════
+do_restart() {
+    local REASON="$1"
+    log "ACTION: $REASON → reiniciando Xray"
+
+    # Reset contadores al reiniciar
+    echo 0 > "$RAM_COUNTER_FILE"
+    echo 0 > "$CPU_COUNTER_FILE"
 
     x-ui restart-xray >> "$LOG" 2>&1
-    EXIT_CODE=$?
+    local EXIT_CODE=$?
 
     if [ "$EXIT_CODE" -eq 0 ]; then
         sleep 3
         date +%s > "$LAST_RUN_FILE"
+        local RAM_POST LOAD_POST CPU_POST
         RAM_POST=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
-        log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
+        LOAD_POST=$(awk '{print $1}' /proc/loadavg)
+        CPU_POST=$(awk "BEGIN {printf \"%.0f\", ($LOAD_POST/$NCPU)*100}")
+        log "OK: Xray reiniciado | RAM post=${RAM_POST}% | CPU post=${CPU_POST}% | cooldown activo (${COOLDOWN}s)"
     else
         log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
     fi
     exit 0
+}
+
+# ════════════════════════════════════════════════════════════════════
+#   CARRIL CRÍTICO — cualquier métrica en zona crítica → acción ya
+#   Se evalúa primero: no espera ciclos, no importa el contador.
+# ════════════════════════════════════════════════════════════════════
+if [ "$RAM_PCT" -ge "$RAM_CRIT" ] && [ "$CPU_PCT" -ge "$CPU_CRIT" ]; then
+    do_restart "RAM crítica (${RAM_PCT}% ≥ ${RAM_CRIT}%) + CPU crítica (${CPU_PCT}% ≥ ${CPU_CRIT}%)"
 fi
 
-# ── RAM alta (entre umbral y crítico) → incrementar contador ──
-if [ "$RAM_USED" -ge "$RAM_THRESHOLD" ]; then
-    COUNTER=$(( COUNTER + 1 ))
-    echo "$COUNTER" > "$COUNTER_FILE"
-    log "WARN: RAM alta (${RAM_USED}%) — ciclo $COUNTER/$CYCLES_REQUIRED"
-
-    if [ "$COUNTER" -lt "$CYCLES_REQUIRED" ]; then
-        log "INFO: Esperando más ciclos → sin acción"
-        exit 0
-    fi
-
-    log "ACTION: RAM sostenida ${RAM_USED}% por $COUNTER ciclos (~$(( COUNTER * 5 )) min) → reiniciando Xray"
-    echo 0 > "$COUNTER_FILE"
-
-    x-ui restart-xray >> "$LOG" 2>&1
-    EXIT_CODE=$?
-
-    if [ "$EXIT_CODE" -eq 0 ]; then
-        sleep 3
-        date +%s > "$LAST_RUN_FILE"
-        RAM_POST=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
-        log "OK: Xray reiniciado. RAM post = ${RAM_POST}% — cooldown activo"
-    else
-        log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
-    fi
-    exit 0
+if [ "$RAM_PCT" -ge "$RAM_CRIT" ]; then
+    do_restart "RAM crítica (${RAM_PCT}% ≥ ${RAM_CRIT}%)"
 fi
 
-# ── RAM normal: decrementar contador de a 1 (no resetear a 0) ──
-if [ "$COUNTER" -gt 0 ]; then
-    COUNTER=$(( COUNTER - 1 ))
-    echo "$COUNTER" > "$COUNTER_FILE"
-    log "INFO: RAM bajó a ${RAM_USED}% — contador decrementado a $COUNTER (no reseteado)"
+if [ "$CPU_PCT" -ge "$CPU_CRIT" ]; then
+    do_restart "CPU crítica (${CPU_PCT}% ≥ ${CPU_CRIT}%)"
+fi
+
+# ════════════════════════════════════════════════════════════════════
+#   CARRIL WARNING — contadores independientes y pegajosos
+#   Cada métrica acumula o decrementa su propio contador.
+#   Si cualquiera llega a CYCLES_REQUIRED → reinicio.
+#   Decrement de a 1 (no reset a 0) para no perder presión acumulada.
+# ════════════════════════════════════════════════════════════════════
+
+# ── Contador RAM ──────────────────────────────────────────────────────
+if [ "$RAM_PCT" -ge "$RAM_WARN" ]; then
+    RAM_CTR=$(( RAM_CTR + 1 ))
+    echo "$RAM_CTR" > "$RAM_COUNTER_FILE"
+    log "WARN: RAM alta (${RAM_PCT}%) — ciclo RAM ${RAM_CTR}/${CYCLES_REQUIRED}"
 else
-    log "INFO: RAM normal (${RAM_USED}%) → sin acción"
+    if [ "$RAM_CTR" -gt 0 ]; then
+        RAM_CTR=$(( RAM_CTR - 1 ))
+        echo "$RAM_CTR" > "$RAM_COUNTER_FILE"
+        log "INFO: RAM bajó a ${RAM_PCT}% — contador RAM decrementado a ${RAM_CTR}"
+    fi
 fi
 
+# ── Contador CPU ──────────────────────────────────────────────────────
+if [ "$CPU_PCT" -ge "$CPU_WARN" ]; then
+    CPU_CTR=$(( CPU_CTR + 1 ))
+    echo "$CPU_CTR" > "$CPU_COUNTER_FILE"
+    log "WARN: CPU alta (${CPU_PCT}%) — ciclo CPU ${CPU_CTR}/${CYCLES_REQUIRED}"
+else
+    if [ "$CPU_CTR" -gt 0 ]; then
+        CPU_CTR=$(( CPU_CTR - 1 ))
+        echo "$CPU_CTR" > "$CPU_COUNTER_FILE"
+        log "INFO: CPU bajó a ${CPU_PCT}% — contador CPU decrementado a ${CPU_CTR}"
+    fi
+fi
+
+# ── Evaluar si algún contador alcanzó el umbral de ciclos ────────────
+RESTART_REASON=""
+
+if [ "$RAM_CTR" -ge "$CYCLES_REQUIRED" ] && [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ]; then
+    RESTART_REASON="RAM sostenida (${RAM_PCT}% × ${RAM_CTR} ciclos) + CPU sostenida (${CPU_PCT}% × ${CPU_CTR} ciclos)"
+elif [ "$RAM_CTR" -ge "$CYCLES_REQUIRED" ]; then
+    RESTART_REASON="RAM sostenida (${RAM_PCT}% × ${RAM_CTR} ciclos, ~$(( RAM_CTR * 5 )) min)"
+elif [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ]; then
+    RESTART_REASON="CPU sostenida (${CPU_PCT}% × ${CPU_CTR} ciclos, ~$(( CPU_CTR * 5 )) min)"
+fi
+
+if [ -n "$RESTART_REASON" ]; then
+    do_restart "$RESTART_REASON"
+fi
+
+# ── Sin acción necesaria ──────────────────────────────────────────────
+log "INFO: Sistema dentro de rangos → sin acción"
 exit 0
 EOF
 
@@ -3585,7 +3652,7 @@ EOF
 
     (crontab -l 2>/dev/null | grep -v xray_watchdog.sh; echo "*/5 * * * * /root/xray_watchdog.sh") | crontab -
 
-    echo "Watchdog RAM activo ✅ (RAM real, umbral 75%, crítico 80%, contador pegajoso)"
+    echo -e "${GREEN}Watchdog v3 activo ✅ (RAM + CPU — contadores independientes — cooldown 15 min)${RESET}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -4160,9 +4227,10 @@ install_panel() {
         echo -e "${CYAN}   RAM real + CPU load — sin conteo de sockets.${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
         echo
-        echo -e "${CYAN}💡 Watchdog RAM v2 activo (cada 5 min).${RESET}"
-        echo -e "${CYAN}   RAM real (sin cache) | umbral 75% | crítico 80% inmediato${RESET}"
-        echo -e "${CYAN}   Reinicia Xray si RAM ≥ 80% en 1 ciclo, o ≥ 75% en 2 ciclos (~10 min).${RESET}"
+        echo -e "${CYAN}💡 Watchdog v3 activo (cada 5 min).${RESET}"
+        echo -e "${CYAN}   RAM: ≥80% inmediato | ≥70% × 2 ciclos (~10 min)${RESET}"
+        echo -e "${CYAN}   CPU: ≥75% inmediato | ≥70% × 2 ciclos (~10 min)${RESET}"
+        echo -e "${CYAN}   Contadores independientes — cooldown 15 min post-reinicio${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/xray_watchdog.log${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
@@ -4245,17 +4313,20 @@ show_panel() {
 
     echo
     if [ -f /root/xray_watchdog.sh ]; then
-        local RAM_NOW
-        RAM_NOW=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
+        local RAM_NOW LOAD_NOW NCPU_NOW CPU_NOW RAM_CTR CPU_CTR
+        RAM_NOW=$(free  | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
         LOAD_NOW=$(awk '{print $1}' /proc/loadavg)
         NCPU_NOW=$(nproc)
         CPU_NOW=$(awk "BEGIN {printf \"%.0f\", ($LOAD_NOW/$NCPU_NOW)*100}")
-        WCOUNTER=$(cat /tmp/xray_watchdog_counter 2>/dev/null || echo 0)
-        echo "Watchdog RAM    : ✅  Activo  → log: /var/log/xray_watchdog.log"
-        echo "RAM real actual : ${RAM_NOW}%  (umbral: ≥75% × 2 ciclos | crítico: ≥80% inmediato | ciclo: $WCOUNTER/2)"
-        echo "CPU load actual : ${CPU_NOW}%  (load1=${LOAD_NOW}, nproc=${NCPU_NOW})"
+        RAM_CTR=$(cat /tmp/watchdog_counter_ram 2>/dev/null || echo 0)
+        CPU_CTR=$(cat /tmp/watchdog_counter_cpu 2>/dev/null || echo 0)
+
+        echo "Watchdog v3     : ✅  Activo  → log: /var/log/xray_watchdog.log"
+        echo "RAM real        : ${RAM_NOW}%  (warn≥70% × 2 | crit≥80% inmediato | ctr: ${RAM_CTR}/2)"
+        echo "CPU load        : ${CPU_NOW}%  (warn≥70% × 2 | crit≥75% inmediato | ctr: ${CPU_CTR}/2)"
+        echo "load1 / nproc   : ${LOAD_NOW} / ${NCPU_NOW}"
     else
-        echo "Watchdog RAM    : ❌  No instalado"
+        echo "Watchdog        : ❌  No instalado"
     fi
 
     read -rp "ENTER para continuar"
@@ -4280,6 +4351,11 @@ remove_panel() {
     rm -f /root/auto_patch_xhttp.sh
     rm -f /root/xray_watchdog.sh
     rm -f /root/renew_ssl.sh
+    rm -f /tmp/watchdog_counter_ram
+    rm -f /tmp/watchdog_counter_cpu
+    rm -f /tmp/xray_watchdog_last
+    rm -f /tmp/xray_watchdog.lock
+    rm -f /tmp/auto_patch_xhttp.lock
 
     echo -e "${GREEN}Panel y scripts eliminados correctamente ✅${RESET}"
     read -rp "ENTER para continuar"
@@ -4328,7 +4404,6 @@ xhttp_panel() {
         esac
     done
 }
-
 
 
 # ==== MENU ====  
