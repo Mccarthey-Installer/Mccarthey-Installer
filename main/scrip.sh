@@ -3323,10 +3323,10 @@ ${LILA}-------------------------${NC}"
 }
 
 
-
-═══════════════════════════════════════════════════════════════════════
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════════════════
 #   MCCARTHEY — XRAY + 3X-UI MANAGER
-#   auto_patch xhttp + watchdog RAM + SSL + panel completo
+#   auto_patch xhttp v2 + watchdog RAM + SSL + panel completo
 # ═══════════════════════════════════════════════════════════════════════
 
 HOT_PINK="\033[1;95m"
@@ -3340,16 +3340,27 @@ DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
 SSL_DIR="/etc/x-ui/ssl"
 
 # ═══════════════════════════════════════════════════════════════════════
-#   AUTO PATCH XHTTP — cron cada 6 horas
+#   AUTO PATCH XHTTP v2 — cron cada 6 horas
+#   - Detecta cambios REALES en DB (WHERE filtra filas ya correctas)
+#   - Decisión de reinicio basada en RAM real + CPU load (sin sockets)
 # ═══════════════════════════════════════════════════════════════════════
 setup_auto_patch_cron() {
 
     cat > /root/auto_patch_xhttp.sh << 'EOF'
 #!/bin/bash
+# ── Auto Patch xhttp v2: cambios reales en DB, métricas reales del sistema ──
 
 DB="/etc/x-ui/x-ui.db"
 LOG="/var/log/auto_patch_xhttp.log"
 LOCK="/tmp/auto_patch_xhttp.lock"
+
+# Umbrales para decidir si es seguro reiniciar
+RAM_SAFE=70      # % RAM real — encima de esto se pospone el reinicio
+CPU_SAFE=75      # % carga CPU normalizada por núcleos — ídem
+
+# Valores objetivo del patch
+TARGET_POSTS=10
+TARGET_BYTES="500000"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
@@ -3358,67 +3369,98 @@ log() {
 exec 200>"$LOCK"
 flock -n 200 || exit 0
 
-[ ! -f "$DB" ] && log "ERROR: DB no encontrada" && exit 1
+[ ! -f "$DB" ] && log "ERROR: DB no encontrada en $DB" && exit 1
 ! command -v sqlite3 &>/dev/null && log "ERROR: sqlite3 no instalado" && exit 1
 
 log "INFO: Escaneando inbounds xhttp..."
 
+# ── PASO 1: UPDATE solo filas que realmente necesitan cambio ──────────
+# El WHERE filtra filas ya correctas → changes() es 0 si no había nada
+# que corregir. Antes el UPDATE tocaba todas las filas y changes() > 0 siempre.
 CHANGES=$(sqlite3 "$DB" "
 UPDATE inbounds
 SET stream_settings = json_set(
     stream_settings,
-    '$.xhttpSettings.scMaxBufferedPosts',
-    CASE
-        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts'), 0) AS INTEGER) > 10
-        THEN 10
-        ELSE json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts')
-    END,
-    '$.xhttpSettings.scMaxEachPostBytes',
-    CASE
-        WHEN CAST(COALESCE(json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes'), 0) AS INTEGER) > 500000
-        THEN '500000'
-        ELSE json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes')
-    END
+    '$.xhttpSettings.scMaxBufferedPosts', $TARGET_POSTS,
+    '$.xhttpSettings.scMaxEachPostBytes', '$TARGET_BYTES'
 )
-WHERE json_extract(stream_settings, '$.network') = 'xhttp';
+WHERE json_extract(stream_settings, '$.network') = 'xhttp'
+  AND (
+       CAST(COALESCE(
+           json_extract(stream_settings, '$.xhttpSettings.scMaxBufferedPosts'),
+           -1
+       ) AS INTEGER) != $TARGET_POSTS
+    OR CAST(COALESCE(
+           json_extract(stream_settings, '$.xhttpSettings.scMaxEachPostBytes'),
+           ''
+       ) AS TEXT) != '$TARGET_BYTES'
+  );
 
 SELECT changes();
-")
+" 2>/dev/null)
 
 if ! [[ "$CHANGES" =~ ^[0-9]+$ ]]; then
-    log "ERROR: Resultado inválido de changes(): $CHANGES"
+    log "ERROR: Resultado inesperado de changes(): '$CHANGES'"
     exit 1
 fi
 
 if [ "$CHANGES" -eq 0 ]; then
-    log "INFO: Sin cambios reales → no se reinicia Xray"
+    log "INFO: Sin cambios necesarios → Xray no se toca"
     exit 0
 fi
 
-log "PATCH: Se aplicaron $CHANGES cambios reales"
+log "PATCH: $CHANGES inbound(s) corregido(s) → evaluando carga para decidir reinicio"
 
-XRAY_PORTS=$(sqlite3 "$DB" \
-    "SELECT GROUP_CONCAT(port, '|') FROM inbounds WHERE enable=1;" \
-    2>/dev/null)
+# ── PASO 2: Métricas reales del sistema ──────────────────────────────
+# RAM real: (total - available) / total * 100
+#   'available' = lo que el kernel reporta como realmente libre
+#   descuenta cache/buffers recuperables, no los cuenta como ocupados
+#
+# CPU: load average 1 min / nproc * 100
+#   Normalizado por núcleos → 100% = todos los cores al máximo sostenido
+#   Más confiable que snapshot de top para decisiones de reinicio
+RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
 
-if [ -n "$XRAY_PORTS" ]; then
-    ACTIVE=$(ss -ant | awk '/ESTAB/' | grep -E ":($XRAY_PORTS)[[:space:]]" | wc -l)
-else
-    ACTIVE=0
+LOAD_1=$(awk '{print $1}' /proc/loadavg)
+NCPU=$(nproc)
+CPU_PCT=$(awk "BEGIN {printf \"%.0f\", ($LOAD_1/$NCPU)*100}")
+
+if ! [[ "$RAM_PCT" =~ ^[0-9]+$ ]] || ! [[ "$CPU_PCT" =~ ^[0-9]+$ ]]; then
+    log "ERROR: Métricas inválidas — RAM='$RAM_PCT' CPU='$CPU_PCT' — abortando"
+    exit 1
 fi
 
-if [ "$ACTIVE" -gt 10 ]; then
-    log "INFO: $ACTIVE conexiones activas → se evita reinicio"
+log "INFO: RAM real=${RAM_PCT}% | CPU load=${CPU_PCT}% (load1=${LOAD_1}, nproc=${NCPU})"
+
+# ── PASO 3: Decidir reinicio según carga real ────────────────────────
+BLOCK_REASON=""
+
+if [ "$RAM_PCT" -ge "$RAM_SAFE" ]; then
+    BLOCK_REASON="RAM alta (${RAM_PCT}% ≥ ${RAM_SAFE}%)"
+fi
+
+if [ "$CPU_PCT" -ge "$CPU_SAFE" ]; then
+    if [ -n "$BLOCK_REASON" ]; then
+        BLOCK_REASON="${BLOCK_REASON} + CPU saturada (${CPU_PCT}% ≥ ${CPU_SAFE}%)"
+    else
+        BLOCK_REASON="CPU saturada (${CPU_PCT}% ≥ ${CPU_SAFE}%)"
+    fi
+fi
+
+if [ -n "$BLOCK_REASON" ]; then
+    log "INFO: Reinicio pospuesto — $BLOCK_REASON → se aplicará en el próximo ciclo"
     exit 0
 fi
 
-log "INFO: Reiniciando Xray..."
-x-ui restart-xray
+log "ACTION: RAM ${RAM_PCT}% y CPU ${CPU_PCT}% dentro de rangos → reiniciando Xray"
 
-if [ $? -eq 0 ]; then
+x-ui restart-xray >> "$LOG" 2>&1
+EXIT_CODE=$?
+
+if [ "$EXIT_CODE" -eq 0 ]; then
     log "OK: Xray reiniciado correctamente"
 else
-    log "ERROR: Falló reinicio de Xray"
+    log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
 fi
 
 exit 0
@@ -3428,7 +3470,7 @@ EOF
 
     (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "0 */6 * * * /root/auto_patch_xhttp.sh") | crontab -
 
-    echo -e "${GREEN}Auto-patch xhttp activo ✅ (cada 6 horas, sin reinicios innecesarios)${RESET}"
+    echo -e "${GREEN}Auto-patch xhttp v2 activo ✅ (cada 6 horas, métricas reales, sin sockets)${RESET}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -3448,7 +3490,7 @@ LOCK="/tmp/xray_watchdog.lock"
 
 RAM_THRESHOLD=75       # % RAM real para acumular ciclos
 RAM_CRITICAL=80        # % RAM real para reinicio inmediato sin esperar ciclos
-CYCLES_REQUIRED=2      # ciclos consecutivos necesarios (10 min)
+CYCLES_REQUIRED=2      # ciclos consecutivos necesarios (~10 min)
 COUNTER_FILE="/tmp/xray_watchdog_counter"
 COOLDOWN=900           # segundos de espera mínima post-reinicio
 LAST_RUN_FILE="/tmp/xray_watchdog_last"
@@ -3470,7 +3512,6 @@ if (( NOW - LAST < COOLDOWN )); then
 fi
 
 # ── RAM real: (total - available) / total ──
-# 'available' es lo que el kernel reporta como realmente libre (descuenta cache/buffers recuperables)
 RAM_USED=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
 
 if ! [[ "$RAM_USED" =~ ^[0-9]+$ ]]; then
@@ -3481,7 +3522,7 @@ fi
 COUNTER=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
 log "INFO: RAM real = ${RAM_USED}% | Contador = $COUNTER/$CYCLES_REQUIRED"
 
-# ── Carril rápido: RAM crítica → reinicio inmediato sin esperar ciclos ──
+# ── Carril rápido: RAM crítica → reinicio inmediato ──
 if [ "$RAM_USED" -ge "$RAM_CRITICAL" ]; then
     log "ACTION: RAM crítica (${RAM_USED}% ≥ ${RAM_CRITICAL}%) → reinicio inmediato"
     echo 0 > "$COUNTER_FILE"
@@ -3511,7 +3552,6 @@ if [ "$RAM_USED" -ge "$RAM_THRESHOLD" ]; then
         exit 0
     fi
 
-    # Ciclos suficientes → reiniciar
     log "ACTION: RAM sostenida ${RAM_USED}% por $COUNTER ciclos (~$(( COUNTER * 5 )) min) → reiniciando Xray"
     echo 0 > "$COUNTER_FILE"
 
@@ -3530,7 +3570,6 @@ if [ "$RAM_USED" -ge "$RAM_THRESHOLD" ]; then
 fi
 
 # ── RAM normal: decrementar contador de a 1 (no resetear a 0) ──
-# Evita que un ciclo de 74% borre toda la presión acumulada
 if [ "$COUNTER" -gt 0 ]; then
     COUNTER=$(( COUNTER - 1 ))
     echo "$COUNTER" > "$COUNTER_FILE"
@@ -4117,7 +4156,8 @@ install_panel() {
         fi
 
         echo
-        echo -e "${CYAN}💡 Auto-patch xhttp activo (cada 6 horas).${RESET}"
+        echo -e "${CYAN}💡 Auto-patch xhttp v2 activo (cada 6 horas).${RESET}"
+        echo -e "${CYAN}   RAM real + CPU load — sin conteo de sockets.${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
         echo
         echo -e "${CYAN}💡 Watchdog RAM v2 activo (cada 5 min).${RESET}"
@@ -4207,9 +4247,13 @@ show_panel() {
     if [ -f /root/xray_watchdog.sh ]; then
         local RAM_NOW
         RAM_NOW=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
+        LOAD_NOW=$(awk '{print $1}' /proc/loadavg)
+        NCPU_NOW=$(nproc)
+        CPU_NOW=$(awk "BEGIN {printf \"%.0f\", ($LOAD_NOW/$NCPU_NOW)*100}")
         WCOUNTER=$(cat /tmp/xray_watchdog_counter 2>/dev/null || echo 0)
         echo "Watchdog RAM    : ✅  Activo  → log: /var/log/xray_watchdog.log"
         echo "RAM real actual : ${RAM_NOW}%  (umbral: ≥75% × 2 ciclos | crítico: ≥80% inmediato | ciclo: $WCOUNTER/2)"
+        echo "CPU load actual : ${CPU_NOW}%  (load1=${LOAD_NOW}, nproc=${NCPU_NOW})"
     else
         echo "Watchdog RAM    : ❌  No instalado"
     fi
@@ -4285,7 +4329,7 @@ xhttp_panel() {
     done
 }
 
-
+xhttp_panel
 
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
