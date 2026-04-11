@@ -4329,7 +4329,7 @@ xhttp_panel() {
     done
 }
 
-xhttp_panel
+
 
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
