@@ -303,7 +303,7 @@ PREV_PIDS_SCRIP=""
 while true; do
     FREE_MEM=$(free -m | awk '/Mem:/ {print $4}')
     CACHE_MEM=$(free -m | awk '/Mem:/ {print $6}')
-    
+
     if [ "$FREE_MEM" -lt "$MEM_THRESHOLD" ] || [ "$CACHE_MEM" -gt "$CACHE_THRESHOLD" ]; then
         echo "$(date): Liberando caché (Libre: $FREE_MEM MB, Caché: $CACHE_MEM MB)" >> "$LOG_FILE"
         sync && sudo sysctl -w vm.drop_caches=3 > /dev/null
@@ -367,7 +367,182 @@ systemctl enable gestionar-recursos.service
 systemctl start gestionar-recursos.service
 
 # ===========================
-# 6. MENSAJE FINAL
+# 6. CLEAN-VPS — Limpieza automática diaria
+# ===========================
+echo "Instalando clean-vps (limpieza automática)..."
+
+cat > /usr/local/sbin/clean-vps.sh << 'CLEANEOF'
+#!/bin/bash
+# =============================================================================
+# clean-vps.sh — Limpieza directa para VPS personal
+# v2.1 — Sin backups, sin historia, el camión se lleva todo 🚛
+# =============================================================================
+
+LOG="/var/log/clean-vps.log"
+LOCK="/tmp/clean-vps.lock"
+DRY_RUN=false
+ERRORS=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    --help)
+      echo "Uso: $0 [--dry-run]"
+      echo "  --dry-run   Muestra qué haría sin ejecutar nada"
+      exit 0
+      ;;
+  esac
+done
+
+log() {
+  echo "[$(date +%Y-%m-%d %H:%M:%S)] $1" | tee -a "$LOG"
+}
+
+run() {
+  if $DRY_RUN; then
+    log "[DRY-RUN] $*"
+  else
+    eval "$@" >> "$LOG" 2>&1 || {
+      log "⚠️  Falló: $*"
+      ((ERRORS++))
+    }
+  fi
+}
+
+if [[ $EUID -ne 0 ]]; then
+  echo "❌ Ejecutá como root: sudo $0"
+  exit 1
+fi
+
+exec 9>"$LOCK"
+flock -n 9 || {
+  log "⚠️  Ya hay una instancia corriendo. Abortando."
+  exit 1
+}
+
+echo "" >> "$LOG"
+echo "=== $(date) ===" >> "$LOG"
+$DRY_RUN && log "👁️  Modo DRY-RUN activo"
+log "🚀 Iniciando limpieza..."
+
+ESPACIO_ANTES=$(df / | awk 'NR==2{print $3}')
+
+log "🧹 APT autoremove + clean..."
+run "apt-get autoremove -y"
+run "apt-get clean"
+
+log "🧠 Eliminando kernels viejos..."
+CURRENT=$(uname -r)
+OLD_KERNELS=$(dpkg -l 'linux-image-*' | awk '/^ii/{print $2}' | \
+  grep -v "$CURRENT" | sort -V | head -n -2)
+if [[ -n "$OLD_KERNELS" ]]; then
+  run "echo '$OLD_KERNELS' | xargs --no-run-if-empty apt-get purge -y"
+else
+  log "✔️  Sin kernels viejos"
+fi
+
+log "📊 Journald → 100MB..."
+run "journalctl --rotate"
+run "journalctl --vacuum-size=100M"
+
+log "🗑️  Borrando logs rotados (+7 días)..."
+if $DRY_RUN; then
+  find /var/log -maxdepth 1 -type f \( -name "*.gz" -o -name "*.old" -o -name "*.[0-9]" \) \
+    -mtime +7 | while read f; do log "[DRY-RUN] Borraría: $f"; done
+else
+  find /var/log -maxdepth 1 -type f \( -name "*.gz" -o -name "*.old" -o -name "*.[0-9]" \) \
+    -mtime +7 -delete >> "$LOG" 2>&1
+fi
+
+log "💣 Truncando logs grandes (+50MB)..."
+find /var/log -type f -size +50M | while read f; do
+  [[ "$f" == "$LOG" ]] && continue
+  SIZE_MB=$(du -m "$f" 2>/dev/null | cut -f1)
+  if $DRY_RUN; then
+    log "[DRY-RUN] Truncaría: $f (${SIZE_MB}MB)"
+  else
+    truncate -s 0 "$f"
+    log "💣 Truncado: $f (${SIZE_MB}MB)"
+  fi
+done
+
+log "🧹 Cache root (+30 días)..."
+if $DRY_RUN; then
+  find /root/.cache -type f -mtime +30 | wc -l | \
+    xargs -I{} log "[DRY-RUN] {} archivos a eliminar en /root/.cache"
+else
+  find /root/.cache -type f -mtime +30 -delete 2>/dev/null
+fi
+
+log "🧹 /tmp (+7 días)..."
+if $DRY_RUN; then
+  find /tmp -type f -mtime +7 | wc -l | \
+    xargs -I{} log "[DRY-RUN] {} archivos a eliminar en /tmp"
+else
+  find /tmp -type f -mtime +7 -delete 2>/dev/null
+fi
+
+if command -v snap &>/dev/null; then
+  log "📦 Limpiando snaps viejos..."
+  snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}' | \
+  while read snapname revision; do
+    if $DRY_RUN; then
+      log "[DRY-RUN] Removería snap: $snapname rev.$revision"
+    else
+      run "snap remove '$snapname' --revision='$revision'"
+    fi
+  done
+else
+  log "⏭️  Snap no instalado, saltando..."
+fi
+
+if ! $DRY_RUN; then
+  cat > /etc/logrotate.d/clean-vps <<LREOF
+/var/log/clean-vps.log {
+  weekly
+  rotate 4
+  compress
+  missingok
+  notifempty
+}
+LREOF
+  log "📄 Logrotate OK"
+fi
+
+ESPACIO_DESPUES=$(df / | awk 'NR==2{print $3}')
+LIBERADO_MB=$(( (ESPACIO_ANTES - ESPACIO_DESPUES) / 1024 ))
+LIBRE=$(df -h / | awk 'NR==2{print $4}')
+
+echo "" >> "$LOG"
+log "─────────────────────────────────────────"
+if $DRY_RUN; then
+  log "👁️  DRY-RUN finalizado — no se tocó nada"
+else
+  log "📉 Liberado: ${LIBERADO_MB}MB  |  Libre en /: $LIBRE"
+  [[ $ERRORS -gt 0 ]] \
+    && log "⚠️  $ERRORS error(es) — revisá: $LOG" \
+    || log "✅ Limpieza sin errores"
+fi
+log "─────────────────────────────────────────"
+echo "" >> "$LOG"
+CLEANEOF
+
+chmod +x /usr/local/sbin/clean-vps.sh
+
+# Registrar cron 0 3 * * *
+CRON_JOB="0 3 * * * /usr/local/sbin/clean-vps.sh"
+CRON_TMP=$(mktemp)
+crontab -l 2>/dev/null > "$CRON_TMP"
+if ! grep -qF "clean-vps.sh" "$CRON_TMP"; then
+  echo "$CRON_JOB" >> "$CRON_TMP"
+  crontab "$CRON_TMP" && echo "⏰ Cron clean-vps registrado: $CRON_JOB"
+fi
+rm -f "$CRON_TMP"
+
+echo "✅ clean-vps instalado y cron activo (3am diario)"
+
+# ===========================
+# 7. MENSAJE FINAL
 # ===========================
 sleep 2
 echo ""
@@ -385,10 +560,16 @@ echo "BadVPN UDP: 7200 y 7300"
 echo ""
 echo "Gestión de RAM/CPU activa"
 echo ""
+echo "Limpieza automática: diaria a las 3am"
+echo "   Script : /usr/local/sbin/clean-vps.sh"
+echo "   Log    : /var/log/clean-vps.log"
+echo "   Manual : clean-vps.sh [--dry-run]"
+echo ""
 echo "Verificar:"
 echo "   ss -tulnp | grep -E ':443|:80|:7200|:7300'"
 echo "   systemctl status stunnel4"
 echo "   systemctl status gestionar-recursos"
+echo "   crontab -l"
 echo ""
 echo "Reinicio automático configurado"
 echo "========================================"
