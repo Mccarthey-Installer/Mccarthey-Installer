@@ -3323,10 +3323,19 @@ ${LILA}-------------------------${NC}"
 }
 
 
+
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
 #   MCCARTHEY — XRAY + 3X-UI MANAGER
 #   auto_patch xhttp v2 + watchdog v3 (RAM + CPU) + SSL + panel completo
+#   SSL dual-mode: dominio (90 días) ó IP (shortlived, 6 días)
+#
+#   PARCHES APLICADOS:
+#   1. apply_cert_to_panel corta ejecución si falla la DB (return 1)
+#   2. check_port_80_free valida puerto 80 libre antes de acme
+#   3. run_acme_with_retry encapsula acme con 1 reintento tras 30s
+#   4. rotate_ssl_log llamado al inicio de apply_cert_to_panel y force_renew_ssl
+#   5. timeout 10s en todos los openssl s_client para evitar cuelgues
 # ═══════════════════════════════════════════════════════════════════════
 
 HOT_PINK="\033[1;95m"
@@ -3337,12 +3346,37 @@ YELLOW="\033[1;93m"
 RESET="\033[0m"
 
 DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
+TYPE_FILE="/etc/MCCARTHEY/ssl_type"
 SSL_DIR="/etc/x-ui/ssl"
+SSL_LOG="/var/log/mccarthey_ssl.log"
+
+# ── Logger SSL dedicado ─────────────────────────────────────────────────
+log_ssl() {
+    local LEVEL="$1"; shift
+    local TAG="$1";   shift
+    local MSG="$*"
+    printf '[%s] [%-5s] [%-7s] %s\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" \
+        "$LEVEL" \
+        "$TAG" \
+        "$MSG" >> "$SSL_LOG"
+}
+
+# ── Rotación liviana del log SSL ─────────────────────────────────────────
+rotate_ssl_log() {
+    local MAX_BYTES=$(( 5 * 1024 * 1024 ))
+    if [ -f "$SSL_LOG" ]; then
+        local SIZE
+        SIZE=$(stat -c%s "$SSL_LOG" 2>/dev/null || echo 0)
+        if [ "$SIZE" -ge "$MAX_BYTES" ]; then
+            mv "$SSL_LOG" "${SSL_LOG}.1"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO ] [CONFIG ] Log rotado — tamaño anterior: ${SIZE} bytes" >> "$SSL_LOG"
+        fi
+    fi
+}
 
 # ═══════════════════════════════════════════════════════════════════════
 #   AUTO PATCH XHTTP v2 — cron cada 6 horas
-#   - Detecta cambios REALES en DB (WHERE filtra filas ya correctas)
-#   - Decisión de reinicio basada en RAM real + CPU load (sin sockets)
 # ═══════════════════════════════════════════════════════════════════════
 setup_auto_patch_cron() {
 
@@ -3354,11 +3388,9 @@ DB="/etc/x-ui/x-ui.db"
 LOG="/var/log/auto_patch_xhttp.log"
 LOCK="/tmp/auto_patch_xhttp.lock"
 
-# Umbrales para decidir si es seguro reiniciar
-RAM_SAFE=70      # % RAM real — encima de esto se pospone el reinicio
-CPU_SAFE=75      # % carga CPU normalizada por núcleos — ídem
+RAM_SAFE=70
+CPU_SAFE=75
 
-# Valores objetivo del patch
 TARGET_POSTS=10
 TARGET_BYTES="500000"
 
@@ -3374,9 +3406,6 @@ flock -n 200 || exit 0
 
 log "INFO: Escaneando inbounds xhttp..."
 
-# ── PASO 1: UPDATE solo filas que realmente necesitan cambio ──────────
-# El WHERE filtra filas ya correctas → changes() es 0 si no había nada
-# que corregir. Antes el UPDATE tocaba todas las filas y changes() > 0 siempre.
 CHANGES=$(sqlite3 "$DB" "
 UPDATE inbounds
 SET stream_settings = json_set(
@@ -3411,9 +3440,7 @@ fi
 
 log "PATCH: $CHANGES inbound(s) corregido(s) → evaluando carga para decidir reinicio"
 
-# ── PASO 2: Métricas reales del sistema ──────────────────────────────
 RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
-
 LOAD_1=$(awk '{print $1}' /proc/loadavg)
 NCPU=$(nproc)
 CPU_PCT=$(awk "BEGIN {printf \"%.0f\", ($LOAD_1/$NCPU)*100}")
@@ -3425,19 +3452,12 @@ fi
 
 log "INFO: RAM real=${RAM_PCT}% | CPU load=${CPU_PCT}% (load1=${LOAD_1}, nproc=${NCPU})"
 
-# ── PASO 3: Decidir reinicio según carga real ────────────────────────
 BLOCK_REASON=""
-
-if [ "$RAM_PCT" -ge "$RAM_SAFE" ]; then
-    BLOCK_REASON="RAM alta (${RAM_PCT}% ≥ ${RAM_SAFE}%)"
-fi
-
+[ "$RAM_PCT" -ge "$RAM_SAFE" ] && BLOCK_REASON="RAM alta (${RAM_PCT}% ≥ ${RAM_SAFE}%)"
 if [ "$CPU_PCT" -ge "$CPU_SAFE" ]; then
-    if [ -n "$BLOCK_REASON" ]; then
-        BLOCK_REASON="${BLOCK_REASON} + CPU saturada (${CPU_PCT}% ≥ ${CPU_SAFE}%)"
-    else
-        BLOCK_REASON="CPU saturada (${CPU_PCT}% ≥ ${CPU_SAFE}%)"
-    fi
+    [ -n "$BLOCK_REASON" ] \
+        && BLOCK_REASON="${BLOCK_REASON} + CPU saturada (${CPU_PCT}% ≥ ${CPU_SAFE}%)" \
+        || BLOCK_REASON="CPU saturada (${CPU_PCT}% ≥ ${CPU_SAFE}%)"
 fi
 
 if [ -n "$BLOCK_REASON" ]; then
@@ -3446,43 +3466,23 @@ if [ -n "$BLOCK_REASON" ]; then
 fi
 
 log "ACTION: RAM ${RAM_PCT}% y CPU ${CPU_PCT}% dentro de rangos → reiniciando Xray"
-
 x-ui restart-xray >> "$LOG" 2>&1
 EXIT_CODE=$?
 
-if [ "$EXIT_CODE" -eq 0 ]; then
-    log "OK: Xray reiniciado correctamente"
-else
-    log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
-fi
+[ "$EXIT_CODE" -eq 0 ] \
+    && log "OK: Xray reiniciado correctamente" \
+    || log "ERROR: Falló reinicio de Xray (código $EXIT_CODE)"
 
 exit 0
 EOF
 
     chmod +x /root/auto_patch_xhttp.sh
-
     (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "0 */6 * * * /root/auto_patch_xhttp.sh") | crontab -
-
-    echo -e "${GREEN}Auto-patch xhttp v2 activo ✅ (cada 6 horas, métricas reales, sin sockets)${RESET}"
+    echo -e "${GREEN}Auto-patch xhttp v2 activo ✅ (cada 6 horas, métricas reales)${RESET}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
 #   WATCHDOG v3 — cron cada 5 min
-#
-#   Evalúa RAM real Y CPU load de forma independiente.
-#   Cada métrica tiene su propio carril crítico y su propio contador.
-#
-#   RAM real (total - available) / total:
-#     ≥ 80%  → reinicio inmediato
-#     ≥ 70%  → contador RAM: 2 ciclos sostenidos (~10 min) → reinicio
-#
-#   CPU load normalizado (load1 / nproc * 100):
-#     ≥ 75%  → reinicio inmediato
-#     ≥ 70%  → contador CPU: 2 ciclos sostenidos (~10 min) → reinicio
-#
-#   Contadores son independientes y pegajosos (decrement de a 1, no reset a 0).
-#   Cooldown de 15 min post-reinicio para evitar bucles.
-#   Log incluye RAM, CPU, contadores y motivo exacto de cada acción.
 # ═══════════════════════════════════════════════════════════════════════
 setup_watchdog_cron() {
 
@@ -3493,31 +3493,22 @@ setup_watchdog_cron() {
 LOG="/var/log/xray_watchdog.log"
 LOCK="/tmp/xray_watchdog.lock"
 
-# ── Umbrales RAM ──────────────────────────────────────────────────────
-RAM_WARN=70            # % → acumular ciclos
-RAM_CRIT=80            # % → reinicio inmediato
+RAM_WARN=70
+RAM_CRIT=80
+CPU_WARN=70
+CPU_CRIT=75
+CYCLES_REQUIRED=2
 
-# ── Umbrales CPU (load1 / nproc * 100) ───────────────────────────────
-CPU_WARN=70            # % → acumular ciclos
-CPU_CRIT=75            # % → reinicio inmediato
-
-# ── Lógica de ciclos ──────────────────────────────────────────────────
-CYCLES_REQUIRED=2      # ciclos sostenidos para reinicio por warning (~10 min)
-
-# ── Archivos de estado ────────────────────────────────────────────────
 RAM_COUNTER_FILE="/tmp/watchdog_counter_ram"
 CPU_COUNTER_FILE="/tmp/watchdog_counter_cpu"
-COOLDOWN=900           # segundos mínimos entre reinicios (15 min)
+COOLDOWN=900
 LAST_RUN_FILE="/tmp/xray_watchdog_last"
 
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
-}
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
 
 exec 200>"$LOCK"
 flock -n 200 || exit 0
 
-# ── Cooldown post-reinicio ────────────────────────────────────────────
 NOW=$(date +%s)
 LAST=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
 if (( NOW - LAST < COOLDOWN )); then
@@ -3526,45 +3517,28 @@ if (( NOW - LAST < COOLDOWN )); then
     exit 0
 fi
 
-# ── Métricas actuales ─────────────────────────────────────────────────
-# RAM real: (total - available) / total
-# 'available' = lo que el kernel reporta como realmente libre,
-# descuenta cache/buffers recuperables, no los cuenta como usados.
 RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
-
-# CPU: load average 1 min / nproc * 100
-# Normalizado por cores → 100% = todos saturados de forma sostenida.
-# Más confiable que snapshots de top para decisiones de reinicio.
 LOAD_1=$(awk '{print $1}' /proc/loadavg)
 NCPU=$(nproc)
 CPU_PCT=$(awk "BEGIN {printf \"%.0f\", ($LOAD_1/$NCPU)*100}")
 
-# Sanidad numérica
 if ! [[ "$RAM_PCT" =~ ^[0-9]+$ ]] || ! [[ "$CPU_PCT" =~ ^[0-9]+$ ]]; then
     log "ERROR: Métricas inválidas — RAM='$RAM_PCT' CPU='$CPU_PCT' — abortando"
     exit 1
 fi
 
-# Contadores actuales
 RAM_CTR=$(cat "$RAM_COUNTER_FILE" 2>/dev/null || echo 0)
 CPU_CTR=$(cat "$CPU_COUNTER_FILE" 2>/dev/null || echo 0)
 
 log "INFO: RAM=${RAM_PCT}% (crit≥${RAM_CRIT}% warn≥${RAM_WARN}%) | CPU=${CPU_PCT}% (crit≥${CPU_CRIT}% warn≥${CPU_WARN}%) | load1=${LOAD_1} nproc=${NCPU} | ctrs RAM=${RAM_CTR} CPU=${CPU_CTR}"
 
-# ════════════════════════════════════════════════════════════════════
-#   Función de reinicio — centraliza acción + cooldown + log post
-# ════════════════════════════════════════════════════════════════════
 do_restart() {
     local REASON="$1"
     log "ACTION: $REASON → reiniciando Xray"
-
-    # Reset contadores al reiniciar
     echo 0 > "$RAM_COUNTER_FILE"
     echo 0 > "$CPU_COUNTER_FILE"
-
     x-ui restart-xray >> "$LOG" 2>&1
     local EXIT_CODE=$?
-
     if [ "$EXIT_CODE" -eq 0 ]; then
         sleep 3
         date +%s > "$LAST_RUN_FILE"
@@ -3579,30 +3553,11 @@ do_restart() {
     exit 0
 }
 
-# ════════════════════════════════════════════════════════════════════
-#   CARRIL CRÍTICO — cualquier métrica en zona crítica → acción ya
-#   Se evalúa primero: no espera ciclos, no importa el contador.
-# ════════════════════════════════════════════════════════════════════
-if [ "$RAM_PCT" -ge "$RAM_CRIT" ] && [ "$CPU_PCT" -ge "$CPU_CRIT" ]; then
-    do_restart "RAM crítica (${RAM_PCT}% ≥ ${RAM_CRIT}%) + CPU crítica (${CPU_PCT}% ≥ ${CPU_CRIT}%)"
-fi
+[ "$RAM_PCT" -ge "$RAM_CRIT" ] && [ "$CPU_PCT" -ge "$CPU_CRIT" ] \
+    && do_restart "RAM crítica (${RAM_PCT}% ≥ ${RAM_CRIT}%) + CPU crítica (${CPU_PCT}% ≥ ${CPU_CRIT}%)"
+[ "$RAM_PCT" -ge "$RAM_CRIT" ] && do_restart "RAM crítica (${RAM_PCT}% ≥ ${RAM_CRIT}%)"
+[ "$CPU_PCT" -ge "$CPU_CRIT" ] && do_restart "CPU crítica (${CPU_PCT}% ≥ ${CPU_CRIT}%)"
 
-if [ "$RAM_PCT" -ge "$RAM_CRIT" ]; then
-    do_restart "RAM crítica (${RAM_PCT}% ≥ ${RAM_CRIT}%)"
-fi
-
-if [ "$CPU_PCT" -ge "$CPU_CRIT" ]; then
-    do_restart "CPU crítica (${CPU_PCT}% ≥ ${CPU_CRIT}%)"
-fi
-
-# ════════════════════════════════════════════════════════════════════
-#   CARRIL WARNING — contadores independientes y pegajosos
-#   Cada métrica acumula o decrementa su propio contador.
-#   Si cualquiera llega a CYCLES_REQUIRED → reinicio.
-#   Decrement de a 1 (no reset a 0) para no perder presión acumulada.
-# ════════════════════════════════════════════════════════════════════
-
-# ── Contador RAM ──────────────────────────────────────────────────────
 if [ "$RAM_PCT" -ge "$RAM_WARN" ]; then
     RAM_CTR=$(( RAM_CTR + 1 ))
     echo "$RAM_CTR" > "$RAM_COUNTER_FILE"
@@ -3615,7 +3570,6 @@ else
     fi
 fi
 
-# ── Contador CPU ──────────────────────────────────────────────────────
 if [ "$CPU_PCT" -ge "$CPU_WARN" ]; then
     CPU_CTR=$(( CPU_CTR + 1 ))
     echo "$CPU_CTR" > "$CPU_COUNTER_FILE"
@@ -3628,9 +3582,7 @@ else
     fi
 fi
 
-# ── Evaluar si algún contador alcanzó el umbral de ciclos ────────────
 RESTART_REASON=""
-
 if [ "$RAM_CTR" -ge "$CYCLES_REQUIRED" ] && [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ]; then
     RESTART_REASON="RAM sostenida (${RAM_PCT}% × ${RAM_CTR} ciclos) + CPU sostenida (${CPU_PCT}% × ${CPU_CTR} ciclos)"
 elif [ "$RAM_CTR" -ge "$CYCLES_REQUIRED" ]; then
@@ -3639,19 +3591,14 @@ elif [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ]; then
     RESTART_REASON="CPU sostenida (${CPU_PCT}% × ${CPU_CTR} ciclos, ~$(( CPU_CTR * 5 )) min)"
 fi
 
-if [ -n "$RESTART_REASON" ]; then
-    do_restart "$RESTART_REASON"
-fi
+[ -n "$RESTART_REASON" ] && do_restart "$RESTART_REASON"
 
-# ── Sin acción necesaria ──────────────────────────────────────────────
 log "INFO: Sistema dentro de rangos → sin acción"
 exit 0
 EOF
 
     chmod +x /root/xray_watchdog.sh
-
     (crontab -l 2>/dev/null | grep -v xray_watchdog.sh; echo "*/5 * * * * /root/xray_watchdog.sh") | crontab -
-
     echo -e "${GREEN}Watchdog v3 activo ✅ (RAM + CPU — contadores independientes — cooldown 15 min)${RESET}"
 }
 
@@ -3659,16 +3606,10 @@ EOF
 #   HELPERS INTERNOS
 # ═══════════════════════════════════════════════════════════════════════
 
-panel_installed() {
-    command -v x-ui &>/dev/null
-}
+panel_installed() { command -v x-ui &>/dev/null; }
 
 panel_status() {
-    if systemctl is-active --quiet x-ui; then
-        STATUS="Activo 🟢"
-    else
-        STATUS="Inactivo 🔴"
-    fi
+    if systemctl is-active --quiet x-ui; then STATUS="Activo 🟢"; else STATUS="Inactivo 🔴"; fi
 }
 
 get_port() {
@@ -3677,11 +3618,11 @@ get_port() {
 }
 
 get_domain() {
-    if [ -f "$DOMAIN_FILE" ]; then
-        DOMAIN=$(cat "$DOMAIN_FILE")
-    else
-        DOMAIN=""
-    fi
+    [ -f "$DOMAIN_FILE" ] && DOMAIN=$(cat "$DOMAIN_FILE") || DOMAIN=""
+}
+
+get_ssl_type() {
+    [ -f "$TYPE_FILE" ] && SSL_TYPE=$(cat "$TYPE_FILE") || SSL_TYPE="domain"
 }
 
 start_proxy() {
@@ -3707,14 +3648,14 @@ stop_proxy() {
 }
 
 cleanup_old_certs() {
-    local CURRENT_DOMAIN="$1"
+    local CURRENT_VALUE="$1"
     local DIRNAME
     for dir in /root/.acme.sh/*; do
         [ -d "$dir" ] || continue
         DIRNAME=$(basename "$dir")
         [[ "$DIRNAME" == ca ]]       && continue
         [[ "$DIRNAME" == account* ]] && continue
-        if [[ "$DIRNAME" != "${CURRENT_DOMAIN}_ecc" && "$DIRNAME" != "$CURRENT_DOMAIN" ]]; then
+        if [[ "$DIRNAME" != "${CURRENT_VALUE}_ecc" && "$DIRNAME" != "$CURRENT_VALUE" ]]; then
             echo -e "${YELLOW}Eliminando certificado obsoleto: $DIRNAME${RESET}"
             rm -rf "$dir"
         fi
@@ -3727,58 +3668,152 @@ cert_is_valid() {
     openssl x509 -checkend 0 -noout -in "$CERT" 2>/dev/null
 }
 
+# PARCHE 5: timeout 10s para evitar cuelgues en openssl s_client
 get_live_cert_days() {
-    local DOMAIN="$1"
+    local HOST="$1"
     local PORT="$2"
     local EXP
-    EXP=$(openssl s_client \
-            -connect "${DOMAIN}:${PORT}" \
-            -servername "${DOMAIN}" \
+    EXP=$(timeout 10 openssl s_client \
+            -connect "${HOST}:${PORT}" \
+            -servername "${HOST}" \
             </dev/null 2>/dev/null \
           | openssl x509 -enddate -noout 2>/dev/null \
           | cut -d= -f2)
-    if [ -z "$EXP" ]; then
-        echo -1
-        return
-    fi
+    if [ -z "$EXP" ]; then echo -1; return; fi
     echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
 }
 
+# ═══════════════════════════════════════════════════════════════════════
+#   PARCHE 2: Valida que el puerto 80 esté libre antes de acme
+#   Retorna 0 si libre, 1 si ocupado
+# ═══════════════════════════════════════════════════════════════════════
+check_port_80_free() {
+    local OCCUPIED
+    OCCUPIED=$(ss -tlnp 'sport = :80' 2>/dev/null | tail -n+2)
+    if [ -n "$OCCUPIED" ]; then
+        local PROC
+        PROC=$(echo "$OCCUPIED" | grep -oP 'users:\(\(".*?"\)' | head -1)
+        log_ssl WARN  PROXY  "Puerto 80 ocupado antes de acme — proceso: ${PROC:-desconocido}"
+        echo -e "${RED}[SSL] ❌  Puerto 80 en uso por otro proceso: ${PROC:-desconocido}${RESET}"
+        echo -e "${YELLOW}    Liberalo antes de renovar SSL.${RESET}"
+        return 1
+    fi
+    return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+#   PARCHE 3: Emite/renueva via acme con 1 reintento automático
+#   $1 = HOST, $2 = "domain"|"ip"
+#   Retorna 0 si cert válido al final, 1 si fallaron todos los intentos
+# ═══════════════════════════════════════════════════════════════════════
+run_acme_with_retry() {
+    local HOST="$1"
+    local TYPE="$2"
+    local ACME_CERT="/root/.acme.sh/${HOST}_ecc/fullchain.cer"
+    local EXIT_CODE ATTEMPT
+
+    for ATTEMPT in 1 2; do
+        if [ "$ATTEMPT" -eq 2 ]; then
+            log_ssl WARN ACME "Intento 1 fallido — esperando 30s antes de reintentar — host: $HOST ($TYPE)"
+            echo -e "${YELLOW}[SSL] Reintentando en 30 segundos...${RESET}"
+            sleep 30
+        fi
+
+        if [ "$TYPE" = "domain" ]; then
+            if [ ! -f "$ACME_CERT" ]; then
+                log_ssl INFO ACME "Intento $ATTEMPT — issue -d $HOST --standalone --httpport 80"
+                timeout 120 /root/.acme.sh/acme.sh --issue \
+                    -d "$HOST" --standalone --httpport 80 >> "$SSL_LOG" 2>&1
+            else
+                log_ssl INFO ACME "Intento $ATTEMPT — renew -d $HOST --force"
+                timeout 120 /root/.acme.sh/acme.sh --renew \
+                    -d "$HOST" --force >> "$SSL_LOG" 2>&1
+            fi
+        else
+            log_ssl INFO ACME "Intento $ATTEMPT — issue IP $HOST --shortlived --force"
+            timeout 120 /root/.acme.sh/acme.sh --issue \
+                -d "$HOST" --standalone --httpport 80 \
+                --server letsencrypt --certificate-profile shortlived \
+                --force >> "$SSL_LOG" 2>&1
+        fi
+
+        EXIT_CODE=$?
+        [ "$EXIT_CODE" -eq 124 ] && log_ssl WARN ACME "Intento $ATTEMPT — TIMEOUT (120s) — host: $HOST ($TYPE)"
+
+        sleep 3
+        if openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
+            log_ssl OK ACME "Intento $ATTEMPT exitoso — cert válido en $ACME_CERT — host: $HOST ($TYPE)"
+            return 0
+        fi
+        log_ssl WARN ACME "Intento $ATTEMPT fallido — exit: $EXIT_CODE — cert inválido — host: $HOST ($TYPE)"
+    done
+
+    log_ssl ERROR ACME "Todos los intentos fallaron — host: $HOST ($TYPE)"
+    return 1
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+#   PARCHE 1 + 4 + 5: apply_cert_to_panel
+#   - PARCHE 4: rotate_ssl_log al inicio
+#   - PARCHE 1: corta ejecución si falla DB (return 1)
+#   - PARCHE 5: timeout 10s en openssl s_client
+# ═══════════════════════════════════════════════════════════════════════
 apply_cert_to_panel() {
-    local DOMAIN="$1"
-    local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
-    local ACME_KEY="/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key"
+    local HOST="$1"
+    local ACME_CERT="/root/.acme.sh/${HOST}_ecc/fullchain.cer"
+    local ACME_KEY="/root/.acme.sh/${HOST}_ecc/${HOST}.key"
     local DEST_CERT="$SSL_DIR/fullchain.cer"
-    local DEST_KEY="$SSL_DIR/${DOMAIN}.key"
+    local DEST_KEY="$SSL_DIR/${HOST}.key"
     local DB="/etc/x-ui/x-ui.db"
+
+    rotate_ssl_log   # PARCHE 4
+
+    log_ssl INFO  APPLY  "Iniciando apply_cert_to_panel — host: $HOST"
 
     if ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
         echo -e "${RED}[SSL] El certificado de acme no es válido o no existe: $ACME_CERT${RESET}"
+        log_ssl ERROR APPLY  "Cert acme inválido o inexistente: $ACME_CERT — abortando sin aplicar"
         return 1
     fi
 
     echo -e "${CYAN}[SSL] Copiando certificados a $SSL_DIR...${RESET}"
+    log_ssl INFO  APPLY  "Copiando cert: $ACME_CERT → $DEST_CERT"
     mkdir -p "$SSL_DIR"
     cp "$ACME_CERT" "$DEST_CERT"
     cp "$ACME_KEY"  "$DEST_KEY"
     chmod 644 "$DEST_CERT"
     chmod 600 "$DEST_KEY"
 
-    echo -e "${CYAN}[SSL] Limpiando entradas viejas y escribiendo rutas en la DB...${RESET}"
-    sqlite3 "$DB" "
+    echo -e "${CYAN}[SSL] Actualizando rutas en la DB...${RESET}"
+    log_ssl INFO  APPLY  "Actualizando DB — cert: $DEST_CERT | key: $DEST_KEY"
+    local DB_OUT DB_EXIT
+    DB_OUT=$(sqlite3 "$DB" "
         DELETE FROM settings WHERE key IN ('webCertFile', 'webKeyFile');
         INSERT INTO settings (key, value) VALUES ('webCertFile', '$DEST_CERT');
         INSERT INTO settings (key, value) VALUES ('webKeyFile',  '$DEST_KEY');
-    "
+    " 2>&1)
+    DB_EXIT=$?
+
+    # PARCHE 1: si falla la DB, NO seguir — evita estado inconsistente
+    if [ "$DB_EXIT" -ne 0 ]; then
+        log_ssl ERROR APPLY  "Fallo al actualizar DB (exit $DB_EXIT): $DB_OUT — ABORTANDO, no se reinicia panel"
+        echo -e "${RED}[SSL] ❌  Fallo en DB (exit $DB_EXIT). No se reinicia el panel para evitar estado inconsistente.${RESET}"
+        return 1
+    fi
+    log_ssl OK    APPLY  "DB actualizada correctamente (exit 0)"
 
     echo -e "${YELLOW}[SSL] Reiniciando panel para aplicar certificado...${RESET}"
+    log_ssl INFO  APPLY  "Reiniciando x-ui para activar cert"
     systemctl restart x-ui
     sleep 3
 
+    get_port
     local LIVE_EXP LIVE_DAYS
-    LIVE_EXP=$(openssl s_client \
-                -connect "${DOMAIN}:${PORT}" \
-                -servername "${DOMAIN}" \
+
+    # PARCHE 5: timeout 10s
+    LIVE_EXP=$(timeout 10 openssl s_client \
+                -connect "${HOST}:${PORT}" \
+                -servername "${HOST}" \
                 </dev/null 2>/dev/null \
                | openssl x509 -enddate -noout 2>/dev/null \
                | cut -d= -f2)
@@ -3786,8 +3821,10 @@ apply_cert_to_panel() {
     if [ -n "$LIVE_EXP" ]; then
         LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
         echo -e "${GREEN}[SSL] ✅  Cert aplicado — vence en $LIVE_DAYS días ($LIVE_EXP)${RESET}"
+        log_ssl OK    APPLY  "Cert vivo verificado en $HOST:$PORT — vence en $LIVE_DAYS días ($LIVE_EXP)"
     else
         echo -e "${RED}[SSL] ❌  No se pudo verificar el cert vivo en puerto $PORT.${RESET}"
+        log_ssl WARN  APPLY  "Cert copiado pero no verificable en $HOST:$PORT (panel puede demorar en responder)"
     fi
 }
 
@@ -3883,229 +3920,403 @@ patch_xhttp_settings() {
 
 # ═══════════════════════════════════════════════════════════════════════
 #   SETUP SSL RENEWAL — cron diario a las 4am
+#
+#   Flujo dominio: renueva solo si quedan ≤7 días (cert dura 90 días)
+#   Flujo IP     : siempre fuerza renovación (cert dura ~6 días)
 # ═══════════════════════════════════════════════════════════════════════
 setup_ssl_renewal() {
-    local DOMAIN="$1"
 
     cat > /root/renew_ssl.sh << 'SCRIPT'
 #!/bin/bash
 
 DOMAIN_FILE="/etc/MCCARTHEY/ssl_domain"
+TYPE_FILE="/etc/MCCARTHEY/ssl_type"
 SSL_DIR="/etc/x-ui/ssl"
+SSL_LOG="/var/log/mccarthey_ssl.log"
+ACME_TIMEOUT=120
+
+log_ssl() {
+    local LEVEL="$1"; shift
+    local TAG="$1";   shift
+    local MSG="$*"
+    printf '[%s] [%-5s] [%-7s] %s\n' \
+        "$(date '+%Y-%m-%d %H:%M:%S')" \
+        "$LEVEL" \
+        "$TAG" \
+        "$MSG" >> "$SSL_LOG"
+}
+
+rotate_ssl_log() {
+    local MAX_BYTES=$(( 5 * 1024 * 1024 ))
+    if [ -f "$SSL_LOG" ]; then
+        local SIZE
+        SIZE=$(stat -c%s "$SSL_LOG" 2>/dev/null || echo 0)
+        if [ "$SIZE" -ge "$MAX_BYTES" ]; then
+            mv "$SSL_LOG" "${SSL_LOG}.1"
+            log_ssl INFO CONFIG "Log rotado — tamaño anterior: ${SIZE} bytes"
+        fi
+    fi
+}
+
+rotate_ssl_log
+
+log_ssl INFO  RENEW  "==== Iniciando renew_ssl.sh (cron) ===="
 
 if [ ! -f "$DOMAIN_FILE" ]; then
-    echo "[SSL] No se encontró el archivo de dominio en $DOMAIN_FILE. Abortando."
+    log_ssl ERROR CONFIG "Archivo $DOMAIN_FILE no encontrado — abortando"
+    exit 1
+fi
+HOST=$(cat "$DOMAIN_FILE")
+if [ -z "$HOST" ]; then
+    log_ssl ERROR CONFIG "$DOMAIN_FILE existe pero está vacío — abortando"
     exit 1
 fi
 
-DOMAIN=$(cat "$DOMAIN_FILE")
+SSL_TYPE="domain"
+[ -f "$TYPE_FILE" ] && SSL_TYPE=$(cat "$TYPE_FILE")
 
-if [ -z "$DOMAIN" ]; then
-    echo "[SSL] El dominio guardado está vacío. Abortando."
+# Validar ssl_type
+if [[ "$SSL_TYPE" != "domain" && "$SSL_TYPE" != "ip" ]]; then
+    log_ssl ERROR CONFIG "ssl_type desconocido ('$SSL_TYPE') en $TYPE_FILE — abortando"
     exit 1
 fi
 
-ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
-ACME_KEY="/root/.acme.sh/${DOMAIN}_ecc/${DOMAIN}.key"
+log_ssl INFO  CONFIG "Configuración leída — host: $HOST | tipo: $SSL_TYPE"
+
+ACME_CERT="/root/.acme.sh/${HOST}_ecc/fullchain.cer"
+ACME_KEY="/root/.acme.sh/${HOST}_ecc/${HOST}.key"
 DEST_CERT="$SSL_DIR/fullchain.cer"
-DEST_KEY="$SSL_DIR/${DOMAIN}.key"
+DEST_KEY="$SSL_DIR/${HOST}.key"
 
+# PARCHE 5: timeout 10s en openssl s_client
 get_live_cert_days() {
-    local D="$1"
-    local P="$2"
-    local EXP
-    EXP=$(openssl s_client \
-            -connect "${D}:${P}" \
-            -servername "${D}" \
+    local H="$1" P="$2" EXP
+    EXP=$(timeout 10 openssl s_client -connect "${H}:${P}" -servername "${H}" \
             </dev/null 2>/dev/null \
-          | openssl x509 -enddate -noout 2>/dev/null \
-          | cut -d= -f2)
-    if [ -z "$EXP" ]; then echo -1; return; fi
+          | openssl x509 -enddate -noout 2>/dev/null | cut -d= -f2)
+    [ -z "$EXP" ] && echo -1 && return
     echo $(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
 }
 
-PANEL_PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
-[ -z "$PANEL_PORT" ] && PANEL_PORT="443"
-
-for dir in /root/.acme.sh/*; do
-    [ -d "$dir" ] || continue
-    DIRNAME=$(basename "$dir")
-    [[ "$DIRNAME" == ca ]]       && continue
-    [[ "$DIRNAME" == account* ]] && continue
-    if [[ "$DIRNAME" != "${DOMAIN}_ecc" && "$DIRNAME" != "$DOMAIN" ]]; then
-        echo "[SSL] Eliminando certificado obsoleto: $DIRNAME"
-        rm -rf "$dir"
-    fi
-done
-
-NECESITA_EMITIR=false
-NECESITA_APLICAR=false
-
-if [ ! -f "$DEST_CERT" ]; then
-    echo "[SSL] Certificado no encontrado en $SSL_DIR. Emitiendo uno nuevo."
-    NECESITA_EMITIR=true
-    NECESITA_APLICAR=true
-else
-    EXPIRACION=$(openssl x509 -enddate -noout -in "$DEST_CERT" | cut -d= -f2)
-    DIAS=$(( ( $(date -d "$EXPIRACION" +%s) - $(date +%s) ) / 86400 ))
-    echo "[SSL] Cert en $SSL_DIR: vence en $DIAS días."
-    if [ "$DIAS" -le 7 ]; then
-        echo "[SSL] Faltan $DIAS días. Renovando..."
-        NECESITA_EMITIR=true
-        NECESITA_APLICAR=true
-    fi
-fi
-
-LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PANEL_PORT")
-
-if [ "$LIVE_DAYS" -lt 0 ]; then
-    echo "[SSL] No se pudo verificar cert vivo (sin conexión al panel en puerto $PANEL_PORT)."
-elif [ "$LIVE_DAYS" -lt 10 ]; then
-    echo "[SSL] ⚠️  Cert vivo vence en $LIVE_DAYS días — panel desfasado. Forzando reaplicación."
-    NECESITA_APLICAR=true
-else
-    echo "[SSL] Cert vivo OK: $LIVE_DAYS días restantes."
-fi
-
-if [ "$NECESITA_EMITIR" = true ]; then
-    PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-    if [ -n "$PROXY_PID" ]; then
-        echo "[SSL] Deteniendo proxy MCCARTHEY..."
-        kill "$PROXY_PID"
-        sleep 5
-    fi
-
-    if [ ! -f "$ACME_CERT" ]; then
-        /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
-    else
-        /root/.acme.sh/acme.sh --renew -d "$DOMAIN"
-    fi
-
-    ACME_EXIT=$?
-    sleep 3
-
-    if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
-        echo "[SSL] ❌  Error: acme no emitió un cert válido. Abortando."
-        if [ -z "$(pgrep -f /etc/MCCARTHEY/PDirect.py)" ]; then
-            nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
-        fi
-        exit 1
-    fi
-fi
-
-if [ "$NECESITA_APLICAR" = true ]; then
-    DB="/etc/x-ui/x-ui.db"
-
-    echo "[SSL] Copiando certificados a $SSL_DIR..."
+apply_cert() {
+    local DB="/etc/x-ui/x-ui.db"
+    log_ssl INFO  APPLY  "Copiando cert a $SSL_DIR — host: $HOST"
     mkdir -p "$SSL_DIR"
     cp "$ACME_CERT" "$DEST_CERT"
     cp "$ACME_KEY"  "$DEST_KEY"
     chmod 644 "$DEST_CERT"
     chmod 600 "$DEST_KEY"
 
-    echo "[SSL] Limpiando entradas viejas y escribiendo rutas en la DB..."
-    sqlite3 "$DB" "
+    log_ssl INFO  APPLY  "Actualizando rutas en DB — cert: $DEST_CERT | key: $DEST_KEY"
+    local DB_OUT DB_EXIT
+    DB_OUT=$(sqlite3 "$DB" "
         DELETE FROM settings WHERE key IN ('webCertFile', 'webKeyFile');
         INSERT INTO settings (key, value) VALUES ('webCertFile', '$DEST_CERT');
         INSERT INTO settings (key, value) VALUES ('webKeyFile',  '$DEST_KEY');
-    "
+    " 2>&1)
+    DB_EXIT=$?
 
-    echo "[SSL] Reiniciando panel..."
+    # PARCHE 1: cortar si falla DB
+    if [ "$DB_EXIT" -ne 0 ]; then
+        log_ssl ERROR APPLY  "Fallo al actualizar DB (exit $DB_EXIT): $DB_OUT — ABORTANDO, no se reinicia panel"
+        return 1
+    fi
+    log_ssl OK    APPLY  "DB actualizada correctamente"
+
+    log_ssl INFO  APPLY  "Reiniciando x-ui"
     systemctl restart x-ui
     sleep 3
 
-    LIVE_EXP=$(openssl s_client \
-                -connect "${DOMAIN}:${PANEL_PORT}" \
-                -servername "${DOMAIN}" \
-                </dev/null 2>/dev/null \
-               | openssl x509 -enddate -noout 2>/dev/null \
-               | cut -d= -f2)
+    PANEL_PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+    [ -z "$PANEL_PORT" ] && PANEL_PORT="443"
 
+    # PARCHE 5: timeout 10s
+    LIVE_EXP=$(timeout 10 openssl s_client -connect "${HOST}:${PANEL_PORT}" -servername "${HOST}" \
+                </dev/null 2>/dev/null \
+               | openssl x509 -enddate -noout 2>/dev/null | cut -d= -f2)
     if [ -n "$LIVE_EXP" ]; then
         LIVE_DAYS=$(( ( $(date -d "$LIVE_EXP" +%s) - $(date +%s) ) / 86400 ))
-        echo "[SSL] ✅  Cert aplicado — vence en $LIVE_DAYS días ($LIVE_EXP)"
+        log_ssl OK    APPLY  "Cert vivo verificado en $HOST:$PANEL_PORT — vence en $LIVE_DAYS días ($LIVE_EXP)"
     else
-        echo "[SSL] ❌  No se pudo verificar cert vivo en puerto $PANEL_PORT."
+        log_ssl WARN  APPLY  "Cert copiado pero no verificable en $HOST:$PANEL_PORT (panel puede demorar)"
     fi
-fi
+}
 
-if [ "$NECESITA_EMITIR" = true ]; then
+stop_proxy_local() {
+    local PID
+    PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
+    if [ -n "$PID" ]; then
+        log_ssl INFO  PROXY  "Deteniendo proxy (PID $PID) para liberar puerto 80"
+        kill "$PID"
+        sleep 5
+    else
+        log_ssl INFO  PROXY  "Proxy no estaba activo — puerto 80 libre"
+    fi
+}
+
+start_proxy_local() {
     if [ -z "$(pgrep -f /etc/MCCARTHEY/PDirect.py)" ]; then
-        echo "[SSL] Reactivando proxy MCCARTHEY..."
+        log_ssl INFO  PROXY  "Reactivando proxy MCCARTHEY"
         nohup python3 /etc/MCCARTHEY/PDirect.py 80 > /root/nohup.out 2>&1 &
         sleep 2
     else
-        echo "[SSL] Proxy ya activo, no se duplica."
+        log_ssl INFO  PROXY  "Proxy ya activo — no se duplica"
     fi
-fi
+}
 
-if [ "$NECESITA_EMITIR" = false ] && [ "$NECESITA_APLICAR" = false ]; then
-    echo "[SSL] ✅  Todo en orden. Sin acciones necesarias."
+# PARCHE 2: verificar puerto 80 libre antes de acme (en cron)
+check_port_80_free_local() {
+    local OCCUPIED
+    OCCUPIED=$(ss -tlnp 'sport = :80' 2>/dev/null | tail -n+2)
+    if [ -n "$OCCUPIED" ]; then
+        local PROC
+        PROC=$(echo "$OCCUPIED" | grep -oP 'users:\(\(".*?"\)' | head -1)
+        log_ssl WARN PROXY "Puerto 80 ocupado (proceso: ${PROC:-desconocido}) — abortando emisión acme"
+        return 1
+    fi
+    return 0
+}
+
+# PARCHE 3: retry acme (1 reintento) para el cron
+run_acme_with_retry_local() {
+    local TYPE="$1"
+    local EXIT_CODE ATTEMPT
+
+    for ATTEMPT in 1 2; do
+        if [ "$ATTEMPT" -eq 2 ]; then
+            log_ssl WARN ACME "Intento 1 fallido — esperando 30s antes de reintentar — host: $HOST ($TYPE)"
+            sleep 30
+        fi
+
+        if [ "$TYPE" = "domain" ]; then
+            if [ ! -f "$ACME_CERT" ]; then
+                log_ssl INFO ACME "Intento $ATTEMPT — issue -d $HOST --standalone (timeout ${ACME_TIMEOUT}s)"
+                timeout "$ACME_TIMEOUT" /root/.acme.sh/acme.sh --issue -d "$HOST" --standalone --httpport 80 >> "$SSL_LOG" 2>&1
+            else
+                log_ssl INFO ACME "Intento $ATTEMPT — renew -d $HOST (timeout ${ACME_TIMEOUT}s)"
+                timeout "$ACME_TIMEOUT" /root/.acme.sh/acme.sh --renew -d "$HOST" >> "$SSL_LOG" 2>&1
+            fi
+        else
+            log_ssl INFO ACME "Intento $ATTEMPT — issue IP $HOST --shortlived --force (timeout ${ACME_TIMEOUT}s)"
+            timeout "$ACME_TIMEOUT" /root/.acme.sh/acme.sh --issue \
+                -d "$HOST" --standalone --httpport 80 \
+                --server letsencrypt --certificate-profile shortlived \
+                --force >> "$SSL_LOG" 2>&1
+        fi
+
+        EXIT_CODE=$?
+        [ "$EXIT_CODE" -eq 124 ] && log_ssl WARN ACME "Intento $ATTEMPT — TIMEOUT (${ACME_TIMEOUT}s) — host: $HOST ($TYPE)"
+
+        sleep 3
+        if openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
+            log_ssl OK ACME "Intento $ATTEMPT exitoso — cert válido — host: $HOST ($TYPE)"
+            return 0
+        fi
+        log_ssl WARN ACME "Intento $ATTEMPT fallido — exit: $EXIT_CODE — host: $HOST ($TYPE)"
+    done
+
+    log_ssl ERROR ACME "Todos los intentos fallaron — host: $HOST ($TYPE)"
+    return 1
+}
+
+# Limpiar certs obsoletos
+for dir in /root/.acme.sh/*; do
+    [ -d "$dir" ] || continue
+    DIRNAME=$(basename "$dir")
+    [[ "$DIRNAME" == ca ]]       && continue
+    [[ "$DIRNAME" == account* ]] && continue
+    if [[ "$DIRNAME" != "${HOST}_ecc" && "$DIRNAME" != "$HOST" ]]; then
+        log_ssl INFO  CONFIG "Eliminando cert obsoleto: $DIRNAME"
+        rm -rf "$dir"
+    fi
+done
+
+# ════════════════════════════════════════════════════════════════════
+#   FLUJO DOMINIO
+# ════════════════════════════════════════════════════════════════════
+if [ "$SSL_TYPE" = "domain" ]; then
+
+    PANEL_PORT=$(x-ui settings 2>/dev/null | awk '/port:/ {print $2}')
+    [ -z "$PANEL_PORT" ] && PANEL_PORT="443"
+
+    NECESITA_EMITIR=false
+    NECESITA_APLICAR=false
+
+    if [ ! -f "$DEST_CERT" ]; then
+        log_ssl INFO  RENEW  "Cert no encontrado en $SSL_DIR — se emitirá uno nuevo"
+        NECESITA_EMITIR=true
+        NECESITA_APLICAR=true
+    else
+        EXPIRACION=$(openssl x509 -enddate -noout -in "$DEST_CERT" | cut -d= -f2)
+        DIAS=$(( ( $(date -d "$EXPIRACION" +%s) - $(date +%s) ) / 86400 ))
+        log_ssl INFO  RENEW  "Cert en $SSL_DIR vence en $DIAS días ($EXPIRACION)"
+        if [ "$DIAS" -le 7 ]; then
+            log_ssl INFO  RENEW  "Faltan $DIAS días (umbral ≤7) — renovación necesaria"
+            NECESITA_EMITIR=true
+            NECESITA_APLICAR=true
+        else
+            log_ssl INFO  RENEW  "Cert dentro de plazo — no se renueva"
+        fi
+    fi
+
+    LIVE_DAYS=$(get_live_cert_days "$HOST" "$PANEL_PORT")
+    if [ "$LIVE_DAYS" -lt 0 ]; then
+        log_ssl WARN  RENEW  "No se pudo conectar al panel en $HOST:$PANEL_PORT para verificar cert vivo"
+    elif [ "$LIVE_DAYS" -lt 10 ]; then
+        log_ssl WARN  RENEW  "Cert vivo vence en $LIVE_DAYS días (panel desfasado) — forzando reaplicación"
+        NECESITA_APLICAR=true
+    else
+        log_ssl INFO  RENEW  "Cert vivo OK en $HOST:$PANEL_PORT — $LIVE_DAYS días restantes"
+    fi
+
+    if [ "$NECESITA_EMITIR" = true ]; then
+        stop_proxy_local
+        # PARCHE 2: validar puerto 80
+        if ! check_port_80_free_local; then
+            log_ssl ERROR RENEW "Puerto 80 ocupado — no se puede emitir cert para $HOST (dominio)"
+            start_proxy_local
+            exit 1
+        fi
+        # PARCHE 3: retry
+        if ! run_acme_with_retry_local "domain"; then
+            log_ssl ERROR RENEW "Emisión fallida tras reintentos — host: $HOST (dominio) — NO se aplica cert"
+            start_proxy_local
+            exit 1
+        fi
+    fi
+
+    if [ "$NECESITA_APLICAR" = true ]; then
+        apply_cert
+    fi
+
+    if [ "$NECESITA_EMITIR" = true ]; then
+        start_proxy_local
+    fi
+
+    if [ "$NECESITA_EMITIR" = false ] && [ "$NECESITA_APLICAR" = false ]; then
+        log_ssl OK    RENEW  "Todo en orden para $HOST (dominio) — sin acciones necesarias"
+    else
+        log_ssl OK    RENEW  "Proceso completado para $HOST (dominio)"
+    fi
+
+# ════════════════════════════════════════════════════════════════════
+#   FLUJO IP — shortlived ~6 días, renovación forzada siempre
+# ════════════════════════════════════════════════════════════════════
+elif [ "$SSL_TYPE" = "ip" ]; then
+
+    log_ssl INFO  RENEW  "Tipo IP — renovación forzada siempre (cert shortlived ~6 días)"
+    stop_proxy_local
+
+    # PARCHE 2: validar puerto 80
+    if ! check_port_80_free_local; then
+        log_ssl ERROR RENEW "Puerto 80 ocupado — no se puede emitir cert para $HOST (IP)"
+        start_proxy_local
+        exit 1
+    fi
+
+    # PARCHE 3: retry
+    if ! run_acme_with_retry_local "ip"; then
+        log_ssl ERROR RENEW "Emisión fallida tras reintentos — host: $HOST (IP) — NO se aplica cert"
+        start_proxy_local
+        exit 1
+    fi
+
+    apply_cert
+    start_proxy_local
+    log_ssl OK    RENEW  "Proceso completado para $HOST (IP)"
+
 else
-    echo "[SSL] ✅  Proceso completado para dominio: $DOMAIN"
+    log_ssl ERROR CONFIG "ssl_type desconocido ('$SSL_TYPE') — abortando"
+    exit 1
 fi
 SCRIPT
 
     chmod +x /root/renew_ssl.sh
-
     (crontab -l 2>/dev/null | grep -v renew_ssl.sh; echo "0 4 * * * /root/renew_ssl.sh") | crontab -
-
     echo -e "${GREEN}Script de renovación SSL configurado ✅${RESET}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
 #   FORCE RENEW SSL — opción manual desde el menú
+#   PARCHE 4: rotate_ssl_log al inicio
+#   PARCHE 2: check_port_80_free antes de acme
+#   PARCHE 3: run_acme_with_retry
 # ═══════════════════════════════════════════════════════════════════════
 force_renew_ssl() {
     clear
     echo -e "${YELLOW}Iniciando renovación SSL manual... 🔐${RESET}"
     echo
 
+    rotate_ssl_log   # PARCHE 4
+
     get_domain
+    get_ssl_type
 
     if [ -z "$DOMAIN" ]; then
-        echo -e "${YELLOW}No hay dominio guardado. Ingresá el dominio:${RESET}"
-        read -rp "Dominio → " DOMAIN
+        echo -e "${YELLOW}No hay host guardado. Ingresá el valor:${RESET}"
+        read -rp "Dominio ó IP → " DOMAIN
         if [ -z "$DOMAIN" ]; then
-            echo -e "${RED}No se ingresó un dominio. Abortando.${RESET}"
+            echo -e "${RED}No se ingresó un valor. Abortando.${RESET}"
             read -rp "ENTER para continuar"
             return
         fi
         mkdir -p /etc/MCCARTHEY
         echo "$DOMAIN" > "$DOMAIN_FILE"
+
+        echo -e "${CYAN}¿Qué tipo es?${RESET}"
+        echo "  1) Dominio"
+        echo "  2) IP"
+        read -rp "→ " TIPO_RESP
+        [ "$TIPO_RESP" = "2" ] && SSL_TYPE="ip" || SSL_TYPE="domain"
+        echo "$SSL_TYPE" > "$TYPE_FILE"
     fi
 
-    echo -e "${CYAN}Dominio: $DOMAIN${RESET}"
-    echo
+    # Validar ssl_type
+    if [[ "$SSL_TYPE" != "domain" && "$SSL_TYPE" != "ip" ]]; then
+        echo -e "${RED}❌  ssl_type inválido ('$SSL_TYPE') en $TYPE_FILE. Corregilo manualmente.${RESET}"
+        log_ssl ERROR FORCE "ssl_type inválido ('$SSL_TYPE') — abortando force_renew_ssl"
+        read -rp "ENTER para continuar"
+        return
+    fi
 
-    local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
+    local HOST="$DOMAIN"
+
+    echo -e "${CYAN}Host: $HOST | Tipo: $SSL_TYPE${RESET}"
+    echo
 
     stop_proxy
 
-    if [ ! -f "$ACME_CERT" ]; then
-        echo -e "${YELLOW}Emitiendo certificado nuevo para $DOMAIN...${RESET}"
-        /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
-    else
-        echo -e "${YELLOW}Renovando certificado existente para $DOMAIN...${RESET}"
-        /root/.acme.sh/acme.sh --renew -d "$DOMAIN" --force
-    fi
-
-    local ACME_EXIT=$?
-    sleep 3
-
-    if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
-        echo -e "${RED}❌  Error: acme no emitió un cert válido. No se aplicaron cambios.${RESET}"
+    # PARCHE 2: validar puerto 80 libre
+    if ! check_port_80_free; then
         start_proxy
         read -rp "ENTER para continuar"
         return
     fi
 
-    apply_cert_to_panel "$DOMAIN"
+    # PARCHE 3: acme con retry
+    if ! run_acme_with_retry "$HOST" "$SSL_TYPE"; then
+        echo -e "${RED}❌  Error: acme no emitió un cert válido tras 2 intentos. No se aplicaron cambios.${RESET}"
+        log_ssl ERROR FORCE  "Emisión fallida tras reintentos — host: $HOST ($SSL_TYPE) — NO se aplica cert"
+        start_proxy
+        read -rp "ENTER para continuar"
+        return
+    fi
+
+    log_ssl OK FORCE "Cert válido confirmado — host: $HOST ($SSL_TYPE) — procediendo a aplicar"
+
+    apply_cert_to_panel "$HOST"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌  Fallo al aplicar cert al panel. Revisá el log: $SSL_LOG${RESET}"
+        start_proxy
+        read -rp "ENTER para continuar"
+        return
+    fi
+
     get_port
 
     local DEST_CERT="$SSL_DIR/fullchain.cer"
     local LIVE_DAYS
-    LIVE_DAYS=$(get_live_cert_days "$DOMAIN" "$PORT")
+    LIVE_DAYS=$(get_live_cert_days "$HOST" "$PORT")
 
     if [ "$LIVE_DAYS" -lt 0 ]; then
         echo -e "${YELLOW}⚠️  No se pudo conectar al panel (puerto $PORT). Verificando archivo local...${RESET}"
@@ -4115,42 +4326,76 @@ force_renew_ssl() {
             DIAS=$(( ( $(date -d "$EXP" +%s) - $(date +%s) ) / 86400 ))
             echo -e "${CYAN}Cert en $SSL_DIR: válido, vence en $DIAS días ($EXP)${RESET}"
         fi
-    elif [ "$LIVE_DAYS" -lt 10 ]; then
+    elif [ "$LIVE_DAYS" -lt 10 ] && [ "$SSL_TYPE" = "domain" ]; then
         echo -e "${RED}⚠️  Panel sirviendo cert con $LIVE_DAYS días. Reaplicando...${RESET}"
-        apply_cert_to_panel "$DOMAIN"
+        apply_cert_to_panel "$HOST"
     else
         echo -e "${GREEN}✅  Cert vivo verificado: $LIVE_DAYS días restantes.${RESET}"
     fi
 
-    cleanup_old_certs "$DOMAIN"
+    cleanup_old_certs "$HOST"
     start_proxy
 
     echo
-    echo -e "${GREEN}✅  SSL renovado correctamente para: $DOMAIN${RESET}"
+    echo -e "${GREEN}✅  SSL renovado correctamente para: $HOST${RESET}"
     read -rp "ENTER para continuar"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
 #   INSTALL PANEL
+#   PARCHE 2: check_port_80_free antes de acme
+#   PARCHE 3: run_acme_with_retry
 # ═══════════════════════════════════════════════════════════════════════
 install_panel() {
     clear
-    echo -e "${YELLOW}Instalando panel... ⏳${RESET}"
+
+    echo -e "${HOT_PINK}"
+    echo "════════════════════════════════════ 💋"
+    echo "     INSTALAR PANEL 3X-UI"
+    echo "════════════════════════════════════ 💋"
+    echo -e "${RESET}"
+
+    echo -e "${CYAN}¿Cómo vas a configurar el SSL?${RESET}"
     echo
+    echo "  1) Dominio  (cert 90 días — renovación automática normal)"
+    echo "  2) IP       (cert 6 días  — renovación forzada diaria)"
+    echo
+    read -rp "→ " SSL_MODE
 
-    read -rp "Ingresá el dominio para el SSL (ej: panel.tudominio.com) → " DOMAIN
+    case "$SSL_MODE" in
+        1) SSL_TYPE="domain" ;;
+        2) SSL_TYPE="ip"     ;;
+        *)
+            echo -e "${RED}Opción inválida. Abortando instalación.${RESET}"
+            read -rp "ENTER para continuar"
+            return
+            ;;
+    esac
 
-    if [ -z "$DOMAIN" ]; then
-        echo -e "${RED}No se ingresó un dominio. Abortando instalación.${RESET}"
-        read -rp "ENTER para continuar"
-        return
+    echo
+    if [ "$SSL_TYPE" = "domain" ]; then
+        read -rp "Ingresá el dominio (ej: panel.tudominio.com) → " HOST
+        if [ -z "$HOST" ]; then
+            echo -e "${RED}No se ingresó un dominio. Abortando instalación.${RESET}"
+            read -rp "ENTER para continuar"
+            return
+        fi
+    else
+        read -rp "Ingresá la IP del servidor → " HOST
+        if [ -z "$HOST" ]; then
+            echo -e "${RED}No se ingresó una IP. Abortando instalación.${RESET}"
+            read -rp "ENTER para continuar"
+            return
+        fi
     fi
 
     mkdir -p /etc/MCCARTHEY
-    echo "$DOMAIN" > "$DOMAIN_FILE"
-    echo -e "${GREEN}Dominio guardado: $DOMAIN${RESET}"
+    echo "$HOST"     > "$DOMAIN_FILE"
+    echo "$SSL_TYPE" > "$TYPE_FILE"
+    echo -e "${GREEN}Configuración guardada: $HOST ($SSL_TYPE)${RESET}"
     echo
 
+    echo -e "${YELLOW}Instalando dependencias y panel... ⏳${RESET}"
     stop_proxy
 
     apt update -y >/dev/null 2>&1
@@ -4159,24 +4404,31 @@ install_panel() {
     printf "\nY\n" | bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh) >/dev/null 2>&1
     echo -e "${GREEN}Panel instalado correctamente ✅${RESET}"
 
-    setup_ssl_renewal "$DOMAIN"
+    setup_ssl_renewal
     setup_auto_patch_cron
     setup_watchdog_cron
 
-    local ACME_CERT="/root/.acme.sh/${DOMAIN}_ecc/fullchain.cer"
-
-    if [ ! -f "$ACME_CERT" ]; then
-        echo -e "${YELLOW}Emitiendo certificado SSL para $DOMAIN...${RESET}"
-        /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --httpport 80
-        local ACME_EXIT=$?
-        sleep 3
-        if [ "$ACME_EXIT" -ne 0 ] || ! openssl x509 -checkend 0 -noout -in "$ACME_CERT" 2>/dev/null; then
-            echo -e "${RED}⚠️  Advertencia: no se pudo emitir el SSL. El panel funcionará sin SSL por ahora.${RESET}"
+    # PARCHE 2: verificar puerto 80 libre antes de acme
+    local ACME_OK=false
+    if ! check_port_80_free; then
+        echo -e "${YELLOW}⚠️  Puerto 80 ocupado. El panel funcionará sin SSL por ahora.${RESET}"
+        log_ssl WARN INSTALL "Puerto 80 ocupado — se omite emisión SSL para $HOST ($SSL_TYPE)"
+    else
+        # PARCHE 3: retry
+        if run_acme_with_retry "$HOST" "$SSL_TYPE"; then
+            log_ssl OK INSTALL "Emisión SSL exitosa — host: $HOST ($SSL_TYPE)"
+            ACME_OK=true
+        else
+            echo -e "${RED}⚠️  No se pudo emitir el SSL tras 2 intentos. El panel funcionará sin SSL.${RESET}"
+            log_ssl ERROR INSTALL "Emisión SSL fallida tras reintentos — host: $HOST ($SSL_TYPE)"
         fi
     fi
 
-    apply_cert_to_panel "$DOMAIN"
-    cleanup_old_certs "$DOMAIN"
+    if [ "$ACME_OK" = true ]; then
+        apply_cert_to_panel "$HOST"
+    fi
+
+    cleanup_old_certs "$HOST"
     start_proxy
     sleep 2
 
@@ -4211,27 +4463,37 @@ install_panel() {
         echo "Password : $PASS"
         echo "Puerto   : $PORT"
         echo "Ruta     : $PATHP"
-        echo "Dominio  : $DOMAIN"
+        echo "Host     : $HOST"
+        echo "Tipo SSL : $SSL_TYPE"
         echo
 
         if cert_is_valid "$DEST_CERT"; then
             echo "URL DEL PANEL"
-            echo "https://$DOMAIN:$PORT$PATHP"
+            echo "https://$HOST:$PORT$PATHP"
+            if [ "$SSL_TYPE" = "ip" ]; then
+                echo
+                echo -e "${YELLOW}⚠️  Cert shortlived (~6 días). Cron diario (4am) renueva automáticamente.${RESET}"
+            fi
         else
             echo "URL DEL PANEL (sin SSL)"
-            echo "http://$DOMAIN:$PORT$PATHP"
+            echo "http://$HOST:$PORT$PATHP"
         fi
 
         echo
         echo -e "${CYAN}💡 Auto-patch xhttp v2 activo (cada 6 horas).${RESET}"
-        echo -e "${CYAN}   RAM real + CPU load — sin conteo de sockets.${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/auto_patch_xhttp.log${RESET}"
         echo
         echo -e "${CYAN}💡 Watchdog v3 activo (cada 5 min).${RESET}"
         echo -e "${CYAN}   RAM: ≥80% inmediato | ≥70% × 2 ciclos (~10 min)${RESET}"
         echo -e "${CYAN}   CPU: ≥75% inmediato | ≥70% × 2 ciclos (~10 min)${RESET}"
-        echo -e "${CYAN}   Contadores independientes — cooldown 15 min post-reinicio${RESET}"
         echo -e "${CYAN}   Log: tail -f /var/log/xray_watchdog.log${RESET}"
+        echo
+        if [ "$SSL_TYPE" = "domain" ]; then
+            echo -e "${CYAN}💡 Renovación SSL: diaria 4am — renueva si quedan ≤7 días (cert 90d)${RESET}"
+        else
+            echo -e "${CYAN}💡 Renovación SSL: diaria 4am — siempre forzada (cert shortlived ~6d)${RESET}"
+        fi
+        echo -e "${CYAN}   Log SSL: tail -f /var/log/mccarthey_ssl.log${RESET}"
     else
         echo -e "${RED}La instalación falló.${RESET}"
     fi
@@ -4253,6 +4515,7 @@ show_panel() {
 
     get_port
     get_domain
+    get_ssl_type
 
     local PATHP IP
     PATHP=$(x-ui settings 2>/dev/null | awk '/webBasePath/ {print $2}')
@@ -4266,10 +4529,11 @@ show_panel() {
     systemctl status x-ui | grep Active
     echo
 
-    echo "Puerto : $PORT"
-    echo "Ruta   : $PATHP"
-    echo "IP     : $IP"
-    echo "Dominio: ${DOMAIN:-No configurado}"
+    echo "Puerto   : $PORT"
+    echo "Ruta     : $PATHP"
+    echo "IP real  : $IP"
+    echo "Host SSL : ${DOMAIN:-No configurado}"
+    echo "Tipo SSL : ${SSL_TYPE}"
     echo
 
     local DEST_CERT="$SSL_DIR/fullchain.cer"
@@ -4278,7 +4542,7 @@ show_panel() {
         local EXPIRACION DIAS
         EXPIRACION=$(openssl x509 -enddate -noout -in "$DEST_CERT" | cut -d= -f2)
         DIAS=$(( ( $(date -d "$EXPIRACION" +%s) - $(date +%s) ) / 86400 ))
-        echo "SSL    : ✅  Válido — vence en $DIAS días ($EXPIRACION)"
+        echo "SSL      : ✅  Válido — vence en $DIAS días ($EXPIRACION)"
         echo
         if [ -n "$DOMAIN" ]; then
             echo "URL: https://$DOMAIN:$PORT$PATHP"
@@ -4286,7 +4550,7 @@ show_panel() {
             echo "URL: https://$IP:$PORT$PATHP"
         fi
     else
-        echo "SSL    : ❌  Certificado no encontrado o inválido en $SSL_DIR"
+        echo "SSL      : ❌  Certificado no encontrado o inválido en $SSL_DIR"
         echo
         if [ -n "$DOMAIN" ]; then
             echo "URL (sin SSL): http://$DOMAIN:$PORT$PATHP"
@@ -4299,9 +4563,9 @@ show_panel() {
     PROXY_PID=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
     echo
     if [ -n "$PROXY_PID" ]; then
-        echo "Proxy  : ✅  Activo (PID $PROXY_PID)"
+        echo "Proxy    : ✅  Activo (PID $PROXY_PID)"
     else
-        echo "Proxy  : ❌  Inactivo"
+        echo "Proxy    : ❌  Inactivo"
     fi
 
     echo
@@ -4369,20 +4633,17 @@ xhttp_panel() {
         panel_status
         get_port
         clear
-
         echo -e "${HOT_PINK}"
         echo "════════════════════════════════════ 💋"
         echo "     XRAY + 3X-UI MANAGER 🌸👑"
         echo "════════════════════════════════════ 💋"
         echo -e "${RESET}"
         echo
-
         if [ "$STATUS" = "Activo 🟢" ]; then
             echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
         else
             echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
         fi
-
         echo
         echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
         echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
@@ -4391,9 +4652,7 @@ xhttp_panel() {
         echo -e "${CYAN}5) Parchear xhttpSettings 🔧${RESET}"
         echo -e "${CYAN}0) Salir 💔${RESET}"
         echo
-
         read -rp "👑 Seleccione una opción reina → " op
-
         case "$op" in
             1) install_panel        ;;
             2) show_panel           ;;
@@ -4404,6 +4663,8 @@ xhttp_panel() {
         esac
     done
 }
+
+
 
 
 # ==== MENU ====  
