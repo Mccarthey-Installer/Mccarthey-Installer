@@ -530,9 +530,10 @@ CLEANEOF
 chmod +x /usr/local/sbin/clean-vps.sh
 
 # Registrar cron 0 3 * * *
+# FIX: || true para que set -e no mate el script si no existe crontab aún
 CRON_JOB="0 3 * * * /usr/local/sbin/clean-vps.sh"
 CRON_TMP=$(mktemp)
-crontab -l 2>/dev/null > "$CRON_TMP"
+crontab -l 2>/dev/null > "$CRON_TMP" || true
 if ! grep -qF "clean-vps.sh" "$CRON_TMP"; then
   echo "$CRON_JOB" >> "$CRON_TMP"
   crontab "$CRON_TMP" && echo "⏰ Cron clean-vps registrado: $CRON_JOB"
