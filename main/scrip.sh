@@ -4520,6 +4520,43 @@ remove_panel() {
     read -rp "ENTER para continuar"
 }
 
+xhttp_panel() {
+    while true; do
+        clear
+
+        echo -e "${HOT_PINK}"
+        echo "════════════════════════════════════ 💋"
+        echo "     XRAY + 3X-UI MANAGER 🌸👑"
+        echo "════════════════════════════════════ 💋"
+        echo -e "${RESET}"
+
+        panel_status
+        echo -e "ESTADO :  $STATUS"
+        echo
+
+        echo "1) Instalar / Actualizar panel ✨"
+        echo "2) Ver datos del panel 👀💕"
+        echo "3) Renovar SSL manualmente 🔐"
+        echo "4) Eliminar panel 😈🗑️"
+        echo "5) Parchear xhttpSettings 🔧"
+        echo "0) Salir 💔"
+        echo
+
+        read -rp "👑 Seleccione una opción reina → " op
+
+        case "$op" in
+            1) install_panel ;;
+            2) show_panel ;;
+            3) force_renew_ssl ;;
+            4) remove_panel ;;
+            5) patch_xhttp_settings ;;
+            0) break ;;
+            *) echo "Opción inválida"; sleep 1 ;;
+        esac
+    done
+}
+
+
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
 while true; do  
@@ -4589,7 +4626,7 @@ while true; do
         14) activar_desactivar_swap ;;  
         15) usuarios_ssh ;;  
         16) slowdns_panel ;;
-        17) patch_xhttp_settings ;; 
+        17) xhttp_panel ;;
         0)  
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"  
             exec /bin/bash  
