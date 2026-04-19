@@ -37,7 +37,6 @@ EOF
         echo "   Compatibilidad ya estaba aplicada — sin cambios"
     fi
 
-    # Validar config antes de reiniciar para no romper acceso SSH
     if sshd -t 2>/dev/null; then
         systemctl restart ssh
         echo "✅ SSH reiniciado — compatibilidad activa"
@@ -298,17 +297,19 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. WATCHDOG v4.1 — Control principal de CPU/RAM
-#    Reemplaza completamente a gestionar_recursos.sh
-#    Detecta carga global, identifica proceso culpable via delta
-#    /proc/stat en tiempo real, actúa solo sobre ese proceso.
+# 5. WATCHDOG v4.1 — Fuente única de verdad
+#    IMPORTANTE: Este es el único lugar donde se escribe xray_watchdog.sh.
+#    xray_manager.sh solo registra el cron, nunca sobreescribe este archivo.
 # ===========================
-echo "Instalando Watchdog v4.1..."
+echo "Instalando Watchdog v4.1 (fuente única)..."
 
 cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
 #   WATCHDOG v4.1 — Detección v3 + acción dirigida + CPU real por delta
+#
+#   FUENTE ÚNICA: Este archivo es instalado y mantenido exclusivamente
+#   por vpn_full.sh. xray_manager.sh solo registra el cron.
 #
 #   RAM ≥80% → inmediato | ≥70% × 2 ciclos → warn sostenida
 #   CPU ≥75% → inmediato | ≥70% × 2 ciclos → warn sostenida
@@ -582,7 +583,7 @@ EOF
 
 chmod +x /root/xray_watchdog.sh
 
-# ── Registrar cron (robusto: crea crontab desde cero si no existe) ────────
+# ── Registrar cron ────────────────────────────────────────────────────
 CRON_TMP_WD=$(mktemp)
 crontab -l 2>/dev/null > "$CRON_TMP_WD" || true
 if ! grep -qF "xray_watchdog.sh" "$CRON_TMP_WD"; then
@@ -591,13 +592,12 @@ if ! grep -qF "xray_watchdog.sh" "$CRON_TMP_WD"; then
 fi
 rm -f "$CRON_TMP_WD"
 
-# ── Primera corrida: crea el log y valida que el script funciona ──────────
+# ── Primera corrida ───────────────────────────────────────────────────
 echo "   Ejecutando primera corrida del watchdog..."
 touch /var/log/xray_watchdog.log
 chmod 644 /var/log/xray_watchdog.log
 bash /root/xray_watchdog.sh
 
-# ── Verificación: cron registrado + log existe ────────────────────────────
 CRON_OK=false
 LOG_OK=false
 crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
@@ -611,7 +611,7 @@ else
 fi
 
 # ===========================
-# 6. CLEAN-VPS — Limpieza automática diaria (solo mantenimiento)
+# 6. CLEAN-VPS — Limpieza automática diaria
 # ===========================
 echo "Instalando clean-vps (limpieza automática)..."
 
@@ -619,7 +619,7 @@ cat > /usr/local/sbin/clean-vps.sh << 'CLEANEOF'
 #!/bin/bash
 # =============================================================================
 # clean-vps.sh — Limpieza directa para VPS personal
-# v2.1 — Sin backups, sin historia, el camión se lleva todo 🚛
+# v2.1 — Sin backups, sin historia, el camión se lleva todo
 # =============================================================================
 
 LOG="/var/log/clean-vps.log"
@@ -805,9 +805,10 @@ echo "Watchdog v4.1 activo (cada 5 min)"
 echo "   RAM: ≥80% inmediato | ≥70% × 2 ciclos"
 echo "   CPU: ≥75% inmediato | ≥70% × 2 ciclos"
 echo "   Acción: dirigida al proceso culpable (delta /proc/stat)"
+echo "   FUENTE ÚNICA: xray_manager.sh solo consume este watchdog, no lo sobreescribe"
 echo "   Log: tail -f /var/log/xray_watchdog.log"
 echo ""
-echo "Limpieza automática: diaria a las 3am (solo mantenimiento)"
+echo "Limpieza automática: diaria a las 3am"
 echo "   Script : /usr/local/sbin/clean-vps.sh"
 echo "   Log    : /var/log/clean-vps.log"
 echo "   Manual : clean-vps.sh [--dry-run]"
