@@ -4520,41 +4520,46 @@ remove_panel() {
     read -rp "ENTER para continuar"
 }
 
+
+# ═══════════════════════════════════════════════════════════════════════
+#   MENÚ PRINCIPAL
+# ═══════════════════════════════════════════════════════════════════════
 xhttp_panel() {
     while true; do
+        panel_status
+        get_port
         clear
-
         echo -e "${HOT_PINK}"
         echo "════════════════════════════════════ 💋"
         echo "     XRAY + 3X-UI MANAGER 🌸👑"
         echo "════════════════════════════════════ 💋"
         echo -e "${RESET}"
-
-        panel_status
-        echo -e "ESTADO :  $STATUS"
         echo
-
-        echo "1) Instalar / Actualizar panel ✨"
-        echo "2) Ver datos del panel 👀💕"
-        echo "3) Renovar SSL manualmente 🔐"
-        echo "4) Eliminar panel 😈🗑️"
-        echo "5) Parchear xhttpSettings 🔧"
-        echo "0) Salir 💔"
+        if [ "$STATUS" = "Activo 🟢" ]; then
+            echo -e "${CYAN}ESTADO :${RESET}  ${GREEN}ACTIVO 🟢${RESET}"
+        else
+            echo -e "${CYAN}ESTADO :${RESET}  ${RED}INACTIVO 🔴${RESET}"
+        fi
         echo
-
+        echo -e "${CYAN}1) Instalar / Actualizar panel ✨${RESET}"
+        echo -e "${CYAN}2) Ver datos del panel 👀💕${RESET}"
+        echo -e "${CYAN}3) Renovar SSL manualmente 🔐${RESET}"
+        echo -e "${CYAN}4) Eliminar panel 😈🗑️${RESET}"
+        echo -e "${CYAN}5) Parchear xhttpSettings 🔧${RESET}"
+        echo -e "${CYAN}0) Salir 💔${RESET}"
+        echo
         read -rp "👑 Seleccione una opción reina → " op
-
         case "$op" in
-            1) install_panel ;;
-            2) show_panel ;;
-            3) force_renew_ssl ;;
-            4) remove_panel ;;
+            1) install_panel        ;;
+            2) show_panel           ;;
+            3) force_renew_ssl      ;;
+            4) remove_panel         ;;
             5) patch_xhttp_settings ;;
-            0) break ;;
-            *) echo "Opción inválida"; sleep 1 ;;
+            0) break                ;;
         esac
     done
 }
+
 
 
 # ==== MENU ====  
