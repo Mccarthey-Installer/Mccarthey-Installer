@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + GESTIÓN"
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.1"
 echo "================================================================"
 set -e
 export TZ="America/El_Salvador"
@@ -11,7 +11,7 @@ sudo apt update -y && sudo apt upgrade -y
 # === Instalar dependencias necesarias ===
 echo "Instalando dependencias..."
 sudo apt install -y stunnel4 locales openssl util-linux git cmake build-essential \
-curl unzip wget python3 python3-dev python-is-python3 screen net-tools python3-pip cpulimit
+curl unzip wget python3 python3-dev python-is-python3 screen net-tools python3-pip
 
 # === Configurar idioma y zona horaria ===
 echo "Configurando zona horaria e idioma..."
@@ -28,6 +28,13 @@ pkill -f badvpn-udpgw || true
 systemctl stop stunnel4 2>/dev/null || true
 screen -S badvpn -X quit || true
 screen -S badUDP72 -X quit || true
+
+# === Limpiar gestionar_recursos si existía de instalaciones previas ===
+systemctl stop gestionar-recursos.service 2>/dev/null || true
+systemctl disable gestionar-recursos.service 2>/dev/null || true
+rm -f /etc/systemd/system/gestionar-recursos.service
+rm -f /root/gestionar_recursos.sh
+systemctl daemon-reload 2>/dev/null || true
 
 # === Variables principales ===
 LOCAL_PORT=22
@@ -256,118 +263,320 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. GESTIÓN DE RECURSOS (RAM + CPU)
+# 5. WATCHDOG v4.1 — Control principal de CPU/RAM
+#    Reemplaza completamente a gestionar_recursos.sh
+#    Detecta carga global, identifica proceso culpable via delta
+#    /proc/stat en tiempo real, actúa solo sobre ese proceso.
 # ===========================
-echo "Configurando gestión automática de RAM y CPU..."
-touch /var/log/gestionar_recursos.log
-chmod 644 /var/log/gestionar_recursos.log
+echo "Instalando Watchdog v4.1..."
 
-cat > /root/gestionar_recursos.sh << 'EOF'
+cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
-LOCK_FILE="/tmp/gestionar_recursos.lock"
-LOG_FILE="/var/log/gestionar_recursos.log"
-PID_FILE="/tmp/cpulimit_pids.txt"
+# ═══════════════════════════════════════════════════════════════════════
+#   WATCHDOG v4.1 — Detección v3 + acción dirigida + CPU real por delta
+#
+#   RAM ≥80% → inmediato | ≥70% × 2 ciclos → warn sostenida
+#   CPU ≥75% → inmediato | ≥70% × 2 ciclos → warn sostenida
+#
+#   Procesos y acciones:
+#     xray         → x-ui restart-xray
+#     PDirect.py   → pkill + restart python3 /etc/MCCARTHEY/PDirect.py 80
+#     badvpn-udpgw → pkill + restart screens 7200 y 7300
+#     stunnel4     → systemctl restart stunnel4
+#
+#   Cron: */5 * * * * /root/xray_watchdog.sh
+# ═══════════════════════════════════════════════════════════════════════
 
-if [ -f "$LOCK_FILE" ]; then
-    echo "$(date): Proceso ya en ejecución." >> "$LOG_FILE"
+LOG="/var/log/xray_watchdog.log"
+LOCK="/tmp/xray_watchdog.lock"
+
+RAM_WARN=70
+RAM_CRIT=80
+CPU_WARN=70
+CPU_CRIT=75
+CYCLES_REQUIRED=2
+
+RAM_COUNTER_FILE="/tmp/watchdog_counter_ram"
+CPU_COUNTER_FILE="/tmp/watchdog_counter_cpu"
+COOLDOWN=900
+LAST_RUN_FILE="/tmp/xray_watchdog_last"
+
+PROXY_SCRIPT="/etc/MCCARTHEY/PDirect.py"
+PROXY_PORT=80
+SAMPLE_INTERVAL=1
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
+
+exec 200>"$LOCK"
+flock -n 200 || exit 0
+
+NOW=$(date +%s)
+LAST=$(cat "$LAST_RUN_FILE" 2>/dev/null || echo 0)
+if (( NOW - LAST < COOLDOWN )); then
+    RESTANTE=$(( COOLDOWN - (NOW - LAST) ))
+    log "INFO: En cooldown — faltan ${RESTANTE}s → sin acción"
+    exit 0
+fi
+
+RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
+LOAD_1=$(awk '{print $1}' /proc/loadavg)
+NCPU=$(nproc)
+CPU_PCT=$(awk "BEGIN {printf \"%.0f\", ($LOAD_1/$NCPU)*100}")
+
+if ! [[ "$RAM_PCT" =~ ^[0-9]+$ ]] || ! [[ "$CPU_PCT" =~ ^[0-9]+$ ]]; then
+    log "ERROR: Métricas inválidas — RAM='$RAM_PCT' CPU='$CPU_PCT' — abortando"
     exit 1
 fi
 
-touch "$LOCK_FILE"
-trap 'rm -f "$LOCK_FILE"; exit' INT TERM EXIT
+RAM_CTR=$(cat "$RAM_COUNTER_FILE" 2>/dev/null || echo 0)
+CPU_CTR=$(cat "$CPU_COUNTER_FILE" 2>/dev/null || echo 0)
 
-cleanup_cpulimit() {
-    if [ -f "$PID_FILE" ]; then
-        while read -r cpid; do
-            kill -9 "$cpid" 2>/dev/null || true
-        done < "$PID_FILE"
-        > "$PID_FILE"
-    fi
-    pkill -9 -f "cpulimit -p" 2>/dev/null
+log "INFO: RAM=${RAM_PCT}% (crit≥${RAM_CRIT}% warn≥${RAM_WARN}%) | CPU=${CPU_PCT}% (crit≥${CPU_CRIT}% warn≥${CPU_WARN}%) | load1=${LOAD_1} nproc=${NCPU} | ctrs RAM=${RAM_CTR} CPU=${CPU_CTR}"
+
+read_total_cpu_ticks() {
+    awk '/^cpu / {sum=0; for(i=2;i<=NF;i++) sum+=$i; print sum}' /proc/stat
 }
 
-cleanup_cpulimit
+read_pid_ticks() {
+    local PID="$1"
+    local STAT="/proc/${PID}/stat"
+    [ -f "$STAT" ] || { echo 0; return; }
+    awk '{print $14+$15+$16+$17}' "$STAT" 2>/dev/null || echo 0
+}
 
-if ! pgrep -f "/root/scrip.sh mon" > /dev/null; then
-    /bin/bash /root/scrip.sh mon &
-    echo "$(date): Iniciado scrip.sh mon" >> "$LOG_FILE"
+identify_culprit() {
+    CULPRIT="unknown"
+    CULPRIT_CPU=0
+    CULPRIT_MEM=0
+
+    declare -A PID_TAG
+    declare -A TAG_MEM
+
+    for PID in $(pgrep -x xray 2>/dev/null); do
+        PID_TAG[$PID]="xray"
+        MEM=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
+        TAG_MEM["xray"]=$(( MEM > ${TAG_MEM["xray"]:-0} ? MEM : ${TAG_MEM["xray"]:-0} ))
+    done
+
+    for PID in $(pgrep -f "$PROXY_SCRIPT" 2>/dev/null); do
+        PID_TAG[$PID]="proxy"
+        MEM=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
+        TAG_MEM["proxy"]=$(( MEM > ${TAG_MEM["proxy"]:-0} ? MEM : ${TAG_MEM["proxy"]:-0} ))
+    done
+
+    for PID in $(pgrep -x badvpn-udpgw 2>/dev/null); do
+        PID_TAG[$PID]="badvpn"
+        MEM=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
+        TAG_MEM["badvpn"]=$(( MEM > ${TAG_MEM["badvpn"]:-0} ? MEM : ${TAG_MEM["badvpn"]:-0} ))
+    done
+
+    for PID in $(pgrep -x stunnel4 2>/dev/null; pgrep -x stunnel 2>/dev/null); do
+        PID_TAG[$PID]="stunnel"
+        MEM=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
+        TAG_MEM["stunnel"]=$(( MEM > ${TAG_MEM["stunnel"]:-0} ? MEM : ${TAG_MEM["stunnel"]:-0} ))
+    done
+
+    if [ ${#PID_TAG[@]} -eq 0 ]; then
+        log "SCAN: ningún proceso conocido encontrado en el sistema"
+        return
+    fi
+
+    declare -A TICKS_T0
+    local SYS_T0
+    SYS_T0=$(read_total_cpu_ticks)
+    for PID in "${!PID_TAG[@]}"; do
+        TICKS_T0[$PID]=$(read_pid_ticks "$PID")
+    done
+
+    sleep "$SAMPLE_INTERVAL"
+
+    local SYS_T1
+    SYS_T1=$(read_total_cpu_ticks)
+    local DELTA_SYS=$(( SYS_T1 - SYS_T0 ))
+
+    if [ "$DELTA_SYS" -le 0 ]; then
+        log "SCAN: delta total CPU = 0 — sistema idle o tick muy corto"
+        return
+    fi
+
+    declare -A TAG_CPU_TICKS
+    for PID in "${!PID_TAG[@]}"; do
+        local TAG="${PID_TAG[$PID]}"
+        local T1
+        T1=$(read_pid_ticks "$PID")
+        local DELTA_PID=$(( T1 - TICKS_T0[$PID] ))
+        [ "$DELTA_PID" -lt 0 ] && DELTA_PID=0
+        TAG_CPU_TICKS[$TAG]=$(( ${TAG_CPU_TICKS[$TAG]:-0} + DELTA_PID ))
+    done
+
+    local SCAN_LOG="SCAN delta(${SAMPLE_INTERVAL}s):"
+    local TOTAL_RAM_KB
+    TOTAL_RAM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+    for TAG in "${!TAG_CPU_TICKS[@]}"; do
+        local CPU_REAL MEM_PCT=0
+        CPU_REAL=$(awk "BEGIN {printf \"%.0f\", (${TAG_CPU_TICKS[$TAG]}/${DELTA_SYS})*100}")
+        [ "$TOTAL_RAM_KB" -gt 0 ] && \
+            MEM_PCT=$(awk "BEGIN {printf \"%.0f\", (${TAG_MEM[$TAG]:-0}/${TOTAL_RAM_KB})*100}")
+        SCAN_LOG="${SCAN_LOG} ${TAG}=${CPU_REAL}%cpu/${MEM_PCT}%mem"
+        if [ "$CPU_REAL" -gt "$CULPRIT_CPU" ]; then
+            CULPRIT="$TAG"
+            CULPRIT_CPU="$CPU_REAL"
+            CULPRIT_MEM="$MEM_PCT"
+        fi
+    done
+
+    log "${SCAN_LOG} | culprit=${CULPRIT} (${CULPRIT_CPU}%cpu ${CULPRIT_MEM}%mem)"
+}
+
+do_restart_xray() {
+    log "ACTION [xray]: x-ui restart-xray"
+    x-ui restart-xray >> "$LOG" 2>&1
+    local EC=$?
+    [ "$EC" -eq 0 ] && log "OK [xray]: reiniciado correctamente" \
+                     || log "ERROR [xray]: fallo (exit $EC)"
+}
+
+do_restart_proxy() {
+    log "ACTION [proxy]: reiniciando PDirect.py"
+    pkill -f "$PROXY_SCRIPT" 2>/dev/null
+    sleep 2
+    nohup python3 "$PROXY_SCRIPT" "$PROXY_PORT" > /root/nohup.out 2>&1 &
+    sleep 2
+    pgrep -f "$PROXY_SCRIPT" > /dev/null \
+        && log "OK [proxy]: PDirect.py reiniciado (PID $(pgrep -f "$PROXY_SCRIPT" | head -1))" \
+        || log "ERROR [proxy]: no arrancó tras reinicio"
+}
+
+do_restart_badvpn() {
+    log "ACTION [badvpn]: reiniciando instancias 7200 y 7300"
+    pkill -f "badvpn-udpgw" 2>/dev/null
+    screen -S badvpn   -X quit 2>/dev/null
+    screen -S badUDP72 -X quit 2>/dev/null
+    sleep 2
+    screen -dmS badvpn   /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
+        --max-clients 1000 --max-connections-for-client 10
+    screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 \
+        --max-clients 1000 --max-connections-for-client 10
+    sleep 2
+    pgrep -f "badvpn-udpgw" > /dev/null \
+        && log "OK [badvpn]: instancias 7200 y 7300 reiniciadas" \
+        || log "ERROR [badvpn]: no arrancó tras reinicio"
+}
+
+do_restart_stunnel() {
+    log "ACTION [stunnel]: systemctl restart stunnel4"
+    systemctl restart stunnel4 >> "$LOG" 2>&1
+    local EC=$?
+    [ "$EC" -eq 0 ] && log "OK [stunnel]: reiniciado correctamente" \
+                     || log "ERROR [stunnel]: fallo (exit $EC)"
+}
+
+trigger_action() {
+    local REASON="$1"
+    log "TRIGGER: $REASON"
+    identify_culprit
+    case "$CULPRIT" in
+        xray)    do_restart_xray    ;;
+        proxy)   do_restart_proxy   ;;
+        badvpn)  do_restart_badvpn  ;;
+        stunnel) do_restart_stunnel ;;
+        unknown)
+            log "WARN: Umbrales superados pero ningún proceso conocido es top consumer — SIN ACCIÓN (falla segura)"
+            exit 0
+            ;;
+    esac
+    echo 0 > "$RAM_COUNTER_FILE"
+    echo 0 > "$CPU_COUNTER_FILE"
+    sleep 3
+    date +%s > "$LAST_RUN_FILE"
+    local RAM_POST LOAD_POST CPU_POST
+    RAM_POST=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
+    LOAD_POST=$(awk '{print $1}' /proc/loadavg)
+    CPU_POST=$(awk "BEGIN {printf \"%.0f\", ($LOAD_POST/$NCPU)*100}")
+    log "POST: RAM=${RAM_POST}% CPU=${CPU_POST}% | cooldown activo (${COOLDOWN}s)"
+    exit 0
+}
+
+# Crítica inmediata
+[ "$RAM_PCT" -ge "$RAM_CRIT" ] && [ "$CPU_PCT" -ge "$CPU_CRIT" ] \
+    && trigger_action "RAM crítica (${RAM_PCT}%≥${RAM_CRIT}%) + CPU crítica (${CPU_PCT}%≥${CPU_CRIT}%)"
+[ "$RAM_PCT" -ge "$RAM_CRIT" ] \
+    && trigger_action "RAM crítica (${RAM_PCT}%≥${RAM_CRIT}%)"
+[ "$CPU_PCT" -ge "$CPU_CRIT" ] \
+    && trigger_action "CPU crítica (${CPU_PCT}%≥${CPU_CRIT}%)"
+
+# Warn sostenida — contadores
+if [ "$RAM_PCT" -ge "$RAM_WARN" ]; then
+    RAM_CTR=$(( RAM_CTR + 1 ))
+    echo "$RAM_CTR" > "$RAM_COUNTER_FILE"
+    log "WARN: RAM alta (${RAM_PCT}%) — ciclo RAM ${RAM_CTR}/${CYCLES_REQUIRED}"
+else
+    if [ "$RAM_CTR" -gt 0 ]; then
+        RAM_CTR=$(( RAM_CTR - 1 ))
+        echo "$RAM_CTR" > "$RAM_COUNTER_FILE"
+        log "INFO: RAM bajó a ${RAM_PCT}% — contador RAM decrementado a ${RAM_CTR}"
+    fi
 fi
 
-MEM_THRESHOLD=200
-CACHE_THRESHOLD=100
-LOAD_THRESHOLD=2.0
-PREV_PIDS_PDIRECT=""
-PREV_PIDS_BADVPN=""
-PREV_PIDS_SCRIP=""
-
-while true; do
-    FREE_MEM=$(free -m | awk '/Mem:/ {print $4}')
-    CACHE_MEM=$(free -m | awk '/Mem:/ {print $6}')
-
-    if [ "$FREE_MEM" -lt "$MEM_THRESHOLD" ] || [ "$CACHE_MEM" -gt "$CACHE_THRESHOLD" ]; then
-        echo "$(date): Liberando caché (Libre: $FREE_MEM MB, Caché: $CACHE_MEM MB)" >> "$LOG_FILE"
-        sync && sudo sysctl -w vm.drop_caches=3 > /dev/null
+if [ "$CPU_PCT" -ge "$CPU_WARN" ]; then
+    CPU_CTR=$(( CPU_CTR + 1 ))
+    echo "$CPU_CTR" > "$CPU_COUNTER_FILE"
+    log "WARN: CPU alta (${CPU_PCT}%) — ciclo CPU ${CPU_CTR}/${CYCLES_REQUIRED}"
+else
+    if [ "$CPU_CTR" -gt 0 ]; then
+        CPU_CTR=$(( CPU_CTR - 1 ))
+        echo "$CPU_CTR" > "$CPU_COUNTER_FILE"
+        log "INFO: CPU bajó a ${CPU_PCT}% — contador CPU decrementado a ${CPU_CTR}"
     fi
+fi
 
-    LOAD_AVG=$(awk '{print $1}' /proc/loadavg)
-    if (( $(echo "$LOAD_AVG > $LOAD_THRESHOLD" | bc -l) )); then
-        CURRENT_PIDS_PDIRECT=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-        CURRENT_PIDS_BADVPN=$(pgrep -f badvpn-udpgw)
-        CURRENT_PIDS_SCRIP=$(pgrep -f "/root/scrip.sh mon")
+RESTART_REASON=""
+if [ "$RAM_CTR" -ge "$CYCLES_REQUIRED" ] && [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ]; then
+    RESTART_REASON="RAM sostenida (${RAM_PCT}% × ${RAM_CTR} ciclos) + CPU sostenida (${CPU_PCT}% × ${CPU_CTR} ciclos)"
+elif [ "$RAM_CTR" -ge "$CYCLES_REQUIRED" ]; then
+    RESTART_REASON="RAM sostenida (${RAM_PCT}% × ${RAM_CTR} ciclos, ~$(( RAM_CTR * 5 )) min)"
+elif [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ]; then
+    RESTART_REASON="CPU sostenida (${CPU_PCT}% × ${CPU_CTR} ciclos, ~$(( CPU_CTR * 5 )) min)"
+fi
 
-        if [ "$CURRENT_PIDS_PDIRECT" != "$PREV_PIDS_PDIRECT" ] || [ "$CURRENT_PIDS_BADVPN" != "$PREV_PIDS_BADVPN" ] || [ "$CURRENT_PIDS_SCRIP" != "$PREV_PIDS_SCRIP" ]; then
-            cleanup_cpulimit
+[ -n "$RESTART_REASON" ] && trigger_action "$RESTART_REASON"
 
-            for pid in $CURRENT_PIDS_PDIRECT; do
-                cpulimit -p "$pid" -l 20 -b &
-                echo $! >> "$PID_FILE"
-            done
-
-            for pid in $CURRENT_PIDS_BADVPN; do
-                cpulimit -p "$pid" -l 60 -b &
-                echo $! >> "$PID_FILE"
-            done
-
-            for pid in $CURRENT_PIDS_SCRIP; do
-                cpulimit -p "$pid" -l 10 -b &
-                echo $! >> "$PID_FILE"
-            done
-
-            PREV_PIDS_PDIRECT="$CURRENT_PIDS_PDIRECT"
-            PREV_PIDS_BADVPN="$CURRENT_PIDS_BADVPN"
-            PREV_PIDS_SCRIP="$CURRENT_PIDS_SCRIP"
-        fi
-    fi
-
-    sleep 10
-done
+log "INFO: Sistema dentro de rangos → sin acción"
+exit 0
 EOF
 
-chmod +x /root/gestionar_recursos.sh
+chmod +x /root/xray_watchdog.sh
 
-cat > /etc/systemd/system/gestionar-recursos.service <<EOF
-[Unit]
-Description=Gestión de RAM y CPU
-After=network.target rc-local.service stunnel4.service
+# ── Registrar cron (robusto: crea crontab desde cero si no existe) ────────
+CRON_TMP_WD=$(mktemp)
+crontab -l 2>/dev/null > "$CRON_TMP_WD" || true
+if ! grep -qF "xray_watchdog.sh" "$CRON_TMP_WD"; then
+    echo "*/5 * * * * /root/xray_watchdog.sh" >> "$CRON_TMP_WD"
+    crontab "$CRON_TMP_WD"
+fi
+rm -f "$CRON_TMP_WD"
 
-[Service]
-Type=simple
-User=root
-ExecStart=/bin/bash /root/gestionar_recursos.sh
-ExecStop=/bin/bash -c "pkill -9 -f 'cpulimit -p'; rm -f /tmp/cpulimit_pids.txt"
-Restart=always
-RestartSec=5s
+# ── Primera corrida: crea el log y valida que el script funciona ──────────
+echo "   Ejecutando primera corrida del watchdog..."
+touch /var/log/xray_watchdog.log
+chmod 644 /var/log/xray_watchdog.log
+bash /root/xray_watchdog.sh
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# ── Verificación: cron registrado + log existe ────────────────────────────
+CRON_OK=false
+LOG_OK=false
+crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
+[ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
-systemctl daemon-reload
-systemctl enable gestionar-recursos.service
-systemctl start gestionar-recursos.service
+if $CRON_OK && $LOG_OK; then
+    echo "✅ Watchdog v4.1 activo (cron cada 5 min, log listo)"
+else
+    $CRON_OK || echo "❌ ADVERTENCIA: cron del watchdog no quedó registrado — verificá con: crontab -l"
+    $LOG_OK  || echo "❌ ADVERTENCIA: log del watchdog no existe en /var/log/xray_watchdog.log"
+fi
 
 # ===========================
-# 6. CLEAN-VPS — Limpieza automática diaria
+# 6. CLEAN-VPS — Limpieza automática diaria (solo mantenimiento)
 # ===========================
 echo "Instalando clean-vps (limpieza automática)..."
 
@@ -529,8 +738,6 @@ CLEANEOF
 
 chmod +x /usr/local/sbin/clean-vps.sh
 
-# Registrar cron 0 3 * * *
-# FIX: || true para que set -e no mate el script si no existe crontab aún
 CRON_JOB="0 3 * * * /usr/local/sbin/clean-vps.sh"
 CRON_TMP=$(mktemp)
 crontab -l 2>/dev/null > "$CRON_TMP" || true
@@ -559,9 +766,13 @@ echo "   Payload: [VACÍO]"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Gestión de RAM/CPU activa"
+echo "Watchdog v4.1 activo (cada 5 min)"
+echo "   RAM: ≥80% inmediato | ≥70% × 2 ciclos"
+echo "   CPU: ≥75% inmediato | ≥70% × 2 ciclos"
+echo "   Acción: dirigida al proceso culpable (delta /proc/stat)"
+echo "   Log: tail -f /var/log/xray_watchdog.log"
 echo ""
-echo "Limpieza automática: diaria a las 3am"
+echo "Limpieza automática: diaria a las 3am (solo mantenimiento)"
 echo "   Script : /usr/local/sbin/clean-vps.sh"
 echo "   Log    : /var/log/clean-vps.log"
 echo "   Manual : clean-vps.sh [--dry-run]"
@@ -569,7 +780,6 @@ echo ""
 echo "Verificar:"
 echo "   ss -tulnp | grep -E ':443|:80|:7200|:7300'"
 echo "   systemctl status stunnel4"
-echo "   systemctl status gestionar-recursos"
 echo "   crontab -l"
 echo ""
 echo "Reinicio automático configurado"
