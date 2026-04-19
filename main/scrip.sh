@@ -4589,7 +4589,7 @@ while true; do
         14) activar_desactivar_swap ;;  
         15) usuarios_ssh ;;  
         16) slowdns_panel ;;
-        17) xhttp_panel ;;
+        17) patch_xhttp_settings ;; 
         0)  
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"  
             exec /bin/bash  
