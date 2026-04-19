@@ -3322,8 +3322,6 @@ ${LILA}-------------------------${NC}"
     read -p "$(echo -e ${LILA}Presiona Enter para regresar al menú principal... ✨${NC})"
 }
 
-
-
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
 #   MCCARTHEY — XRAY + 3X-UI MANAGER
@@ -3383,7 +3381,6 @@ rotate_ssl_log() {
 # ═══════════════════════════════════════════════════════════════════════
 #   AUTO PATCH XHTTP v2 — cron cada 6 horas
 # ═══════════════════════════════════════════════════════════════════════
-
 setup_auto_patch_cron() {
 
     cat > /root/auto_patch_xhttp.sh << 'EOF'
@@ -3484,8 +3481,16 @@ EOF
 
     chmod +x /root/auto_patch_xhttp.sh
     (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "0 */6 * * * /root/auto_patch_xhttp.sh") | crontab -
+
+    # Garantizar log desde instalación — no depender del primer ciclo cron
+    touch /var/log/auto_patch_xhttp.log
+    chmod 644 /var/log/auto_patch_xhttp.log
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] INFO: Auto-patch instalado — primer ciclo cron en <6h" \
+        >> /var/log/auto_patch_xhttp.log
+
     echo -e "${GREEN}Auto-patch xhttp v2 activo ✅ (cada 6 horas, métricas reales)${RESET}"
 }
+
 # ═══════════════════════════════════════════════════════════════════════
 #   SETUP WATCHDOG CRON
 #   IMPORTANTE: Este script NO escribe el watchdog.
@@ -4520,7 +4525,6 @@ remove_panel() {
     read -rp "ENTER para continuar"
 }
 
-
 # ═══════════════════════════════════════════════════════════════════════
 #   MENÚ PRINCIPAL
 # ═══════════════════════════════════════════════════════════════════════
@@ -4559,8 +4563,6 @@ xhttp_panel() {
         esac
     done
 }
-
-
 
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
