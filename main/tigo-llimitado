@@ -13,6 +13,41 @@ echo "Instalando dependencias..."
 sudo apt install -y stunnel4 locales openssl util-linux git cmake build-essential \
 curl unzip wget python3 python3-dev python-is-python3 screen net-tools python3-pip
 
+# ===========================
+# COMPATIBILIDAD SSH — HTTP Custom (solo OpenSSH 9.x)
+# OpenSSH 9.x deshabilita algoritmos legacy que HTTP Custom necesita.
+# Solo se toca sshd_config si la versión instalada es 9.x.
+# ===========================
+SSH_VER=$(ssh -V 2>&1)
+if echo "$SSH_VER" | grep -q "OpenSSH_9"; then
+    echo "OpenSSH 9.x detectado — aplicando compatibilidad para HTTP Custom..."
+
+    if ! grep -q "diffie-hellman-group14-sha1" /etc/ssh/sshd_config; then
+        cat >> /etc/ssh/sshd_config <<EOF
+
+# Compatibilidad HTTP Custom (agregado por MCCARTHEY installer)
+KexAlgorithms +diffie-hellman-group14-sha1
+Ciphers +aes128-cbc,aes256-cbc
+MACs +hmac-sha1
+HostKeyAlgorithms +ssh-rsa
+PubkeyAcceptedAlgorithms +ssh-rsa
+EOF
+        echo "   Configuración escrita en /etc/ssh/sshd_config"
+    else
+        echo "   Compatibilidad ya estaba aplicada — sin cambios"
+    fi
+
+    # Validar config antes de reiniciar para no romper acceso SSH
+    if sshd -t 2>/dev/null; then
+        systemctl restart ssh
+        echo "✅ SSH reiniciado — compatibilidad activa"
+    else
+        echo "❌ ERROR: sshd_config inválido — no se reinició SSH. Revisá manualmente."
+    fi
+else
+    echo "OpenSSH $SSH_VER — sin cambios necesarios en SSH"
+fi
+
 # === Configurar idioma y zona horaria ===
 echo "Configurando zona horaria e idioma..."
 sudo sed -i '/es_SV.UTF-8/s/^# //g' /etc/locale.gen
