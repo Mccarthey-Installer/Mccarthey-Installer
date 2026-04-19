@@ -3385,15 +3385,17 @@ rotate_ssl_log() {
 # ═══════════════════════════════════════════════════════════════════════
 setup_auto_patch_cron() {
 
+    # 👉 Crear log desde instalación (clave)
+    touch /var/log/auto_patch_xhttp.log
+    chmod 644 /var/log/auto_patch_xhttp.log
+
     cat > /root/auto_patch_xhttp.sh << 'EOF'
 #!/bin/bash
 
-# 👉 Asegurar log (evita error "No such file")
+# 👉 Asegurar log (backup por si lo borran)
 LOG="/var/log/auto_patch_xhttp.log"
 [ ! -f "$LOG" ] && touch "$LOG"
 chmod 644 "$LOG"
-
-# ── Auto Patch xhttp v2: cambios reales en DB, métricas reales del sistema ──
 
 DB="/etc/x-ui/x-ui.db"
 LOCK="/tmp/auto_patch_xhttp.lock"
@@ -3487,9 +3489,10 @@ exit 0
 EOF
 
     chmod +x /root/auto_patch_xhttp.sh
+
     (crontab -l 2>/dev/null | grep -v auto_patch_xhttp.sh; echo "0 */6 * * * /root/auto_patch_xhttp.sh") | crontab -
 
-    echo -e "${GREEN}Auto-patch xhttp v2 activo ✅ (cada 6 horas, métricas reales)${RESET}"
+    echo -e "${GREEN}Auto-patch xhttp v2 activo ✅ (log listo desde instalación)${RESET}"
 }
 
 # ═══════════════════════════════════════════════════════════════════════
