@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.4"
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.5"
 echo "================================================================"
 set -e
 export TZ="America/El_Salvador"
@@ -288,52 +288,40 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. WATCHDOG v4.4
+# 5. WATCHDOG v4.5
 #
-#   CAMBIOS vs v4.3:
-#   [1] Gate de loadavg eliminado
-#       El scan de CPU real (delta /proc/stat) corre SIEMPRE.
-#       No hay condición previa que lo bloquee.
+#   CAMBIOS vs v4.4:
+#   [FIX] CPU crítica + fallback_cpu identificado → acción INMEDIATA
+#         Si SYS_CPU_PCT >= CPU_CRIT y CULPRIT es fallback_cpu:*,
+#         se fuerza el contador del PID a FALLBACK_CPU_CYCLES ANTES
+#         de llamar dispatch_action.
+#         Resultado: SIGTERM en el primer ciclo crítico, sin gate.
 #
-#   [2] Top-N por CPU ticks, no por RSS
-#       Prescan: lee /proc/*/stat de todos los PIDs en T0,
-#       duerme SAMPLE_INTERVAL, lee T1, ordena por delta de ticks.
-#       Los loops CPU-bound con poca RAM (yes, scripts, etc.)
-#       ahora aparecen correctamente como top consumers.
+#         Antes: VPS al 100% → watchdog veía al culpable → NO actuaba
+#                porque fallback estaba en ciclo 1/2.
+#         Ahora: VPS al 100% → culpable identificado → SIGTERM inmediato.
 #
-#   [3] Cooldown por proceso/servicio, no global
-#       Cada culprit tiene su propio archivo de cooldown en
-#       /tmp/watchdog_cd/. Después de actuar sobre xray, el
-#       watchdog sigue reaccionando a proxy, badvpn, fallback, etc.
-#       El cooldown global se elimina.
-#
-#   [4] RAM fallback por proceso
-#       Además del fallback de CPU, ahora se detectan procesos que
-#       consumen RAM excesiva (VmRSS). Mismo mecanismo: contador
-#       sostenido por PID, SIGTERM → SIGKILL, SAFE_PROCS protegidos.
-#
-#   [5] Umbrales restaurados a los originales
-#       CPU crítica ≥75% inmediato
-#       CPU warn   ≥70% × 2 ciclos
-#       RAM igual que antes
+#   Todo lo demás sin cambios (detección, prescan, cooldowns, etc.)
 #
 #   Cron: */5 * * * * /root/xray_watchdog.sh
 # ===========================
-echo "Instalando Watchdog v4.4..."
+echo "Instalando Watchdog v4.5..."
 
 cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG v4.4
+#   WATCHDOG v4.5
 #
 #   CPU real sistema  : delta /proc/stat         (siempre, sin gate)
 #   CPU real proceso  : prescan /proc/*/stat      (ordenado por ticks)
 #   RAM por proceso   : VmRSS fallback sostenido
 #   Cooldown          : por proceso/servicio       (no global)
-#   Umbrales CPU      : ≥75% crítico | ≥70% ×2 ciclos (originales)
+#   Umbrales CPU      : >=75% crítico | >=70% x2 ciclos
 #
-#   FUENTE ÚNICA: instalado y mantenido por vpn_full.sh.
-#   xray_manager.sh solo registra el cron, nunca sobreescribe.
+#   FIX v4.5: CPU crítica + fallback identificado → acción inmediata.
+#             Si el VPS ya está ahogado y el culpable ya está visible,
+#             no se espera confirmación de ciclo 2.
+#             El contador se fuerza al umbral antes de dispatch_action.
 #
 #   Cron: */5 * * * * /root/xray_watchdog.sh
 # ═══════════════════════════════════════════════════════════════════════
@@ -341,7 +329,7 @@ cat > /root/xray_watchdog.sh << 'EOF'
 LOG="/var/log/xray_watchdog.log"
 LOCK="/tmp/xray_watchdog.lock"
 
-# ── Umbrales sistema (originales) ────────────────────────────────────
+# ── Umbrales sistema ──────────────────────────────────────────────────
 RAM_WARN=70
 RAM_CRIT=80
 CPU_WARN=70
@@ -349,34 +337,33 @@ CPU_CRIT=75
 CYCLES_REQUIRED=2
 
 # ── Umbrales fallback CPU ─────────────────────────────────────────────
-FALLBACK_CPU_MIN=40          # % CPU real mínimo para considerar culpable
-FALLBACK_CPU_CYCLES=2        # ciclos sostenidos antes de actuar
+FALLBACK_CPU_MIN=40
+FALLBACK_CPU_CYCLES=2
 
-# ── Umbrales fallback RAM por proceso ────────────────────────────────
-FALLBACK_RAM_MIN=25          # % del total de RAM del sistema por proceso
-FALLBACK_RAM_CYCLES=2        # ciclos sostenidos antes de actuar
+# ── Umbrales fallback RAM ─────────────────────────────────────────────
+FALLBACK_RAM_MIN=25
+FALLBACK_RAM_CYCLES=2
 
 # ── Parámetros de scan ────────────────────────────────────────────────
-TOP_N_PROCS=10               # top N procesos a analizar en fallback
-SAMPLE_INTERVAL=2            # segundos de ventana delta CPU
+TOP_N_PROCS=10
+SAMPLE_INTERVAL=2
 
 # ── Directorios de estado ─────────────────────────────────────────────
 STATE_DIR="/tmp/watchdog_state"
-CD_DIR="${STATE_DIR}/cooldown"   # cooldown por culprit
-FB_CPU_DIR="${STATE_DIR}/fb_cpu" # contadores fallback CPU por PID
-FB_RAM_DIR="${STATE_DIR}/fb_ram" # contadores fallback RAM por PID
+CD_DIR="${STATE_DIR}/cooldown"
+FB_CPU_DIR="${STATE_DIR}/fb_cpu"
+FB_RAM_DIR="${STATE_DIR}/fb_ram"
 
 mkdir -p "$CD_DIR" "$FB_CPU_DIR" "$FB_RAM_DIR"
 
-# Archivos de contadores de sistema
 RAM_COUNTER_FILE="${STATE_DIR}/counter_ram"
 CPU_COUNTER_FILE="${STATE_DIR}/counter_cpu"
 
-# ── Cooldown por servicio/proceso (segundos) ──────────────────────────
-COOLDOWN_KNOWN=900    # servicios conocidos: 15 min
-COOLDOWN_FALLBACK=600 # procesos fallback: 10 min
+# ── Cooldown por servicio/proceso ─────────────────────────────────────
+COOLDOWN_KNOWN=900
+COOLDOWN_FALLBACK=600
 
-# ── Procesos del sistema NUNCA afectados por fallback ─────────────────
+# ── Procesos NUNCA afectados por fallback ─────────────────────────────
 SAFE_PROCS_RE="^(systemd|systemd-.*|init|sshd|bash|sh|dash|zsh|fish|\
 kthread|ksoftirqd|kworker|migration|rcu_.*|watchdog|\
 ps|awk|grep|sed|cut|head|tail|cat|xargs|sleep|find|wc|sort|uniq|\
@@ -398,17 +385,16 @@ exec 200>"$LOCK"
 flock -n 200 || exit 0
 
 # ══════════════════════════════════════════════════════════════════════
-# Helpers de cooldown por culprit
+# Helpers cooldown
 # ══════════════════════════════════════════════════════════════════════
 _cd_file()  { echo "${CD_DIR}/$(echo "$1" | tr ':/' '__')"; }
 _in_cd() {
     local F; F=$(_cd_file "$1")
     [ -f "$F" ] || return 1
-    local LAST NOW DURATION
+    local LAST NOW
     LAST=$(cat "$F" 2>/dev/null || echo 0)
     NOW=$(date +%s)
-    DURATION="$2"
-    (( NOW - LAST < DURATION ))
+    (( NOW - LAST < $2 ))
 }
 _set_cd() {
     local F; F=$(_cd_file "$1")
@@ -416,15 +402,15 @@ _set_cd() {
 }
 _cd_remaining() {
     local F; F=$(_cd_file "$1")
-    [ -f "$F" ] || echo 0; return
+    [ -f "$F" ] || { echo 0; return; }
     local LAST NOW
     LAST=$(cat "$F" 2>/dev/null || echo 0)
     NOW=$(date +%s)
-    echo $(( "$2" - (NOW - LAST) ))
+    echo $(( $2 - (NOW - LAST) ))
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Lectura de CPU del sistema
+# Lectura CPU sistema y por PID
 # ══════════════════════════════════════════════════════════════════════
 read_sys_stat() {
     awk '/^cpu / {idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle; exit}' /proc/stat
@@ -437,8 +423,7 @@ read_pid_ticks() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Prescan: snapshot T0 de TODOS los PIDs del sistema
-# Devuelve array asociativo PID→ticks ordenable
+# Prescan T0 — snapshot de todos los PIDs
 # ══════════════════════════════════════════════════════════════════════
 declare -A ALL_TICKS_T0
 declare -A ALL_COMM
@@ -452,7 +437,6 @@ prescan_t0() {
         local COMM
         COMM=$(cat /proc/$PID/comm 2>/dev/null || echo "")
         [ -z "$COMM" ] && continue
-        # Filtrar safe procs en el prescan para no cargar ticks innecesarios
         if echo "$COMM" | grep -qE "$SAFE_PROCS_RE"; then continue; fi
         local TICKS
         TICKS=$(awk '{print $14+$15+$16+$17}' "$STATF" 2>/dev/null || echo 0)
@@ -463,10 +447,6 @@ prescan_t0() {
 
 # ══════════════════════════════════════════════════════════════════════
 # identify_culprit()
-#   - Mide CPU real sistema + top-N procesos por delta de ticks
-#   - Evalúa RAM por proceso (VmRSS)
-#   - Actualiza contadores de fallback CPU y RAM
-#   - Devuelve: CULPRIT  CULPRIT_CPU  CULPRIT_MEM  SYS_CPU_PCT
 # ══════════════════════════════════════════════════════════════════════
 identify_culprit() {
     CULPRIT="unknown"
@@ -474,14 +454,12 @@ identify_culprit() {
     CULPRIT_MEM=0
     SYS_CPU_PCT=0
 
-    # ── T0: sistema + prescan de todos los PIDs ───────────────────────
     local SYS_T0
     SYS_T0=$(read_sys_stat)
     local SYS_TOTAL_T0 SYS_IDLE_T0
     SYS_TOTAL_T0=$(echo "$SYS_T0" | awk '{print $1}')
     SYS_IDLE_T0=$(echo  "$SYS_T0" | awk '{print $2}')
 
-    # PIDs de servicios conocidos (siempre incluidos)
     declare -A PID_TAG
     declare -A TAG_MEM_KB
 
@@ -493,7 +471,6 @@ identify_culprit() {
             local MEM
             MEM=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
             TAG_MEM_KB[$TAG]=$(( MEM > ${TAG_MEM_KB[$TAG]:-0} ? MEM : ${TAG_MEM_KB[$TAG]:-0} ))
-            # Agregar a prescan si no estaba (pueden estar en SAFE_PROCS_RE)
             ALL_TICKS_T0[$PID]=$(read_pid_ticks "$PID")
             ALL_COMM[$PID]="$TAG"
         done
@@ -506,10 +483,8 @@ identify_culprit() {
     _add_known "badvpn"  $(pgrep -x badvpn-udpgw 2>/dev/null)
     _add_known "stunnel" $(pgrep -x stunnel4 2>/dev/null; pgrep -x stunnel 2>/dev/null)
 
-    # ── Ventana de medición ───────────────────────────────────────────
     sleep "$SAMPLE_INTERVAL"
 
-    # ── T1: sistema ───────────────────────────────────────────────────
     local SYS_T1
     SYS_T1=$(read_sys_stat)
     local SYS_TOTAL_T1 SYS_IDLE_T1
@@ -527,7 +502,6 @@ identify_culprit() {
     local TOTAL_RAM_KB
     TOTAL_RAM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo)
 
-    # ── T1 + delta por PID → ordenar por ticks desc ───────────────────
     declare -A PID_DELTA
     for PID in "${!ALL_TICKS_T0[@]}"; do
         [ -f "/proc/$PID/stat" ] || continue
@@ -538,12 +512,10 @@ identify_culprit() {
         PID_DELTA[$PID]="$DELTA"
     done
 
-    # Ordenar PIDs por delta desc, tomar top N
     TOP_PIDS_SORTED=$(for PID in "${!PID_DELTA[@]}"; do
         echo "${PID_DELTA[$PID]} $PID"
     done | sort -rn | head -"$TOP_N_PROCS" | awk '{print $2}')
 
-    # ── Calcular CPU% real + RAM% por proceso ─────────────────────────
     declare -A TAG_CPU_REAL
     local SCAN_LOG="SCAN sys_cpu=${SYS_CPU_PCT}%:"
 
@@ -559,7 +531,6 @@ identify_culprit() {
         PID_MEM=$(awk "BEGIN {printf \"%.0f\", ($VmRSS/${TOTAL_RAM_KB:-1})*100}")
 
         if [ -n "$TAG" ]; then
-            # Proceso conocido — acumular por tag
             TAG_CPU_REAL[$TAG]=$(( ${TAG_CPU_REAL[$TAG]:-0} + PID_CPU ))
             TAG_MEM_KB[$TAG]=$(( VmRSS > ${TAG_MEM_KB[$TAG]:-0} ? VmRSS : ${TAG_MEM_KB[$TAG]:-0} ))
             SCAN_LOG="${SCAN_LOG} ${TAG}=${PID_CPU}%cpu/${PID_MEM}%mem"
@@ -570,7 +541,6 @@ identify_culprit() {
                 CULPRIT_MEM=$(awk "BEGIN {printf \"%.0f\", (${TAG_MEM_KB[$TAG]}/${TOTAL_RAM_KB:-1})*100}")
             fi
         else
-            # Proceso desconocido — evaluar para fallback CPU y RAM
             SCAN_LOG="${SCAN_LOG} ${COMM}[${PID}]=${PID_CPU}%cpu/${PID_MEM}%mem"
 
             # ── Fallback CPU ──────────────────────────────────────────
@@ -588,7 +558,6 @@ identify_culprit() {
                     CULPRIT_MEM="$PID_MEM"
                 fi
             else
-                # CPU bajó — decrementar contador si existía
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
                 if [ -f "$FB_CPU_CTR_F" ]; then
                     local CUR; CUR=$(cat "$FB_CPU_CTR_F" 2>/dev/null || echo 0)
@@ -609,7 +578,6 @@ identify_culprit() {
                 echo "$FB_RAM_CTR" > "$FB_RAM_CTR_F"
                 log "FALLBACK-RAM: ${COMM} (PID $PID) = ${PID_MEM}%mem — ciclo ${FB_RAM_CTR}/${FALLBACK_RAM_CYCLES}"
 
-                # RAM fallback solo actúa si no hay ya un culprit CPU más urgente
                 if [ "$FB_RAM_CTR" -ge "$FALLBACK_RAM_CYCLES" ] && [ "$CULPRIT" = "unknown" ]; then
                     CULPRIT="fallback_ram:${COMM}:${PID}"
                     CULPRIT_CPU="$PID_CPU"
@@ -632,7 +600,7 @@ identify_culprit() {
     log "$SCAN_LOG"
     log "RESULT: culprit=${CULPRIT} (cpu=${CULPRIT_CPU}% mem=${CULPRIT_MEM}%) sys_cpu=${SYS_CPU_PCT}%"
 
-    # Limpiar contadores huérfanos (PIDs que ya no existen)
+    # Limpiar contadores huérfanos
     for F in "${FB_CPU_DIR}"/pid_* "${FB_RAM_DIR}"/pid_*; do
         [ -f "$F" ] || continue
         local FPID="${F##*pid_}"
@@ -688,11 +656,10 @@ do_restart_stunnel() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Acción escalonada para fallback (CPU o RAM)
-# SIGTERM en primer ciclo de acción → SIGKILL si persiste
+# Acción escalonada fallback: SIGTERM → SIGKILL
 # ══════════════════════════════════════════════════════════════════════
 do_kill_fallback() {
-    local TYPE="$1"   # "cpu" o "ram"
+    local TYPE="$1"
     local FB_NAME="$2"
     local FB_PID="$3"
     local CTR_DIR
@@ -716,7 +683,7 @@ do_kill_fallback() {
         return
     fi
 
-    # Ciclos siguientes → verificar + SIGKILL si sobrevivió
+    # Ciclos siguientes → SIGKILL si sobrevivió
     if kill -0 "$FB_PID" 2>/dev/null; then
         log "ACTION [fallback-${TYPE}]: SIGKILL → $FB_NAME (PID $FB_PID) [ignoró SIGTERM]"
         kill -9 "$FB_PID" 2>/dev/null
@@ -732,8 +699,7 @@ do_kill_fallback() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# dispatch_action()
-# Verifica cooldown por culprit y despacha la acción correcta
+# dispatch_action() — verifica cooldown y despacha
 # ══════════════════════════════════════════════════════════════════════
 dispatch_action() {
     local REASON="$1"
@@ -742,7 +708,7 @@ dispatch_action() {
     case "$CULPRIT" in
         xray)
             _in_cd "xray" "$COOLDOWN_KNOWN" \
-                && { log "CD [xray]: en cooldown ($(( $(_cd_remaining xray $COOLDOWN_KNOWN) ))s restantes)"; return; }
+                && { log "CD [xray]: en cooldown ($(_cd_remaining xray $COOLDOWN_KNOWN)s restantes)"; return; }
             do_restart_xray ;;
         proxy)
             _in_cd "proxy" "$COOLDOWN_KNOWN" \
@@ -756,7 +722,6 @@ dispatch_action() {
             _in_cd "stunnel" "$COOLDOWN_KNOWN" \
                 && { log "CD [stunnel]: en cooldown"; return; }
             do_restart_stunnel ;;
-
         fallback_cpu:*)
             local FB_NAME; FB_NAME=$(echo "$CULPRIT" | cut -d: -f2)
             local FB_PID;  FB_PID=$(echo  "$CULPRIT" | cut -d: -f3)
@@ -764,7 +729,6 @@ dispatch_action() {
             _in_cd "$CD_KEY" "$COOLDOWN_FALLBACK" \
                 && { log "CD [fallback-cpu]: $FB_NAME en cooldown"; return; }
             do_kill_fallback "cpu" "$FB_NAME" "$FB_PID" ;;
-
         fallback_ram:*)
             local FB_NAME; FB_NAME=$(echo "$CULPRIT" | cut -d: -f2)
             local FB_PID;  FB_PID=$(echo  "$CULPRIT" | cut -d: -f3)
@@ -772,7 +736,6 @@ dispatch_action() {
             _in_cd "$CD_KEY" "$COOLDOWN_FALLBACK" \
                 && { log "CD [fallback-ram]: $FB_NAME en cooldown"; return; }
             do_kill_fallback "ram" "$FB_NAME" "$FB_PID" ;;
-
         unknown)
             log "WARN: culprit=unknown — sin proceso identificable — SIN ACCIÓN (falla segura)"
             return ;;
@@ -780,12 +743,11 @@ dispatch_action() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# MAIN — Flujo principal sin gate de loadavg
+# MAIN
 # ══════════════════════════════════════════════════════════════════════
 RAM_CTR=$(cat "$RAM_COUNTER_FILE" 2>/dev/null || echo 0)
 CPU_CTR=$(cat "$CPU_COUNTER_FILE" 2>/dev/null || echo 0)
 
-# Leer RAM del sistema
 RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
 if ! [[ "$RAM_PCT" =~ ^[0-9]+$ ]]; then
     log "ERROR: RAM inválida='$RAM_PCT' — abortando"; exit 1
@@ -793,19 +755,30 @@ fi
 
 log "INFO: RAM=${RAM_PCT}% | ctrs RAM=${RAM_CTR} CPU=${CPU_CTR} | iniciando scan CPU real..."
 
-# Siempre correr el scan — no hay gate de loadavg
 identify_culprit
 
 log "INFO: RAM=${RAM_PCT}% CPU_real=${SYS_CPU_PCT}% | culprit=${CULPRIT}"
 
 # ── CPU crítica inmediata ─────────────────────────────────────────────
+# FIX v4.5: si el culprit ya es un fallback_cpu, forzar su contador
+# al umbral requerido ANTES de llamar dispatch_action.
+# Razón: cuando CPU >= CPU_CRIT el VPS ya está ahogado. Si el
+# culpable ya fue identificado, no tiene sentido esperar ciclo 2.
+# dispatch_action → do_kill_fallback lee el contador del archivo.
+# Al forzarlo a FALLBACK_CPU_CYCLES, el SIGTERM sale inmediato.
 if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
-    dispatch_action "CPU crítica (${SYS_CPU_PCT}%≥${CPU_CRIT}%)"
+    if [[ "$CULPRIT" == fallback_cpu:* ]]; then
+        FB_PID_CRIT=$(echo "$CULPRIT" | cut -d: -f3)
+        FB_COMM_CRIT=$(echo "$CULPRIT" | cut -d: -f2)
+        echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_${FB_PID_CRIT}"
+        log "OVERRIDE v4.5: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) + fallback ${FB_COMM_CRIT} [PID ${FB_PID_CRIT}] → acción INMEDIATA (ciclos forzados)"
+    fi
+    dispatch_action "CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%)"
 fi
 
 # ── RAM crítica inmediata ─────────────────────────────────────────────
 if [ "$RAM_PCT" -ge "$RAM_CRIT" ]; then
-    dispatch_action "RAM crítica (${RAM_PCT}%≥${RAM_CRIT}%)"
+    dispatch_action "RAM crítica (${RAM_PCT}%>=${RAM_CRIT}%)"
 fi
 
 # ── Contadores sostenidos CPU ─────────────────────────────────────────
@@ -814,7 +787,7 @@ if [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
     echo "$CPU_CTR" > "$CPU_COUNTER_FILE"
     log "WARN: CPU alta (${SYS_CPU_PCT}%) — ciclo ${CPU_CTR}/${CYCLES_REQUIRED}"
     [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ] && \
-        dispatch_action "CPU sostenida (${SYS_CPU_PCT}% × ${CPU_CTR} ciclos)"
+        dispatch_action "CPU sostenida (${SYS_CPU_PCT}% x ${CPU_CTR} ciclos)"
 else
     if [ "$CPU_CTR" -gt 0 ]; then
         CPU_CTR=$(( CPU_CTR - 1 ))
@@ -829,7 +802,7 @@ if [ "$RAM_PCT" -ge "$RAM_WARN" ]; then
     echo "$RAM_CTR" > "$RAM_COUNTER_FILE"
     log "WARN: RAM alta (${RAM_PCT}%) — ciclo ${RAM_CTR}/${CYCLES_REQUIRED}"
     [ "$RAM_CTR" -ge "$CYCLES_REQUIRED" ] && \
-        dispatch_action "RAM sostenida (${RAM_PCT}% × ${RAM_CTR} ciclos)"
+        dispatch_action "RAM sostenida (${RAM_PCT}% x ${RAM_CTR} ciclos)"
 else
     if [ "$RAM_CTR" -gt 0 ]; then
         RAM_CTR=$(( RAM_CTR - 1 ))
@@ -838,7 +811,7 @@ else
     fi
 fi
 
-# ── Fallback CPU/RAM sostenidos (ya evaluados en identify_culprit) ────
+# ── Fallback sostenido (ya evaluado en identify_culprit) ─────────────
 if [[ "$CULPRIT" == fallback_cpu:* ]] || [[ "$CULPRIT" == fallback_ram:* ]]; then
     dispatch_action "Proceso externo sostenido detectado"
 fi
@@ -869,7 +842,7 @@ crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
 [ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
 if $CRON_OK && $LOG_OK; then
-    echo "✅ Watchdog v4.4 activo (cron cada 5 min)"
+    echo "✅ Watchdog v4.5 activo (cron cada 5 min)"
 else
     $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
     $LOG_OK  || echo "❌ log no existe en /var/log/xray_watchdog.log"
@@ -1020,13 +993,15 @@ echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Watchdog v4.4 activo (cada 5 min)"
+echo "Watchdog v4.5 activo (cada 5 min)"
 echo "   CPU real:  delta /proc/stat — sin gate de loadavg"
-echo "   CPU crit:  ≥75% inmediato | ≥70% × 2 ciclos"
-echo "   RAM crit:  ≥80% inmediato | ≥70% × 2 ciclos"
-echo "   Scan:      prescan /proc/*/stat ordenado por ticks (CPU-first)"
-echo "   Fallback:  CPU ≥40% × 2 ciclos → SIGTERM → SIGKILL"
-echo "              RAM ≥25% proceso × 2 ciclos → SIGTERM → SIGKILL"
+echo "   CPU crit:  >=75% inmediato | >=70% x 2 ciclos"
+echo "   RAM crit:  >=80% inmediato | >=70% x 2 ciclos"
+echo "   Scan:      prescan /proc/*/stat ordenado por ticks"
+echo "   Fallback:  CPU >=40% x 2 ciclos → SIGTERM → SIGKILL"
+echo "              RAM >=25% proceso x 2 ciclos → SIGTERM → SIGKILL"
+echo "   FIX v4.5:  CPU critica + fallback identificado → SIGTERM INMEDIATO"
+echo "              (sin esperar ciclo 2 cuando el VPS ya esta ahogado)"
 echo "   Cooldown:  por proceso/servicio (no global)"
 echo "              Conocidos: 15 min | Fallback: 10 min"
 echo "   Log: tail -f /var/log/xray_watchdog.log"
