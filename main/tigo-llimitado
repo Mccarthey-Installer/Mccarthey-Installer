@@ -1,6 +1,6 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.5"
-echo "================================================================"
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.5-fix"
+echo "======================================================================"
 set -e
 export TZ="America/El_Salvador"
 
@@ -288,29 +288,38 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. WATCHDOG v4.5
+# 5. WATCHDOG v4.5-fix
 #
-#   CAMBIOS vs v4.4:
-#   [FIX] CPU crítica + fallback_cpu identificado → acción INMEDIATA
-#         Si SYS_CPU_PCT >= CPU_CRIT y CULPRIT es fallback_cpu:*,
-#         se fuerza el contador del PID a FALLBACK_CPU_CYCLES ANTES
-#         de llamar dispatch_action.
-#         Resultado: SIGTERM en el primer ciclo crítico, sin gate.
+#   CAMBIOS vs v4.5 original:
 #
-#         Antes: VPS al 100% → watchdog veía al culpable → NO actuaba
-#                porque fallback estaba en ciclo 1/2.
-#         Ahora: VPS al 100% → culpable identificado → SIGTERM inmediato.
+#   [FIX-A] FALLBACK_CPU_MIN bajado de 40 → 20
+#           Problema real: 3 procesos "yes" → cada uno ~32% CPU.
+#           Con umbral 40 ninguno era promovido → culprit=unknown.
+#           Con umbral 20 los tres acumulan ciclos y el mayor gana.
 #
-#   Todo lo demás sin cambios (detección, prescan, cooldowns, etc.)
+#   [FIX-B] Condición de promoción fallback_cpu corregida:
+#           Antes: solo ganaba si PID_CPU > CULPRIT_CPU (y CULPRIT_CPU=0
+#           nunca se actualizaba si no había conocidos).
+#           Ahora: gana si PID_CPU > CULPRIT_CPU OR CULPRIT = "unknown".
+#           El de mayor CPU entre todos los fallbacks siempre prevalece.
 #
-#   Cron: */5 * * * * /root/xray_watchdog.sh
+#   [FIX-C] Selector de emergencia al final de identify_culprit():
+#           Si CULPRIT sigue siendo "unknown" con SYS_CPU >= CPU_WARN,
+#           se toma el proceso no-safe con mayor delta de ticks,
+#           sin importar si superó FALLBACK_CPU_MIN o no.
+#           Garantía: con CPU al 96% y culprit=unknown, siempre hay acción.
+#
+#   [FIX-D] Frecuencia cron: */5 → * * * * * (cada minuto).
+#           Opcional: systemd timer cada 30s (ver abajo en el script).
+#
+#   Todo lo demás sin cambios (cooldowns, SIGTERM/SIGKILL, etc.)
 # ===========================
-echo "Instalando Watchdog v4.5..."
+echo "Instalando Watchdog v4.5-fix..."
 
 cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG v4.5
+#   WATCHDOG v4.5-fix
 #
 #   CPU real sistema  : delta /proc/stat         (siempre, sin gate)
 #   CPU real proceso  : prescan /proc/*/stat      (ordenado por ticks)
@@ -318,12 +327,14 @@ cat > /root/xray_watchdog.sh << 'EOF'
 #   Cooldown          : por proceso/servicio       (no global)
 #   Umbrales CPU      : >=75% crítico | >=70% x2 ciclos
 #
-#   FIX v4.5: CPU crítica + fallback identificado → acción inmediata.
-#             Si el VPS ya está ahogado y el culpable ya está visible,
-#             no se espera confirmación de ciclo 2.
-#             El contador se fuerza al umbral antes de dispatch_action.
+#   FIX-A: FALLBACK_CPU_MIN 40→20. Con procesos paralelos de ~32% cada
+#          uno, el umbral 40 los excluía todos → culprit=unknown.
+#   FIX-B: Promoción fallback_cpu: gana si cpu>culprit_cpu OR unknown.
+#   FIX-C: Selector emergencia al final de identify_culprit: si culprit
+#          sigue unknown con CPU alta, toma el proceso con más ticks.
+#   FIX-D: Cron cada minuto (era cada 5 min).
 #
-#   Cron: */5 * * * * /root/xray_watchdog.sh
+#   Cron: * * * * * /root/xray_watchdog.sh
 # ═══════════════════════════════════════════════════════════════════════
 
 LOG="/var/log/xray_watchdog.log"
@@ -337,7 +348,9 @@ CPU_CRIT=75
 CYCLES_REQUIRED=2
 
 # ── Umbrales fallback CPU ─────────────────────────────────────────────
-FALLBACK_CPU_MIN=40
+# FIX-A: era 40, bajado a 20.
+# Con 3 procesos paralelos cada uno cae ~32% → con 40 ninguno era detectado.
+FALLBACK_CPU_MIN=20
 FALLBACK_CPU_CYCLES=2
 
 # ── Umbrales fallback RAM ─────────────────────────────────────────────
@@ -544,6 +557,7 @@ identify_culprit() {
             SCAN_LOG="${SCAN_LOG} ${COMM}[${PID}]=${PID_CPU}%cpu/${PID_MEM}%mem"
 
             # ── Fallback CPU ──────────────────────────────────────────
+            # FIX-A: umbral bajado a 20 (era 40).
             if [ "$PID_CPU" -ge "$FALLBACK_CPU_MIN" ]; then
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
                 local FB_CPU_CTR
@@ -552,10 +566,15 @@ identify_culprit() {
                 echo "$FB_CPU_CTR" > "$FB_CPU_CTR_F"
                 log "FALLBACK-CPU: ${COMM} (PID $PID) = ${PID_CPU}%cpu — ciclo ${FB_CPU_CTR}/${FALLBACK_CPU_CYCLES}"
 
-                if [ "$FB_CPU_CTR" -ge "$FALLBACK_CPU_CYCLES" ] && [ "$PID_CPU" -gt "$CULPRIT_CPU" ]; then
-                    CULPRIT="fallback_cpu:${COMM}:${PID}"
-                    CULPRIT_CPU="$PID_CPU"
-                    CULPRIT_MEM="$PID_MEM"
+                # FIX-B: gana si PID_CPU > CULPRIT_CPU OR culprit es unknown.
+                # Antes solo evaluaba PID_CPU > CULPRIT_CPU, lo que fallaba
+                # cuando CULPRIT_CPU=0 y no había ningún conocido.
+                if [ "$FB_CPU_CTR" -ge "$FALLBACK_CPU_CYCLES" ]; then
+                    if [ "$PID_CPU" -gt "$CULPRIT_CPU" ] || [ "$CULPRIT" = "unknown" ]; then
+                        CULPRIT="fallback_cpu:${COMM}:${PID}"
+                        CULPRIT_CPU="$PID_CPU"
+                        CULPRIT_MEM="$PID_MEM"
+                    fi
                 fi
             else
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
@@ -598,6 +617,53 @@ identify_culprit() {
     done
 
     log "$SCAN_LOG"
+
+    # ── Selector de emergencia ─────────────────────────────────────────
+    # FIX-C: Si después de todo el scan CULPRIT sigue siendo "unknown"
+    # con CPU alta, tomamos el proceso no-safe con más ticks del período,
+    # sin importar si superó FALLBACK_CPU_MIN o no.
+    # Cubre el caso: muchos procesos paralelos con CPU individual baja
+    # pero suma total que satura el VPS.
+    if [ "$CULPRIT" = "unknown" ] && [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
+        local BEST_PID="" BEST_DELTA=0
+        for PID in $TOP_PIDS_SORTED; do
+            [ -n "${PID_TAG[$PID]:-}" ] && continue   # es servicio conocido, skip
+            local D="${PID_DELTA[$PID]:-0}"
+            if [ "$D" -gt "$BEST_DELTA" ]; then
+                BEST_DELTA="$D"
+                BEST_PID="$PID"
+            fi
+        done
+
+        if [ -n "$BEST_PID" ]; then
+            local B_COMM="${ALL_COMM[$BEST_PID]:-unknown}"
+            local B_CPU
+            B_CPU=$(awk "BEGIN {printf \"%.0f\", (${PID_DELTA[$BEST_PID]:-0}/$DELTA_SYS)*100}")
+            local B_VmRSS
+            B_VmRSS=$(awk '/VmRSS/{print $2}' /proc/$BEST_PID/status 2>/dev/null || echo 0)
+            local B_MEM
+            B_MEM=$(awk "BEGIN {printf \"%.0f\", ($B_VmRSS/${TOTAL_RAM_KB:-1})*100}")
+
+            # Acumular ciclos igual que fallback normal
+            local EM_CTR_F="${FB_CPU_DIR}/pid_${BEST_PID}"
+            local EM_CTR
+            EM_CTR=$(cat "$EM_CTR_F" 2>/dev/null || echo 0)
+            EM_CTR=$(( EM_CTR + 1 ))
+            echo "$EM_CTR" > "$EM_CTR_F"
+
+            log "EMERGENCY: top proceso no-safe → ${B_COMM} [PID ${BEST_PID}] = ${B_CPU}%cpu — ciclo ${EM_CTR}/${FALLBACK_CPU_CYCLES}"
+
+            if [ "$EM_CTR" -ge "$FALLBACK_CPU_CYCLES" ]; then
+                CULPRIT="fallback_cpu:${B_COMM}:${BEST_PID}"
+                CULPRIT_CPU="$B_CPU"
+                CULPRIT_MEM="$B_MEM"
+                log "EMERGENCY: culprit forzado → ${CULPRIT} (${B_CPU}%cpu)"
+            fi
+        else
+            log "EMERGENCY: no se encontró proceso candidato (todos son safe o conocidos)"
+        fi
+    fi
+
     log "RESULT: culprit=${CULPRIT} (cpu=${CULPRIT_CPU}% mem=${CULPRIT_MEM}%) sys_cpu=${SYS_CPU_PCT}%"
 
     # Limpiar contadores huérfanos
@@ -760,18 +826,14 @@ identify_culprit
 log "INFO: RAM=${RAM_PCT}% CPU_real=${SYS_CPU_PCT}% | culprit=${CULPRIT}"
 
 # ── CPU crítica inmediata ─────────────────────────────────────────────
-# FIX v4.5: si el culprit ya es un fallback_cpu, forzar su contador
-# al umbral requerido ANTES de llamar dispatch_action.
-# Razón: cuando CPU >= CPU_CRIT el VPS ya está ahogado. Si el
-# culpable ya fue identificado, no tiene sentido esperar ciclo 2.
-# dispatch_action → do_kill_fallback lee el contador del archivo.
-# Al forzarlo a FALLBACK_CPU_CYCLES, el SIGTERM sale inmediato.
+# (herencia de v4.5): si el culprit ya es un fallback_cpu, forzar
+# su contador al umbral para que SIGTERM salga inmediato.
 if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
     if [[ "$CULPRIT" == fallback_cpu:* ]]; then
         FB_PID_CRIT=$(echo "$CULPRIT" | cut -d: -f3)
         FB_COMM_CRIT=$(echo "$CULPRIT" | cut -d: -f2)
         echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_${FB_PID_CRIT}"
-        log "OVERRIDE v4.5: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) + fallback ${FB_COMM_CRIT} [PID ${FB_PID_CRIT}] → acción INMEDIATA (ciclos forzados)"
+        log "OVERRIDE: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) + fallback ${FB_COMM_CRIT} [PID ${FB_PID_CRIT}] → acción INMEDIATA (ciclos forzados)"
     fi
     dispatch_action "CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%)"
 fi
@@ -822,14 +884,48 @@ EOF
 
 chmod +x /root/xray_watchdog.sh
 
-# ── Registrar cron ────────────────────────────────────────────────────
+# ── Registrar cron — FIX-D: cada minuto (era */5) ────────────────────
 CRON_TMP_WD=$(mktemp)
 crontab -l 2>/dev/null > "$CRON_TMP_WD" || true
-if ! grep -qF "xray_watchdog.sh" "$CRON_TMP_WD"; then
-    echo "*/5 * * * * /root/xray_watchdog.sh" >> "$CRON_TMP_WD"
-    crontab "$CRON_TMP_WD"
-fi
+
+# Eliminar entrada vieja si existía con */5
+sed -i '/xray_watchdog\.sh/d' "$CRON_TMP_WD"
+
+echo "* * * * * /root/xray_watchdog.sh" >> "$CRON_TMP_WD"
+crontab "$CRON_TMP_WD"
 rm -f "$CRON_TMP_WD"
+
+# ── Opcional: systemd timer cada 30s (sub-minuto) ─────────────────────
+# Cron no puede ir por debajo de 1 minuto. Si necesitás 30s, activá esto:
+cat > /etc/systemd/system/watchdog-vpn.service <<'SVEOF'
+[Unit]
+Description=Watchdog VPN MCCARTHEY — run
+
+[Service]
+Type=oneshot
+ExecStart=/root/xray_watchdog.sh
+StandardOutput=null
+StandardError=null
+SVEOF
+
+cat > /etc/systemd/system/watchdog-vpn.timer <<'TMEOF'
+[Unit]
+Description=Watchdog VPN MCCARTHEY — cada 30s
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=30
+AccuracySec=1
+
+[Install]
+WantedBy=timers.target
+TMEOF
+
+systemctl daemon-reload
+# NOTA: el timer de 30s está DESACTIVADO por defecto para no solapar con cron.
+# Para activarlo: systemctl enable --now watchdog-vpn.timer
+# Y deshabilitar el cron: crontab -e → borrar línea xray_watchdog.sh
+echo "   (Timer systemd 30s instalado pero DESACTIVADO — ver comentario arriba)"
 
 # ── Primera corrida ───────────────────────────────────────────────────
 echo "   Ejecutando primera corrida del watchdog..."
@@ -842,7 +938,7 @@ crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
 [ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
 if $CRON_OK && $LOG_OK; then
-    echo "✅ Watchdog v4.5 activo (cron cada 5 min)"
+    echo "✅ Watchdog v4.5-fix activo (cron cada 1 min)"
 else
     $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
     $LOG_OK  || echo "❌ log no existe en /var/log/xray_watchdog.log"
@@ -993,18 +1089,29 @@ echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Watchdog v4.5 activo (cada 5 min)"
+echo "Watchdog v4.5-fix activo (cada 1 min via cron)"
 echo "   CPU real:  delta /proc/stat — sin gate de loadavg"
 echo "   CPU crit:  >=75% inmediato | >=70% x 2 ciclos"
 echo "   RAM crit:  >=80% inmediato | >=70% x 2 ciclos"
 echo "   Scan:      prescan /proc/*/stat ordenado por ticks"
-echo "   Fallback:  CPU >=40% x 2 ciclos → SIGTERM → SIGKILL"
+echo ""
+echo "   FIXES aplicados:"
+echo "   [A] FALLBACK_CPU_MIN: 40 → 20"
+echo "       Detecta procesos paralelos de ~32% (ej: 3x yes)"
+echo "   [B] Promoción fallback: gana si cpu>culprit OR culprit=unknown"
+echo "       Antes: con CULPRIT_CPU=0 y sin servicios conocidos, nunca ganaba"
+echo "   [C] Selector emergencia: si culprit=unknown con CPU alta,"
+echo "       toma el proceso con más ticks sin importar umbral mínimo"
+echo "   [D] Cron: */5 → * * * * * (cada 1 minuto)"
+echo ""
+echo "   Fallback:  CPU >=20% x 2 ciclos → SIGTERM → SIGKILL"
 echo "              RAM >=25% proceso x 2 ciclos → SIGTERM → SIGKILL"
-echo "   FIX v4.5:  CPU critica + fallback identificado → SIGTERM INMEDIATO"
-echo "              (sin esperar ciclo 2 cuando el VPS ya esta ahogado)"
-echo "   Cooldown:  por proceso/servicio (no global)"
-echo "              Conocidos: 15 min | Fallback: 10 min"
+echo "   Cooldown:  Conocidos: 15 min | Fallback: 10 min"
 echo "   Log: tail -f /var/log/xray_watchdog.log"
+echo ""
+echo "   Timer 30s (opcional, desactivado):"
+echo "   Para activar: systemctl enable --now watchdog-vpn.timer"
+echo "   Y eliminar el cron: crontab -e"
 echo ""
 echo "Limpieza automática: diaria a las 3am"
 echo "   Script : /usr/local/sbin/clean-vps.sh"
