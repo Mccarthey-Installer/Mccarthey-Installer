@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.8"
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.9"
 echo "==================================================================="
 set -e
 export TZ="America/El_Salvador"
@@ -288,55 +288,83 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. WATCHDOG v4.8
+# 5. WATCHDOG v4.9
 #
-#   NUEVO en v4.8 — Blindaje total de sensores (/proc hardening):
+#   NUEVO en v4.9 — Auto-exclusión del watchdog (separación de roles):
 #
-#   PROBLEMA REAL detectado en estrés:
-#     awk recibe VmRSS vacío → interpreta como regexp → "unterminated regexp"
-#     → PID_MEM queda vacío → [ "$PID_MEM" -ge 20 ] → "integer expression expected"
-#     → lógica de detección rota, decisiones basadas en nada.
-#     → falsa sensación de seguridad: el watchdog corre pero no defiende.
+#   PROBLEMA REAL detectado en producción bajo carga:
+#     El watchdog entraba en EMERGENCY sin encontrar culprit claro.
+#     Seleccionaba al proceso con mayor delta de ticks en top-N.
+#     En carga alta, el propio xray_watchdog.sh (bash, awk, loops de scan)
+#     aparecía en ese top porque el scan en sí consume CPU.
+#     → El watchdog se detectaba a sí mismo como culprit.
+#     → Intentaba matarse con SIGTERM/SIGKILL.
+#     → Se suicidaba justo en el peor momento: carga crítica.
+#     → Sistema quedaba sin monitoreo ni protección.
 #
-#   SOLUCIÓN — 4 funciones de sanitización:
+#   SOLUCIÓN — Auto-exclusión por PID real (no por nombre):
 #
-#   [A] safe_int(): cualquier valor → entero limpio >= 0.
-#       Vacío / no-numérico / negativo → 0.
-#       Elimina el problema raíz: comparaciones y awk siempre reciben número.
+#   [E] SELF_PIDS — conjunto de PIDs inmunes construido al inicio:
+#       $$ = PID del watchdog
+#       $PPID = bash/cron/systemd que lo lanzó
+#       Toda la cadena de padres via /proc/PID/status (PPid:)
+#       PID del proceso cron que disparó este ciclo
+#       → Ninguno de estos PIDs entra jamás al pool de análisis.
+#       → No importa cuánta CPU consuman: son invisibles para el scan.
 #
-#   [B] safe_pct(): porcentaje con guardia doble.
-#       Ambos operandos pasan por safe_int antes del cálculo.
-#       Si denominador <= 0 → devuelve 0. Nunca division-by-zero.
-#       Nunca "unterminated regexp" porque awk solo recibe enteros.
+#   [F] is_self_pid() — función de lookup O(1) en el conjunto SELF_PIDS.
+#       Llamada en prescan_t0() antes de agregar cualquier PID al pool.
+#       Llamada en EMERGENCY antes de seleccionar candidato.
+#       → Doble barrera: ni entra al scan, ni puede ser elegido.
 #
-#   [C] safe_pid_ticks(): lee /proc/PID/stat con manejo de race condition.
-#       Verifica que el proceso existe ANTES de leer.
-#       Verifica que stat tiene al menos 17 campos (proceso vivo y completo).
-#       Si murió en medio de la lectura → devuelve 0 (delta = 0, no basura).
+#   [G] EMERGENCY refactorizado — filtra SELF_PIDS explícitamente:
+#       Antes: tomaba el top delta sin filtro → watchdog podía entrar.
+#       Ahora: is_self_pid() aplicado antes de comparar deltas.
+#       → El loop de EMERGENCY no puede seleccionar ningún PID propio.
 #
-#   [D] safe_vmrss(): lee VmRSS con fallback explícito a 0.
-#       Valida numéricamente el resultado antes de retornarlo.
-#       Protege contra proceso que muere entre leer stat y leer status.
+#   [H] Logging de auto-exclusión:
+#       Si un SELF_PID aparece en top-N → se loguea y se descarta.
+#       Útil para debugging: confirma que la exclusión está activa.
 #
-#   HEREDADO de v4.7:
+#   POR QUÉ PID Y NO NOMBRE:
+#     El nombre "bash" o "sh" es genérico y puede coincidir con
+#     procesos legítimos a matar. El PID $$ es único e irrepetible.
+#     La exclusión por nombre en SAFE_PROCS_RE es complementaria
+#     pero no suficiente: el watchdog corre como bash, y bash ya
+#     estaba en SAFE_PROCS_RE, pero el EMERGENCY saltaba ese filtro.
+#     Con PID: garantía absoluta, sin falsos positivos.
+#
+#   HEREDADO de v4.8 (sin cambios):
+#     - [A] safe_int()       — sanitiza valores a entero no-negativo
+#     - [B] safe_pct()       — % con guardia division-by-zero y regexp
+#     - [C] safe_pid_ticks() — race condition en /proc/PID/stat resuelto
+#     - [D] safe_vmrss()     — VmRSS con fallback y validación numérica
+#
+#   HEREDADO de v4.7 (sin cambios):
 #     - FORCE_KILL=1: bypass de cooldowns en CPU >= CPU_CRIT
 #     - Multi-kill: hasta 3 culprits simultáneos por ciclo
 #     - Re-scan 3s post-kill con segunda ronda si sigue crítico
 #
-#   HEREDADO de v4.6:
+#   HEREDADO de v4.6 (sin cambios):
 #     - Detección grupal por nombre (carga distribuida)
 #     - 4 capas: conocidos → fallback → grupo → emergencia
 #
 #   Frecuencia: cron cada minuto.
 # ===========================
-echo "Instalando Watchdog v4.8..."
+echo "Instalando Watchdog v4.9..."
 
 cat > /root/xray_watchdog.sh << 'WDEOF'
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG v4.8 — Hardened sensor layer
+#   WATCHDOG v4.9 — Self-exclusion layer (separación de roles)
 #
-#   v4.8 fixes (blindaje de /proc):
+#   v4.9 fixes (auto-exclusión del watchdog):
+#     [E] SELF_PIDS        — conjunto de PIDs propios inmunes al scan
+#     [F] is_self_pid()    — lookup O(1), doble barrera prescan+EMERGENCY
+#     [G] EMERGENCY fix    — filtra SELF_PIDS antes de elegir candidato
+#     [H] Logging          — registra si un SELF_PID aparece en top-N
+#
+#   v4.8 fixes (mantenidos — blindaje de /proc):
 #     [A] safe_int()       — sanitiza cualquier valor a entero válido
 #     [B] safe_pct()       — % con guardia division-by-zero y regexp
 #     [C] safe_pid_ticks() — race condition en /proc/PID/stat resuelto
@@ -402,7 +430,9 @@ CULPRIT_GROUP_PIDS=""
 EXTRA_CULPRITS=""
 FORCE_KILL=0
 
-# ── Procesos NUNCA afectados ──────────────────────────────────────────
+# ── Procesos NUNCA afectados (por nombre) ────────────────────────────
+# Nota: esta lista es complementaria a la exclusión por PID (SELF_PIDS).
+# La exclusión por PID es la barrera primaria y más fuerte.
 SAFE_PROCS_RE="^(systemd|systemd-.*|init|sshd|bash|sh|dash|zsh|fish|\
 kthread|ksoftirqd|kworker|migration|rcu_.*|watchdog|\
 ps|awk|grep|sed|cut|head|tail|cat|xargs|sleep|find|wc|sort|uniq|\
@@ -424,20 +454,74 @@ exec 200>"$LOCK"
 flock -n 200 || exit 0
 
 # ══════════════════════════════════════════════════════════════════════
-# [A] safe_int() — sanitiza cualquier valor a entero no-negativo
+# [E] SELF_PIDS — Construcción del conjunto de PIDs propios
 #
 # Problema que resuelve:
-#   Variables vacías o no-numéricas llegaban a:
-#     [ "$PID_MEM" -ge 20 ]  →  "integer expression expected"
-#     awk "BEGIN{ print ($VAR/1000)*100 }"  →  "unterminated regexp"
-#   porque bash/awk interpretan la cadena vacía como inicio de regexp.
+#   El watchdog consume CPU por diseño (loops, awk, scans de /proc).
+#   En EMERGENCY, el proceso con mayor delta de ticks era seleccionado
+#   sin importar si era el propio watchdog o su bash padre.
+#   → El watchdog se mataba a sí mismo en el peor momento.
 #
-# Uso: VAR=$(safe_int "$RAW")
-#   Vacío / "abc" / "-5" / "  3  " → 0 o el entero limpio
+# Estrategia:
+#   1. $$ = PID de este script (el watchdog en sí)
+#   2. $PPID = padre inmediato (bash de cron, systemd, etc.)
+#   3. Cadena de ancestros via /proc/PID/status (PPid:) hasta PID 1
+#   4. Se almacenan en array asociativo SELF_PIDS para lookup O(1)
+#   5. Cualquier PID en SELF_PIDS es invisible para el scan
+#
+# Por qué PID y no nombre:
+#   "bash" es genérico — puede coincidir con shells de usuarios.
+#   $$ es único e irrepetible en este ciclo de ejecución.
+#   La exclusión por nombre (SAFE_PROCS_RE) es complementaria
+#   pero no era suficiente: EMERGENCY saltaba ese filtro.
+# ══════════════════════════════════════════════════════════════════════
+declare -A SELF_PIDS
+
+_build_self_pids() {
+    # PID del watchdog y su padre inmediato
+    SELF_PIDS[$$]=1
+    SELF_PIDS[$PPID]=1
+
+    # Recorrer cadena de ancestros hasta init (PID 1)
+    local WALK_PID=$PPID
+    local MAX_DEPTH=10   # evitar loop infinito en sistemas raros
+    local DEPTH=0
+
+    while [ "$WALK_PID" -gt 1 ] 2>/dev/null && [ "$DEPTH" -lt "$MAX_DEPTH" ]; do
+        [ -f "/proc/$WALK_PID/status" ] || break
+        local PARENT
+        PARENT=$(awk '/^PPid:/{print $2}' "/proc/$WALK_PID/status" 2>/dev/null)
+        PARENT=${PARENT:-0}
+        [ "$PARENT" -le 1 ] && break
+        SELF_PIDS[$PARENT]=1
+        WALK_PID=$PARENT
+        (( DEPTH++ ))
+    done
+
+    log "SELF-EXCL: PIDs propios excluidos del scan: ${!SELF_PIDS[*]}"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# [F] is_self_pid() — Lookup O(1) en el conjunto SELF_PIDS
+#
+# Retorna 0 (true en bash) si el PID es propio del watchdog.
+# Retorna 1 (false) si es un PID ajeno que puede analizarse.
+#
+# Uso: is_self_pid "$PID" && continue   # saltar este PID
+# ══════════════════════════════════════════════════════════════════════
+is_self_pid() {
+    [ -n "${SELF_PIDS[$1]}" ]
+}
+
+# Construir el conjunto de PIDs propios al inicio
+_build_self_pids
+
+# ══════════════════════════════════════════════════════════════════════
+# [A] safe_int() — sanitiza cualquier valor a entero no-negativo
 # ══════════════════════════════════════════════════════════════════════
 safe_int() {
     local RAW="${1:-0}"
-    RAW="${RAW// /}"                          # quitar espacios
+    RAW="${RAW// /}"
     [[ "$RAW" =~ ^-?[0-9]+$ ]] || { echo 0; return; }
     [ "$RAW" -lt 0 ] 2>/dev/null && { echo 0; return; }
     echo "$RAW"
@@ -445,14 +529,6 @@ safe_int() {
 
 # ══════════════════════════════════════════════════════════════════════
 # [B] safe_pct() — porcentaje con guardia de división por cero
-#
-# Problema que resuelve:
-#   awk "BEGIN {printf \"%.0f\", ($VmRSS/$TOTAL_RAM_KB)*100}"
-#   Con VmRSS vacío → awk ve "(/2023380)*100" → regexp error.
-#   Con TOTAL_RAM_KB=0 → división por cero → resultado indefinido.
-#
-# Uso: PCT=$(safe_pct NUMERADOR DENOMINADOR)
-#   Ambos pasan por safe_int. Denominador <= 0 → devuelve 0.
 # ══════════════════════════════════════════════════════════════════════
 safe_pct() {
     local NUM; NUM=$(safe_int "${1:-0}")
@@ -463,18 +539,6 @@ safe_pct() {
 
 # ══════════════════════════════════════════════════════════════════════
 # [C] safe_pid_ticks() — ticks de /proc/PID/stat con race condition
-#
-# Problema que resuelve:
-#   El proceso puede morir entre el prescan T0 y la lectura T1.
-#   /proc/PID/stat a medio escribir → campos vacíos → ticks = "".
-#   Delta = ("" - número) → negativo o vacío → PID_CPU = basura.
-#
-# Estrategia:
-#   1. Verificar /proc/PID existe
-#   2. Leer stat completo en variable
-#   3. Verificar >= 17 campos (proceso vivo y completo)
-#   4. Extraer campos 14+15+16+17 y pasar por safe_int
-#   5. Cualquier fallo → 0 (delta será 0, no basura)
 # ══════════════════════════════════════════════════════════════════════
 safe_pid_ticks() {
     local PID="$1"
@@ -484,7 +548,6 @@ safe_pid_ticks() {
     local STAT_LINE
     STAT_LINE=$(cat "/proc/$PID/stat" 2>/dev/null) || { echo 0; return; }
 
-    # Necesitamos al menos 17 campos para que $14..$17 sean válidos
     local FC
     FC=$(echo "$STAT_LINE" | awk '{print NF}')
     [ "$(safe_int "$FC")" -lt 17 ] && { echo 0; return; }
@@ -496,13 +559,6 @@ safe_pid_ticks() {
 
 # ══════════════════════════════════════════════════════════════════════
 # [D] safe_vmrss() — VmRSS con fallback y validación numérica
-#
-# Problema que resuelve:
-#   Si el proceso muere entre leer stat y leer status, awk no
-#   encuentra VmRSS → devuelve "" → safe_pct recibe "" → regexp error.
-#   También: "kB" en el campo no interfiere porque awk toma $2.
-#
-# Retorna el valor en kB como entero, o 0 si no disponible.
 # ══════════════════════════════════════════════════════════════════════
 safe_vmrss() {
     local PID="$1"
@@ -552,6 +608,7 @@ read_sys_stat() {
 
 # ══════════════════════════════════════════════════════════════════════
 # Prescan T0
+# [E/F aplicado] — is_self_pid() filtra PIDs propios antes de agregar
 # ══════════════════════════════════════════════════════════════════════
 declare -A ALL_TICKS_T0
 declare -A ALL_COMM
@@ -563,6 +620,12 @@ prescan_t0() {
         local PID="${STATF%/stat}"; PID="${PID##*/}"
         [ "$PID" = "1" ] && continue
         [ -d "/proc/$PID" ] || continue   # race: ya murió
+
+        # [F] Barrera primaria: excluir PIDs propios del watchdog
+        if is_self_pid "$PID"; then
+            continue   # invisible para el scan, sin log (demasiado verboso)
+        fi
+
         local COMM
         COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "")
         [ -z "$COMM" ] && continue
@@ -583,7 +646,6 @@ identify_culprit() {
     EXTRA_CULPRITS=""
     SYS_CPU_PCT=0
 
-    # Leer estado del sistema en T0
     local SYS_T0
     SYS_T0=$(read_sys_stat)
     if [ -z "$SYS_T0" ]; then
@@ -601,6 +663,8 @@ identify_culprit() {
         local TAG="$1"; shift
         for PID in "$@"; do
             [ -d "/proc/$PID" ] || continue
+            # [F] No agregar PIDs propios ni siquiera como servicios conocidos
+            is_self_pid "$PID" && { log "SELF-EXCL: PID $PID ($TAG) es PID propio — ignorado en known"; continue; }
             PID_TAG[$PID]="$TAG"
             local MEM; MEM=$(safe_vmrss "$PID")
             TAG_MEM_KB[$TAG]=$(( MEM > ${TAG_MEM_KB[$TAG]:-0} ? MEM : ${TAG_MEM_KB[$TAG]:-0} ))
@@ -618,7 +682,6 @@ identify_culprit() {
 
     sleep "$SAMPLE_INTERVAL"
 
-    # Leer estado del sistema en T1
     local SYS_T1
     SYS_T1=$(read_sys_stat)
     if [ -z "$SYS_T1" ]; then
@@ -632,7 +695,6 @@ identify_culprit() {
     local DELTA_SYS=$(( SYS_TOTAL_T1 - SYS_TOTAL_T0 ))
     local DELTA_IDLE=$(( SYS_IDLE_T1 - SYS_IDLE_T0 ))
 
-    # Delta negativo = reboot/overflow/lectura corrupta
     if [ "$DELTA_SYS" -le 0 ]; then
         log "SCAN: delta sistema <= 0 (${DELTA_SYS}) — tick inválido, abortando ciclo"
         return
@@ -644,9 +706,8 @@ identify_culprit() {
 
     local TOTAL_RAM_KB
     TOTAL_RAM_KB=$(safe_int "$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null)")
-    [ "$TOTAL_RAM_KB" -le 0 ] && TOTAL_RAM_KB=1   # guardia division-by-zero
+    [ "$TOTAL_RAM_KB" -le 0 ] && TOTAL_RAM_KB=1
 
-    # ── Calcular deltas por PID ───────────────────────────────────────
     declare -A PID_DELTA
     declare -A PID_CPU_PCT
 
@@ -654,7 +715,7 @@ identify_culprit() {
         local T1; T1=$(safe_pid_ticks "$PID")
         local T0; T0=$(safe_int "${ALL_TICKS_T0[$PID]}")
         local DELTA=$(( T1 - T0 ))
-        [ "$DELTA" -lt 0 ] && DELTA=0   # PID reusado por otro proceso
+        [ "$DELTA" -lt 0 ] && DELTA=0
         PID_DELTA[$PID]="$DELTA"
         PID_CPU_PCT[$PID]=$(safe_pct "$DELTA" "$DELTA_SYS")
     done
@@ -668,6 +729,13 @@ identify_culprit() {
 
     # ── CAPA 1 y 2: Servicios conocidos + fallback individual ─────────
     for PID in $TOP_PIDS_SORTED; do
+        # [H] Logging: si un SELF_PID aparece en top-N, registrar y descartar
+        if is_self_pid "$PID"; then
+            local SELF_COMM; SELF_COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "watchdog")
+            log "SELF-EXCL: PID $PID ($SELF_COMM) apareció en top-N — descartado (es PID propio)"
+            continue
+        fi
+
         local TAG="${PID_TAG[$PID]:-}"
         local COMM="${ALL_COMM[$PID]:-unknown}"
         local PID_CPU; PID_CPU=$(safe_int "${PID_CPU_PCT[$PID]:-0}")
@@ -742,6 +810,8 @@ identify_culprit() {
     declare -A COMM_PIDS_ALL
 
     for PID in "${!PID_DELTA[@]}"; do
+        # [F] Doble check en el loop grupal también
+        is_self_pid "$PID" && continue
         [ -n "${PID_TAG[$PID]:-}" ] && continue
         local COMM="${ALL_COMM[$PID]:-}"
         [ -z "$COMM" ] && continue
@@ -793,9 +863,20 @@ identify_culprit() {
     done
 
     # ── CAPA 4: Selector de emergencia ───────────────────────────────
+    # [G] EMERGENCY refactorizado — filtra SELF_PIDS antes de elegir
+    #
+    # Antes (v4.8): tomaba el top delta sin verificar si era el watchdog.
+    # Ahora (v4.9): is_self_pid() aplicado ANTES de comparar deltas.
+    # Garantía: ningún PID propio puede ser elegido como culprit aquí.
     if [ "$CULPRIT" = "unknown" ] && [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
         local BEST_PID="" BEST_DELTA=0
         for PID in $TOP_PIDS_SORTED; do
+            # [G] Filtro SELF_PIDS en EMERGENCY — barrera secundaria
+            if is_self_pid "$PID"; then
+                local SELF_COMM; SELF_COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "watchdog")
+                log "EMERGENCY SELF-EXCL: PID $PID ($SELF_COMM) descartado como candidato de emergencia"
+                continue
+            fi
             [ -n "${PID_TAG[$PID]:-}" ] && continue
             local D; D=$(safe_int "${PID_DELTA[$PID]:-0}")
             if [ "$D" -gt "$BEST_DELTA" ]; then
@@ -825,7 +906,7 @@ identify_culprit() {
                 log "EMERGENCY: culprit forzado → ${CULPRIT}"
             fi
         else
-            log "EMERGENCY: no se encontró proceso candidato (todos son safe o conocidos)"
+            log "EMERGENCY: no se encontró proceso candidato (todos son safe, conocidos o propios del watchdog)"
         fi
     fi
 
@@ -845,6 +926,7 @@ identify_culprit() {
     done
 
     for PID in $TOP_PIDS_SORTED; do
+        is_self_pid "$PID" && continue   # [F] No incluir PIDs propios en multi-kill
         [ -n "${PID_TAG[$PID]:-}" ] && continue
         local PCPU; PCPU=$(safe_int "${PID_CPU_PCT[$PID]:-0}")
         [ "$PCPU" -lt "$FALLBACK_CPU_MIN" ] && continue
@@ -916,6 +998,13 @@ do_kill_fallback() {
     local TYPE="$1"
     local FB_NAME="$2"
     local FB_PID="$3"
+
+    # [F] Guardia final: nunca matar PIDs propios por ningún camino
+    if is_self_pid "$FB_PID"; then
+        log "ABORT [fallback-${TYPE}]: PID $FB_PID ($FB_NAME) es PID propio del watchdog — acción cancelada"
+        return
+    fi
+
     local CTR_DIR
     [ "$TYPE" = "cpu" ] && CTR_DIR="$FB_CPU_DIR" || CTR_DIR="$FB_RAM_DIR"
     local FB_CTR_F="${CTR_DIR}/pid_${FB_PID}"
@@ -962,6 +1051,11 @@ do_kill_group() {
 
     local ALIVE_PIDS=""
     for PID in $GRP_PIDS; do
+        # [F] Guardia final en kill grupal también
+        if is_self_pid "$PID"; then
+            log "ABORT [group]: PID $PID es PID propio del watchdog — excluido del kill grupal"
+            continue
+        fi
         kill -0 "$PID" 2>/dev/null && ALIVE_PIDS="${ALIVE_PIDS}${PID} "
     done
 
@@ -1273,7 +1367,7 @@ crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
 [ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
 if $CRON_OK && $LOG_OK; then
-    echo "✅ Watchdog v4.8 activo (cron cada 1 min)"
+    echo "✅ Watchdog v4.9 activo (cron cada 1 min)"
 else
     $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
     $LOG_OK  || echo "❌ log no existe en /var/log/xray_watchdog.log"
@@ -1424,17 +1518,23 @@ echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Watchdog v4.8 activo (cron cada 1 min)"
+echo "Watchdog v4.9 activo (cron cada 1 min)"
 echo ""
-echo "   v4.8 — Blindaje total de sensores (/proc hardening):"
+echo "   v4.9 — Auto-exclusión del watchdog (separación de roles):"
+echo "   [E] SELF_PIDS        \$\$, \$PPID y cadena de ancestros → inmunes"
+echo "       Razón: el watchdog consume CPU por diseño — NO es amenaza"
+echo "   [F] is_self_pid()    lookup O(1), barrera doble: prescan + EMERGENCY"
+echo "       Razón: ningún camino puede llegar a matar un PID propio"
+echo "   [G] EMERGENCY fix    filtra SELF_PIDS antes de elegir candidato"
+echo "       Razón: antes tomaba el top delta sin filtro → suicidio"
+echo "   [H] Logging          registra si SELF_PID aparece en top-N"
+echo "       Razón: confirma que la exclusión está activa en producción"
+echo ""
+echo "   v4.8 (mantenido — blindaje de /proc):"
 echo "   [A] safe_int()        vacío / no-numérico / negativo → 0"
-echo "       Fix: 'integer expression expected' en comparaciones bash"
 echo "   [B] safe_pct()        ambos operandos sanitizados + guardia /0"
-echo "       Fix: 'unterminated regexp' en awk con VmRSS vacío"
 echo "   [C] safe_pid_ticks()  verifica existencia + campos completos"
-echo "       Fix: proceso muere a mitad de lectura → delta limpio"
 echo "   [D] safe_vmrss()      fallback explícito + validación numérica"
-echo "       Fix: VmRSS ausente ya no contamina cálculo de %mem"
 echo ""
 echo "   v4.7 (mantenido):"
 echo "   FORCE_KILL=1 en CPU >= ${CPU_CRIT}% → cooldowns ignorados"
