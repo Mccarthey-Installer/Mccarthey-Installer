@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.7"
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.8"
 echo "==================================================================="
 set -e
 export TZ="America/El_Salvador"
@@ -288,55 +288,68 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. WATCHDOG v4.7
+# 5. WATCHDOG v4.8
 #
-#   NUEVO en v4.7 — 3 correcciones críticas:
+#   NUEVO en v4.8 — Blindaje total de sensores (/proc hardening):
 #
-#   FIX 1 — FORCE_KILL bypass de cooldown:
-#     En CPU >= CPU_CRIT, se activa FORCE_KILL=1.
-#     dispatch_action ignora _in_cd completamente.
-#     También fuerza los contadores al umbral para acción inmediata.
-#     Sin esto: detecta bien pero cooldown bloquea → VPS sigue al 100%.
+#   PROBLEMA REAL detectado en estrés:
+#     awk recibe VmRSS vacío → interpreta como regexp → "unterminated regexp"
+#     → PID_MEM queda vacío → [ "$PID_MEM" -ge 20 ] → "integer expression expected"
+#     → lógica de detección rota, decisiones basadas en nada.
+#     → falsa sensación de seguridad: el watchdog corre pero no defiende.
 #
-#   FIX 2 — Multi-kill (hasta 3 culprits simultáneos):
-#     identify_culprit() ahora construye EXTRA_CULPRITS con todos los
-#     grupos y fallbacks secundarios que superan sus umbrales.
-#     En CPU crítica, el MAIN los ataca uno por uno en el mismo ciclo.
-#     Sin esto: mata dd pero yes y openssl siguen vivos → CPU no baja.
+#   SOLUCIÓN — 4 funciones de sanitización:
 #
-#   FIX 3 — Re-scan inmediato post-kill:
-#     Después de matar, sleep 3 y llama identify_culprit de nuevo.
-#     Si la CPU sigue crítica → segunda ronda de kills.
-#     Si bajó de CPU_WARN → resetea contadores y confirma en log.
+#   [A] safe_int(): cualquier valor → entero limpio >= 0.
+#       Vacío / no-numérico / negativo → 0.
+#       Elimina el problema raíz: comparaciones y awk siempre reciben número.
 #
-#   HEREDADO de v4.6 — Detección grupal (carga distribuida):
-#     10x dd a 5% = 50% CPU total → grupo "dd" detectado → SIGTERM a los 10.
+#   [B] safe_pct(): porcentaje con guardia doble.
+#       Ambos operandos pasan por safe_int antes del cálculo.
+#       Si denominador <= 0 → devuelve 0. Nunca division-by-zero.
+#       Nunca "unterminated regexp" porque awk solo recibe enteros.
 #
-#   Capas de detección en orden:
-#     1. Servicios conocidos (xray, proxy, badvpn, stunnel) → restart
-#     2. Fallback individual >= 20% CPU x2 ciclos → SIGTERM/SIGKILL
-#     3. Detección grupal >= 30% CPU agregada x2 ciclos → SIGTERM/SIGKILL
-#     4. Selector emergencia → mayor ticks sin umbral (último recurso)
+#   [C] safe_pid_ticks(): lee /proc/PID/stat con manejo de race condition.
+#       Verifica que el proceso existe ANTES de leer.
+#       Verifica que stat tiene al menos 17 campos (proceso vivo y completo).
+#       Si murió en medio de la lectura → devuelve 0 (delta = 0, no basura).
+#
+#   [D] safe_vmrss(): lee VmRSS con fallback explícito a 0.
+#       Valida numéricamente el resultado antes de retornarlo.
+#       Protege contra proceso que muere entre leer stat y leer status.
+#
+#   HEREDADO de v4.7:
+#     - FORCE_KILL=1: bypass de cooldowns en CPU >= CPU_CRIT
+#     - Multi-kill: hasta 3 culprits simultáneos por ciclo
+#     - Re-scan 3s post-kill con segunda ronda si sigue crítico
+#
+#   HEREDADO de v4.6:
+#     - Detección grupal por nombre (carga distribuida)
+#     - 4 capas: conocidos → fallback → grupo → emergencia
 #
 #   Frecuencia: cron cada minuto.
 # ===========================
-echo "Instalando Watchdog v4.7..."
+echo "Instalando Watchdog v4.8..."
 
-cat > /root/xray_watchdog.sh << 'EOF'
+cat > /root/xray_watchdog.sh << 'WDEOF'
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG v4.7
+#   WATCHDOG v4.8 — Hardened sensor layer
 #
-#   Cambios v4.7 vs v4.6:
-#     - Fix CRÍTICO: FORCE_KILL=1 ignora cooldowns en CPU >= CPU_CRIT
-#     - Multi-kill: hasta 3 culprits simultáneos (no solo 1)
-#     - Re-scan inmediato 3s post-kill con segunda ronda si sigue crítico
+#   v4.8 fixes (blindaje de /proc):
+#     [A] safe_int()       — sanitiza cualquier valor a entero válido
+#     [B] safe_pct()       — % con guardia division-by-zero y regexp
+#     [C] safe_pid_ticks() — race condition en /proc/PID/stat resuelto
+#     [D] safe_vmrss()     — VmRSS con fallback y validación numérica
 #
-#   Capas de detección (en orden):
-#     1. Servicios conocidos     → restart directo
-#     2. Fallback individual     → SIGTERM/SIGKILL (umbral 20%)
-#     3. Detección grupal        → SIGTERM/SIGKILL a todo el grupo
-#     4. Selector emergencia     → proceso de mayor ticks sin umbral
+#   v4.7 features (mantenidos):
+#     - FORCE_KILL=1: cooldowns ignorados en CPU crítica
+#     - Multi-kill: hasta 3 culprits por ciclo
+#     - Re-scan 3s post-kill
+#
+#   v4.6 features (mantenidos):
+#     - Detección grupal por nombre de proceso
+#     - 4 capas: conocidos → fallback → grupo → emergencia
 #
 #   Cron: * * * * * /root/xray_watchdog.sh
 # ═══════════════════════════════════════════════════════════════════════
@@ -379,7 +392,7 @@ mkdir -p "$CD_DIR" "$FB_CPU_DIR" "$FB_RAM_DIR" "$GRP_DIR"
 RAM_COUNTER_FILE="${STATE_DIR}/counter_ram"
 CPU_COUNTER_FILE="${STATE_DIR}/counter_cpu"
 
-# ── Cooldown por servicio/proceso ─────────────────────────────────────
+# ── Cooldowns ─────────────────────────────────────────────────────────
 COOLDOWN_KNOWN=900
 COOLDOWN_FALLBACK=600
 COOLDOWN_GROUP=600
@@ -387,9 +400,9 @@ COOLDOWN_GROUP=600
 # ── Variables globales ────────────────────────────────────────────────
 CULPRIT_GROUP_PIDS=""
 EXTRA_CULPRITS=""
-FORCE_KILL=0        # v4.7: cuando =1, dispatch_action ignora cooldowns
+FORCE_KILL=0
 
-# ── Procesos NUNCA afectados por fallback ni grupo ────────────────────
+# ── Procesos NUNCA afectados ──────────────────────────────────────────
 SAFE_PROCS_RE="^(systemd|systemd-.*|init|sshd|bash|sh|dash|zsh|fish|\
 kthread|ksoftirqd|kworker|migration|rcu_.*|watchdog|\
 ps|awk|grep|sed|cut|head|tail|cat|xargs|sleep|find|wc|sort|uniq|\
@@ -411,6 +424,97 @@ exec 200>"$LOCK"
 flock -n 200 || exit 0
 
 # ══════════════════════════════════════════════════════════════════════
+# [A] safe_int() — sanitiza cualquier valor a entero no-negativo
+#
+# Problema que resuelve:
+#   Variables vacías o no-numéricas llegaban a:
+#     [ "$PID_MEM" -ge 20 ]  →  "integer expression expected"
+#     awk "BEGIN{ print ($VAR/1000)*100 }"  →  "unterminated regexp"
+#   porque bash/awk interpretan la cadena vacía como inicio de regexp.
+#
+# Uso: VAR=$(safe_int "$RAW")
+#   Vacío / "abc" / "-5" / "  3  " → 0 o el entero limpio
+# ══════════════════════════════════════════════════════════════════════
+safe_int() {
+    local RAW="${1:-0}"
+    RAW="${RAW// /}"                          # quitar espacios
+    [[ "$RAW" =~ ^-?[0-9]+$ ]] || { echo 0; return; }
+    [ "$RAW" -lt 0 ] 2>/dev/null && { echo 0; return; }
+    echo "$RAW"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# [B] safe_pct() — porcentaje con guardia de división por cero
+#
+# Problema que resuelve:
+#   awk "BEGIN {printf \"%.0f\", ($VmRSS/$TOTAL_RAM_KB)*100}"
+#   Con VmRSS vacío → awk ve "(/2023380)*100" → regexp error.
+#   Con TOTAL_RAM_KB=0 → división por cero → resultado indefinido.
+#
+# Uso: PCT=$(safe_pct NUMERADOR DENOMINADOR)
+#   Ambos pasan por safe_int. Denominador <= 0 → devuelve 0.
+# ══════════════════════════════════════════════════════════════════════
+safe_pct() {
+    local NUM; NUM=$(safe_int "${1:-0}")
+    local DEN; DEN=$(safe_int "${2:-0}")
+    [ "$DEN" -le 0 ] && { echo 0; return; }
+    awk "BEGIN {printf \"%.0f\", ($NUM / $DEN) * 100}"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# [C] safe_pid_ticks() — ticks de /proc/PID/stat con race condition
+#
+# Problema que resuelve:
+#   El proceso puede morir entre el prescan T0 y la lectura T1.
+#   /proc/PID/stat a medio escribir → campos vacíos → ticks = "".
+#   Delta = ("" - número) → negativo o vacío → PID_CPU = basura.
+#
+# Estrategia:
+#   1. Verificar /proc/PID existe
+#   2. Leer stat completo en variable
+#   3. Verificar >= 17 campos (proceso vivo y completo)
+#   4. Extraer campos 14+15+16+17 y pasar por safe_int
+#   5. Cualquier fallo → 0 (delta será 0, no basura)
+# ══════════════════════════════════════════════════════════════════════
+safe_pid_ticks() {
+    local PID="$1"
+    [ -d "/proc/$PID" ]      || { echo 0; return; }
+    [ -f "/proc/$PID/stat" ] || { echo 0; return; }
+
+    local STAT_LINE
+    STAT_LINE=$(cat "/proc/$PID/stat" 2>/dev/null) || { echo 0; return; }
+
+    # Necesitamos al menos 17 campos para que $14..$17 sean válidos
+    local FC
+    FC=$(echo "$STAT_LINE" | awk '{print NF}')
+    [ "$(safe_int "$FC")" -lt 17 ] && { echo 0; return; }
+
+    local TICKS
+    TICKS=$(echo "$STAT_LINE" | awk '{t=$14+$15+$16+$17; print (t==int(t) && t>=0) ? int(t) : 0}' 2>/dev/null)
+    safe_int "$TICKS"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# [D] safe_vmrss() — VmRSS con fallback y validación numérica
+#
+# Problema que resuelve:
+#   Si el proceso muere entre leer stat y leer status, awk no
+#   encuentra VmRSS → devuelve "" → safe_pct recibe "" → regexp error.
+#   También: "kB" en el campo no interfiere porque awk toma $2.
+#
+# Retorna el valor en kB como entero, o 0 si no disponible.
+# ══════════════════════════════════════════════════════════════════════
+safe_vmrss() {
+    local PID="$1"
+    [ -d "/proc/$PID" ]        || { echo 0; return; }
+    [ -f "/proc/$PID/status" ] || { echo 0; return; }
+
+    local RAW
+    RAW=$(awk '/^VmRSS:/{print $2}' "/proc/$PID/status" 2>/dev/null)
+    safe_int "$RAW"
+}
+
+# ══════════════════════════════════════════════════════════════════════
 # Helpers cooldown
 # ══════════════════════════════════════════════════════════════════════
 _cd_file()  { echo "${CD_DIR}/$(echo "$1" | tr ':/' '__')"; }
@@ -418,7 +522,7 @@ _in_cd() {
     local F; F=$(_cd_file "$1")
     [ -f "$F" ] || return 1
     local LAST NOW
-    LAST=$(cat "$F" 2>/dev/null || echo 0)
+    LAST=$(safe_int "$(cat "$F" 2>/dev/null)")
     NOW=$(date +%s)
     (( NOW - LAST < $2 ))
 }
@@ -430,22 +534,20 @@ _cd_remaining() {
     local F; F=$(_cd_file "$1")
     [ -f "$F" ] || { echo 0; return; }
     local LAST NOW
-    LAST=$(cat "$F" 2>/dev/null || echo 0)
+    LAST=$(safe_int "$(cat "$F" 2>/dev/null)")
     NOW=$(date +%s)
     echo $(( $2 - (NOW - LAST) ))
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Lectura CPU sistema y por PID
+# Lectura CPU sistema
 # ══════════════════════════════════════════════════════════════════════
 read_sys_stat() {
-    awk '/^cpu / {idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle; exit}' /proc/stat
-}
-
-read_pid_ticks() {
-    local PID="$1"
-    [ -f "/proc/$PID/stat" ] || { echo 0; return; }
-    awk '{print $14+$15+$16+$17}' /proc/$PID/stat 2>/dev/null || echo 0
+    awk '/^cpu / {
+        idle=$5+$6; total=0
+        for(i=2;i<=NF;i++) total+=$i
+        print int(total), int(idle); exit
+    }' /proc/stat 2>/dev/null
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -460,13 +562,12 @@ prescan_t0() {
     for STATF in /proc/[0-9]*/stat; do
         local PID="${STATF%/stat}"; PID="${PID##*/}"
         [ "$PID" = "1" ] && continue
+        [ -d "/proc/$PID" ] || continue   # race: ya murió
         local COMM
-        COMM=$(cat /proc/$PID/comm 2>/dev/null || echo "")
+        COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "")
         [ -z "$COMM" ] && continue
-        if echo "$COMM" | grep -qE "$SAFE_PROCS_RE"; then continue; fi
-        local TICKS
-        TICKS=$(awk '{print $14+$15+$16+$17}' "$STATF" 2>/dev/null || echo 0)
-        ALL_TICKS_T0[$PID]="$TICKS"
+        echo "$COMM" | grep -qE "$SAFE_PROCS_RE" && continue
+        ALL_TICKS_T0[$PID]=$(safe_pid_ticks "$PID")
         ALL_COMM[$PID]="$COMM"
     done
 }
@@ -482,11 +583,16 @@ identify_culprit() {
     EXTRA_CULPRITS=""
     SYS_CPU_PCT=0
 
+    # Leer estado del sistema en T0
     local SYS_T0
     SYS_T0=$(read_sys_stat)
+    if [ -z "$SYS_T0" ]; then
+        log "ERROR: no se pudo leer /proc/stat — abortando ciclo"
+        return
+    fi
     local SYS_TOTAL_T0 SYS_IDLE_T0
-    SYS_TOTAL_T0=$(echo "$SYS_T0" | awk '{print $1}')
-    SYS_IDLE_T0=$(echo  "$SYS_T0" | awk '{print $2}')
+    SYS_TOTAL_T0=$(safe_int "$(echo "$SYS_T0" | awk '{print $1}')")
+    SYS_IDLE_T0=$(safe_int  "$(echo "$SYS_T0" | awk '{print $2}')")
 
     declare -A PID_TAG
     declare -A TAG_MEM_KB
@@ -496,10 +602,9 @@ identify_culprit() {
         for PID in "$@"; do
             [ -d "/proc/$PID" ] || continue
             PID_TAG[$PID]="$TAG"
-            local MEM
-            MEM=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
+            local MEM; MEM=$(safe_vmrss "$PID")
             TAG_MEM_KB[$TAG]=$(( MEM > ${TAG_MEM_KB[$TAG]:-0} ? MEM : ${TAG_MEM_KB[$TAG]:-0} ))
-            ALL_TICKS_T0[$PID]=$(read_pid_ticks "$PID")
+            ALL_TICKS_T0[$PID]=$(safe_pid_ticks "$PID")
             ALL_COMM[$PID]="$TAG"
         done
     }
@@ -513,34 +618,45 @@ identify_culprit() {
 
     sleep "$SAMPLE_INTERVAL"
 
+    # Leer estado del sistema en T1
     local SYS_T1
     SYS_T1=$(read_sys_stat)
+    if [ -z "$SYS_T1" ]; then
+        log "ERROR: no se pudo leer /proc/stat en T1 — abortando ciclo"
+        return
+    fi
     local SYS_TOTAL_T1 SYS_IDLE_T1
-    SYS_TOTAL_T1=$(echo "$SYS_T1" | awk '{print $1}')
-    SYS_IDLE_T1=$(echo  "$SYS_T1" | awk '{print $2}')
+    SYS_TOTAL_T1=$(safe_int "$(echo "$SYS_T1" | awk '{print $1}')")
+    SYS_IDLE_T1=$(safe_int  "$(echo "$SYS_T1" | awk '{print $2}')")
+
     local DELTA_SYS=$(( SYS_TOTAL_T1 - SYS_TOTAL_T0 ))
     local DELTA_IDLE=$(( SYS_IDLE_T1 - SYS_IDLE_T0 ))
 
+    # Delta negativo = reboot/overflow/lectura corrupta
     if [ "$DELTA_SYS" -le 0 ]; then
-        log "SCAN: delta sistema = 0 — tick muy corto"
+        log "SCAN: delta sistema <= 0 (${DELTA_SYS}) — tick inválido, abortando ciclo"
         return
     fi
 
-    SYS_CPU_PCT=$(awk "BEGIN {printf \"%.0f\", (($DELTA_SYS-$DELTA_IDLE)/$DELTA_SYS)*100}")
-    local TOTAL_RAM_KB
-    TOTAL_RAM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+    local DELTA_BUSY=$(( DELTA_SYS - DELTA_IDLE ))
+    [ "$DELTA_BUSY" -lt 0 ] && DELTA_BUSY=0
+    SYS_CPU_PCT=$(safe_pct "$DELTA_BUSY" "$DELTA_SYS")
 
+    local TOTAL_RAM_KB
+    TOTAL_RAM_KB=$(safe_int "$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null)")
+    [ "$TOTAL_RAM_KB" -le 0 ] && TOTAL_RAM_KB=1   # guardia division-by-zero
+
+    # ── Calcular deltas por PID ───────────────────────────────────────
     declare -A PID_DELTA
     declare -A PID_CPU_PCT
 
     for PID in "${!ALL_TICKS_T0[@]}"; do
-        [ -f "/proc/$PID/stat" ] || continue
-        local T1
-        T1=$(read_pid_ticks "$PID")
-        local DELTA=$(( T1 - ALL_TICKS_T0[$PID] ))
-        [ "$DELTA" -lt 0 ] && DELTA=0
+        local T1; T1=$(safe_pid_ticks "$PID")
+        local T0; T0=$(safe_int "${ALL_TICKS_T0[$PID]}")
+        local DELTA=$(( T1 - T0 ))
+        [ "$DELTA" -lt 0 ] && DELTA=0   # PID reusado por otro proceso
         PID_DELTA[$PID]="$DELTA"
-        PID_CPU_PCT[$PID]=$(awk "BEGIN {printf \"%.0f\", ($DELTA/$DELTA_SYS)*100}")
+        PID_CPU_PCT[$PID]=$(safe_pct "$DELTA" "$DELTA_SYS")
     done
 
     TOP_PIDS_SORTED=$(for PID in "${!PID_DELTA[@]}"; do
@@ -554,11 +670,9 @@ identify_culprit() {
     for PID in $TOP_PIDS_SORTED; do
         local TAG="${PID_TAG[$PID]:-}"
         local COMM="${ALL_COMM[$PID]:-unknown}"
-        local PID_CPU="${PID_CPU_PCT[$PID]:-0}"
-        local VmRSS
-        VmRSS=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
-        local PID_MEM
-        PID_MEM=$(awk "BEGIN {printf \"%.0f\", ($VmRSS/${TOTAL_RAM_KB:-1})*100}")
+        local PID_CPU; PID_CPU=$(safe_int "${PID_CPU_PCT[$PID]:-0}")
+        local VmRSS;   VmRSS=$(safe_vmrss "$PID")
+        local PID_MEM; PID_MEM=$(safe_pct "$VmRSS" "$TOTAL_RAM_KB")
 
         if [ -n "$TAG" ]; then
             TAG_CPU_REAL[$TAG]=$(( ${TAG_CPU_REAL[$TAG]:-0} + PID_CPU ))
@@ -568,15 +682,16 @@ identify_culprit() {
             if [ "${TAG_CPU_REAL[$TAG]}" -gt "$CULPRIT_CPU" ]; then
                 CULPRIT="$TAG"
                 CULPRIT_CPU="${TAG_CPU_REAL[$TAG]}"
-                CULPRIT_MEM=$(awk "BEGIN {printf \"%.0f\", (${TAG_MEM_KB[$TAG]}/${TOTAL_RAM_KB:-1})*100}")
+                CULPRIT_MEM=$(safe_pct "${TAG_MEM_KB[$TAG]}" "$TOTAL_RAM_KB")
             fi
         else
             SCAN_LOG="${SCAN_LOG} ${COMM}[${PID}]=${PID_CPU}%cpu/${PID_MEM}%mem"
 
+            # Fallback CPU
             if [ "$PID_CPU" -ge "$FALLBACK_CPU_MIN" ]; then
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
                 local FB_CPU_CTR
-                FB_CPU_CTR=$(cat "$FB_CPU_CTR_F" 2>/dev/null || echo 0)
+                FB_CPU_CTR=$(safe_int "$(cat "$FB_CPU_CTR_F" 2>/dev/null)")
                 FB_CPU_CTR=$(( FB_CPU_CTR + 1 ))
                 echo "$FB_CPU_CTR" > "$FB_CPU_CTR_F"
                 log "FALLBACK-CPU: ${COMM} (PID $PID) = ${PID_CPU}%cpu — ciclo ${FB_CPU_CTR}/${FALLBACK_CPU_CYCLES}"
@@ -591,15 +706,16 @@ identify_culprit() {
             else
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
                 if [ -f "$FB_CPU_CTR_F" ]; then
-                    local CUR; CUR=$(cat "$FB_CPU_CTR_F" 2>/dev/null || echo 0)
+                    local CUR; CUR=$(safe_int "$(cat "$FB_CPU_CTR_F" 2>/dev/null)")
                     [ "$CUR" -gt 0 ] && echo $(( CUR - 1 )) > "$FB_CPU_CTR_F" || rm -f "$FB_CPU_CTR_F"
                 fi
             fi
 
+            # Fallback RAM
             if [ "$PID_MEM" -ge "$FALLBACK_RAM_MIN" ]; then
                 local FB_RAM_CTR_F="${FB_RAM_DIR}/pid_${PID}"
                 local FB_RAM_CTR
-                FB_RAM_CTR=$(cat "$FB_RAM_CTR_F" 2>/dev/null || echo 0)
+                FB_RAM_CTR=$(safe_int "$(cat "$FB_RAM_CTR_F" 2>/dev/null)")
                 FB_RAM_CTR=$(( FB_RAM_CTR + 1 ))
                 echo "$FB_RAM_CTR" > "$FB_RAM_CTR_F"
                 log "FALLBACK-RAM: ${COMM} (PID $PID) = ${PID_MEM}%mem — ciclo ${FB_RAM_CTR}/${FALLBACK_RAM_CYCLES}"
@@ -612,7 +728,7 @@ identify_culprit() {
             else
                 local FB_RAM_CTR_F="${FB_RAM_DIR}/pid_${PID}"
                 if [ -f "$FB_RAM_CTR_F" ]; then
-                    local CUR; CUR=$(cat "$FB_RAM_CTR_F" 2>/dev/null || echo 0)
+                    local CUR; CUR=$(safe_int "$(cat "$FB_RAM_CTR_F" 2>/dev/null)")
                     [ "$CUR" -gt 0 ] && echo $(( CUR - 1 )) > "$FB_RAM_CTR_F" || rm -f "$FB_RAM_CTR_F"
                 fi
             fi
@@ -629,7 +745,7 @@ identify_culprit() {
         [ -n "${PID_TAG[$PID]:-}" ] && continue
         local COMM="${ALL_COMM[$PID]:-}"
         [ -z "$COMM" ] && continue
-        local PCPU="${PID_CPU_PCT[$PID]:-0}"
+        local PCPU; PCPU=$(safe_int "${PID_CPU_PCT[$PID]:-0}")
         [ "$PCPU" -eq 0 ] && continue
         COMM_CPU_SUM[$COMM]=$(( ${COMM_CPU_SUM[$COMM]:-0} + PCPU ))
         COMM_PIDS_ALL[$COMM]="${COMM_PIDS_ALL[$COMM]:-}${PID} "
@@ -637,7 +753,7 @@ identify_culprit() {
 
     local BEST_GROUP="" BEST_GROUP_CPU=0 BEST_GROUP_PIDS=""
     for COMM in "${!COMM_CPU_SUM[@]}"; do
-        local GCPU="${COMM_CPU_SUM[$COMM]}"
+        local GCPU; GCPU=$(safe_int "${COMM_CPU_SUM[$COMM]}")
         if [ "$GCPU" -gt "$BEST_GROUP_CPU" ]; then
             BEST_GROUP_CPU="$GCPU"
             BEST_GROUP="$COMM"
@@ -648,7 +764,7 @@ identify_culprit() {
     if [ -n "$BEST_GROUP" ] && [ "$BEST_GROUP_CPU" -ge "$GROUP_CPU_MIN" ]; then
         local GRP_CTR_F="${GRP_DIR}/${BEST_GROUP}"
         local GRP_CTR
-        GRP_CTR=$(cat "$GRP_CTR_F" 2>/dev/null || echo 0)
+        GRP_CTR=$(safe_int "$(cat "$GRP_CTR_F" 2>/dev/null)")
         GRP_CTR=$(( GRP_CTR + 1 ))
         echo "$GRP_CTR" > "$GRP_CTR_F"
 
@@ -669,14 +785,10 @@ identify_culprit() {
     for F in "${GRP_DIR}"/*; do
         [ -f "$F" ] || continue
         local GNAME="${F##*/}"
-        local GCPU="${COMM_CPU_SUM[$GNAME]:-0}"
+        local GCPU; GCPU=$(safe_int "${COMM_CPU_SUM[$GNAME]:-0}")
         if [ "$GCPU" -lt "$GROUP_CPU_MIN" ]; then
-            local CUR; CUR=$(cat "$F" 2>/dev/null || echo 0)
-            if [ "$CUR" -gt 0 ]; then
-                echo $(( CUR - 1 )) > "$F"
-            else
-                rm -f "$F"
-            fi
+            local CUR; CUR=$(safe_int "$(cat "$F" 2>/dev/null)")
+            [ "$CUR" -gt 0 ] && echo $(( CUR - 1 )) > "$F" || rm -f "$F"
         fi
     done
 
@@ -685,7 +797,7 @@ identify_culprit() {
         local BEST_PID="" BEST_DELTA=0
         for PID in $TOP_PIDS_SORTED; do
             [ -n "${PID_TAG[$PID]:-}" ] && continue
-            local D="${PID_DELTA[$PID]:-0}"
+            local D; D=$(safe_int "${PID_DELTA[$PID]:-0}")
             if [ "$D" -gt "$BEST_DELTA" ]; then
                 BEST_DELTA="$D"
                 BEST_PID="$PID"
@@ -694,15 +806,13 @@ identify_culprit() {
 
         if [ -n "$BEST_PID" ]; then
             local B_COMM="${ALL_COMM[$BEST_PID]:-unknown}"
-            local B_CPU="${PID_CPU_PCT[$BEST_PID]:-0}"
-            local B_VmRSS
-            B_VmRSS=$(awk '/VmRSS/{print $2}' /proc/$BEST_PID/status 2>/dev/null || echo 0)
-            local B_MEM
-            B_MEM=$(awk "BEGIN {printf \"%.0f\", ($B_VmRSS/${TOTAL_RAM_KB:-1})*100}")
+            local B_CPU; B_CPU=$(safe_int "${PID_CPU_PCT[$BEST_PID]:-0}")
+            local B_VmRSS; B_VmRSS=$(safe_vmrss "$BEST_PID")
+            local B_MEM;   B_MEM=$(safe_pct "$B_VmRSS" "$TOTAL_RAM_KB")
 
             local EM_CTR_F="${FB_CPU_DIR}/pid_${BEST_PID}"
             local EM_CTR
-            EM_CTR=$(cat "$EM_CTR_F" 2>/dev/null || echo 0)
+            EM_CTR=$(safe_int "$(cat "$EM_CTR_F" 2>/dev/null)")
             EM_CTR=$(( EM_CTR + 1 ))
             echo "$EM_CTR" > "$EM_CTR_F"
 
@@ -727,7 +837,7 @@ identify_culprit() {
     for COMM in $(for K in "${!COMM_CPU_SUM[@]}"; do
                       echo "${COMM_CPU_SUM[$K]} $K"
                   done | sort -rn | awk '{print $2}'); do
-        local GCPU="${COMM_CPU_SUM[$COMM]}"
+        local GCPU; GCPU=$(safe_int "${COMM_CPU_SUM[$COMM]}")
         [ "$GCPU" -lt "$GROUP_CPU_MIN" ] && continue
         local GKEY="group:${COMM}"
         [ "$GKEY" = "$CULPRIT" ] && continue
@@ -736,7 +846,7 @@ identify_culprit() {
 
     for PID in $TOP_PIDS_SORTED; do
         [ -n "${PID_TAG[$PID]:-}" ] && continue
-        local PCPU="${PID_CPU_PCT[$PID]:-0}"
+        local PCPU; PCPU=$(safe_int "${PID_CPU_PCT[$PID]:-0}")
         [ "$PCPU" -lt "$FALLBACK_CPU_MIN" ] && continue
         local FCOMM="${ALL_COMM[$PID]:-unknown}"
         local FKEY="fallback_cpu:${FCOMM}:${PID}"
@@ -809,8 +919,9 @@ do_kill_fallback() {
     local CTR_DIR
     [ "$TYPE" = "cpu" ] && CTR_DIR="$FB_CPU_DIR" || CTR_DIR="$FB_RAM_DIR"
     local FB_CTR_F="${CTR_DIR}/pid_${FB_PID}"
-    local FB_CTR
-    FB_CTR=$(cat "$FB_CTR_F" 2>/dev/null || echo 0)
+    local FB_CTR; FB_CTR=$(safe_int "$(cat "$FB_CTR_F" 2>/dev/null)")
+    local THRESH
+    [ "$TYPE" = "cpu" ] && THRESH=$FALLBACK_CPU_CYCLES || THRESH=$FALLBACK_RAM_CYCLES
 
     if ! kill -0 "$FB_PID" 2>/dev/null; then
         log "FALLBACK-${TYPE^^}: PID $FB_PID ($FB_NAME) ya no existe"
@@ -818,7 +929,7 @@ do_kill_fallback() {
         return
     fi
 
-    if [ "$FB_CTR" -eq "$( [ "$TYPE" = "cpu" ] && echo $FALLBACK_CPU_CYCLES || echo $FALLBACK_RAM_CYCLES )" ]; then
+    if [ "$FB_CTR" -eq "$THRESH" ]; then
         log "ACTION [fallback-${TYPE}]: SIGTERM → $FB_NAME (PID $FB_PID)"
         kill -15 "$FB_PID" 2>/dev/null
         echo $(( FB_CTR + 1 )) > "$FB_CTR_F"
@@ -847,8 +958,7 @@ do_kill_group() {
     local GRP_NAME="$1"
     local GRP_PIDS="$2"
     local GRP_CTR_F="${GRP_DIR}/${GRP_NAME}"
-    local GRP_CTR
-    GRP_CTR=$(cat "$GRP_CTR_F" 2>/dev/null || echo 0)
+    local GRP_CTR; GRP_CTR=$(safe_int "$(cat "$GRP_CTR_F" 2>/dev/null)")
 
     local ALIVE_PIDS=""
     for PID in $GRP_PIDS; do
@@ -857,9 +967,7 @@ do_kill_group() {
 
     if [ -z "$ALIVE_PIDS" ]; then
         log "GROUP: todos los PIDs de '${GRP_NAME}' ya terminaron — limpiando"
-        rm -f "$GRP_CTR_F"
-        _set_cd "group_${GRP_NAME}"
-        return
+        rm -f "$GRP_CTR_F"; _set_cd "group_${GRP_NAME}"; return
     fi
 
     local N_ALIVE
@@ -868,11 +976,9 @@ do_kill_group() {
     if [ "$GRP_CTR" -le "$GROUP_CPU_CYCLES" ]; then
         log "ACTION [group]: SIGTERM → grupo '${GRP_NAME}' (${N_ALIVE} PIDs vivos: ${ALIVE_PIDS})"
         for PID in $ALIVE_PIDS; do
-            if kill -15 "$PID" 2>/dev/null; then
-                log "  SIGTERM → ${GRP_NAME} [PID $PID]"
-            else
-                log "  SIGTERM falló → ${GRP_NAME} [PID $PID] (ya terminó?)"
-            fi
+            kill -15 "$PID" 2>/dev/null \
+                && log "  SIGTERM → ${GRP_NAME} [PID $PID]" \
+                || log "  SIGTERM falló → ${GRP_NAME} [PID $PID] (ya terminó?)"
         done
         echo $(( GRP_CTR + 1 )) > "$GRP_CTR_F"
         log "INFO [group]: esperando próximo ciclo para verificar sobrevivientes"
@@ -881,17 +987,14 @@ do_kill_group() {
         local KILLED=0 GONE=0
         for PID in $ALIVE_PIDS; do
             if kill -0 "$PID" 2>/dev/null; then
-                kill -9 "$PID" 2>/dev/null
-                sleep 0
+                kill -9 "$PID" 2>/dev/null; sleep 0
                 if kill -0 "$PID" 2>/dev/null; then
                     log "  ERROR: ${GRP_NAME} [PID $PID] no respondió a SIGKILL — posible hilo kernel"
                 else
-                    log "  SIGKILL → ${GRP_NAME} [PID $PID] OK"
-                    (( KILLED++ ))
+                    log "  SIGKILL → ${GRP_NAME} [PID $PID] OK"; (( KILLED++ ))
                 fi
             else
-                log "  OK: ${GRP_NAME} [PID $PID] ya terminó (respondió SIGTERM)"
-                (( GONE++ ))
+                log "  OK: ${GRP_NAME} [PID $PID] ya terminó (respondió SIGTERM)"; (( GONE++ ))
             fi
         done
         log "OK [group]: '${GRP_NAME}' — ${KILLED} matados con SIGKILL, ${GONE} terminaron solos"
@@ -901,7 +1004,7 @@ do_kill_group() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# dispatch_action() — v4.7: FORCE_KILL=1 ignora todos los cooldowns
+# dispatch_action() — FORCE_KILL=1 ignora cooldowns (v4.7)
 # ══════════════════════════════════════════════════════════════════════
 dispatch_action() {
     local REASON="$1"
@@ -913,7 +1016,7 @@ dispatch_action() {
                 _in_cd "xray" "$COOLDOWN_KNOWN" \
                     && { log "CD [xray]: en cooldown ($(_cd_remaining xray $COOLDOWN_KNOWN)s restantes)"; return; }
             else
-                log "FORCE: ignorando cooldown para xray (CPU crítica)"
+                log "FORCE: ignorando cooldown para xray"
             fi
             do_restart_xray ;;
 
@@ -958,9 +1061,8 @@ dispatch_action() {
         fallback_cpu:*)
             local FB_NAME; FB_NAME=$(echo "$CULPRIT" | cut -d: -f2)
             local FB_PID;  FB_PID=$(echo  "$CULPRIT" | cut -d: -f3)
-            local CD_KEY="fallback_cpu_${FB_PID}"
             if [ "$FORCE_KILL" -eq 0 ]; then
-                _in_cd "$CD_KEY" "$COOLDOWN_FALLBACK" \
+                _in_cd "fallback_cpu_${FB_PID}" "$COOLDOWN_FALLBACK" \
                     && { log "CD [fallback-cpu]: $FB_NAME en cooldown"; return; }
             else
                 log "FORCE: ignorando cooldown para fallback_cpu:${FB_NAME}[${FB_PID}]"
@@ -971,9 +1073,8 @@ dispatch_action() {
         fallback_ram:*)
             local FB_NAME; FB_NAME=$(echo "$CULPRIT" | cut -d: -f2)
             local FB_PID;  FB_PID=$(echo  "$CULPRIT" | cut -d: -f3)
-            local CD_KEY="fallback_ram_${FB_PID}"
             if [ "$FORCE_KILL" -eq 0 ]; then
-                _in_cd "$CD_KEY" "$COOLDOWN_FALLBACK" \
+                _in_cd "fallback_ram_${FB_PID}" "$COOLDOWN_FALLBACK" \
                     && { log "CD [fallback-ram]: $FB_NAME en cooldown"; return; }
             else
                 log "FORCE: ignorando cooldown para fallback_ram:${FB_NAME}[${FB_PID}]"
@@ -990,13 +1091,14 @@ dispatch_action() {
 # ══════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════
-RAM_CTR=$(cat "$RAM_COUNTER_FILE" 2>/dev/null || echo 0)
-CPU_CTR=$(cat "$CPU_COUNTER_FILE" 2>/dev/null || echo 0)
+RAM_CTR=$(safe_int "$(cat "$RAM_COUNTER_FILE" 2>/dev/null)")
+CPU_CTR=$(safe_int "$(cat "$CPU_COUNTER_FILE" 2>/dev/null)")
 
-RAM_PCT=$(free | awk '/^Mem:/ {printf "%.0f", ($2-$7)/$2 * 100}')
-if ! [[ "$RAM_PCT" =~ ^[0-9]+$ ]]; then
-    log "ERROR: RAM inválida='$RAM_PCT' — abortando"; exit 1
-fi
+RAM_PCT=$(safe_int "$(free 2>/dev/null | awk '/^Mem:/ {
+    total=$2; avail=$7
+    if (total > 0) printf "%.0f", (total-avail)/total * 100
+    else print 0
+}')")
 
 log "INFO: RAM=${RAM_PCT}% | ctrs RAM=${RAM_CTR} CPU=${CPU_CTR} | iniciando scan CPU real..."
 
@@ -1009,7 +1111,6 @@ if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
     FORCE_KILL=1
     log "OVERRIDE: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) — FORCE_KILL=1, cooldowns IGNORADOS"
 
-    # Forzar contadores para acción inmediata
     if [[ "$CULPRIT" == fallback_cpu:* ]]; then
         FB_PID_CRIT=$(echo "$CULPRIT" | cut -d: -f3)
         FB_COMM_CRIT=$(echo "$CULPRIT" | cut -d: -f2)
@@ -1021,46 +1122,38 @@ if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
         log "OVERRIDE: forzando ciclos para group '${GRP_NAME_CRIT}' (PIDs: ${CULPRIT_GROUP_PIDS})"
     fi
 
-    # Acción sobre culprit principal
     dispatch_action "CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%)"
 
-    # ── Multi-kill: hasta 2 culprits secundarios ──────────────────────
-    MAX_EXTRA=2
-    EXTRA_COUNT=0
+    # Multi-kill: hasta 2 culprits secundarios
+    MAX_EXTRA=2; EXTRA_COUNT=0
     SAVED_CULPRIT="$CULPRIT"
     SAVED_CULPRIT_CPU="$CULPRIT_CPU"
     SAVED_CULPRIT_GROUP_PIDS="$CULPRIT_GROUP_PIDS"
 
     for ENTRY in $EXTRA_CULPRITS; do
         [ "$EXTRA_COUNT" -ge "$MAX_EXTRA" ] && break
-
-        CULPRIT=$(echo "$ENTRY"           | cut -d'|' -f1)
+        CULPRIT=$(echo "$ENTRY"            | cut -d'|' -f1)
         CULPRIT_GROUP_PIDS=$(echo "$ENTRY" | cut -d'|' -f2)
-        EXTRA_CPU=$(echo "$ENTRY"          | cut -d'|' -f3)
-        CULPRIT_CPU="$EXTRA_CPU"
+        CULPRIT_CPU=$(safe_int "$(echo "$ENTRY" | cut -d'|' -f3)")
 
-        log "MULTI-KILL [$(( EXTRA_COUNT + 1 ))]: atacando culprit adicional → ${CULPRIT} (${EXTRA_CPU}%cpu)"
+        log "MULTI-KILL [$(( EXTRA_COUNT + 1 ))]: atacando culprit adicional → ${CULPRIT} (${CULPRIT_CPU}%cpu)"
 
         if [[ "$CULPRIT" == fallback_cpu:* ]]; then
-            FB_PID_EXTRA=$(echo "$CULPRIT" | cut -d: -f3)
-            echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_${FB_PID_EXTRA}"
+            echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_$(echo "$CULPRIT" | cut -d: -f3)"
         elif [[ "$CULPRIT" == group:* ]]; then
-            GRP_EXTRA=$(echo "$CULPRIT" | cut -d: -f2)
-            echo "$GROUP_CPU_CYCLES" > "${GRP_DIR}/${GRP_EXTRA}"
+            echo "$GROUP_CPU_CYCLES" > "${GRP_DIR}/$(echo "$CULPRIT" | cut -d: -f2)"
         fi
 
         dispatch_action "MULTI-KILL extra (CPU crítica)"
         (( EXTRA_COUNT++ ))
     done
 
-    # Restaurar culprit principal
     CULPRIT="$SAVED_CULPRIT"
     CULPRIT_CPU="$SAVED_CULPRIT_CPU"
     CULPRIT_GROUP_PIDS="$SAVED_CULPRIT_GROUP_PIDS"
-
     [ "$EXTRA_COUNT" -gt 0 ] && log "MULTI-KILL: ${EXTRA_COUNT} culprits adicionales atacados"
 
-    # ── Re-scan inmediato post-kill ───────────────────────────────────
+    # Re-scan inmediato post-kill
     log "RE-SCAN: esperando 3s post-kill y re-evaluando CPU..."
     sleep 3
     identify_culprit
@@ -1128,7 +1221,7 @@ fi
 
 log "INFO: ciclo completado → sin más acciones pendientes"
 exit 0
-EOF
+WDEOF
 
 chmod +x /root/xray_watchdog.sh
 
@@ -1169,7 +1262,7 @@ systemctl daemon-reload
 echo "   (Timer systemd 30s instalado pero DESACTIVADO)"
 echo "   Para activar: systemctl enable --now watchdog-vpn.timer && crontab -e (borrar línea watchdog)"
 
-# ── Primera corrida del watchdog ──────────────────────────────────────
+# ── Primera corrida ───────────────────────────────────────────────────
 echo "   Ejecutando primera corrida del watchdog..."
 touch /var/log/xray_watchdog.log
 chmod 644 /var/log/xray_watchdog.log
@@ -1180,7 +1273,7 @@ crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
 [ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
 if $CRON_OK && $LOG_OK; then
-    echo "✅ Watchdog v4.7 activo (cron cada 1 min)"
+    echo "✅ Watchdog v4.8 activo (cron cada 1 min)"
 else
     $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
     $LOG_OK  || echo "❌ log no existe en /var/log/xray_watchdog.log"
@@ -1331,35 +1424,30 @@ echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Watchdog v4.7 activo (cron cada 1 min)"
+echo "Watchdog v4.8 activo (cron cada 1 min)"
 echo ""
-echo "   3 fixes críticos sobre v4.6:"
-echo "   [FIX 1] FORCE_KILL=1 en CPU >= ${CPU_CRIT}%"
-echo "       → cooldowns ignorados completamente"
-echo "       → contadores forzados al umbral → acción INMEDIATA"
-echo "   [FIX 2] Multi-kill: hasta 3 culprits por ciclo"
-echo "       → mata dd + yes + openssl en la misma pasada"
-echo "   [FIX 3] Re-scan 3s post-kill"
-echo "       → segunda ronda si CPU sigue crítica"
-echo "       → resetea contadores si CPU normalizó"
+echo "   v4.8 — Blindaje total de sensores (/proc hardening):"
+echo "   [A] safe_int()        vacío / no-numérico / negativo → 0"
+echo "       Fix: 'integer expression expected' en comparaciones bash"
+echo "   [B] safe_pct()        ambos operandos sanitizados + guardia /0"
+echo "       Fix: 'unterminated regexp' en awk con VmRSS vacío"
+echo "   [C] safe_pid_ticks()  verifica existencia + campos completos"
+echo "       Fix: proceso muere a mitad de lectura → delta limpio"
+echo "   [D] safe_vmrss()      fallback explícito + validación numérica"
+echo "       Fix: VmRSS ausente ya no contamina cálculo de %mem"
 echo ""
-echo "   4 capas de detección en orden:"
-echo "   [1] Servicios conocidos: xray, proxy, badvpn, stunnel → restart"
-echo "   [2] Fallback individual: proceso único >= 20% CPU x2 ciclos"
-echo "       → SIGTERM → SIGKILL"
-echo "   [3] Detección grupal: suma CPU por nombre de proceso"
-echo "       → grupo >= 30% CPU x2 ciclos"
-echo "       → SIGTERM a TODOS los PIDs del grupo simultáneo"
-echo "       → SIGKILL en siguiente ciclo a sobrevivientes"
-echo "   [4] Selector emergencia: mayor ticks sin umbral mínimo"
+echo "   v4.7 (mantenido):"
+echo "   FORCE_KILL=1 en CPU >= ${CPU_CRIT}% → cooldowns ignorados"
+echo "   Multi-kill: hasta 3 culprits simultáneos"
+echo "   Re-scan 3s post-kill con segunda ronda"
+echo ""
+echo "   v4.6 (mantenido):"
+echo "   Detección grupal: 10x dd a 5% = 50% → mata los 10"
+echo "   4 capas: conocidos → fallback → grupo → emergencia"
 echo ""
 echo "   Cooldowns (ignorados en CPU crítica):"
 echo "   Conocidos 15min | Fallback 10min | Grupo 10min"
 echo "   Log: tail -f /var/log/xray_watchdog.log"
-echo ""
-echo "   Timer systemd 30s (instalado, desactivado):"
-echo "   Activar: systemctl enable --now watchdog-vpn.timer"
-echo "   Y borrar cron: crontab -e"
 echo ""
 echo "Limpieza automática: diaria a las 3am"
 echo "   Script : /usr/local/sbin/clean-vps.sh"
