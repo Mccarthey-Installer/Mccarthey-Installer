@@ -1,6 +1,6 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.5-fix"
-echo "======================================================================"
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.6"
+echo "==================================================================="
 set -e
 export TZ="America/El_Salvador"
 
@@ -288,51 +288,60 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. WATCHDOG v4.5-fix
+# 5. WATCHDOG v4.6
 #
-#   CAMBIOS vs v4.5 original:
+#   NUEVO en v4.6 — Detección grupal (carga distribuida):
 #
-#   [FIX-A] FALLBACK_CPU_MIN bajado de 40 → 20
-#           Problema real: 3 procesos "yes" → cada uno ~32% CPU.
-#           Con umbral 40 ninguno era promovido → culprit=unknown.
-#           Con umbral 20 los tres acumulan ciclos y el mayor gana.
+#   PROBLEMA REAL:
+#     10 procesos dd a ~5% cada uno → total 100% CPU.
+#     Ninguno supera FALLBACK_CPU_MIN individualmente.
+#     Resultado anterior: culprit=unknown → sin acción. VPS saturado.
 #
-#   [FIX-B] Condición de promoción fallback_cpu corregida:
-#           Antes: solo ganaba si PID_CPU > CULPRIT_CPU (y CULPRIT_CPU=0
-#           nunca se actualizaba si no había conocidos).
-#           Ahora: gana si PID_CPU > CULPRIT_CPU OR CULPRIT = "unknown".
-#           El de mayor CPU entre todos los fallbacks siempre prevalece.
+#   SOLUCIÓN — 3 capas de detección en orden:
 #
-#   [FIX-C] Selector de emergencia al final de identify_culprit():
-#           Si CULPRIT sigue siendo "unknown" con SYS_CPU >= CPU_WARN,
-#           se toma el proceso no-safe con mayor delta de ticks,
-#           sin importar si superó FALLBACK_CPU_MIN o no.
-#           Garantía: con CPU al 96% y culprit=unknown, siempre hay acción.
+#   CAPA 1 (existente): Servicios conocidos (xray, proxy, badvpn, stunnel).
+#     Si uno de ellos supera su umbral → acción directa.
 #
-#   [FIX-D] Frecuencia cron: */5 → * * * * * (cada minuto).
-#           Opcional: systemd timer cada 30s (ver abajo en el script).
+#   CAPA 2 (existente, mejorada): Fallback individual.
+#     Proceso único no-safe con CPU >= FALLBACK_CPU_MIN (20%) sostenida.
+#     Ejemplo: 1 proceso yes a 95% → detectado en ciclo 2.
 #
-#   Todo lo demás sin cambios (cooldowns, SIGTERM/SIGKILL, etc.)
+#   CAPA 3 (NUEVA): Detección grupal por nombre (comm).
+#     Suma la CPU de TODOS los PIDs con el mismo nombre de proceso.
+#     Si el grupo supera GROUP_CPU_MIN (30%) por GROUP_CPU_CYCLES ciclos:
+#       → culprit = "group:<nombre>"
+#       → SIGTERM a TODOS los PIDs del grupo simultáneamente.
+#       → SIGKILL en el siguiente ciclo a los que sobrevivieron.
+#     Ejemplo: 10x dd a 5% cada uno → grupo "dd" = 50% → SIGTERM a los 10.
+#     Ejemplo: 5x wget a 8% cada uno → grupo "wget" = 40% → SIGTERM a los 5.
+#
+#   CAPA 4 (existente, ajustada): Selector de emergencia.
+#     Último recurso: si culprit sigue unknown con CPU >= CPU_WARN,
+#     toma el proceso con más ticks (sin importar umbral) y lo acumula.
+#     Garantía dura: con VPS al 96% siempre hay alguna acción.
+#
+#   OVERRIDE v4.5 (mantenido):
+#     CPU crítica (>=75%) + fallback/group identificado → acción INMEDIATA.
+#     Sin esperar ciclo 2.
+#
+#   Frecuencia: cron cada minuto.
+#   Timer systemd 30s disponible pero desactivado por defecto.
 # ===========================
-echo "Instalando Watchdog v4.5-fix..."
+echo "Instalando Watchdog v4.6..."
 
 cat > /root/xray_watchdog.sh << 'EOF'
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG v4.5-fix
+#   WATCHDOG v4.6
 #
-#   CPU real sistema  : delta /proc/stat         (siempre, sin gate)
-#   CPU real proceso  : prescan /proc/*/stat      (ordenado por ticks)
-#   RAM por proceso   : VmRSS fallback sostenido
-#   Cooldown          : por proceso/servicio       (no global)
-#   Umbrales CPU      : >=75% crítico | >=70% x2 ciclos
+#   Capas de detección (en orden):
+#     1. Servicios conocidos     → restart directo
+#     2. Fallback individual     → SIGTERM/SIGKILL (umbral 20%)
+#     3. Detección grupal        → SIGTERM/SIGKILL a todo el grupo (NUEVO)
+#     4. Selector emergencia     → proceso de mayor ticks sin umbral
 #
-#   FIX-A: FALLBACK_CPU_MIN 40→20. Con procesos paralelos de ~32% cada
-#          uno, el umbral 40 los excluía todos → culprit=unknown.
-#   FIX-B: Promoción fallback_cpu: gana si cpu>culprit_cpu OR unknown.
-#   FIX-C: Selector emergencia al final de identify_culprit: si culprit
-#          sigue unknown con CPU alta, toma el proceso con más ticks.
-#   FIX-D: Cron cada minuto (era cada 5 min).
+#   La capa 3 resuelve: N procesos del mismo nombre con CPU baja
+#   individual pero alta en suma. Cubre carga distribuida real.
 #
 #   Cron: * * * * * /root/xray_watchdog.sh
 # ═══════════════════════════════════════════════════════════════════════
@@ -347,11 +356,16 @@ CPU_WARN=70
 CPU_CRIT=75
 CYCLES_REQUIRED=2
 
-# ── Umbrales fallback CPU ─────────────────────────────────────────────
-# FIX-A: era 40, bajado a 20.
-# Con 3 procesos paralelos cada uno cae ~32% → con 40 ninguno era detectado.
+# ── Umbrales fallback individual ──────────────────────────────────────
+# Un solo proceso no-safe que supere este % individualmente.
 FALLBACK_CPU_MIN=20
 FALLBACK_CPU_CYCLES=2
+
+# ── Umbrales detección grupal (NUEVO v4.6) ────────────────────────────
+# Suma de CPU de todos los PIDs con el mismo nombre de proceso.
+# Ejemplo: 10x dd a 5% cada uno = 50% → supera GROUP_CPU_MIN → acción.
+GROUP_CPU_MIN=30
+GROUP_CPU_CYCLES=2
 
 # ── Umbrales fallback RAM ─────────────────────────────────────────────
 FALLBACK_RAM_MIN=25
@@ -366,8 +380,9 @@ STATE_DIR="/tmp/watchdog_state"
 CD_DIR="${STATE_DIR}/cooldown"
 FB_CPU_DIR="${STATE_DIR}/fb_cpu"
 FB_RAM_DIR="${STATE_DIR}/fb_ram"
+GRP_DIR="${STATE_DIR}/groups"
 
-mkdir -p "$CD_DIR" "$FB_CPU_DIR" "$FB_RAM_DIR"
+mkdir -p "$CD_DIR" "$FB_CPU_DIR" "$FB_RAM_DIR" "$GRP_DIR"
 
 RAM_COUNTER_FILE="${STATE_DIR}/counter_ram"
 CPU_COUNTER_FILE="${STATE_DIR}/counter_cpu"
@@ -375,8 +390,13 @@ CPU_COUNTER_FILE="${STATE_DIR}/counter_cpu"
 # ── Cooldown por servicio/proceso ─────────────────────────────────────
 COOLDOWN_KNOWN=900
 COOLDOWN_FALLBACK=600
+COOLDOWN_GROUP=600
 
-# ── Procesos NUNCA afectados por fallback ─────────────────────────────
+# ── Variable global para PIDs del grupo culpable ──────────────────────
+# Asignada en identify_culprit(), leída en do_kill_group().
+CULPRIT_GROUP_PIDS=""
+
+# ── Procesos NUNCA afectados por fallback ni grupo ────────────────────
 SAFE_PROCS_RE="^(systemd|systemd-.*|init|sshd|bash|sh|dash|zsh|fish|\
 kthread|ksoftirqd|kworker|migration|rcu_.*|watchdog|\
 ps|awk|grep|sed|cut|head|tail|cat|xargs|sleep|find|wc|sort|uniq|\
@@ -436,7 +456,7 @@ read_pid_ticks() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Prescan T0 — snapshot de todos los PIDs
+# Prescan T0 — snapshot de todos los PIDs no-safe
 # ══════════════════════════════════════════════════════════════════════
 declare -A ALL_TICKS_T0
 declare -A ALL_COMM
@@ -460,11 +480,18 @@ prescan_t0() {
 
 # ══════════════════════════════════════════════════════════════════════
 # identify_culprit()
+#
+# Orden de detección:
+#   1. Servicios conocidos (xray, proxy, badvpn, stunnel)
+#   2. Fallback individual (un proceso supera FALLBACK_CPU_MIN)
+#   3. Detección grupal por nombre (suma de PIDs del mismo comm)
+#   4. Selector de emergencia (mayor ticks sin umbral)
 # ══════════════════════════════════════════════════════════════════════
 identify_culprit() {
     CULPRIT="unknown"
     CULPRIT_CPU=0
     CULPRIT_MEM=0
+    CULPRIT_GROUP_PIDS=""
     SYS_CPU_PCT=0
 
     local SYS_T0
@@ -515,7 +542,10 @@ identify_culprit() {
     local TOTAL_RAM_KB
     TOTAL_RAM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo)
 
+    # ── Calcular delta de ticks para todos los PIDs ───────────────────
     declare -A PID_DELTA
+    declare -A PID_CPU_PCT
+
     for PID in "${!ALL_TICKS_T0[@]}"; do
         [ -f "/proc/$PID/stat" ] || continue
         local T1
@@ -523,8 +553,10 @@ identify_culprit() {
         local DELTA=$(( T1 - ALL_TICKS_T0[$PID] ))
         [ "$DELTA" -lt 0 ] && DELTA=0
         PID_DELTA[$PID]="$DELTA"
+        PID_CPU_PCT[$PID]=$(awk "BEGIN {printf \"%.0f\", ($DELTA/$DELTA_SYS)*100}")
     done
 
+    # ── Top N para log y fallback individual ─────────────────────────
     TOP_PIDS_SORTED=$(for PID in "${!PID_DELTA[@]}"; do
         echo "${PID_DELTA[$PID]} $PID"
     done | sort -rn | head -"$TOP_N_PROCS" | awk '{print $2}')
@@ -532,18 +564,18 @@ identify_culprit() {
     declare -A TAG_CPU_REAL
     local SCAN_LOG="SCAN sys_cpu=${SYS_CPU_PCT}%:"
 
+    # ── CAPAS 1 y 2: Servicios conocidos + fallback individual ────────
     for PID in $TOP_PIDS_SORTED; do
         local TAG="${PID_TAG[$PID]:-}"
         local COMM="${ALL_COMM[$PID]:-unknown}"
-        local DELTA="${PID_DELTA[$PID]:-0}"
-        local PID_CPU
-        PID_CPU=$(awk "BEGIN {printf \"%.0f\", ($DELTA/$DELTA_SYS)*100}")
+        local PID_CPU="${PID_CPU_PCT[$PID]:-0}"
         local VmRSS
         VmRSS=$(awk '/VmRSS/{print $2}' /proc/$PID/status 2>/dev/null || echo 0)
         local PID_MEM
         PID_MEM=$(awk "BEGIN {printf \"%.0f\", ($VmRSS/${TOTAL_RAM_KB:-1})*100}")
 
         if [ -n "$TAG" ]; then
+            # CAPA 1: servicio conocido
             TAG_CPU_REAL[$TAG]=$(( ${TAG_CPU_REAL[$TAG]:-0} + PID_CPU ))
             TAG_MEM_KB[$TAG]=$(( VmRSS > ${TAG_MEM_KB[$TAG]:-0} ? VmRSS : ${TAG_MEM_KB[$TAG]:-0} ))
             SCAN_LOG="${SCAN_LOG} ${TAG}=${PID_CPU}%cpu/${PID_MEM}%mem"
@@ -556,8 +588,7 @@ identify_culprit() {
         else
             SCAN_LOG="${SCAN_LOG} ${COMM}[${PID}]=${PID_CPU}%cpu/${PID_MEM}%mem"
 
-            # ── Fallback CPU ──────────────────────────────────────────
-            # FIX-A: umbral bajado a 20 (era 40).
+            # CAPA 2: fallback individual
             if [ "$PID_CPU" -ge "$FALLBACK_CPU_MIN" ]; then
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
                 local FB_CPU_CTR
@@ -566,9 +597,6 @@ identify_culprit() {
                 echo "$FB_CPU_CTR" > "$FB_CPU_CTR_F"
                 log "FALLBACK-CPU: ${COMM} (PID $PID) = ${PID_CPU}%cpu — ciclo ${FB_CPU_CTR}/${FALLBACK_CPU_CYCLES}"
 
-                # FIX-B: gana si PID_CPU > CULPRIT_CPU OR culprit es unknown.
-                # Antes solo evaluaba PID_CPU > CULPRIT_CPU, lo que fallaba
-                # cuando CULPRIT_CPU=0 y no había ningún conocido.
                 if [ "$FB_CPU_CTR" -ge "$FALLBACK_CPU_CYCLES" ]; then
                     if [ "$PID_CPU" -gt "$CULPRIT_CPU" ] || [ "$CULPRIT" = "unknown" ]; then
                         CULPRIT="fallback_cpu:${COMM}:${PID}"
@@ -580,15 +608,11 @@ identify_culprit() {
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
                 if [ -f "$FB_CPU_CTR_F" ]; then
                     local CUR; CUR=$(cat "$FB_CPU_CTR_F" 2>/dev/null || echo 0)
-                    if [ "$CUR" -gt 0 ]; then
-                        echo $(( CUR - 1 )) > "$FB_CPU_CTR_F"
-                    else
-                        rm -f "$FB_CPU_CTR_F"
-                    fi
+                    [ "$CUR" -gt 0 ] && echo $(( CUR - 1 )) > "$FB_CPU_CTR_F" || rm -f "$FB_CPU_CTR_F"
                 fi
             fi
 
-            # ── Fallback RAM ──────────────────────────────────────────
+            # Fallback RAM
             if [ "$PID_MEM" -ge "$FALLBACK_RAM_MIN" ]; then
                 local FB_RAM_CTR_F="${FB_RAM_DIR}/pid_${PID}"
                 local FB_RAM_CTR
@@ -606,11 +630,7 @@ identify_culprit() {
                 local FB_RAM_CTR_F="${FB_RAM_DIR}/pid_${PID}"
                 if [ -f "$FB_RAM_CTR_F" ]; then
                     local CUR; CUR=$(cat "$FB_RAM_CTR_F" 2>/dev/null || echo 0)
-                    if [ "$CUR" -gt 0 ]; then
-                        echo $(( CUR - 1 )) > "$FB_RAM_CTR_F"
-                    else
-                        rm -f "$FB_RAM_CTR_F"
-                    fi
+                    [ "$CUR" -gt 0 ] && echo $(( CUR - 1 )) > "$FB_RAM_CTR_F" || rm -f "$FB_RAM_CTR_F"
                 fi
             fi
         fi
@@ -618,16 +638,90 @@ identify_culprit() {
 
     log "$SCAN_LOG"
 
-    # ── Selector de emergencia ─────────────────────────────────────────
-    # FIX-C: Si después de todo el scan CULPRIT sigue siendo "unknown"
-    # con CPU alta, tomamos el proceso no-safe con más ticks del período,
-    # sin importar si superó FALLBACK_CPU_MIN o no.
-    # Cubre el caso: muchos procesos paralelos con CPU individual baja
-    # pero suma total que satura el VPS.
+    # ══════════════════════════════════════════════════════════════════
+    # CAPA 3: Detección grupal por nombre (NUEVO v4.6)
+    #
+    # Recorre TODOS los PIDs no-safe (no solo top N), suma su CPU
+    # por nombre de proceso. Si un grupo supera GROUP_CPU_MIN por
+    # GROUP_CPU_CYCLES ciclos, se convierte en culprit.
+    #
+    # Cubre exactamente el caso: N procesos pequeños del mismo nombre
+    # que individualmente no superan ningún umbral pero en suma saturan.
+    # ══════════════════════════════════════════════════════════════════
+    declare -A COMM_CPU_SUM   # CPU agregada por nombre
+    declare -A COMM_PIDS_ALL  # PIDs por nombre (string separado por espacios)
+
+    for PID in "${!PID_DELTA[@]}"; do
+        [ -n "${PID_TAG[$PID]:-}" ] && continue   # servicio conocido, skip
+        local COMM="${ALL_COMM[$PID]:-}"
+        [ -z "$COMM" ] && continue
+        local PCPU="${PID_CPU_PCT[$PID]:-0}"
+        [ "$PCPU" -eq 0 ] && continue
+        COMM_CPU_SUM[$COMM]=$(( ${COMM_CPU_SUM[$COMM]:-0} + PCPU ))
+        COMM_PIDS_ALL[$COMM]="${COMM_PIDS_ALL[$COMM]:-}${PID} "
+    done
+
+    # Encontrar el grupo con mayor CPU agregada
+    local BEST_GROUP="" BEST_GROUP_CPU=0 BEST_GROUP_PIDS=""
+    for COMM in "${!COMM_CPU_SUM[@]}"; do
+        local GCPU="${COMM_CPU_SUM[$COMM]}"
+        if [ "$GCPU" -gt "$BEST_GROUP_CPU" ]; then
+            BEST_GROUP_CPU="$GCPU"
+            BEST_GROUP="$COMM"
+            BEST_GROUP_PIDS="${COMM_PIDS_ALL[$COMM]}"
+        fi
+    done
+
+    if [ -n "$BEST_GROUP" ] && [ "$BEST_GROUP_CPU" -ge "$GROUP_CPU_MIN" ]; then
+        local GRP_CTR_F="${GRP_DIR}/${BEST_GROUP}"
+        local GRP_CTR
+        GRP_CTR=$(cat "$GRP_CTR_F" 2>/dev/null || echo 0)
+        GRP_CTR=$(( GRP_CTR + 1 ))
+        echo "$GRP_CTR" > "$GRP_CTR_F"
+
+        local NPIDS
+        NPIDS=$(echo "$BEST_GROUP_PIDS" | wc -w)
+        log "GROUP: ${BEST_GROUP} = ${BEST_GROUP_CPU}%cpu (${NPIDS} PIDs) — ciclo ${GRP_CTR}/${GROUP_CPU_CYCLES}"
+
+        if [ "$GRP_CTR" -ge "$GROUP_CPU_CYCLES" ]; then
+            # El grupo gana si tiene más CPU que el culprit actual
+            # o si no hay culprit identificado todavía.
+            if [ "$BEST_GROUP_CPU" -gt "$CULPRIT_CPU" ] || [ "$CULPRIT" = "unknown" ]; then
+                CULPRIT="group:${BEST_GROUP}"
+                CULPRIT_CPU="$BEST_GROUP_CPU"
+                CULPRIT_GROUP_PIDS="$BEST_GROUP_PIDS"
+                log "GROUP: culprit → group:${BEST_GROUP} (${BEST_GROUP_CPU}%cpu, ${NPIDS} PIDs: ${BEST_GROUP_PIDS})"
+            fi
+        fi
+    fi
+
+    # Decrementar contadores de grupos que bajaron bajo el umbral
+    for F in "${GRP_DIR}"/*; do
+        [ -f "$F" ] || continue
+        local GNAME="${F##*/}"
+        local GCPU="${COMM_CPU_SUM[$GNAME]:-0}"
+        if [ "$GCPU" -lt "$GROUP_CPU_MIN" ]; then
+            local CUR; CUR=$(cat "$F" 2>/dev/null || echo 0)
+            if [ "$CUR" -gt 0 ]; then
+                echo $(( CUR - 1 )) > "$F"
+            else
+                rm -f "$F"
+            fi
+        fi
+    done
+
+    # ══════════════════════════════════════════════════════════════════
+    # CAPA 4: Selector de emergencia
+    #
+    # Último recurso: si culprit sigue unknown con CPU >= CPU_WARN,
+    # toma el proceso no-safe con más ticks del período y lo acumula.
+    # Sin importar si supera algún umbral individual.
+    # Garantía dura: VPS al 96% → siempre habrá alguna acción.
+    # ══════════════════════════════════════════════════════════════════
     if [ "$CULPRIT" = "unknown" ] && [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
         local BEST_PID="" BEST_DELTA=0
         for PID in $TOP_PIDS_SORTED; do
-            [ -n "${PID_TAG[$PID]:-}" ] && continue   # es servicio conocido, skip
+            [ -n "${PID_TAG[$PID]:-}" ] && continue
             local D="${PID_DELTA[$PID]:-0}"
             if [ "$D" -gt "$BEST_DELTA" ]; then
                 BEST_DELTA="$D"
@@ -637,27 +731,25 @@ identify_culprit() {
 
         if [ -n "$BEST_PID" ]; then
             local B_COMM="${ALL_COMM[$BEST_PID]:-unknown}"
-            local B_CPU
-            B_CPU=$(awk "BEGIN {printf \"%.0f\", (${PID_DELTA[$BEST_PID]:-0}/$DELTA_SYS)*100}")
+            local B_CPU="${PID_CPU_PCT[$BEST_PID]:-0}"
             local B_VmRSS
             B_VmRSS=$(awk '/VmRSS/{print $2}' /proc/$BEST_PID/status 2>/dev/null || echo 0)
             local B_MEM
             B_MEM=$(awk "BEGIN {printf \"%.0f\", ($B_VmRSS/${TOTAL_RAM_KB:-1})*100}")
 
-            # Acumular ciclos igual que fallback normal
             local EM_CTR_F="${FB_CPU_DIR}/pid_${BEST_PID}"
             local EM_CTR
             EM_CTR=$(cat "$EM_CTR_F" 2>/dev/null || echo 0)
             EM_CTR=$(( EM_CTR + 1 ))
             echo "$EM_CTR" > "$EM_CTR_F"
 
-            log "EMERGENCY: top proceso no-safe → ${B_COMM} [PID ${BEST_PID}] = ${B_CPU}%cpu — ciclo ${EM_CTR}/${FALLBACK_CPU_CYCLES}"
+            log "EMERGENCY: top no-safe → ${B_COMM} [PID ${BEST_PID}] = ${B_CPU}%cpu — ciclo ${EM_CTR}/${FALLBACK_CPU_CYCLES}"
 
             if [ "$EM_CTR" -ge "$FALLBACK_CPU_CYCLES" ]; then
                 CULPRIT="fallback_cpu:${B_COMM}:${BEST_PID}"
                 CULPRIT_CPU="$B_CPU"
                 CULPRIT_MEM="$B_MEM"
-                log "EMERGENCY: culprit forzado → ${CULPRIT} (${B_CPU}%cpu)"
+                log "EMERGENCY: culprit forzado → ${CULPRIT}"
             fi
         else
             log "EMERGENCY: no se encontró proceso candidato (todos son safe o conocidos)"
@@ -666,7 +758,7 @@ identify_culprit() {
 
     log "RESULT: culprit=${CULPRIT} (cpu=${CULPRIT_CPU}% mem=${CULPRIT_MEM}%) sys_cpu=${SYS_CPU_PCT}%"
 
-    # Limpiar contadores huérfanos
+    # ── Limpiar contadores huérfanos ──────────────────────────────────
     for F in "${FB_CPU_DIR}"/pid_* "${FB_RAM_DIR}"/pid_*; do
         [ -f "$F" ] || continue
         local FPID="${F##*pid_}"
@@ -722,7 +814,7 @@ do_restart_stunnel() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Acción escalonada fallback: SIGTERM → SIGKILL
+# Acción escalonada fallback individual: SIGTERM → SIGKILL
 # ══════════════════════════════════════════════════════════════════════
 do_kill_fallback() {
     local TYPE="$1"
@@ -740,7 +832,6 @@ do_kill_fallback() {
         return
     fi
 
-    # Primer ciclo de acción → SIGTERM
     if [ "$FB_CTR" -eq "$( [ "$TYPE" = "cpu" ] && echo $FALLBACK_CPU_CYCLES || echo $FALLBACK_RAM_CYCLES )" ]; then
         log "ACTION [fallback-${TYPE}]: SIGTERM → $FB_NAME (PID $FB_PID)"
         kill -15 "$FB_PID" 2>/dev/null
@@ -749,7 +840,6 @@ do_kill_fallback() {
         return
     fi
 
-    # Ciclos siguientes → SIGKILL si sobrevivió
     if kill -0 "$FB_PID" 2>/dev/null; then
         log "ACTION [fallback-${TYPE}]: SIGKILL → $FB_NAME (PID $FB_PID) [ignoró SIGTERM]"
         kill -9 "$FB_PID" 2>/dev/null
@@ -765,7 +855,75 @@ do_kill_fallback() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# dispatch_action() — verifica cooldown y despacha
+# Acción grupal (NUEVO v4.6): SIGTERM a todo el grupo → SIGKILL
+#
+# Primer ciclo de acción: SIGTERM a todos los PIDs del grupo.
+# Siguiente ciclo: SIGKILL a los que no respondieron.
+# Diseño deliberado: no mata de golpe con SIGKILL para dar chance
+# a que terminen limpiamente (flush de buffers, cerrar archivos, etc.)
+# ══════════════════════════════════════════════════════════════════════
+do_kill_group() {
+    local GRP_NAME="$1"
+    local GRP_PIDS="$2"
+    local GRP_CTR_F="${GRP_DIR}/${GRP_NAME}"
+    local GRP_CTR
+    GRP_CTR=$(cat "$GRP_CTR_F" 2>/dev/null || echo 0)
+
+    # Verificar cuáles PIDs siguen vivos
+    local ALIVE_PIDS=""
+    for PID in $GRP_PIDS; do
+        kill -0 "$PID" 2>/dev/null && ALIVE_PIDS="${ALIVE_PIDS}${PID} "
+    done
+
+    if [ -z "$ALIVE_PIDS" ]; then
+        log "GROUP: todos los PIDs de '${GRP_NAME}' ya terminaron — limpiando"
+        rm -f "$GRP_CTR_F"
+        _set_cd "group_${GRP_NAME}"
+        return
+    fi
+
+    local N_ALIVE
+    N_ALIVE=$(echo "$ALIVE_PIDS" | wc -w)
+
+    if [ "$GRP_CTR" -le "$GROUP_CPU_CYCLES" ]; then
+        # Primera acción: SIGTERM a todos los vivos
+        log "ACTION [group]: SIGTERM → grupo '${GRP_NAME}' (${N_ALIVE} PIDs vivos: ${ALIVE_PIDS})"
+        for PID in $ALIVE_PIDS; do
+            if kill -15 "$PID" 2>/dev/null; then
+                log "  SIGTERM → ${GRP_NAME} [PID $PID]"
+            else
+                log "  SIGTERM falló → ${GRP_NAME} [PID $PID] (ya terminó?)"
+            fi
+        done
+        echo $(( GRP_CTR + 1 )) > "$GRP_CTR_F"
+        log "INFO [group]: esperando próximo ciclo para verificar sobrevivientes"
+    else
+        # Ciclos siguientes: SIGKILL a los que ignoraron SIGTERM
+        log "ACTION [group]: SIGKILL → sobrevivientes de '${GRP_NAME}' (${N_ALIVE} PIDs)"
+        local KILLED=0 GONE=0
+        for PID in $ALIVE_PIDS; do
+            if kill -0 "$PID" 2>/dev/null; then
+                kill -9 "$PID" 2>/dev/null
+                sleep 0
+                if kill -0 "$PID" 2>/dev/null; then
+                    log "  ERROR: ${GRP_NAME} [PID $PID] no respondió a SIGKILL — posible hilo kernel"
+                else
+                    log "  SIGKILL → ${GRP_NAME} [PID $PID] OK"
+                    (( KILLED++ ))
+                fi
+            else
+                log "  OK: ${GRP_NAME} [PID $PID] ya terminó (respondió SIGTERM)"
+                (( GONE++ ))
+            fi
+        done
+        log "OK [group]: '${GRP_NAME}' — ${KILLED} matados con SIGKILL, ${GONE} terminaron solos"
+        rm -f "$GRP_CTR_F"
+    fi
+    _set_cd "group_${GRP_NAME}"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# dispatch_action() — verifica cooldown y despacha la acción
 # ══════════════════════════════════════════════════════════════════════
 dispatch_action() {
     local REASON="$1"
@@ -788,6 +946,11 @@ dispatch_action() {
             _in_cd "stunnel" "$COOLDOWN_KNOWN" \
                 && { log "CD [stunnel]: en cooldown"; return; }
             do_restart_stunnel ;;
+        group:*)
+            local GRP_NAME; GRP_NAME=$(echo "$CULPRIT" | cut -d: -f2)
+            _in_cd "group_${GRP_NAME}" "$COOLDOWN_GROUP" \
+                && { log "CD [group]: '${GRP_NAME}' en cooldown ($(_cd_remaining "group_${GRP_NAME}" $COOLDOWN_GROUP)s restantes)"; return; }
+            do_kill_group "$GRP_NAME" "$CULPRIT_GROUP_PIDS" ;;
         fallback_cpu:*)
             local FB_NAME; FB_NAME=$(echo "$CULPRIT" | cut -d: -f2)
             local FB_PID;  FB_PID=$(echo  "$CULPRIT" | cut -d: -f3)
@@ -826,14 +989,18 @@ identify_culprit
 log "INFO: RAM=${RAM_PCT}% CPU_real=${SYS_CPU_PCT}% | culprit=${CULPRIT}"
 
 # ── CPU crítica inmediata ─────────────────────────────────────────────
-# (herencia de v4.5): si el culprit ya es un fallback_cpu, forzar
-# su contador al umbral para que SIGTERM salga inmediato.
+# Si el VPS ya está ahogado y el culpable fue identificado,
+# forzar contador para que la acción sea inmediata sin esperar ciclo 2.
 if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
     if [[ "$CULPRIT" == fallback_cpu:* ]]; then
         FB_PID_CRIT=$(echo "$CULPRIT" | cut -d: -f3)
         FB_COMM_CRIT=$(echo "$CULPRIT" | cut -d: -f2)
         echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_${FB_PID_CRIT}"
-        log "OVERRIDE: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) + fallback ${FB_COMM_CRIT} [PID ${FB_PID_CRIT}] → acción INMEDIATA (ciclos forzados)"
+        log "OVERRIDE: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) + fallback ${FB_COMM_CRIT} [PID ${FB_PID_CRIT}] → acción INMEDIATA"
+    elif [[ "$CULPRIT" == group:* ]]; then
+        GRP_NAME_CRIT=$(echo "$CULPRIT" | cut -d: -f2)
+        echo "$GROUP_CPU_CYCLES" > "${GRP_DIR}/${GRP_NAME_CRIT}"
+        log "OVERRIDE: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) + group '${GRP_NAME_CRIT}' → acción INMEDIATA (${CULPRIT_GROUP_PIDS})"
     fi
     dispatch_action "CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%)"
 fi
@@ -873,9 +1040,11 @@ else
     fi
 fi
 
-# ── Fallback sostenido (ya evaluado en identify_culprit) ─────────────
-if [[ "$CULPRIT" == fallback_cpu:* ]] || [[ "$CULPRIT" == fallback_ram:* ]]; then
-    dispatch_action "Proceso externo sostenido detectado"
+# ── Fallback/grupo sostenido ──────────────────────────────────────────
+if [[ "$CULPRIT" == fallback_cpu:* ]] || \
+   [[ "$CULPRIT" == fallback_ram:* ]] || \
+   [[ "$CULPRIT" == group:* ]]; then
+    dispatch_action "Proceso/grupo externo sostenido detectado"
 fi
 
 log "INFO: ciclo completado → sin más acciones pendientes"
@@ -884,19 +1053,15 @@ EOF
 
 chmod +x /root/xray_watchdog.sh
 
-# ── Registrar cron — FIX-D: cada minuto (era */5) ────────────────────
+# ── Registrar cron — cada minuto ─────────────────────────────────────
 CRON_TMP_WD=$(mktemp)
 crontab -l 2>/dev/null > "$CRON_TMP_WD" || true
-
-# Eliminar entrada vieja si existía con */5
 sed -i '/xray_watchdog\.sh/d' "$CRON_TMP_WD"
-
 echo "* * * * * /root/xray_watchdog.sh" >> "$CRON_TMP_WD"
 crontab "$CRON_TMP_WD"
 rm -f "$CRON_TMP_WD"
 
-# ── Opcional: systemd timer cada 30s (sub-minuto) ─────────────────────
-# Cron no puede ir por debajo de 1 minuto. Si necesitás 30s, activá esto:
+# ── Systemd timer 30s (opcional, desactivado por defecto) ────────────
 cat > /etc/systemd/system/watchdog-vpn.service <<'SVEOF'
 [Unit]
 Description=Watchdog VPN MCCARTHEY — run
@@ -922,10 +1087,8 @@ WantedBy=timers.target
 TMEOF
 
 systemctl daemon-reload
-# NOTA: el timer de 30s está DESACTIVADO por defecto para no solapar con cron.
-# Para activarlo: systemctl enable --now watchdog-vpn.timer
-# Y deshabilitar el cron: crontab -e → borrar línea xray_watchdog.sh
-echo "   (Timer systemd 30s instalado pero DESACTIVADO — ver comentario arriba)"
+echo "   (Timer systemd 30s instalado pero DESACTIVADO)"
+echo "   Para activar: systemctl enable --now watchdog-vpn.timer && crontab -e (borrar línea watchdog)"
 
 # ── Primera corrida ───────────────────────────────────────────────────
 echo "   Ejecutando primera corrida del watchdog..."
@@ -938,7 +1101,7 @@ crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
 [ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
 if $CRON_OK && $LOG_OK; then
-    echo "✅ Watchdog v4.5-fix activo (cron cada 1 min)"
+    echo "✅ Watchdog v4.6 activo (cron cada 1 min)"
 else
     $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
     $LOG_OK  || echo "❌ log no existe en /var/log/xray_watchdog.log"
@@ -1089,29 +1252,31 @@ echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Watchdog v4.5-fix activo (cada 1 min via cron)"
-echo "   CPU real:  delta /proc/stat — sin gate de loadavg"
-echo "   CPU crit:  >=75% inmediato | >=70% x 2 ciclos"
-echo "   RAM crit:  >=80% inmediato | >=70% x 2 ciclos"
-echo "   Scan:      prescan /proc/*/stat ordenado por ticks"
+echo "Watchdog v4.6 activo (cron cada 1 min)"
 echo ""
-echo "   FIXES aplicados:"
-echo "   [A] FALLBACK_CPU_MIN: 40 → 20"
-echo "       Detecta procesos paralelos de ~32% (ej: 3x yes)"
-echo "   [B] Promoción fallback: gana si cpu>culprit OR culprit=unknown"
-echo "       Antes: con CULPRIT_CPU=0 y sin servicios conocidos, nunca ganaba"
-echo "   [C] Selector emergencia: si culprit=unknown con CPU alta,"
-echo "       toma el proceso con más ticks sin importar umbral mínimo"
-echo "   [D] Cron: */5 → * * * * * (cada 1 minuto)"
+echo "   4 capas de detección en orden:"
+echo "   [1] Servicios conocidos: xray, proxy, badvpn, stunnel"
+echo "       → restart directo al superar umbrales"
+echo "   [2] Fallback individual: proceso único >= 20% CPU x2 ciclos"
+echo "       → SIGTERM → SIGKILL"
+echo "   [3] Detección grupal (NUEVO): suma CPU por nombre de proceso"
+echo "       → grupo >= 30% CPU agregada x2 ciclos"
+echo "       → SIGTERM a TODOS los PIDs del grupo simultáneo"
+echo "       → SIGKILL en siguiente ciclo a sobrevivientes"
+echo "       Ejemplo: 10x dd a 5% = 50% → mata los 10"
+echo "   [4] Selector emergencia: si culprit=unknown con CPU alta,"
+echo "       toma el proceso con más ticks sin umbral mínimo"
 echo ""
-echo "   Fallback:  CPU >=20% x 2 ciclos → SIGTERM → SIGKILL"
-echo "              RAM >=25% proceso x 2 ciclos → SIGTERM → SIGKILL"
-echo "   Cooldown:  Conocidos: 15 min | Fallback: 10 min"
+echo "   Override crítico: CPU >= 75% + culpable identificado"
+echo "   → fuerza ciclos al umbral → acción INMEDIATA sin esperar ciclo 2"
+echo "   (aplica a fallback individual y a grupos)"
+echo ""
+echo "   Cooldowns: Conocidos 15min | Fallback 10min | Grupo 10min"
 echo "   Log: tail -f /var/log/xray_watchdog.log"
 echo ""
-echo "   Timer 30s (opcional, desactivado):"
-echo "   Para activar: systemctl enable --now watchdog-vpn.timer"
-echo "   Y eliminar el cron: crontab -e"
+echo "   Timer systemd 30s (instalado, desactivado):"
+echo "   Activar: systemctl enable --now watchdog-vpn.timer"
+echo "   Y borrar cron: crontab -e"
 echo ""
 echo "Limpieza automática: diaria a las 3am"
 echo "   Script : /usr/local/sbin/clean-vps.sh"
