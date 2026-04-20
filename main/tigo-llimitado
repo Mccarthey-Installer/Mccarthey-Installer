@@ -1,6 +1,6 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.9"
-echo "==================================================================="
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + WATCHDOG v4.10"
+echo "===================================================================="
 set -e
 export TZ="America/El_Salvador"
 
@@ -288,94 +288,131 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. WATCHDOG v4.9
+# 5. WATCHDOG v4.10
 #
-#   NUEVO en v4.9 — Auto-exclusión del watchdog (separación de roles):
+#   NUEVO en v4.10 — Estrategia activa ante culprit=unknown
 #
-#   PROBLEMA REAL detectado en producción bajo carga:
-#     El watchdog entraba en EMERGENCY sin encontrar culprit claro.
-#     Seleccionaba al proceso con mayor delta de ticks en top-N.
-#     En carga alta, el propio xray_watchdog.sh (bash, awk, loops de scan)
-#     aparecía en ese top porque el scan en sí consume CPU.
-#     → El watchdog se detectaba a sí mismo como culprit.
-#     → Intentaba matarse con SIGTERM/SIGKILL.
-#     → Se suicidaba justo en el peor momento: carga crítica.
-#     → Sistema quedaba sin monitoreo ni protección.
+#   PROBLEMA REAL detectado en producción:
+#     CPU al 85% → identify_culprit() retorna culprit=unknown
+#     → dispatch_action() hace log "WARN: sin proceso identificable"
+#     → el sistema se queda pasivo aunque se esté ahogando
+#     → el watchdog corre pero no defiende: falla estratégica
 #
-#   SOLUCIÓN — Auto-exclusión por PID real (no por nombre):
+#   CAUSA RAÍZ:
+#     culprit=unknown ocurre en 3 escenarios reales:
+#       a) Carga distribuida: muchos procesos safe con CPU baja individual
+#          pero alta colectiva (kernel threads, I/O wait)
+#       b) PID fugaz: el proceso causante murió entre T0 y T1 del scan
+#       c) Todos los top-N son safe o SELF_PIDS (post v4.9)
+#     En todos esos casos el sistema igual se está degradando.
+#     No actuar es la respuesta incorrecta.
 #
-#   [E] SELF_PIDS — conjunto de PIDs inmunes construido al inicio:
-#       $$ = PID del watchdog
-#       $PPID = bash/cron/systemd que lo lanzó
-#       Toda la cadena de padres via /proc/PID/status (PPid:)
-#       PID del proceso cron que disparó este ciclo
-#       → Ninguno de estos PIDs entra jamás al pool de análisis.
-#       → No importa cuánta CPU consuman: son invisibles para el scan.
+#   SOLUCIÓN — Protocolo de emergencia escalonado (3 niveles):
 #
-#   [F] is_self_pid() — función de lookup O(1) en el conjunto SELF_PIDS.
-#       Llamada en prescan_t0() antes de agregar cualquier PID al pool.
-#       Llamada en EMERGENCY antes de seleccionar candidato.
-#       → Doble barrera: ni entra al scan, ni puede ser elegido.
+#   [I] unknown_strategy_counter — contador de ciclos unknown consecutivos
+#       Se incrementa cada vez que culprit=unknown Y CPU >= CPU_WARN.
+#       Se resetea a 0 cuando CPU baja o se identifica culprit.
+#       Objetivo: no actuar en el primer unknown (puede ser transitorio),
+#       pero sí actuar si persiste N ciclos con CPU alta.
+#       Umbral: UNKNOWN_CYCLES_REQUIRED (default: 2 ciclos = ~2 minutos)
 #
-#   [G] EMERGENCY refactorizado — filtra SELF_PIDS explícitamente:
-#       Antes: tomaba el top delta sin filtro → watchdog podía entrar.
-#       Ahora: is_self_pid() aplicado antes de comparar deltas.
-#       → El loop de EMERGENCY no puede seleccionar ningún PID propio.
+#   [J] do_unknown_level1() — Reinicio preventivo de servicios propios
+#       Se activa cuando: unknown Y CPU >= CPU_WARN Y ciclos >= umbral
+#       Lógica: si no sabemos quién está fallando, refrescamos
+#       los servicios que controlamos para liberar recursos/conexiones
+#       colgadas que podrían estar contribuyendo a la carga.
+#       Orden: xray → proxy → badvpn → stunnel
+#       Cooldown propio: COOLDOWN_UNKNOWN_L1 (default: 1800s = 30min)
+#       para no reiniciar en cascada en cada ciclo.
+#       Solo actúa si el servicio está corriendo (no resucita muertos).
 #
-#   [H] Logging de auto-exclusión:
-#       Si un SELF_PID aparece en top-N → se loguea y se descarta.
-#       Útil para debugging: confirma que la exclusión está activa.
+#   [K] do_unknown_level2() — Liberación de memoria del kernel
+#       Se activa cuando: level1 ya corrió Y CPU sigue >= CPU_CRIT
+#       después del level1 (verificación post-acción).
+#       Lógica: drop_caches libera page cache, dentries e inodes.
+#       En VPS con muchas conexiones SSH/tunnel esto puede liberar
+#       RAM significativa que el kernel retenía innecesariamente.
+#       No afecta datos de aplicaciones: solo cache del kernel.
+#       Incluye sync previo para no perder escrituras pendientes.
+#       Cooldown propio: COOLDOWN_UNKNOWN_L2 (default: 3600s = 1h)
 #
-#   POR QUÉ PID Y NO NOMBRE:
-#     El nombre "bash" o "sh" es genérico y puede coincidir con
-#     procesos legítimos a matar. El PID $$ es único e irrepetible.
-#     La exclusión por nombre en SAFE_PROCS_RE es complementaria
-#     pero no suficiente: el watchdog corre como bash, y bash ya
-#     estaba en SAFE_PROCS_RE, pero el EMERGENCY saltaba ese filtro.
-#     Con PID: garantía absoluta, sin falsos positivos.
+#   [L] Logging diagnóstico detallado
+#       Cada nivel registra:
+#         - CPU en el momento de la decisión
+#         - Ciclos acumulados de unknown
+#         - Nivel de acción tomada
+#         - Resultado post-acción (re-lectura de CPU)
+#       Objetivo: en producción siempre saber por qué actuó.
+#
+#   PROTECCIONES:
+#     - Level1 tiene su propio cooldown → no se repite antes de 30min
+#     - Level2 tiene su propio cooldown → no se repite antes de 1h
+#     - Si CPU baja antes de alcanzar el umbral → contador se resetea
+#     - Si CPU normaliza después de level1 → level2 no se ejecuta
+#     - Los servicios solo se reinician si están activos (pgrep check)
+#     - drop_caches siempre va precedido de sync
+#
+#   POR QUÉ REINICIAR SERVICIOS PROPIOS Y NO MATAR ALEATORIO:
+#     Matar un proceso aleatorio cuando no sabemos quién es culpable
+#     puede matar algo crítico (kernel thread, systemd, etc.)
+#     Reiniciar nuestros propios servicios es seguro y controlado:
+#     sabemos exactamente qué hacen y cómo volver a levantarlos.
+#     Es actuar dentro de lo que controlamos, no en lo desconocido.
+#
+#   HEREDADO de v4.9 (sin cambios):
+#     - [E] SELF_PIDS        — PIDs propios inmunes al scan
+#     - [F] is_self_pid()    — lookup O(1), doble barrera
+#     - [G] EMERGENCY fix    — filtra SELF_PIDS antes de elegir
+#     - [H] Logging          — registra SELF_PID en top-N
 #
 #   HEREDADO de v4.8 (sin cambios):
 #     - [A] safe_int()       — sanitiza valores a entero no-negativo
-#     - [B] safe_pct()       — % con guardia division-by-zero y regexp
-#     - [C] safe_pid_ticks() — race condition en /proc/PID/stat resuelto
-#     - [D] safe_vmrss()     — VmRSS con fallback y validación numérica
+#     - [B] safe_pct()       — % con guardia division-by-zero
+#     - [C] safe_pid_ticks() — race condition en /proc/PID/stat
+#     - [D] safe_vmrss()     — VmRSS con fallback y validación
 #
 #   HEREDADO de v4.7 (sin cambios):
-#     - FORCE_KILL=1: bypass de cooldowns en CPU >= CPU_CRIT
-#     - Multi-kill: hasta 3 culprits simultáneos por ciclo
-#     - Re-scan 3s post-kill con segunda ronda si sigue crítico
+#     - FORCE_KILL=1 en CPU crítica
+#     - Multi-kill hasta 3 culprits
+#     - Re-scan 3s post-kill
 #
 #   HEREDADO de v4.6 (sin cambios):
-#     - Detección grupal por nombre (carga distribuida)
+#     - Detección grupal por nombre
 #     - 4 capas: conocidos → fallback → grupo → emergencia
 #
 #   Frecuencia: cron cada minuto.
 # ===========================
-echo "Instalando Watchdog v4.9..."
+echo "Instalando Watchdog v4.10..."
 
 cat > /root/xray_watchdog.sh << 'WDEOF'
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════
-#   WATCHDOG v4.9 — Self-exclusion layer (separación de roles)
+#   WATCHDOG v4.10 — Estrategia activa ante culprit=unknown
 #
-#   v4.9 fixes (auto-exclusión del watchdog):
-#     [E] SELF_PIDS        — conjunto de PIDs propios inmunes al scan
-#     [F] is_self_pid()    — lookup O(1), doble barrera prescan+EMERGENCY
+#   v4.10 nuevos:
+#     [I] unknown_strategy_counter — ciclos consecutivos unknown+CPU alta
+#     [J] do_unknown_level1()      — reinicio preventivo de servicios propios
+#     [K] do_unknown_level2()      — liberación de cache del kernel
+#     [L] Logging diagnóstico      — nivel, ciclos, CPU pre/post acción
+#
+#   v4.9 (mantenidos — auto-exclusión del watchdog):
+#     [E] SELF_PIDS        — PIDs propios inmunes al scan
+#     [F] is_self_pid()    — lookup O(1), doble barrera
 #     [G] EMERGENCY fix    — filtra SELF_PIDS antes de elegir candidato
-#     [H] Logging          — registra si un SELF_PID aparece en top-N
+#     [H] Logging          — registra SELF_PID en top-N
 #
-#   v4.8 fixes (mantenidos — blindaje de /proc):
+#   v4.8 (mantenidos — blindaje de /proc):
 #     [A] safe_int()       — sanitiza cualquier valor a entero válido
 #     [B] safe_pct()       — % con guardia division-by-zero y regexp
 #     [C] safe_pid_ticks() — race condition en /proc/PID/stat resuelto
 #     [D] safe_vmrss()     — VmRSS con fallback y validación numérica
 #
-#   v4.7 features (mantenidos):
+#   v4.7 (mantenidos):
 #     - FORCE_KILL=1: cooldowns ignorados en CPU crítica
 #     - Multi-kill: hasta 3 culprits por ciclo
 #     - Re-scan 3s post-kill
 #
-#   v4.6 features (mantenidos):
+#   v4.6 (mantenidos):
 #     - Detección grupal por nombre de proceso
 #     - 4 capas: conocidos → fallback → grupo → emergencia
 #
@@ -404,6 +441,14 @@ GROUP_CPU_CYCLES=2
 FALLBACK_RAM_MIN=25
 FALLBACK_RAM_CYCLES=2
 
+# ── [I] Umbrales estrategia unknown ──────────────────────────────────
+# Cuántos ciclos consecutivos de unknown+CPU alta antes de actuar.
+# Con cron cada 1 min: 2 ciclos = ~2 minutos de CPU alta sin culprit.
+UNKNOWN_CYCLES_REQUIRED=2
+# Cooldown para no reiniciar servicios en cascada cada ciclo.
+COOLDOWN_UNKNOWN_L1=1800   # 30 minutos entre level1 consecutivos
+COOLDOWN_UNKNOWN_L2=3600   # 60 minutos entre level2 consecutivos
+
 # ── Parámetros de scan ────────────────────────────────────────────────
 TOP_N_PROCS=10
 SAMPLE_INTERVAL=2
@@ -419,6 +464,8 @@ mkdir -p "$CD_DIR" "$FB_CPU_DIR" "$FB_RAM_DIR" "$GRP_DIR"
 
 RAM_COUNTER_FILE="${STATE_DIR}/counter_ram"
 CPU_COUNTER_FILE="${STATE_DIR}/counter_cpu"
+# [I] Archivo de contador de ciclos unknown consecutivos
+UNKNOWN_CTR_FILE="${STATE_DIR}/counter_unknown"
 
 # ── Cooldowns ─────────────────────────────────────────────────────────
 COOLDOWN_KNOWN=900
@@ -431,8 +478,6 @@ EXTRA_CULPRITS=""
 FORCE_KILL=0
 
 # ── Procesos NUNCA afectados (por nombre) ────────────────────────────
-# Nota: esta lista es complementaria a la exclusión por PID (SELF_PIDS).
-# La exclusión por PID es la barrera primaria y más fuerte.
 SAFE_PROCS_RE="^(systemd|systemd-.*|init|sshd|bash|sh|dash|zsh|fish|\
 kthread|ksoftirqd|kworker|migration|rcu_.*|watchdog|\
 ps|awk|grep|sed|cut|head|tail|cat|xargs|sleep|find|wc|sort|uniq|\
@@ -455,36 +500,15 @@ flock -n 200 || exit 0
 
 # ══════════════════════════════════════════════════════════════════════
 # [E] SELF_PIDS — Construcción del conjunto de PIDs propios
-#
-# Problema que resuelve:
-#   El watchdog consume CPU por diseño (loops, awk, scans de /proc).
-#   En EMERGENCY, el proceso con mayor delta de ticks era seleccionado
-#   sin importar si era el propio watchdog o su bash padre.
-#   → El watchdog se mataba a sí mismo en el peor momento.
-#
-# Estrategia:
-#   1. $$ = PID de este script (el watchdog en sí)
-#   2. $PPID = padre inmediato (bash de cron, systemd, etc.)
-#   3. Cadena de ancestros via /proc/PID/status (PPid:) hasta PID 1
-#   4. Se almacenan en array asociativo SELF_PIDS para lookup O(1)
-#   5. Cualquier PID en SELF_PIDS es invisible para el scan
-#
-# Por qué PID y no nombre:
-#   "bash" es genérico — puede coincidir con shells de usuarios.
-#   $$ es único e irrepetible en este ciclo de ejecución.
-#   La exclusión por nombre (SAFE_PROCS_RE) es complementaria
-#   pero no era suficiente: EMERGENCY saltaba ese filtro.
 # ══════════════════════════════════════════════════════════════════════
 declare -A SELF_PIDS
 
 _build_self_pids() {
-    # PID del watchdog y su padre inmediato
     SELF_PIDS[$$]=1
     SELF_PIDS[$PPID]=1
 
-    # Recorrer cadena de ancestros hasta init (PID 1)
     local WALK_PID=$PPID
-    local MAX_DEPTH=10   # evitar loop infinito en sistemas raros
+    local MAX_DEPTH=10
     local DEPTH=0
 
     while [ "$WALK_PID" -gt 1 ] 2>/dev/null && [ "$DEPTH" -lt "$MAX_DEPTH" ]; do
@@ -503,21 +527,15 @@ _build_self_pids() {
 
 # ══════════════════════════════════════════════════════════════════════
 # [F] is_self_pid() — Lookup O(1) en el conjunto SELF_PIDS
-#
-# Retorna 0 (true en bash) si el PID es propio del watchdog.
-# Retorna 1 (false) si es un PID ajeno que puede analizarse.
-#
-# Uso: is_self_pid "$PID" && continue   # saltar este PID
 # ══════════════════════════════════════════════════════════════════════
 is_self_pid() {
     [ -n "${SELF_PIDS[$1]}" ]
 }
 
-# Construir el conjunto de PIDs propios al inicio
 _build_self_pids
 
 # ══════════════════════════════════════════════════════════════════════
-# [A] safe_int() — sanitiza cualquier valor a entero no-negativo
+# [A] safe_int()
 # ══════════════════════════════════════════════════════════════════════
 safe_int() {
     local RAW="${1:-0}"
@@ -528,7 +546,7 @@ safe_int() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# [B] safe_pct() — porcentaje con guardia de división por cero
+# [B] safe_pct()
 # ══════════════════════════════════════════════════════════════════════
 safe_pct() {
     local NUM; NUM=$(safe_int "${1:-0}")
@@ -538,7 +556,7 @@ safe_pct() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# [C] safe_pid_ticks() — ticks de /proc/PID/stat con race condition
+# [C] safe_pid_ticks()
 # ══════════════════════════════════════════════════════════════════════
 safe_pid_ticks() {
     local PID="$1"
@@ -558,7 +576,7 @@ safe_pid_ticks() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# [D] safe_vmrss() — VmRSS con fallback y validación numérica
+# [D] safe_vmrss()
 # ══════════════════════════════════════════════════════════════════════
 safe_vmrss() {
     local PID="$1"
@@ -607,8 +625,182 @@ read_sys_stat() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
+# read_cpu_now() — snapshot rápido de CPU actual (sin prescan completo)
+# Usado para verificar CPU post-acción sin consumir tiempo de un scan
+# completo. Mide durante SAMPLE_INTERVAL segundos.
+# ══════════════════════════════════════════════════════════════════════
+read_cpu_now() {
+    local S0; S0=$(read_sys_stat)
+    [ -z "$S0" ] && { echo 0; return; }
+    sleep "$SAMPLE_INTERVAL"
+    local S1; S1=$(read_sys_stat)
+    [ -z "$S1" ] && { echo 0; return; }
+
+    local T0 I0 T1 I1
+    T0=$(safe_int "$(echo "$S0" | awk '{print $1}')")
+    I0=$(safe_int "$(echo "$S0" | awk '{print $2}')")
+    T1=$(safe_int "$(echo "$S1" | awk '{print $1}')")
+    I1=$(safe_int "$(echo "$S1" | awk '{print $2}')")
+
+    local DTOTAL=$(( T1 - T0 ))
+    [ "$DTOTAL" -le 0 ] && { echo 0; return; }
+    local DBUSY=$(( (T1 - T0) - (I1 - I0) ))
+    [ "$DBUSY" -lt 0 ] && DBUSY=0
+    safe_pct "$DBUSY" "$DTOTAL"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# [J] do_unknown_level1() — Reinicio preventivo de servicios propios
+#
+# Lógica:
+#   No sabemos quién está causando la carga, pero sí controlamos
+#   nuestros propios servicios. Reiniciarlos libera conexiones
+#   colgadas, descriptores acumulados y memoria de heap que los
+#   servicios pueden retener con el tiempo.
+#
+#   Solo reinicia servicios que están corriendo actualmente.
+#   No resucita servicios que estaban caídos antes del problema.
+#
+#   Después de reiniciar, mide CPU nuevamente para saber si ayudó.
+#   Si CPU bajó: loguea éxito y resetea contador unknown.
+#   Si CPU sigue alta: loguea que level2 puede ser necesario.
+# ══════════════════════════════════════════════════════════════════════
+do_unknown_level1() {
+    local CURRENT_CPU="$1"
+
+    log "UNKNOWN-L1: CPU=${CURRENT_CPU}% sin culprit identificable — iniciando reinicio preventivo de servicios"
+
+    local RESTARTED=0
+
+    # xray — solo si está corriendo
+    if pgrep -x xray > /dev/null 2>&1; then
+        log "UNKNOWN-L1: reiniciando xray..."
+        x-ui restart-xray >> "$LOG" 2>&1 \
+            && { log "UNKNOWN-L1: xray reiniciado OK"; (( RESTARTED++ )); } \
+            || log "UNKNOWN-L1: xray reinicio falló (no crítico)"
+        sleep 1
+    else
+        log "UNKNOWN-L1: xray no está corriendo — saltando"
+    fi
+
+    # proxy — solo si está corriendo
+    if pgrep -f "$PROXY_SCRIPT" > /dev/null 2>&1; then
+        log "UNKNOWN-L1: reiniciando proxy (PDirect.py)..."
+        pkill -f "$PROXY_SCRIPT" 2>/dev/null
+        sleep 2
+        nohup python3 "$PROXY_SCRIPT" "$PROXY_PORT" > /root/nohup.out 2>&1 &
+        sleep 1
+        pgrep -f "$PROXY_SCRIPT" > /dev/null 2>&1 \
+            && { log "UNKNOWN-L1: proxy reiniciado OK (PID $(pgrep -f "$PROXY_SCRIPT" | head -1))"; (( RESTARTED++ )); } \
+            || log "UNKNOWN-L1: proxy reinicio falló — no arrancó"
+    else
+        log "UNKNOWN-L1: proxy no está corriendo — saltando"
+    fi
+
+    # badvpn — solo si está corriendo
+    if pgrep -x badvpn-udpgw > /dev/null 2>&1; then
+        log "UNKNOWN-L1: reiniciando badvpn..."
+        pkill -f "badvpn-udpgw" 2>/dev/null
+        screen -S badvpn   -X quit 2>/dev/null
+        screen -S badUDP72 -X quit 2>/dev/null
+        sleep 2
+        screen -dmS badvpn   /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7300 \
+            --max-clients 1000 --max-connections-for-client 10
+        screen -dmS badUDP72 /usr/bin/badvpn-udpgw --listen-addr 127.0.0.1:7200 \
+            --max-clients 1000 --max-connections-for-client 10
+        sleep 1
+        pgrep -x badvpn-udpgw > /dev/null 2>&1 \
+            && { log "UNKNOWN-L1: badvpn reiniciado OK"; (( RESTARTED++ )); } \
+            || log "UNKNOWN-L1: badvpn reinicio falló"
+    else
+        log "UNKNOWN-L1: badvpn no está corriendo — saltando"
+    fi
+
+    # stunnel — solo si está activo
+    if systemctl is-active stunnel4 > /dev/null 2>&1; then
+        log "UNKNOWN-L1: reiniciando stunnel4..."
+        systemctl restart stunnel4 >> "$LOG" 2>&1 \
+            && { log "UNKNOWN-L1: stunnel4 reiniciado OK"; (( RESTARTED++ )); } \
+            || log "UNKNOWN-L1: stunnel4 reinicio falló"
+    else
+        log "UNKNOWN-L1: stunnel4 no está activo — saltando"
+    fi
+
+    log "UNKNOWN-L1: ${RESTARTED} servicios reiniciados — midiendo CPU post-acción..."
+
+    # Verificar CPU post-reinicio
+    local CPU_POST; CPU_POST=$(read_cpu_now)
+    log "UNKNOWN-L1: CPU post-reinicio = ${CPU_POST}%"
+
+    if [ "$CPU_POST" -lt "$CPU_WARN" ]; then
+        log "UNKNOWN-L1: ✅ CPU normalizada (${CPU_POST}%) — reinicio preventivo efectivo"
+        echo "0" > "$UNKNOWN_CTR_FILE"
+    elif [ "$CPU_POST" -lt "$CPU_CRIT" ]; then
+        log "UNKNOWN-L1: CPU bajó a ${CPU_POST}% (bajo crítico) — monitoreando"
+    else
+        log "UNKNOWN-L1: ⚠️  CPU sigue en ${CPU_POST}% (>=${CPU_CRIT}%) — level2 puede ser necesario en próximo ciclo"
+    fi
+
+    _set_cd "unknown_l1"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# [K] do_unknown_level2() — Liberación de cache del kernel
+#
+# Lógica:
+#   drop_caches libera: page cache (1), dentries+inodes (2), ambos (3).
+#   Usamos valor 3 para máxima liberación.
+#   SIEMPRE se hace sync previo para no perder escrituras pendientes.
+#   No afecta datos de aplicaciones en memoria: solo cache del kernel.
+#
+#   En VPS con muchas conexiones SSH/tunnel, el kernel puede retener
+#   page cache de archivos ya cerrados, ocupando RAM que el sistema
+#   interpreta como "usada" aunque sea recuperable.
+#
+#   Cuándo aplica:
+#     - Level1 ya se ejecutó en este ciclo o en el anterior
+#     - CPU sigue >= CPU_CRIT después del level1
+#     - Cooldown de level2 no está activo
+# ══════════════════════════════════════════════════════════════════════
+do_unknown_level2() {
+    local CURRENT_CPU="$1"
+
+    log "UNKNOWN-L2: CPU=${CURRENT_CPU}% persiste — liberando cache del kernel"
+
+    local RAM_ANTES; RAM_ANTES=$(free -m | awk '/^Mem:/{print $4}')
+    log "UNKNOWN-L2: RAM libre antes = ${RAM_ANTES}MB"
+
+    # sync primero — no perder escrituras pendientes
+    sync
+    log "UNKNOWN-L2: sync completado"
+
+    # drop_caches: 3 = page cache + dentries + inodes
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null \
+        && log "UNKNOWN-L2: drop_caches=3 ejecutado OK" \
+        || log "UNKNOWN-L2: drop_caches falló (¿permisos?)"
+
+    sleep 1
+
+    local RAM_DESPUES; RAM_DESPUES=$(free -m | awk '/^Mem:/{print $4}')
+    local RAM_LIBERADA=$(( RAM_DESPUES - RAM_ANTES ))
+    log "UNKNOWN-L2: RAM libre después = ${RAM_DESPUES}MB (liberados: ${RAM_LIBERADA}MB)"
+
+    local CPU_POST; CPU_POST=$(read_cpu_now)
+    log "UNKNOWN-L2: CPU post-drop_caches = ${CPU_POST}%"
+
+    if [ "$CPU_POST" -lt "$CPU_WARN" ]; then
+        log "UNKNOWN-L2: ✅ CPU normalizada (${CPU_POST}%) — drop_caches efectivo"
+        echo "0" > "$UNKNOWN_CTR_FILE"
+    else
+        log "UNKNOWN-L2: CPU en ${CPU_POST}% — carga no es por cache de memoria"
+        log "UNKNOWN-L2: revisar manualmente: top, iostat, vmstat"
+    fi
+
+    _set_cd "unknown_l2"
+}
+
+# ══════════════════════════════════════════════════════════════════════
 # Prescan T0
-# [E/F aplicado] — is_self_pid() filtra PIDs propios antes de agregar
 # ══════════════════════════════════════════════════════════════════════
 declare -A ALL_TICKS_T0
 declare -A ALL_COMM
@@ -619,13 +811,8 @@ prescan_t0() {
     for STATF in /proc/[0-9]*/stat; do
         local PID="${STATF%/stat}"; PID="${PID##*/}"
         [ "$PID" = "1" ] && continue
-        [ -d "/proc/$PID" ] || continue   # race: ya murió
-
-        # [F] Barrera primaria: excluir PIDs propios del watchdog
-        if is_self_pid "$PID"; then
-            continue   # invisible para el scan, sin log (demasiado verboso)
-        fi
-
+        [ -d "/proc/$PID" ] || continue
+        is_self_pid "$PID" && continue   # [F]
         local COMM
         COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "")
         [ -z "$COMM" ] && continue
@@ -663,7 +850,6 @@ identify_culprit() {
         local TAG="$1"; shift
         for PID in "$@"; do
             [ -d "/proc/$PID" ] || continue
-            # [F] No agregar PIDs propios ni siquiera como servicios conocidos
             is_self_pid "$PID" && { log "SELF-EXCL: PID $PID ($TAG) es PID propio — ignorado en known"; continue; }
             PID_TAG[$PID]="$TAG"
             local MEM; MEM=$(safe_vmrss "$PID")
@@ -729,10 +915,9 @@ identify_culprit() {
 
     # ── CAPA 1 y 2: Servicios conocidos + fallback individual ─────────
     for PID in $TOP_PIDS_SORTED; do
-        # [H] Logging: si un SELF_PID aparece en top-N, registrar y descartar
         if is_self_pid "$PID"; then
             local SELF_COMM; SELF_COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "watchdog")
-            log "SELF-EXCL: PID $PID ($SELF_COMM) apareció en top-N — descartado (es PID propio)"
+            log "SELF-EXCL: PID $PID ($SELF_COMM) apareció en top-N — descartado"   # [H]
             continue
         fi
 
@@ -755,7 +940,6 @@ identify_culprit() {
         else
             SCAN_LOG="${SCAN_LOG} ${COMM}[${PID}]=${PID_CPU}%cpu/${PID_MEM}%mem"
 
-            # Fallback CPU
             if [ "$PID_CPU" -ge "$FALLBACK_CPU_MIN" ]; then
                 local FB_CPU_CTR_F="${FB_CPU_DIR}/pid_${PID}"
                 local FB_CPU_CTR
@@ -779,7 +963,6 @@ identify_culprit() {
                 fi
             fi
 
-            # Fallback RAM
             if [ "$PID_MEM" -ge "$FALLBACK_RAM_MIN" ]; then
                 local FB_RAM_CTR_F="${FB_RAM_DIR}/pid_${PID}"
                 local FB_RAM_CTR
@@ -810,8 +993,7 @@ identify_culprit() {
     declare -A COMM_PIDS_ALL
 
     for PID in "${!PID_DELTA[@]}"; do
-        # [F] Doble check en el loop grupal también
-        is_self_pid "$PID" && continue
+        is_self_pid "$PID" && continue   # [F]
         [ -n "${PID_TAG[$PID]:-}" ] && continue
         local COMM="${ALL_COMM[$PID]:-}"
         [ -z "$COMM" ] && continue
@@ -862,16 +1044,10 @@ identify_culprit() {
         fi
     done
 
-    # ── CAPA 4: Selector de emergencia ───────────────────────────────
-    # [G] EMERGENCY refactorizado — filtra SELF_PIDS antes de elegir
-    #
-    # Antes (v4.8): tomaba el top delta sin verificar si era el watchdog.
-    # Ahora (v4.9): is_self_pid() aplicado ANTES de comparar deltas.
-    # Garantía: ningún PID propio puede ser elegido como culprit aquí.
+    # ── CAPA 4: Selector de emergencia — [G] filtra SELF_PIDS ─────────
     if [ "$CULPRIT" = "unknown" ] && [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
         local BEST_PID="" BEST_DELTA=0
         for PID in $TOP_PIDS_SORTED; do
-            # [G] Filtro SELF_PIDS en EMERGENCY — barrera secundaria
             if is_self_pid "$PID"; then
                 local SELF_COMM; SELF_COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "watchdog")
                 log "EMERGENCY SELF-EXCL: PID $PID ($SELF_COMM) descartado como candidato de emergencia"
@@ -926,7 +1102,7 @@ identify_culprit() {
     done
 
     for PID in $TOP_PIDS_SORTED; do
-        is_self_pid "$PID" && continue   # [F] No incluir PIDs propios en multi-kill
+        is_self_pid "$PID" && continue   # [F]
         [ -n "${PID_TAG[$PID]:-}" ] && continue
         local PCPU; PCPU=$(safe_int "${PID_CPU_PCT[$PID]:-0}")
         [ "$PCPU" -lt "$FALLBACK_CPU_MIN" ] && continue
@@ -999,7 +1175,7 @@ do_kill_fallback() {
     local FB_NAME="$2"
     local FB_PID="$3"
 
-    # [F] Guardia final: nunca matar PIDs propios por ningún camino
+    # [F] Guardia final: nunca matar PIDs propios
     if is_self_pid "$FB_PID"; then
         log "ABORT [fallback-${TYPE}]: PID $FB_PID ($FB_NAME) es PID propio del watchdog — acción cancelada"
         return
@@ -1041,7 +1217,7 @@ do_kill_fallback() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Acción grupal: SIGTERM a todo el grupo → SIGKILL
+# Acción grupal: SIGTERM → SIGKILL
 # ══════════════════════════════════════════════════════════════════════
 do_kill_group() {
     local GRP_NAME="$1"
@@ -1051,7 +1227,6 @@ do_kill_group() {
 
     local ALIVE_PIDS=""
     for PID in $GRP_PIDS; do
-        # [F] Guardia final en kill grupal también
         if is_self_pid "$PID"; then
             log "ABORT [group]: PID $PID es PID propio del watchdog — excluido del kill grupal"
             continue
@@ -1098,7 +1273,7 @@ do_kill_group() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# dispatch_action() — FORCE_KILL=1 ignora cooldowns (v4.7)
+# dispatch_action()
 # ══════════════════════════════════════════════════════════════════════
 dispatch_action() {
     local REASON="$1"
@@ -1176,9 +1351,13 @@ dispatch_action() {
             fi
             do_kill_fallback "ram" "$FB_NAME" "$FB_PID" ;;
 
+        # ── [I/J/K] unknown con CPU alta → estrategia escalonada ──────
+        # Este caso antes era: log WARN + no hacer nada.
+        # Ahora: contador de ciclos → level1 → verificar → level2.
         unknown)
-            log "WARN: culprit=unknown — sin proceso identificable — SIN ACCIÓN (falla segura)"
-            return ;;
+            log "WARN: culprit=unknown — evaluando estrategia por CPU=${SYS_CPU_PCT}%"
+            return ;;   # dispatch_action no maneja unknown directamente
+                        # la lógica de unknown está en el bloque MAIN abajo
     esac
 }
 
@@ -1187,6 +1366,7 @@ dispatch_action() {
 # ══════════════════════════════════════════════════════════════════════
 RAM_CTR=$(safe_int "$(cat "$RAM_COUNTER_FILE" 2>/dev/null)")
 CPU_CTR=$(safe_int "$(cat "$CPU_COUNTER_FILE" 2>/dev/null)")
+UNKNOWN_CTR=$(safe_int "$(cat "$UNKNOWN_CTR_FILE" 2>/dev/null)")   # [I]
 
 RAM_PCT=$(safe_int "$(free 2>/dev/null | awk '/^Mem:/ {
     total=$2; avail=$7
@@ -1194,13 +1374,13 @@ RAM_PCT=$(safe_int "$(free 2>/dev/null | awk '/^Mem:/ {
     else print 0
 }')")
 
-log "INFO: RAM=${RAM_PCT}% | ctrs RAM=${RAM_CTR} CPU=${CPU_CTR} | iniciando scan CPU real..."
+log "INFO: RAM=${RAM_PCT}% | ctrs RAM=${RAM_CTR} CPU=${CPU_CTR} UNKNOWN=${UNKNOWN_CTR} | iniciando scan..."
 
 identify_culprit
 
 log "INFO: RAM=${RAM_PCT}% CPU_real=${SYS_CPU_PCT}% | culprit=${CULPRIT}"
 
-# ── CPU crítica: FORCE_KILL + multi-kill + re-scan (v4.7) ─────────────
+# ── CPU crítica: FORCE_KILL + multi-kill + re-scan ────────────────────
 if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
     FORCE_KILL=1
     log "OVERRIDE: CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%) — FORCE_KILL=1, cooldowns IGNORADOS"
@@ -1216,56 +1396,59 @@ if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
         log "OVERRIDE: forzando ciclos para group '${GRP_NAME_CRIT}' (PIDs: ${CULPRIT_GROUP_PIDS})"
     fi
 
-    dispatch_action "CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%)"
+    if [ "$CULPRIT" != "unknown" ]; then
+        dispatch_action "CPU crítica (${SYS_CPU_PCT}%>=${CPU_CRIT}%)"
 
-    # Multi-kill: hasta 2 culprits secundarios
-    MAX_EXTRA=2; EXTRA_COUNT=0
-    SAVED_CULPRIT="$CULPRIT"
-    SAVED_CULPRIT_CPU="$CULPRIT_CPU"
-    SAVED_CULPRIT_GROUP_PIDS="$CULPRIT_GROUP_PIDS"
+        # Multi-kill: hasta 2 culprits secundarios
+        MAX_EXTRA=2; EXTRA_COUNT=0
+        SAVED_CULPRIT="$CULPRIT"
+        SAVED_CULPRIT_CPU="$CULPRIT_CPU"
+        SAVED_CULPRIT_GROUP_PIDS="$CULPRIT_GROUP_PIDS"
 
-    for ENTRY in $EXTRA_CULPRITS; do
-        [ "$EXTRA_COUNT" -ge "$MAX_EXTRA" ] && break
-        CULPRIT=$(echo "$ENTRY"            | cut -d'|' -f1)
-        CULPRIT_GROUP_PIDS=$(echo "$ENTRY" | cut -d'|' -f2)
-        CULPRIT_CPU=$(safe_int "$(echo "$ENTRY" | cut -d'|' -f3)")
+        for ENTRY in $EXTRA_CULPRITS; do
+            [ "$EXTRA_COUNT" -ge "$MAX_EXTRA" ] && break
+            CULPRIT=$(echo "$ENTRY"            | cut -d'|' -f1)
+            CULPRIT_GROUP_PIDS=$(echo "$ENTRY" | cut -d'|' -f2)
+            CULPRIT_CPU=$(safe_int "$(echo "$ENTRY" | cut -d'|' -f3)")
 
-        log "MULTI-KILL [$(( EXTRA_COUNT + 1 ))]: atacando culprit adicional → ${CULPRIT} (${CULPRIT_CPU}%cpu)"
+            log "MULTI-KILL [$(( EXTRA_COUNT + 1 ))]: atacando culprit adicional → ${CULPRIT} (${CULPRIT_CPU}%cpu)"
 
-        if [[ "$CULPRIT" == fallback_cpu:* ]]; then
-            echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_$(echo "$CULPRIT" | cut -d: -f3)"
-        elif [[ "$CULPRIT" == group:* ]]; then
-            echo "$GROUP_CPU_CYCLES" > "${GRP_DIR}/$(echo "$CULPRIT" | cut -d: -f2)"
+            if [[ "$CULPRIT" == fallback_cpu:* ]]; then
+                echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_$(echo "$CULPRIT" | cut -d: -f3)"
+            elif [[ "$CULPRIT" == group:* ]]; then
+                echo "$GROUP_CPU_CYCLES" > "${GRP_DIR}/$(echo "$CULPRIT" | cut -d: -f2)"
+            fi
+
+            dispatch_action "MULTI-KILL extra (CPU crítica)"
+            (( EXTRA_COUNT++ ))
+        done
+
+        CULPRIT="$SAVED_CULPRIT"
+        CULPRIT_CPU="$SAVED_CULPRIT_CPU"
+        CULPRIT_GROUP_PIDS="$SAVED_CULPRIT_GROUP_PIDS"
+        [ "$EXTRA_COUNT" -gt 0 ] && log "MULTI-KILL: ${EXTRA_COUNT} culprits adicionales atacados"
+
+        # Re-scan inmediato post-kill
+        log "RE-SCAN: esperando 3s post-kill y re-evaluando CPU..."
+        sleep 3
+        identify_culprit
+        log "RE-SCAN RESULT: CPU=${SYS_CPU_PCT}% culprit=${CULPRIT}"
+
+        if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ] && [ "$CULPRIT" != "unknown" ]; then
+            log "RE-SCAN: CPU sigue crítica (${SYS_CPU_PCT}%) — segunda ronda de kills"
+            if [[ "$CULPRIT" == fallback_cpu:* ]]; then
+                echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_$(echo "$CULPRIT" | cut -d: -f3)"
+            elif [[ "$CULPRIT" == group:* ]]; then
+                echo "$GROUP_CPU_CYCLES" > "${GRP_DIR}/$(echo "$CULPRIT" | cut -d: -f2)"
+            fi
+            dispatch_action "Re-scan CPU crítica (${SYS_CPU_PCT}%)"
+        elif [ "$SYS_CPU_PCT" -lt "$CPU_WARN" ]; then
+            log "RE-SCAN: ✅ CPU normalizada a ${SYS_CPU_PCT}% — amenaza contenida"
+            echo "0" > "$CPU_COUNTER_FILE"
+            echo "0" > "$UNKNOWN_CTR_FILE"
+        else
+            log "RE-SCAN: CPU en ${SYS_CPU_PCT}% (bajo el crítico) — monitoreando"
         fi
-
-        dispatch_action "MULTI-KILL extra (CPU crítica)"
-        (( EXTRA_COUNT++ ))
-    done
-
-    CULPRIT="$SAVED_CULPRIT"
-    CULPRIT_CPU="$SAVED_CULPRIT_CPU"
-    CULPRIT_GROUP_PIDS="$SAVED_CULPRIT_GROUP_PIDS"
-    [ "$EXTRA_COUNT" -gt 0 ] && log "MULTI-KILL: ${EXTRA_COUNT} culprits adicionales atacados"
-
-    # Re-scan inmediato post-kill
-    log "RE-SCAN: esperando 3s post-kill y re-evaluando CPU..."
-    sleep 3
-    identify_culprit
-    log "RE-SCAN RESULT: CPU=${SYS_CPU_PCT}% culprit=${CULPRIT}"
-
-    if [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ] && [ "$CULPRIT" != "unknown" ]; then
-        log "RE-SCAN: CPU sigue crítica (${SYS_CPU_PCT}%) — segunda ronda de kills"
-        if [[ "$CULPRIT" == fallback_cpu:* ]]; then
-            echo "$FALLBACK_CPU_CYCLES" > "${FB_CPU_DIR}/pid_$(echo "$CULPRIT" | cut -d: -f3)"
-        elif [[ "$CULPRIT" == group:* ]]; then
-            echo "$GROUP_CPU_CYCLES" > "${GRP_DIR}/$(echo "$CULPRIT" | cut -d: -f2)"
-        fi
-        dispatch_action "Re-scan CPU crítica (${SYS_CPU_PCT}%)"
-    elif [ "$SYS_CPU_PCT" -lt "$CPU_WARN" ]; then
-        log "RE-SCAN: ✅ CPU normalizada a ${SYS_CPU_PCT}% — amenaza contenida"
-        echo "0" > "$CPU_COUNTER_FILE"
-    else
-        log "RE-SCAN: CPU en ${SYS_CPU_PCT}% (bajo el crítico) — monitoreando"
     fi
 
     FORCE_KILL=0
@@ -1281,7 +1464,7 @@ if [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
     CPU_CTR=$(( CPU_CTR + 1 ))
     echo "$CPU_CTR" > "$CPU_COUNTER_FILE"
     log "WARN: CPU alta (${SYS_CPU_PCT}%) — ciclo ${CPU_CTR}/${CYCLES_REQUIRED}"
-    [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ] && \
+    [ "$CPU_CTR" -ge "$CYCLES_REQUIRED" ] && [ "$CULPRIT" != "unknown" ] && \
         dispatch_action "CPU sostenida (${SYS_CPU_PCT}% x ${CPU_CTR} ciclos)"
 else
     if [ "$CPU_CTR" -gt 0 ]; then
@@ -1311,6 +1494,61 @@ if [[ "$CULPRIT" == fallback_cpu:* ]] || \
    [[ "$CULPRIT" == fallback_ram:* ]] || \
    [[ "$CULPRIT" == group:* ]]; then
     dispatch_action "Proceso/grupo externo sostenido detectado"
+fi
+
+# ══════════════════════════════════════════════════════════════════════
+# [I/J/K] Estrategia escalonada ante culprit=unknown con CPU alta
+#
+# Flujo:
+#   1. Si CPU >= CPU_WARN Y culprit=unknown → incrementar UNKNOWN_CTR
+#   2. Si UNKNOWN_CTR >= UNKNOWN_CYCLES_REQUIRED:
+#      a. Level1: reiniciar servicios propios (si cooldown lo permite)
+#      b. Verificar CPU post-level1
+#      c. Si CPU sigue >= CPU_CRIT Y level1 ya corrió: level2 (drop_caches)
+#   3. Si CPU < CPU_WARN O culprit != unknown → resetear UNKNOWN_CTR
+#
+# Este bloque va DESPUÉS de todos los otros porque:
+#   - Si hay culprit identificado, ya fue manejado arriba
+#   - Solo llega aquí si después de todas las capas sigue unknown
+# ══════════════════════════════════════════════════════════════════════
+if [ "$CULPRIT" = "unknown" ] && [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
+    UNKNOWN_CTR=$(( UNKNOWN_CTR + 1 ))
+    echo "$UNKNOWN_CTR" > "$UNKNOWN_CTR_FILE"
+    log "UNKNOWN: CPU=${SYS_CPU_PCT}% sin culprit — ciclo ${UNKNOWN_CTR}/${UNKNOWN_CYCLES_REQUIRED}"
+
+    if [ "$UNKNOWN_CTR" -ge "$UNKNOWN_CYCLES_REQUIRED" ]; then
+        log "UNKNOWN: umbral alcanzado (${UNKNOWN_CTR} ciclos) — activando protocolo escalonado"
+
+        # Level 1: reinicio preventivo de servicios propios
+        if _in_cd "unknown_l1" "$COOLDOWN_UNKNOWN_L1"; then
+            local REM; REM=$(_cd_remaining "unknown_l1" "$COOLDOWN_UNKNOWN_L1")
+            log "UNKNOWN-L1: en cooldown (${REM}s restantes) — saltando level1"
+        else
+            do_unknown_level1 "$SYS_CPU_PCT"
+
+            # Verificar si después del level1 la CPU sigue crítica para level2
+            # La verificación de CPU fue hecha dentro de do_unknown_level1()
+            # Aquí re-leemos UNKNOWN_CTR por si do_unknown_level1() lo reseteó
+            UNKNOWN_CTR=$(safe_int "$(cat "$UNKNOWN_CTR_FILE" 2>/dev/null)")
+
+            if [ "$UNKNOWN_CTR" -gt 0 ] && [ "$SYS_CPU_PCT" -ge "$CPU_CRIT" ]; then
+                # Level 2: liberación de cache del kernel
+                if _in_cd "unknown_l2" "$COOLDOWN_UNKNOWN_L2"; then
+                    local REM2; REM2=$(_cd_remaining "unknown_l2" "$COOLDOWN_UNKNOWN_L2")
+                    log "UNKNOWN-L2: en cooldown (${REM2}s restantes) — saltando level2"
+                else
+                    do_unknown_level2 "$SYS_CPU_PCT"
+                fi
+            fi
+        fi
+    fi
+
+else
+    # CPU normalizó o se identificó culprit → resetear contador unknown
+    if [ "$UNKNOWN_CTR" -gt 0 ]; then
+        log "INFO: reseteando contador unknown (CPU=${SYS_CPU_PCT}% culprit=${CULPRIT})"
+        echo "0" > "$UNKNOWN_CTR_FILE"
+    fi
 fi
 
 log "INFO: ciclo completado → sin más acciones pendientes"
@@ -1367,7 +1605,7 @@ crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
 [ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
 if $CRON_OK && $LOG_OK; then
-    echo "✅ Watchdog v4.9 activo (cron cada 1 min)"
+    echo "✅ Watchdog v4.10 activo (cron cada 1 min)"
 else
     $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
     $LOG_OK  || echo "❌ log no existe en /var/log/xray_watchdog.log"
@@ -1518,35 +1756,33 @@ echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Watchdog v4.9 activo (cron cada 1 min)"
+echo "Watchdog v4.10 activo (cron cada 1 min)"
 echo ""
-echo "   v4.9 — Auto-exclusión del watchdog (separación de roles):"
-echo "   [E] SELF_PIDS        \$\$, \$PPID y cadena de ancestros → inmunes"
-echo "       Razón: el watchdog consume CPU por diseño — NO es amenaza"
-echo "   [F] is_self_pid()    lookup O(1), barrera doble: prescan + EMERGENCY"
-echo "       Razón: ningún camino puede llegar a matar un PID propio"
-echo "   [G] EMERGENCY fix    filtra SELF_PIDS antes de elegir candidato"
-echo "       Razón: antes tomaba el top delta sin filtro → suicidio"
-echo "   [H] Logging          registra si SELF_PID aparece en top-N"
-echo "       Razón: confirma que la exclusión está activa en producción"
+echo "   v4.10 — Estrategia activa ante culprit=unknown:"
+echo "   [I] unknown_strategy_counter — ciclos consecutivos unknown+CPU alta"
+echo "       Umbral: ${UNKNOWN_CYCLES_REQUIRED} ciclos antes de actuar (~2min con cron 1min)"
+echo "       Se resetea cuando CPU baja o se identifica culprit"
+echo "   [J] do_unknown_level1()      — reinicio preventivo de servicios propios"
+echo "       Solo reinicia servicios que están corriendo actualmente"
+echo "       Mide CPU post-reinicio para confirmar efectividad"
+echo "       Cooldown: ${COOLDOWN_UNKNOWN_L1}s (30min) entre level1 consecutivos"
+echo "   [K] do_unknown_level2()      — liberación de cache del kernel"
+echo "       sync + drop_caches=3 (page cache + dentries + inodes)"
+echo "       Solo si level1 ya corrió Y CPU sigue >= CPU_CRIT"
+echo "       Cooldown: ${COOLDOWN_UNKNOWN_L2}s (60min) entre level2 consecutivos"
+echo "   [L] Logging diagnóstico      — CPU pre/post, ciclos, nivel de acción"
+echo ""
+echo "   v4.9 (mantenido — auto-exclusión del watchdog):"
+echo "   [E] SELF_PIDS / [F] is_self_pid() / [G] EMERGENCY fix / [H] Logging"
 echo ""
 echo "   v4.8 (mantenido — blindaje de /proc):"
-echo "   [A] safe_int()        vacío / no-numérico / negativo → 0"
-echo "   [B] safe_pct()        ambos operandos sanitizados + guardia /0"
-echo "   [C] safe_pid_ticks()  verifica existencia + campos completos"
-echo "   [D] safe_vmrss()      fallback explícito + validación numérica"
+echo "   [A] safe_int / [B] safe_pct / [C] safe_pid_ticks / [D] safe_vmrss"
 echo ""
-echo "   v4.7 (mantenido):"
-echo "   FORCE_KILL=1 en CPU >= ${CPU_CRIT}% → cooldowns ignorados"
-echo "   Multi-kill: hasta 3 culprits simultáneos"
-echo "   Re-scan 3s post-kill con segunda ronda"
+echo "   v4.7 (mantenido): FORCE_KILL + multi-kill + re-scan"
+echo "   v4.6 (mantenido): detección grupal + 4 capas"
 echo ""
-echo "   v4.6 (mantenido):"
-echo "   Detección grupal: 10x dd a 5% = 50% → mata los 10"
-echo "   4 capas: conocidos → fallback → grupo → emergencia"
-echo ""
-echo "   Cooldowns (ignorados en CPU crítica):"
-echo "   Conocidos 15min | Fallback 10min | Grupo 10min"
+echo "   Cooldowns: Conocidos 15min | Fallback 10min | Grupo 10min"
+echo "              Unknown L1 30min | Unknown L2 60min"
 echo "   Log: tail -f /var/log/xray_watchdog.log"
 echo ""
 echo "Limpieza automática: diaria a las 3am"
