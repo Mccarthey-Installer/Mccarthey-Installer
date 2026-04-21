@@ -349,7 +349,7 @@ systemctl start rc-local
 #     - Detección grupal por nombre (carga distribuida)
 #     - 4 capas: conocidos → fallback → grupo → emergencia
 #
-#   Frecuencia: cron cada minuto.
+#   Frecuencia: cron cada 5 minutos.
 # ===========================
 echo "Instalando Watchdog v4.9..."
 
@@ -379,7 +379,7 @@ cat > /root/xray_watchdog.sh << 'WDEOF'
 #     - Detección grupal por nombre de proceso
 #     - 4 capas: conocidos → fallback → grupo → emergencia
 #
-#   Cron: * * * * * /root/xray_watchdog.sh
+#   Cron: */5 * * * * /root/xray_watchdog.sh
 # ═══════════════════════════════════════════════════════════════════════
 
 LOG="/var/log/xray_watchdog.log"
@@ -455,36 +455,15 @@ flock -n 200 || exit 0
 
 # ══════════════════════════════════════════════════════════════════════
 # [E] SELF_PIDS — Construcción del conjunto de PIDs propios
-#
-# Problema que resuelve:
-#   El watchdog consume CPU por diseño (loops, awk, scans de /proc).
-#   En EMERGENCY, el proceso con mayor delta de ticks era seleccionado
-#   sin importar si era el propio watchdog o su bash padre.
-#   → El watchdog se mataba a sí mismo en el peor momento.
-#
-# Estrategia:
-#   1. $$ = PID de este script (el watchdog en sí)
-#   2. $PPID = padre inmediato (bash de cron, systemd, etc.)
-#   3. Cadena de ancestros via /proc/PID/status (PPid:) hasta PID 1
-#   4. Se almacenan en array asociativo SELF_PIDS para lookup O(1)
-#   5. Cualquier PID en SELF_PIDS es invisible para el scan
-#
-# Por qué PID y no nombre:
-#   "bash" es genérico — puede coincidir con shells de usuarios.
-#   $$ es único e irrepetible en este ciclo de ejecución.
-#   La exclusión por nombre (SAFE_PROCS_RE) es complementaria
-#   pero no era suficiente: EMERGENCY saltaba ese filtro.
 # ══════════════════════════════════════════════════════════════════════
 declare -A SELF_PIDS
 
 _build_self_pids() {
-    # PID del watchdog y su padre inmediato
     SELF_PIDS[$$]=1
     SELF_PIDS[$PPID]=1
 
-    # Recorrer cadena de ancestros hasta init (PID 1)
     local WALK_PID=$PPID
-    local MAX_DEPTH=10   # evitar loop infinito en sistemas raros
+    local MAX_DEPTH=10
     local DEPTH=0
 
     while [ "$WALK_PID" -gt 1 ] 2>/dev/null && [ "$DEPTH" -lt "$MAX_DEPTH" ]; do
@@ -503,21 +482,15 @@ _build_self_pids() {
 
 # ══════════════════════════════════════════════════════════════════════
 # [F] is_self_pid() — Lookup O(1) en el conjunto SELF_PIDS
-#
-# Retorna 0 (true en bash) si el PID es propio del watchdog.
-# Retorna 1 (false) si es un PID ajeno que puede analizarse.
-#
-# Uso: is_self_pid "$PID" && continue   # saltar este PID
 # ══════════════════════════════════════════════════════════════════════
 is_self_pid() {
     [ -n "${SELF_PIDS[$1]}" ]
 }
 
-# Construir el conjunto de PIDs propios al inicio
 _build_self_pids
 
 # ══════════════════════════════════════════════════════════════════════
-# [A] safe_int() — sanitiza cualquier valor a entero no-negativo
+# [A] safe_int()
 # ══════════════════════════════════════════════════════════════════════
 safe_int() {
     local RAW="${1:-0}"
@@ -528,7 +501,7 @@ safe_int() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# [B] safe_pct() — porcentaje con guardia de división por cero
+# [B] safe_pct()
 # ══════════════════════════════════════════════════════════════════════
 safe_pct() {
     local NUM; NUM=$(safe_int "${1:-0}")
@@ -538,7 +511,7 @@ safe_pct() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# [C] safe_pid_ticks() — ticks de /proc/PID/stat con race condition
+# [C] safe_pid_ticks()
 # ══════════════════════════════════════════════════════════════════════
 safe_pid_ticks() {
     local PID="$1"
@@ -558,7 +531,7 @@ safe_pid_ticks() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# [D] safe_vmrss() — VmRSS con fallback y validación numérica
+# [D] safe_vmrss()
 # ══════════════════════════════════════════════════════════════════════
 safe_vmrss() {
     local PID="$1"
@@ -608,7 +581,6 @@ read_sys_stat() {
 
 # ══════════════════════════════════════════════════════════════════════
 # Prescan T0
-# [E/F aplicado] — is_self_pid() filtra PIDs propios antes de agregar
 # ══════════════════════════════════════════════════════════════════════
 declare -A ALL_TICKS_T0
 declare -A ALL_COMM
@@ -619,11 +591,10 @@ prescan_t0() {
     for STATF in /proc/[0-9]*/stat; do
         local PID="${STATF%/stat}"; PID="${PID##*/}"
         [ "$PID" = "1" ] && continue
-        [ -d "/proc/$PID" ] || continue   # race: ya murió
+        [ -d "/proc/$PID" ] || continue
 
-        # [F] Barrera primaria: excluir PIDs propios del watchdog
         if is_self_pid "$PID"; then
-            continue   # invisible para el scan, sin log (demasiado verboso)
+            continue
         fi
 
         local COMM
@@ -663,7 +634,6 @@ identify_culprit() {
         local TAG="$1"; shift
         for PID in "$@"; do
             [ -d "/proc/$PID" ] || continue
-            # [F] No agregar PIDs propios ni siquiera como servicios conocidos
             is_self_pid "$PID" && { log "SELF-EXCL: PID $PID ($TAG) es PID propio — ignorado en known"; continue; }
             PID_TAG[$PID]="$TAG"
             local MEM; MEM=$(safe_vmrss "$PID")
@@ -810,7 +780,6 @@ identify_culprit() {
     declare -A COMM_PIDS_ALL
 
     for PID in "${!PID_DELTA[@]}"; do
-        # [F] Doble check en el loop grupal también
         is_self_pid "$PID" && continue
         [ -n "${PID_TAG[$PID]:-}" ] && continue
         local COMM="${ALL_COMM[$PID]:-}"
@@ -864,14 +833,9 @@ identify_culprit() {
 
     # ── CAPA 4: Selector de emergencia ───────────────────────────────
     # [G] EMERGENCY refactorizado — filtra SELF_PIDS antes de elegir
-    #
-    # Antes (v4.8): tomaba el top delta sin verificar si era el watchdog.
-    # Ahora (v4.9): is_self_pid() aplicado ANTES de comparar deltas.
-    # Garantía: ningún PID propio puede ser elegido como culprit aquí.
     if [ "$CULPRIT" = "unknown" ] && [ "$SYS_CPU_PCT" -ge "$CPU_WARN" ]; then
         local BEST_PID="" BEST_DELTA=0
         for PID in $TOP_PIDS_SORTED; do
-            # [G] Filtro SELF_PIDS en EMERGENCY — barrera secundaria
             if is_self_pid "$PID"; then
                 local SELF_COMM; SELF_COMM=$(cat "/proc/$PID/comm" 2>/dev/null || echo "watchdog")
                 log "EMERGENCY SELF-EXCL: PID $PID ($SELF_COMM) descartado como candidato de emergencia"
@@ -926,7 +890,7 @@ identify_culprit() {
     done
 
     for PID in $TOP_PIDS_SORTED; do
-        is_self_pid "$PID" && continue   # [F] No incluir PIDs propios en multi-kill
+        is_self_pid "$PID" && continue
         [ -n "${PID_TAG[$PID]:-}" ] && continue
         local PCPU; PCPU=$(safe_int "${PID_CPU_PCT[$PID]:-0}")
         [ "$PCPU" -lt "$FALLBACK_CPU_MIN" ] && continue
@@ -999,7 +963,6 @@ do_kill_fallback() {
     local FB_NAME="$2"
     local FB_PID="$3"
 
-    # [F] Guardia final: nunca matar PIDs propios por ningún camino
     if is_self_pid "$FB_PID"; then
         log "ABORT [fallback-${TYPE}]: PID $FB_PID ($FB_NAME) es PID propio del watchdog — acción cancelada"
         return
@@ -1051,7 +1014,6 @@ do_kill_group() {
 
     local ALIVE_PIDS=""
     for PID in $GRP_PIDS; do
-        # [F] Guardia final en kill grupal también
         if is_self_pid "$PID"; then
             log "ABORT [group]: PID $PID es PID propio del watchdog — excluido del kill grupal"
             continue
@@ -1319,11 +1281,11 @@ WDEOF
 
 chmod +x /root/xray_watchdog.sh
 
-# ── Registrar cron — cada minuto ─────────────────────────────────────
+# ── Registrar cron — cada 5 minutos ──────────────────────────────────
 CRON_TMP_WD=$(mktemp)
 crontab -l 2>/dev/null > "$CRON_TMP_WD" || true
 sed -i '/xray_watchdog\.sh/d' "$CRON_TMP_WD"
-echo "* * * * * /root/xray_watchdog.sh" >> "$CRON_TMP_WD"
+echo "*/5 * * * * /root/xray_watchdog.sh" >> "$CRON_TMP_WD"
 crontab "$CRON_TMP_WD"
 rm -f "$CRON_TMP_WD"
 
@@ -1367,7 +1329,7 @@ crontab -l 2>/dev/null | grep -q "xray_watchdog.sh" && CRON_OK=true
 [ -f /var/log/xray_watchdog.log ] && LOG_OK=true
 
 if $CRON_OK && $LOG_OK; then
-    echo "✅ Watchdog v4.9 activo (cron cada 1 min)"
+    echo "✅ Watchdog v4.9 activo (cron cada 5 min)"
 else
     $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
     $LOG_OK  || echo "❌ log no existe en /var/log/xray_watchdog.log"
@@ -1518,7 +1480,7 @@ echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Watchdog v4.9 activo (cron cada 1 min)"
+echo "Watchdog v4.9 activo (cron cada 5 min)"
 echo ""
 echo "   v4.9 — Auto-exclusión del watchdog (separación de roles):"
 echo "   [E] SELF_PIDS        \$\$, \$PPID y cadena de ancestros → inmunes"
