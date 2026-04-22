@@ -1,7 +1,10 @@
 #!/bin/bash
-echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + GESTIÓN"
+
+echo "MCCARTHEY VPN FULL - SSL 443 + PROXY 80 + BADVPN + SEMÁFORO v2"
 echo "================================================================"
+
 set -e
+
 export TZ="America/El_Salvador"
 
 # === Actualizar sistema ===
@@ -11,8 +14,7 @@ sudo apt update -y && sudo apt upgrade -y
 # === Instalar dependencias necesarias ===
 echo "Instalando dependencias..."
 sudo apt install -y stunnel4 locales openssl util-linux git cmake build-essential \
-curl unzip wget python3 python3-dev python-is-python3 screen net-tools python3-pip cpulimit
-
+curl unzip wget python3 python3-dev python-is-python3 screen net-tools python3-pip
 
 # ===========================
 # COMPATIBILIDAD SSH — HTTP Custom (solo OpenSSH 9.x)
@@ -60,6 +62,13 @@ systemctl stop stunnel4 2>/dev/null || true
 screen -S badvpn -X quit || true
 screen -S badUDP72 -X quit || true
 
+# === Limpiar gestionar_recursos si existía ===
+systemctl stop gestionar-recursos.service 2>/dev/null || true
+systemctl disable gestionar-recursos.service 2>/dev/null || true
+rm -f /etc/systemd/system/gestionar-recursos.service
+rm -f /root/gestionar_recursos.sh
+systemctl daemon-reload 2>/dev/null || true
+
 # === Variables principales ===
 LOCAL_PORT=22
 SSL_PORT=443
@@ -101,7 +110,7 @@ systemctl enable stunnel4
 systemctl restart stunnel4
 
 # ===========================
-# 2. PROXY PYTHON EN PUERTO 80 (DIRECTORIO MCCARTHEY)
+# 2. PROXY PYTHON EN PUERTO 80
 # ===========================
 echo "Configurando Proxy Python en puerto $PROXY_PORT..."
 mkdir -p /etc/MCCARTHEY
@@ -287,115 +296,539 @@ systemctl enable rc-local
 systemctl start rc-local
 
 # ===========================
-# 5. GESTIÓN DE RECURSOS (RAM + CPU)
+# 5. SEMÁFORO v2
+#
+#   TRIGGER PRINCIPAL : load average (load1 / nproc)
+#                       NO depende de %CPU del kernel
+#
+#   TRIGGER SECUNDARIO: %CPU por proceso solo como apoyo
+#
+#   FALLBACK          : solo actúa si el proceso tiene >= FALLBACK_MIN_CPU %
+#                       si nadie supera ese mínimo → no hace nada
+#
+#   VALIDACIÓN        : después de reiniciar mide si el load bajó
+#                       si no bajó → falso positivo → cooldown extendido
+#
+#   ANTI-LOOP         : cooldown inteligente basado en resultado,
+#                       no solo en tiempo
+#
+#   CONTADORES        : separados por servicio, incluyendo fallback
+#
+#   FUERA DE SCOPE    : xray (lo maneja watchdog v3)
+#
+#   Servicios monitoreados: badvpn-udpgw | PDirect.py | stunnel4
+#   Cron: */5 * * * * /root/mcc_semaforo.sh
 # ===========================
-echo "Configurando gestión automática de RAM y CPU..."
-touch /var/log/gestionar_recursos.log
-chmod 644 /var/log/gestionar_recursos.log
+echo "Instalando Semáforo v2..."
 
-cat > /root/gestionar_recursos.sh << 'EOF'
+cat > /root/mcc_semaforo.sh << 'SEMEOF'
 #!/bin/bash
-LOCK_FILE="/tmp/gestionar_recursos.lock"
-LOG_FILE="/var/log/gestionar_recursos.log"
-PID_FILE="/tmp/cpulimit_pids.txt"
+# ═══════════════════════════════════════════════════════════════════════
+#   MCCARTHEY — SEMÁFORO DE SERVICIOS v2
+#
+#   TRIGGER    : load average (load1 / nproc), NO %CPU del kernel
+#   FALLBACK   : solo si proceso >= FALLBACK_MIN_CPU (no por migajas)
+#   VALIDACIÓN : mide si el load bajó tras reinicio → detecta FP
+#   ANTI-LOOP  : cooldown corto si ayudó, largo si no ayudó (falso+)
+#   CONTADORES : por servicio, separados, incluyendo por-servicio en fallback
+#   XRAY       : fuera de scope (watchdog v3 lo maneja)
+#
+#   Cron: */5 * * * * /root/mcc_semaforo.sh
+# ═══════════════════════════════════════════════════════════════════════
 
-if [ -f "$LOCK_FILE" ]; then
-    echo "$(date): Proceso ya en ejecución." >> "$LOG_FILE"
-    exit 1
-fi
+LOG="/var/log/mcc_semaforo.log"
+LOCK="/tmp/mcc_semaforo.lock"
+STATE_DIR="/tmp/mcc_semaforo_state"
 
-touch "$LOCK_FILE"
-trap 'rm -f "$LOCK_FILE"; exit' INT TERM EXIT
+# ── Parámetros ────────────────────────────────────────────────────────
+#
+#   LOAD_RATIO_TRIGGER : load1/nproc * 100 mínimo para activar análisis
+#                        150 = load1 >= 1.5x el nproc del servidor
+#                        Ej: 1 core → trigger si load1 >= 1.50
+#                            2 cores → trigger si load1 >= 3.00
+#
+#   LOAD_RATIO_SERIOUS : a partir de acá se considera carga grave
+#                        200 = load1 >= 2x nproc
+#
+#   CPU_SUPPORT_THRESH : umbral %CPU por proceso para confirmar culpable
+#                        (apoyo, no trigger principal)
+#
+#   FALLBACK_MIN_CPU   : CPU mínima real para que el fallback actúe
+#                        si nadie la supera → no toca nada
+#
+#   CYCLES_CONFIRM     : ciclos consecutivos antes de actuar
+#
+#   COOLDOWN_OK        : segundos cooldown si el reinicio SÍ bajó el load
+#   COOLDOWN_FP        : segundos cooldown si el reinicio NO ayudó (falso+)
+#
+#   VALIDATION_WINDOW  : segundos para considerar válida la medición post-reinicio
+#                        (la validación ocurre en el siguiente ciclo ~5 min)
+#
+#   VALIDATION_DROP    : % de caída de load para considerar que el reinicio ayudó
+#                        ej: 20 = el load debe haber caído al menos 20%
+# ─────────────────────────────────────────────────────────────────────
+LOAD_RATIO_TRIGGER=150
+LOAD_RATIO_SERIOUS=200
+CPU_SUPPORT_THRESH=25
+FALLBACK_MIN_CPU=15
+SAMPLE_INTERVAL=5
+CYCLES_CONFIRM=2
+COOLDOWN_OK=600
+COOLDOWN_FP=1800
+VALIDATION_WINDOW=360
+VALIDATION_DROP=20
 
-cleanup_cpulimit() {
-    if [ -f "$PID_FILE" ]; then
-        while read -r cpid; do
-            kill -9 "$cpid" 2>/dev/null || true
-        done < "$PID_FILE"
-        > "$PID_FILE"
-    fi
-    pkill -9 -f "cpulimit -p" 2>/dev/null
+PROXY_SCRIPT="/etc/MCCARTHEY/PDirect.py"
+PROXY_PORT=80
+
+NCPU=$(nproc)
+
+mkdir -p "${STATE_DIR}/counters" \
+         "${STATE_DIR}/cooldown" \
+         "${STATE_DIR}/pending"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
+
+exec 200>"$LOCK"
+flock -n 200 || exit 0
+
+# ══════════════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════════════
+safe_int() {
+    local V="${1:-0}"; V="${V// /}"
+    [[ "$V" =~ ^[0-9]+$ ]] && echo "$V" || echo 0
 }
 
-cleanup_cpulimit
+safe_pct() {
+    local N; N=$(safe_int "$1")
+    local D; D=$(safe_int "$2")
+    [ "$D" -le 0 ] && { echo 0; return; }
+    awk "BEGIN {printf \"%.0f\", ($N/$D)*100}"
+}
 
-if ! pgrep -f "/root/scrip.sh mon" > /dev/null; then
-    /bin/bash /root/scrip.sh mon &
-    echo "$(date): Iniciado scrip.sh mon" >> "$LOG_FILE"
+# ── Leer load average (load1 × 100 como entero para bash) ────────────
+read_load1_x100() {
+    awk '{
+        n = split($1, a, ".")
+        if (n == 2) {
+            # garantizar 2 decimales
+            d = substr(a[2] "00", 1, 2)
+            print (a[1] * 100) + d + 0
+        } else {
+            print a[1] * 100
+        }
+    }' /proc/loadavg 2>/dev/null || echo 0
+}
+
+# load_ratio = load1 * 100 / nproc  (entero, sin bc ni awk float)
+# 150 = 1.50 veces nproc
+load_ratio() {
+    local L100; L100=$(read_load1_x100)
+    echo $(( L100 / NCPU ))
+}
+
+# ── Cooldown ──────────────────────────────────────────────────────────
+in_cooldown() {
+    local F="${STATE_DIR}/cooldown/${1}"
+    [ -f "$F" ] || return 1
+    local LAST; LAST=$(safe_int "$(cat "$F" 2>/dev/null)")
+    local DUR;  DUR=$(safe_int "$(cat "${STATE_DIR}/cooldown/${1}.dur" 2>/dev/null)")
+    [ "$DUR" -le 0 ] && DUR=$COOLDOWN_OK
+    (( $(date +%s) - LAST < DUR ))
+}
+
+set_cooldown() {
+    local KEY="$1" DUR="${2:-$COOLDOWN_OK}"
+    date +%s > "${STATE_DIR}/cooldown/${KEY}"
+    echo "$DUR" > "${STATE_DIR}/cooldown/${KEY}.dur"
+}
+
+remaining_cooldown() {
+    local F="${STATE_DIR}/cooldown/${1}"
+    [ -f "$F" ] || { echo 0; return; }
+    local LAST; LAST=$(safe_int "$(cat "$F" 2>/dev/null)")
+    local DUR;  DUR=$(safe_int "$(cat "${STATE_DIR}/cooldown/${1}.dur" 2>/dev/null)")
+    [ "$DUR" -le 0 ] && DUR=$COOLDOWN_OK
+    echo $(( DUR - ($(date +%s) - LAST) ))
+}
+
+# ── Contadores sticky por servicio ────────────────────────────────────
+get_ctr() { safe_int "$(cat "${STATE_DIR}/counters/${1}" 2>/dev/null)"; }
+set_ctr()  { echo "$2" > "${STATE_DIR}/counters/${1}"; }
+inc_ctr()  { set_ctr "$1" $(( $(get_ctr "$1") + 1 )); }
+dec_ctr()  {
+    local C; C=$(get_ctr "$1")
+    [ "$C" -gt 0 ] && set_ctr "$1" $(( C - 1 )) || set_ctr "$1" 0
+}
+reset_ctr() { set_ctr "$1" 0; }
+
+# ── CPU real por proceso (delta /proc/stat) ───────────────────────────
+read_sys_stat() {
+    awk '/^cpu / {
+        idle=$5+$6; total=0
+        for(i=2;i<=NF;i++) total+=$i
+        print int(total), int(idle); exit
+    }' /proc/stat 2>/dev/null
+}
+
+read_pid_ticks() {
+    local PID="$1"
+    [ -d "/proc/$PID" ] && [ -f "/proc/$PID/stat" ] || { echo 0; return; }
+    local LINE; LINE=$(cat "/proc/$PID/stat" 2>/dev/null) || { echo 0; return; }
+    local FC; FC=$(echo "$LINE" | awk '{print NF}')
+    [ "$(safe_int "$FC")" -lt 17 ] && { echo 0; return; }
+    echo "$LINE" | awk '{t=$14+$15+$16+$17; print (t>=0)?int(t):0}'
+}
+
+sum_ticks_for_pids() {
+    local TOTAL=0
+    for PID in $1; do
+        local T; T=$(read_pid_ticks "$PID")
+        TOTAL=$(( TOTAL + T ))
+    done
+    echo "$TOTAL"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# VALIDACIÓN POST-REINICIO
+#
+#   Cada vez que se reinicia un servicio se escribe:
+#     ${STATE_DIR}/pending/<svc>  →  "timestamp:load1x100"
+#
+#   En el siguiente ciclo (≈5 min después) se evalúa:
+#     - si pasaron >= VALIDATION_WINDOW segundos desde el reinicio
+#     - se compara el load actual vs el load al momento del reinicio
+#     - si bajó >= VALIDATION_DROP% → fue útil → cooldown normal
+#     - si NO bajó                  → falso positivo → cooldown largo
+# ══════════════════════════════════════════════════════════════════════
+save_pending_validation() {
+    local SVC="$1" LOAD_NOW_X100="$2"
+    echo "$(date +%s):${LOAD_NOW_X100}" > "${STATE_DIR}/pending/${SVC}"
+}
+
+check_pending_validations() {
+    local CURRENT_LOAD_X100; CURRENT_LOAD_X100=$(read_load1_x100)
+    local NOW; NOW=$(date +%s)
+
+    for PFILE in "${STATE_DIR}/pending/"*; do
+        [ -f "$PFILE" ] || continue
+        local SVC; SVC=$(basename "$PFILE")
+        local CONTENT; CONTENT=$(cat "$PFILE" 2>/dev/null) || continue
+        local TS_RESTART; TS_RESTART=$(echo "$CONTENT" | cut -d: -f1)
+        local LOAD_AT_RESTART; LOAD_AT_RESTART=$(echo "$CONTENT" | cut -d: -f2)
+
+        TS_RESTART=$(safe_int "$TS_RESTART")
+        LOAD_AT_RESTART=$(safe_int "$LOAD_AT_RESTART")
+
+        local ELAPSED=$(( NOW - TS_RESTART ))
+
+        # aún no pasó suficiente tiempo — esperar al siguiente ciclo
+        if [ "$ELAPSED" -lt "$VALIDATION_WINDOW" ]; then
+            log "VALIDACIÓN [${SVC}]: esperando ${ELAPSED}s / ${VALIDATION_WINDOW}s para evaluar"
+            continue
+        fi
+
+        # calcular si el load bajó suficiente
+        # caída requerida: LOAD_AT_RESTART * (100 - VALIDATION_DROP) / 100
+        local THRESHOLD_DROP=$(( LOAD_AT_RESTART * (100 - VALIDATION_DROP) / 100 ))
+
+        if [ "$CURRENT_LOAD_X100" -le "$THRESHOLD_DROP" ]; then
+            local LOAD_BEFORE_FMT; LOAD_BEFORE_FMT=$(awk "BEGIN{printf \"%.2f\", $LOAD_AT_RESTART/100}")
+            local LOAD_AFTER_FMT;  LOAD_AFTER_FMT=$(awk "BEGIN{printf \"%.2f\", $CURRENT_LOAD_X100/100}")
+            log "VALIDACIÓN OK [${SVC}]: load bajó de ${LOAD_BEFORE_FMT} → ${LOAD_AFTER_FMT} — reinicio fue efectivo — cooldown normal (${COOLDOWN_OK}s)"
+            # cooldown normal ya fue seteado al momento del reinicio, sin cambios
+        else
+            local LOAD_BEFORE_FMT; LOAD_BEFORE_FMT=$(awk "BEGIN{printf \"%.2f\", $LOAD_AT_RESTART/100}")
+            local LOAD_AFTER_FMT;  LOAD_AFTER_FMT=$(awk "BEGIN{printf \"%.2f\", $CURRENT_LOAD_X100/100}")
+            log "VALIDACIÓN FALSO+ [${SVC}]: load NO bajó (${LOAD_BEFORE_FMT} → ${LOAD_AFTER_FMT}) — reinicio fue inútil — cooldown extendido a ${COOLDOWN_FP}s para no seguir jodiendo"
+            # sobreescribir con cooldown largo
+            set_cooldown "$SVC" "$COOLDOWN_FP"
+            reset_ctr "$SVC"
+        fi
+
+        rm -f "$PFILE"
+    done
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# Acciones de reinicio (sin kill -9, específicas por servicio)
+# ══════════════════════════════════════════════════════════════════════
+restart_badvpn() {
+    local LOAD_X100="$1"
+    log "ACTION [badvpn]: reiniciando UDPGW 7200 y 7300"
+    pkill -TERM -f "badvpn-udpgw" 2>/dev/null
+    screen -S badvpn   -X quit 2>/dev/null
+    screen -S badUDP72 -X quit 2>/dev/null
+    sleep 2
+    screen -dmS badvpn   /usr/bin/badvpn-udpgw \
+        --listen-addr 127.0.0.1:7300 --max-clients 1000 --max-connections-for-client 10
+    screen -dmS badUDP72 /usr/bin/badvpn-udpgw \
+        --listen-addr 127.0.0.1:7200 --max-clients 1000 --max-connections-for-client 10
+    sleep 2
+    pgrep -f "badvpn-udpgw" > /dev/null \
+        && log "OK [badvpn]: instancias activas" \
+        || log "ERROR [badvpn]: no levantó tras el reinicio"
+    set_cooldown "badvpn" "$COOLDOWN_OK"
+    save_pending_validation "badvpn" "$LOAD_X100"
+}
+
+restart_proxy() {
+    local LOAD_X100="$1"
+    log "ACTION [proxy]: reiniciando PDirect.py"
+    pkill -TERM -f "$PROXY_SCRIPT" 2>/dev/null
+    sleep 2
+    nohup python3 "$PROXY_SCRIPT" "$PROXY_PORT" > /root/nohup.out 2>&1 &
+    sleep 2
+    pgrep -f "$PROXY_SCRIPT" > /dev/null \
+        && log "OK [proxy]: activo (PID $(pgrep -f "$PROXY_SCRIPT" | head -1))" \
+        || log "ERROR [proxy]: no levantó tras el reinicio"
+    set_cooldown "proxy" "$COOLDOWN_OK"
+    save_pending_validation "proxy" "$LOAD_X100"
+}
+
+restart_stunnel() {
+    local LOAD_X100="$1"
+    log "ACTION [stunnel]: systemctl restart stunnel4"
+    systemctl restart stunnel4 >> "$LOG" 2>&1
+    local EC=$?
+    [ "$EC" -eq 0 ] \
+        && log "OK [stunnel]: reiniciado correctamente" \
+        || log "ERROR [stunnel]: fallo (exit $EC)"
+    set_cooldown "stunnel" "$COOLDOWN_OK"
+    save_pending_validation "stunnel" "$LOAD_X100"
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# MAIN
+# ══════════════════════════════════════════════════════════════════════
+log "INFO: nproc=${NCPU} | load_trigger=${LOAD_RATIO_TRIGGER}% (${NCPU}cores) | cpu_support=${CPU_SUPPORT_THRESH}% | fallback_min=${FALLBACK_MIN_CPU}%"
+
+# ── Paso 0: validar reinicios previos pendientes ──────────────────────
+check_pending_validations
+
+# ── Paso 1: leer load average actual ─────────────────────────────────
+LOAD_X100=$(read_load1_x100)
+LOAD_FMT=$(awk "BEGIN{printf \"%.2f\", $LOAD_X100/100}")
+LRATIO=$(load_ratio)
+
+log "SCAN: load1=${LOAD_FMT} | ratio=${LRATIO}% (trigger>=${LOAD_RATIO_TRIGGER}%) | nproc=${NCPU}"
+
+# ── Paso 2: si el load está bajo → decrementar contadores y salir ─────
+if [ "$LRATIO" -lt "$LOAD_RATIO_TRIGGER" ]; then
+    log "INFO: load normal — decrementando contadores"
+    dec_ctr "badvpn"
+    dec_ctr "proxy"
+    dec_ctr "stunnel"
+    dec_ctr "fallback_badvpn"
+    dec_ctr "fallback_proxy"
+    dec_ctr "fallback_stunnel"
+    log "INFO: ciclo completado — sin acción"
+    exit 0
 fi
 
-MEM_THRESHOLD=200
-CACHE_THRESHOLD=100
-LOAD_THRESHOLD=2.0
-PREV_PIDS_PDIRECT=""
-PREV_PIDS_BADVPN=""
-PREV_PIDS_SCRIP=""
+log "WARN: load1=${LOAD_FMT} ratio=${LRATIO}% — evaluando servicios"
 
-while true; do
-    FREE_MEM=$(free -m | awk '/Mem:/ {print $4}')
-    CACHE_MEM=$(free -m | awk '/Mem:/ {print $6}')
+# ── Paso 3: snapshot CPU T0 (apoyo, no trigger) ───────────────────────
+SYS_T0=$(read_sys_stat)
+SYS_TOTAL_T0=$(safe_int "$(echo "$SYS_T0" | awk '{print $1}')")
+SYS_IDLE_T0=$(safe_int  "$(echo "$SYS_T0" | awk '{print $2}')")
 
-    if [ "$FREE_MEM" -lt "$MEM_THRESHOLD" ] || [ "$CACHE_MEM" -gt "$CACHE_THRESHOLD" ]; then
-        echo "$(date): Liberando caché (Libre: $FREE_MEM MB, Caché: $CACHE_MEM MB)" >> "$LOG_FILE"
-        sync && sudo sysctl -w vm.drop_caches=3 > /dev/null
+PIDS_BADVPN=$(pgrep -f  "badvpn-udpgw"  2>/dev/null | tr '\n' ' ')
+PIDS_PROXY=$(pgrep -f   "$PROXY_SCRIPT" 2>/dev/null | tr '\n' ' ')
+PIDS_STUNNEL=$(pgrep -x "stunnel4"      2>/dev/null | tr '\n' ' ')
+
+TICKS_BADVPN_T0=$(sum_ticks_for_pids  "$PIDS_BADVPN")
+TICKS_PROXY_T0=$(sum_ticks_for_pids   "$PIDS_PROXY")
+TICKS_STUNNEL_T0=$(sum_ticks_for_pids "$PIDS_STUNNEL")
+
+sleep "$SAMPLE_INTERVAL"
+
+# ── Paso 4: snapshot CPU T1 ───────────────────────────────────────────
+SYS_T1=$(read_sys_stat)
+SYS_TOTAL_T1=$(safe_int "$(echo "$SYS_T1" | awk '{print $1}')")
+SYS_IDLE_T1=$(safe_int  "$(echo "$SYS_T1" | awk '{print $2}')")
+
+DELTA_SYS=$(( SYS_TOTAL_T1 - SYS_TOTAL_T0 ))
+DELTA_IDLE=$(( SYS_IDLE_T1 - SYS_IDLE_T0 ))
+
+if [ "$DELTA_SYS" -le 0 ]; then
+    log "WARN: delta sistema <= 0 — ciclo inválido, abortando"
+    exit 0
+fi
+
+DELTA_BUSY=$(( DELTA_SYS - DELTA_IDLE ))
+[ "$DELTA_BUSY" -lt 0 ] && DELTA_BUSY=0
+
+calc_svc_cpu() {
+    local PIDS="$1" TICKS_T0="$2"
+    local TICKS_T1; TICKS_T1=$(sum_ticks_for_pids "$PIDS")
+    local DELTA=$(( TICKS_T1 - TICKS_T0 ))
+    [ "$DELTA" -lt 0 ] && DELTA=0
+    safe_pct "$DELTA" "$DELTA_SYS"
+}
+
+CPU_BADVPN=$(calc_svc_cpu  "$PIDS_BADVPN"  "$TICKS_BADVPN_T0")
+CPU_PROXY=$(calc_svc_cpu   "$PIDS_PROXY"   "$TICKS_PROXY_T0")
+CPU_STUNNEL=$(calc_svc_cpu "$PIDS_STUNNEL" "$TICKS_STUNNEL_T0")
+
+log "CPU(apoyo): badvpn=${CPU_BADVPN}% proxy=${CPU_PROXY}% stunnel=${CPU_STUNNEL}% | umbral_proceso=${CPU_SUPPORT_THRESH}%"
+
+# ══════════════════════════════════════════════════════════════════════
+# Paso 5: EVALUACIÓN PRINCIPAL
+#
+#   Trigger = load ratio >= LOAD_RATIO_TRIGGER
+#   Confirmación = CPU proceso >= CPU_SUPPORT_THRESH (apoyo)
+#                  o load ratio >= LOAD_RATIO_SERIOUS (carga grave sola)
+#
+#   La lógica es:
+#     - load alto Y proceso con CPU real  → sospechoso confirmado
+#     - load alto solo (sin CPU real)     → no es culpa de ese proceso
+#
+#   Resultado determina si inc/dec el contador por servicio.
+# ══════════════════════════════════════════════════════════════════════
+evaluate_service() {
+    local SVC="$1"
+    local PCPU="$2"
+    local RESTART_FN="$3"
+
+    # confirmar con CPU de apoyo O con load gravísimo (>= SERIOUS)
+    local CONFIRMED=false
+    if [ "$PCPU" -ge "$CPU_SUPPORT_THRESH" ]; then
+        CONFIRMED=true
+    elif [ "$LRATIO" -ge "$LOAD_RATIO_SERIOUS" ] && [ "$PCPU" -gt 5 ]; then
+        # load muy grave y el proceso tiene algo de actividad real (>5%)
+        CONFIRMED=true
+        log "INFO [${SVC}]: load gravísimo ratio=${LRATIO}% + cpu=${PCPU}% — confirmando por carga grave"
     fi
 
-    LOAD_AVG=$(awk '{print $1}' /proc/loadavg)
-    if (( $(echo "$LOAD_AVG > $LOAD_THRESHOLD" | bc -l) )); then
-        CURRENT_PIDS_PDIRECT=$(pgrep -f /etc/MCCARTHEY/PDirect.py)
-        CURRENT_PIDS_BADVPN=$(pgrep -f badvpn-udpgw)
-        CURRENT_PIDS_SCRIP=$(pgrep -f "/root/scrip.sh mon")
+    if $CONFIRMED; then
+        inc_ctr "$SVC"
+        local CTR; CTR=$(get_ctr "$SVC")
+        log "SUSPECT [${SVC}]: cpu=${PCPU}% load_ratio=${LRATIO}% — ciclo ${CTR}/${CYCLES_CONFIRM}"
 
-        if [ "$CURRENT_PIDS_PDIRECT" != "$PREV_PIDS_PDIRECT" ] || [ "$CURRENT_PIDS_BADVPN" != "$PREV_PIDS_BADVPN" ] || [ "$CURRENT_PIDS_SCRIP" != "$PREV_PIDS_SCRIP" ]; then
-            cleanup_cpulimit
-
-            for pid in $CURRENT_PIDS_PDIRECT; do
-                cpulimit -p "$pid" -l 20 -b &
-                echo $! >> "$PID_FILE"
-            done
-
-            for pid in $CURRENT_PIDS_BADVPN; do
-                cpulimit -p "$pid" -l 60 -b &
-                echo $! >> "$PID_FILE"
-            done
-
-            for pid in $CURRENT_PIDS_SCRIP; do
-                cpulimit -p "$pid" -l 10 -b &
-                echo $! >> "$PID_FILE"
-            done
-
-            PREV_PIDS_PDIRECT="$CURRENT_PIDS_PDIRECT"
-            PREV_PIDS_BADVPN="$CURRENT_PIDS_BADVPN"
-            PREV_PIDS_SCRIP="$CURRENT_PIDS_SCRIP"
+        if [ "$CTR" -ge "$CYCLES_CONFIRM" ]; then
+            if in_cooldown "$SVC"; then
+                log "COOLDOWN [${SVC}]: $(remaining_cooldown "$SVC")s restantes — sin acción"
+            else
+                log "TRIGGER [${SVC}]: confirmado ${CTR} ciclos — reiniciando"
+                reset_ctr "$SVC"
+                $RESTART_FN "$LOAD_X100"
+            fi
         fi
+    else
+        dec_ctr "$SVC"
+        log "OK [${SVC}]: cpu=${PCPU}% — sin evidencia suficiente (ctr=$(get_ctr "$SVC"))"
+    fi
+}
+
+evaluate_service "badvpn"  "$CPU_BADVPN"  "restart_badvpn"
+evaluate_service "proxy"   "$CPU_PROXY"   "restart_proxy"
+evaluate_service "stunnel" "$CPU_STUNNEL" "restart_stunnel"
+
+# ══════════════════════════════════════════════════════════════════════
+# Paso 6: FALLBACK
+#
+#   Condición: load ratio SIGUE alto y ningún servicio fue reiniciado
+#              en este ciclo por la lógica principal.
+#
+#   Regla:
+#     - Revisar cuál proceso tiene más CPU entre los monitoreados
+#     - Solo actuar si ese proceso tiene >= FALLBACK_MIN_CPU %
+#       (mínimo real — no migajas de 7%, 8%, 10%)
+#     - Si nadie supera FALLBACK_MIN_CPU → NO hacer nada
+#       (la carga es del kernel/red/otro, no es culpa nuestra)
+#     - Contador por servicio, NO global
+#     - Cooldown propio por servicio (igual lógica ok/fp)
+# ══════════════════════════════════════════════════════════════════════
+if [ "$LRATIO" -ge "$LOAD_RATIO_TRIGGER" ]; then
+
+    # identificar el más cargado entre monitoreados
+    FALLBACK_SVC=""
+    FALLBACK_CPU=0
+    FALLBACK_FN=""
+
+    for ENTRY in "badvpn:${CPU_BADVPN}:restart_badvpn" \
+                 "proxy:${CPU_PROXY}:restart_proxy"     \
+                 "stunnel:${CPU_STUNNEL}:restart_stunnel"; do
+        local_svc=$(echo "$ENTRY"  | cut -d: -f1)
+        local_cpu=$(safe_int "$(echo "$ENTRY" | cut -d: -f2)")
+        local_fn=$(echo "$ENTRY"   | cut -d: -f3)
+        if [ "$local_cpu" -gt "$FALLBACK_CPU" ]; then
+            FALLBACK_CPU="$local_cpu"
+            FALLBACK_SVC="$local_svc"
+            FALLBACK_FN="$local_fn"
+        fi
+    done
+
+    # REGLA CLAVE: solo actuar si supera el mínimo real
+    if [ -n "$FALLBACK_SVC" ] && [ "$FALLBACK_CPU" -ge "$FALLBACK_MIN_CPU" ]; then
+        # contador de fallback POR SERVICIO (no global)
+        local_fb_ctr_key="fallback_${FALLBACK_SVC}"
+        inc_ctr "$local_fb_ctr_key"
+        local FB_CTR; FB_CTR=$(get_ctr "$local_fb_ctr_key")
+
+        log "FALLBACK: load_ratio=${LRATIO}% | más activo: ${FALLBACK_SVC}=${FALLBACK_CPU}% (>= ${FALLBACK_MIN_CPU}% mínimo) | ciclo ${FB_CTR}/${CYCLES_CONFIRM}"
+
+        if [ "$FB_CTR" -ge "$CYCLES_CONFIRM" ]; then
+            local fb_cd_key="fallback_cd_${FALLBACK_SVC}"
+            if in_cooldown "$fb_cd_key"; then
+                log "COOLDOWN [fallback/${FALLBACK_SVC}]: $(remaining_cooldown "$fb_cd_key")s restantes — sin acción"
+            else
+                log "TRIGGER [fallback]: ${FALLBACK_SVC} cpu=${FALLBACK_CPU}% sostenido ${FB_CTR} ciclos — reiniciando"
+                reset_ctr "$local_fb_ctr_key"
+                set_cooldown "$fb_cd_key" "$COOLDOWN_OK"
+                save_pending_validation "fallback_${FALLBACK_SVC}" "$LOAD_X100"
+                $FALLBACK_FN "$LOAD_X100"
+            fi
+        fi
+    else
+        # nadie supera el mínimo → carga externa, no tocar nada
+        if [ -n "$FALLBACK_SVC" ]; then
+            log "FALLBACK: load_ratio=${LRATIO}% pero máximo monitoreado es ${FALLBACK_SVC}=${FALLBACK_CPU}% (< ${FALLBACK_MIN_CPU}% mínimo) — carga de kernel/red/otro, sin acción"
+        else
+            log "FALLBACK: load_ratio=${LRATIO}% sin procesos monitoreados activos — sin acción"
+        fi
+        # decrementar contadores fallback para no acumular fantasmas
+        dec_ctr "fallback_badvpn"
+        dec_ctr "fallback_proxy"
+        dec_ctr "fallback_stunnel"
     fi
 
-    sleep 10
-done
-EOF
+fi
 
-chmod +x /root/gestionar_recursos.sh
+log "INFO: ciclo completado"
+exit 0
+SEMEOF
 
-cat > /etc/systemd/system/gestionar-recursos.service <<EOF
-[Unit]
-Description=Gestión de RAM y CPU
-After=network.target rc-local.service stunnel4.service
+chmod +x /root/mcc_semaforo.sh
 
-[Service]
-Type=simple
-User=root
-ExecStart=/bin/bash /root/gestionar_recursos.sh
-ExecStop=/bin/bash -c "pkill -9 -f 'cpulimit -p'; rm -f /tmp/cpulimit_pids.txt"
-Restart=always
-RestartSec=5s
+# ── Log del semáforo ──────────────────────────────────────────────────
+touch /var/log/mcc_semaforo.log
+chmod 644 /var/log/mcc_semaforo.log
 
-[Install]
-WantedBy=multi-user.target
-EOF
+# ── Registrar cron — cada 5 minutos ──────────────────────────────────
+CRON_TMP_SEM=$(mktemp)
+crontab -l 2>/dev/null > "$CRON_TMP_SEM" || true
+sed -i '/mcc_semaforo\.sh/d' "$CRON_TMP_SEM"
+echo "*/5 * * * * /root/mcc_semaforo.sh" >> "$CRON_TMP_SEM"
+crontab "$CRON_TMP_SEM"
+rm -f "$CRON_TMP_SEM"
 
-systemctl daemon-reload
-systemctl enable gestionar-recursos.service
-systemctl start gestionar-recursos.service
+# ── Primera corrida para verificar ───────────────────────────────────
+echo "   Ejecutando primera corrida del semáforo v2..."
+bash /root/mcc_semaforo.sh
+
+CRON_OK=false; LOG_OK=false
+crontab -l 2>/dev/null | grep -q "mcc_semaforo.sh" && CRON_OK=true
+[ -f /var/log/mcc_semaforo.log ] && LOG_OK=true
+
+if $CRON_OK && $LOG_OK; then
+    echo "✅ Semáforo v2 activo (cron cada 5 min)"
+else
+    $CRON_OK || echo "❌ cron no quedó registrado — verificá: crontab -l"
+    $LOG_OK  || echo "❌ log no existe en /var/log/mcc_semaforo.log"
+fi
 
 # ===========================
 # 6. CLEAN-VPS — Limpieza automática diaria
@@ -406,7 +839,7 @@ cat > /usr/local/sbin/clean-vps.sh << 'CLEANEOF'
 #!/bin/bash
 # =============================================================================
 # clean-vps.sh — Limpieza directa para VPS personal
-# v2.1 — Sin backups, sin historia, el camión se lleva todo 🚛
+# v2.1 — Sin backups, sin historia, el camión se lleva todo
 # =============================================================================
 
 LOG="/var/log/clean-vps.log"
@@ -420,52 +853,34 @@ for arg in "$@"; do
     --help)
       echo "Uso: $0 [--dry-run]"
       echo "  --dry-run   Muestra qué haría sin ejecutar nada"
-      exit 0
-      ;;
+      exit 0 ;;
   esac
 done
 
-log() {
-  echo "[$(date +%Y-%m-%d %H:%M:%S)] $1" | tee -a "$LOG"
-}
-
+log() { echo "[$(date +%Y-%m-%d %H:%M:%S)] $1" | tee -a "$LOG"; }
 run() {
-  if $DRY_RUN; then
-    log "[DRY-RUN] $*"
-  else
-    eval "$@" >> "$LOG" 2>&1 || {
-      log "⚠️  Falló: $*"
-      ((ERRORS++))
-    }
+  if $DRY_RUN; then log "[DRY-RUN] $*"
+  else eval "$@" >> "$LOG" 2>&1 || { log "⚠️  Falló: $*"; ((ERRORS++)); }
   fi
 }
 
-if [[ $EUID -ne 0 ]]; then
-  echo "❌ Ejecutá como root: sudo $0"
-  exit 1
-fi
+[[ $EUID -ne 0 ]] && { echo "❌ Ejecutá como root: sudo $0"; exit 1; }
 
 exec 9>"$LOCK"
-flock -n 9 || {
-  log "⚠️  Ya hay una instancia corriendo. Abortando."
-  exit 1
-}
+flock -n 9 || { log "⚠️  Ya hay una instancia corriendo."; exit 1; }
 
-echo "" >> "$LOG"
-echo "=== $(date) ===" >> "$LOG"
+echo "" >> "$LOG"; echo "=== $(date) ===" >> "$LOG"
 $DRY_RUN && log "👁️  Modo DRY-RUN activo"
 log "🚀 Iniciando limpieza..."
 
 ESPACIO_ANTES=$(df / | awk 'NR==2{print $3}')
 
 log "🧹 APT autoremove + clean..."
-run "apt-get autoremove -y"
-run "apt-get clean"
+run "apt-get autoremove -y"; run "apt-get clean"
 
 log "🧠 Eliminando kernels viejos..."
 CURRENT=$(uname -r)
-OLD_KERNELS=$(dpkg -l 'linux-image-*' | awk '/^ii/{print $2}' | \
-  grep -v "$CURRENT" | sort -V | head -n -2)
+OLD_KERNELS=$(dpkg -l 'linux-image-*' | awk '/^ii/{print $2}' | grep -v "$CURRENT" | sort -V | head -n -2)
 if [[ -n "$OLD_KERNELS" ]]; then
   run "echo '$OLD_KERNELS' | xargs --no-run-if-empty apt-get purge -y"
 else
@@ -473,8 +888,7 @@ else
 fi
 
 log "📊 Journald → 100MB..."
-run "journalctl --rotate"
-run "journalctl --vacuum-size=100M"
+run "journalctl --rotate"; run "journalctl --vacuum-size=100M"
 
 log "🗑️  Borrando logs rotados (+7 días)..."
 if $DRY_RUN; then
@@ -489,39 +903,26 @@ log "💣 Truncando logs grandes (+50MB)..."
 find /var/log -type f -size +50M | while read f; do
   [[ "$f" == "$LOG" ]] && continue
   SIZE_MB=$(du -m "$f" 2>/dev/null | cut -f1)
-  if $DRY_RUN; then
-    log "[DRY-RUN] Truncaría: $f (${SIZE_MB}MB)"
-  else
-    truncate -s 0 "$f"
-    log "💣 Truncado: $f (${SIZE_MB}MB)"
-  fi
+  if $DRY_RUN; then log "[DRY-RUN] Truncaría: $f (${SIZE_MB}MB)"
+  else truncate -s 0 "$f"; log "💣 Truncado: $f (${SIZE_MB}MB)"; fi
 done
 
 log "🧹 Cache root (+30 días)..."
-if $DRY_RUN; then
-  find /root/.cache -type f -mtime +30 | wc -l | \
-    xargs -I{} log "[DRY-RUN] {} archivos a eliminar en /root/.cache"
-else
-  find /root/.cache -type f -mtime +30 -delete 2>/dev/null
-fi
+$DRY_RUN \
+  && find /root/.cache -type f -mtime +30 | wc -l | xargs -I{} log "[DRY-RUN] {} archivos en /root/.cache" \
+  || find /root/.cache -type f -mtime +30 -delete 2>/dev/null
 
 log "🧹 /tmp (+7 días)..."
-if $DRY_RUN; then
-  find /tmp -type f -mtime +7 | wc -l | \
-    xargs -I{} log "[DRY-RUN] {} archivos a eliminar en /tmp"
-else
-  find /tmp -type f -mtime +7 -delete 2>/dev/null
-fi
+$DRY_RUN \
+  && find /tmp -type f -mtime +7 | wc -l | xargs -I{} log "[DRY-RUN] {} archivos en /tmp" \
+  || find /tmp -type f -mtime +7 -delete 2>/dev/null
 
 if command -v snap &>/dev/null; then
   log "📦 Limpiando snaps viejos..."
-  snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}' | \
-  while read snapname revision; do
-    if $DRY_RUN; then
-      log "[DRY-RUN] Removería snap: $snapname rev.$revision"
-    else
-      run "snap remove '$snapname' --revision='$revision'"
-    fi
+  snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}' | while read snapname revision; do
+    $DRY_RUN \
+      && log "[DRY-RUN] Removería snap: $snapname rev.$revision" \
+      || run "snap remove '$snapname' --revision='$revision'"
   done
 else
   log "⏭️  Snap no instalado, saltando..."
@@ -529,13 +930,7 @@ fi
 
 if ! $DRY_RUN; then
   cat > /etc/logrotate.d/clean-vps <<LREOF
-/var/log/clean-vps.log {
-  weekly
-  rotate 4
-  compress
-  missingok
-  notifempty
-}
+/var/log/clean-vps.log { weekly; rotate 4; compress; missingok; notifempty }
 LREOF
   log "📄 Logrotate OK"
 fi
@@ -543,25 +938,18 @@ fi
 ESPACIO_DESPUES=$(df / | awk 'NR==2{print $3}')
 LIBERADO_MB=$(( (ESPACIO_ANTES - ESPACIO_DESPUES) / 1024 ))
 LIBRE=$(df -h / | awk 'NR==2{print $4}')
-
 echo "" >> "$LOG"
 log "─────────────────────────────────────────"
-if $DRY_RUN; then
-  log "👁️  DRY-RUN finalizado — no se tocó nada"
-else
-  log "📉 Liberado: ${LIBERADO_MB}MB  |  Libre en /: $LIBRE"
-  [[ $ERRORS -gt 0 ]] \
-    && log "⚠️  $ERRORS error(es) — revisá: $LOG" \
-    || log "✅ Limpieza sin errores"
-fi
+$DRY_RUN \
+  && log "👁️  DRY-RUN finalizado — no se tocó nada" \
+  || { log "📉 Liberado: ${LIBERADO_MB}MB  |  Libre en /: $LIBRE"
+       [[ $ERRORS -gt 0 ]] && log "⚠️  $ERRORS error(es)" || log "✅ Limpieza sin errores"; }
 log "─────────────────────────────────────────"
 echo "" >> "$LOG"
 CLEANEOF
 
 chmod +x /usr/local/sbin/clean-vps.sh
 
-# Registrar cron 0 3 * * *
-# FIX: || true para que set -e no mate el script si no existe crontab aún
 CRON_JOB="0 3 * * * /usr/local/sbin/clean-vps.sh"
 CRON_TMP=$(mktemp)
 crontab -l 2>/dev/null > "$CRON_TMP" || true
@@ -570,7 +958,6 @@ if ! grep -qF "clean-vps.sh" "$CRON_TMP"; then
   crontab "$CRON_TMP" && echo "⏰ Cron clean-vps registrado: $CRON_JOB"
 fi
 rm -f "$CRON_TMP"
-
 echo "✅ clean-vps instalado y cron activo (3am diario)"
 
 # ===========================
@@ -583,27 +970,33 @@ echo "MCCARTHEY VPN FULL - INSTALACIÓN COMPLETA"
 echo "========================================"
 echo "SSL: $SSL_PORT → $LOCAL_PORT (Stunnel)"
 echo "   Certificado CN: $SNI_HOST"
-echo "   Cliente: Host=TU_IP, Puerto=443, SNI=$SNI_HOST"
 echo ""
 echo "Proxy HTTP: $PROXY_PORT → 22 (HTTP Custom/Injector)"
-echo "   Payload: [VACÍO]"
 echo ""
 echo "BadVPN UDP: 7200 y 7300"
 echo ""
-echo "Gestión de RAM/CPU activa"
+echo "Semáforo v2 activo (cron cada 5 min)"
+echo "   Monitorea        : badvpn-udpgw | PDirect.py | stunnel4"
+echo "   Trigger principal: load average (load1/nproc >= 1.5x)"
+echo "   CPU              : solo como apoyo, no como trigger"
+echo "   Fallback mínimo  : solo actúa si proceso >= 15% CPU real"
+echo "   Validación       : detecta falsos positivos post-reinicio"
+echo "   Cooldown normal  : 10 min (si el reinicio ayudó)"
+echo "   Cooldown falso+  : 30 min (si no bajó el load)"
+echo "   Contadores       : separados por servicio"
+echo "   Xray             : fuera de scope (watchdog v3)"
+echo "   Log: tail -f /var/log/mcc_semaforo.log"
 echo ""
 echo "Limpieza automática: diaria a las 3am"
 echo "   Script : /usr/local/sbin/clean-vps.sh"
 echo "   Log    : /var/log/clean-vps.log"
-echo "   Manual : clean-vps.sh [--dry-run]"
 echo ""
 echo "Verificar:"
 echo "   ss -tulnp | grep -E ':443|:80|:7200|:7300'"
 echo "   systemctl status stunnel4"
-echo "   systemctl status gestionar-recursos"
 echo "   crontab -l"
+echo "   tail -f /var/log/mcc_semaforo.log"
 echo ""
-echo "Reinicio automático configurado"
 echo "========================================"
 echo ""
 
