@@ -837,6 +837,14 @@ echo "Instalando clean-vps (limpieza automática)..."
 
 cat > /usr/local/sbin/clean-vps.sh << 'CLEANEOF'
 #!/bin/bash
+
+# ===========================
+# 6. CLEAN-VPS — Limpieza automática diaria
+# ===========================
+echo "Instalando clean-vps (limpieza automática)..."
+
+cat > /usr/local/sbin/clean-vps.sh << 'CLEANEOF'
+#!/bin/bash
 # =============================================================================
 # clean-vps.sh — Limpieza directa para VPS personal
 # v2.1 — Sin backups, sin historia, el camión se lleva todo
@@ -857,7 +865,7 @@ for arg in "$@"; do
   esac
 done
 
-log() { echo "[$(date +%Y-%m-%d %H:%M:%S)] $1" | tee -a "$LOG"; }
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG"; }
 run() {
   if $DRY_RUN; then log "[DRY-RUN] $*"
   else eval "$@" >> "$LOG" 2>&1 || { log "⚠️  Falló: $*"; ((ERRORS++)); }
@@ -909,7 +917,8 @@ done
 
 log "🧹 Cache root (+30 días)..."
 $DRY_RUN \
-  && find /root/.cache -type f -mtime +30 | wc -l | xargs -I{} log "[DRY-RUN] {} archivos en /root/.cache" \
+  && find /root/.cache -type f -mtime +30 | wc -l | COUNT=$(find /root/.cache -type f -mtime +30 | wc -l)
+log "[DRY-RUN] $COUNT archivos en /root/.cache" \
   || find /root/.cache -type f -mtime +30 -delete 2>/dev/null
 
 log "🧹 /tmp (+7 días)..."
@@ -959,7 +968,6 @@ if ! grep -qF "clean-vps.sh" "$CRON_TMP"; then
 fi
 rm -f "$CRON_TMP"
 echo "✅ clean-vps instalado y cron activo (3am diario)"
-
 # ===========================
 # 7. MENSAJE FINAL
 # ===========================
