@@ -991,15 +991,14 @@ function barra_sistema() {
 
     # =================================================================
     # DATOS CACHEADOS — IP, SO, MHz, Cores
-    # Se regeneran solo si no existe el archivo o IP tiene 7+ días
+    # IP se refresca cada 7 días
+    # El resto hasta que se borre el cache manualmente
     # =================================================================
     CACHE_VALIDO=false
 
     if [[ -f "$CACHE_FILE" ]]; then
         source "$CACHE_FILE"
         AHORA=$(date +%s)
-        # Solo la IP se verifica por tiempo (7 días)
-        # El resto se queda hasta que se borre el cache manualmente
         if [[ -n "$IP_PUBLICA" && -n "$SO_NAME" && -n "$CPU_MHZ" && -n "$CPU_CORES" ]]; then
             if [[ $(( AHORA - ${IP_TIMESTAMP:-0} )) -lt 604800 ]]; then
                 CACHE_VALIDO=true
@@ -1008,7 +1007,6 @@ function barra_sistema() {
     fi
 
     if [[ "$CACHE_VALIDO" == false ]]; then
-        # Regenerar todo el cache
         IP_PUBLICA=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "No disponible")
         IP_TIMESTAMP=$(date +%s)
 
@@ -1021,7 +1019,6 @@ function barra_sistema() {
         CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
         CPU_CORES=$(nproc)
 
-        # Guardar cache
         cat > "$CACHE_FILE" <<EOF
 IP_PUBLICA="$IP_PUBLICA"
 IP_TIMESTAMP=$IP_TIMESTAMP
@@ -1032,18 +1029,21 @@ EOF
     fi
 
     # =================================================================
-    # DATOS EN TIEMPO REAL — Conexiones, RAM, CPU, Transferencia,
-    #                         Uptime, Load Average
-    # Se calculan siempre frescos en cada render
+    # DATOS EN TIEMPO REAL
     # =================================================================
 
-    # ================= Conexiones SSH — una sola llamada a ps =================
+    # ================= Conexiones SSH — una sola llamada global =================
+    # Solo sesiones reales: se excluye root y sshd para ignorar
+    # listeners, forks de auth y procesos internos de OpenSSH
     TOTAL_USUARIOS=0
     USUARIOS_EXPIRAN=()
     inactivos=0
 
     declare -A CONEXIONES_POR_USUARIO
+
     while IFS=' ' read -r usuario proceso; do
+        [[ "$usuario" == "root" ]] && continue
+        [[ "$usuario" == "sshd" ]] && continue
         [[ "$proceso" =~ ^(sshd|dropbear)$ ]] && \
             CONEXIONES_POR_USUARIO["$usuario"]=$(( ${CONEXIONES_POR_USUARIO["$usuario"]:-0} + 1 ))
     done < <(ps -eo user=,comm= 2>/dev/null)
@@ -1079,7 +1079,9 @@ EOF
     # ================= Contador Online =================
     if [[ -f "$STATE_FILE" ]] && [[ "$(cat "$STATE_FILE")" == "ON" ]]; then
         for usuario in "${!CONEXIONES_POR_USUARIO[@]}"; do
-            TOTAL_CONEXIONES=$(( TOTAL_CONEXIONES + ${CONEXIONES_POR_USUARIO[$usuario]} ))
+            if grep -q "^${usuario}:" "$REGISTROS" 2>/dev/null; then
+                TOTAL_CONEXIONES=$(( TOTAL_CONEXIONES + ${CONEXIONES_POR_USUARIO[$usuario]} ))
+            fi
         done
         ONLINE_STATUS="${VERDE}🟢 ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"
     else
