@@ -1877,153 +1877,148 @@ crear_multiples_usuarios() {
 
 # Función para eliminar múltiples usuarios
 
+color_echo() {
+    local color=$1
+    shift
+    echo -e "\e[38;5;${color}m$*\e[0m"
+}
+
+
 eliminar_multiples_usuarios() {
     clear
-    echo "===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 ====="
-    echo "Nº      👤 Usuario"
-    echo "--------------------------"
+    color_echo 213 "╔════════════════════════════════════════════════════════════╗"
+    color_echo 219 "║     💖 ELIMINAR USUARIOS ✨ NIVEL DIOSA - REINA ROOT 💖     ║"
+    color_echo 213 "╚════════════════════════════════════════════════════════════╝"
+    color_echo 207 "Nº      👑 Usuario"
+    color_echo 219 "────────────────────────────────────────────────────────────"
+
     if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
-        echo "No hay registros disponibles."
+        color_echo 211 "No hay registros disponibles... 💔"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    # Cargar usuarios en un array para fácil acceso por número
+    # Cargar usuarios
     declare -a usuarios
     count=1
     while IFS=' ' read -r user_data _; do
         usuario=${user_data%%:*}
         usuarios[$count]="$usuario"
-        printf "%-7s %-20s\n" "$count" "$usuario"
+        printf "\e[38;5;219m%-7s\e[0m \e[38;5;207m%-20s\e[0m\n" "$count" "$usuario"
         ((count++))
     done < $REGISTROS
 
-    read -p "🗑️ Ingrese los números, rangos o nombres de usuarios a eliminar (separados por espacios) (0 para cancelar): " input
+    echo
+    read -p $'\e[38;5;213m🗑️  Ingresa los números, rangos o nombres a eliminar (0 para cancelar): \e[0m' input
 
     if [[ "$input" == "0" ]]; then
-        echo "❌ Eliminación cancelada."
+        color_echo 211 "❌ Operación cancelada por la reina..."
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    # Procesar input: puede ser números, rangos o nombres
+    # Procesar input
     declare -a usuarios_a_eliminar
     for item in $input; do
         if [[ "$item" =~ ^[0-9]+-[0-9]+$ ]]; then
-            # Es un rango tipo X-Y
             inicio="${item%-*}"
             fin="${item#*-}"
             if [[ $inicio -gt $fin ]]; then
-                echo "❌ Rango inválido: $item (el inicio debe ser menor al fin)"
+                color_echo 203 "❌ Rango inválido: $item"
             else
                 for ((i=inicio; i<=fin; i++)); do
                     if [[ $i -ge 1 && $i -lt $count ]]; then
                         usuarios_a_eliminar+=("${usuarios[$i]}")
                     else
-                        echo "❌ Número fuera de rango: $i"
+                        color_echo 203 "❌ Número fuera de rango: $i"
                     fi
                 done
             fi
         elif [[ "$item" =~ ^[0-9]+$ ]]; then
-            # Es un número individual
             if [[ $item -ge 1 && $item -lt $count ]]; then
                 usuarios_a_eliminar+=("${usuarios[$item]}")
             else
-                echo "❌ Número inválido: $item"
+                color_echo 203 "❌ Número inválido: $item"
             fi
         else
-            # Es un nombre, verificar si existe
             if grep -q "^$item:" $REGISTROS; then
                 usuarios_a_eliminar+=("$item")
             else
-                echo "❌ Usuario no encontrado: $item"
+                color_echo 203 "❌ Usuario no encontrado: $item"
             fi
         fi
     done
 
-    # Eliminar duplicados si los hay
     usuarios_a_eliminar=($(echo "${usuarios_a_eliminar[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 
     if [ ${#usuarios_a_eliminar[@]} -eq 0 ]; then
-        echo "❌ No se seleccionaron usuarios válidos."
+        color_echo 211 "❌ No seleccionaste usuarios válidos 💔"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    # Confirmar eliminación
-    echo "===== 📋 USUARIOS A ELIMINAR ====="
+    # Confirmación
+    color_echo 219 "\n╔══════ USUARIOS A ELIMINAR 💖 ══════╗"
     for usuario in "${usuarios_a_eliminar[@]}"; do
-        echo "👤 $usuario"
+        color_echo 207 "   👑 $usuario"
     done
-    read -p "✅ ¿Confirmar eliminación? (s/n): " confirmacion
+    color_echo 219 "╚══════════════════════════════════╝"
+
+    read -p $'\e[38;5;213m💖 ¿Confirmar eliminación? (s/n): \e[0m' confirmacion
+
     if [[ "$confirmacion" != "s" && "$confirmacion" != "S" ]]; then
-        echo "❌ Eliminación cancelada."
+        color_echo 211 "❌ La reina ha decidido perdonarles la vida~ ✨"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    # Eliminar usuarios
+    # Eliminación
     count=0
     failed_count=0
     fecha_eliminacion=$(date "+%Y-%m-%d %H:%M:%S")
+
     for usuario in "${usuarios_a_eliminar[@]}"; do
-        # Terminar todas las sesiones y procesos de manera forzada
         pkill -KILL -u "$usuario" 2>/dev/null
-        sleep 1  # Dar tiempo para que los procesos terminen
+        sleep 1
 
-        # Intentar eliminar el usuario con remoción de home y mail spool
         if userdel -r -f "$usuario" >/dev/null 2>&1; then
-            # Verificar si el usuario realmente se eliminó
             if ! id "$usuario" &>/dev/null; then
-                # Eliminar del registro
                 sed -i "/^$usuario:/d" $REGISTROS
-
-                # Registrar en historial
                 echo "Usuario eliminado: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
-
                 ((count++))
             else
-                # Si aún existe, intentar limpieza manual
                 rm -rf "/home/$usuario" 2>/dev/null
                 rm -f "/var/mail/$usuario" 2>/dev/null
                 rm -f "/var/spool/mail/$usuario" 2>/dev/null
-                # Forzar eliminación de entradas en /etc/passwd y /etc/shadow si es necesario (peligroso, pero robusto)
-                sed -i "/^$usuario:/d" /etc/passwd
-                sed -i "/^$usuario:/d" /etc/shadow
-                sed -i "/^$usuario:/d" /etc/group
-                sed -i "/^$usuario:/d" /etc/gshadow
+                sed -i "/^$usuario:/d" /etc/passwd 2>/dev/null
+                sed -i "/^$usuario:/d" /etc/shadow 2>/dev/null
+                sed -i "/^$usuario:/d" /etc/group 2>/dev/null
+                sed -i "/^$usuario:/d" /etc/gshadow 2>/dev/null
 
-                # Verificar nuevamente
                 if ! id "$usuario" &>/dev/null; then
-                    # Eliminar del registro
                     sed -i "/^$usuario:/d" $REGISTROS
-
-                    # Registrar en historial
                     echo "Usuario eliminado forzosamente: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
-
                     ((count++))
                 else
-                    echo "❌ Fallo persistente al eliminar el usuario $usuario."
-                    echo "Error al eliminar usuario persistente: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+                    color_echo 203 "❌ Fallo persistente con $usuario"
                     ((failed_count++))
                 fi
             fi
         else
-            echo "❌ Error inicial al eliminar el usuario $usuario."
-            echo "Error al eliminar usuario: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+            color_echo 203 "❌ Error al eliminar $usuario"
             ((failed_count++))
         fi
     done
 
-    # Mostrar resumen
-    echo "===== 📊 RESUMEN DE ELIMINACIÓN ====="
-    echo "✅ Usuarios eliminados exitosamente: $count"
-    if [[ $failed_count -gt 0 ]]; then
-        echo "❌ Usuarios con fallos: $failed_count"
-    fi
-    echo "Presiona Enter para continuar... ✨"
-    read
+    # Resumen final
+    color_echo 219 "\n╔════════════ RESUMEN 💖 ════════════╗"
+    color_echo 207 "   ✅ Usuarios eliminados: $count"
+    [[ $failed_count -gt 0 ]] && color_echo 203 "   ❌ Con fallos: $failed_count"
+    color_echo 219 "╚════════════════════════════════════╝"
+    color_echo 213 "✨ Operación completada con glamour ✨"
+    read -p "Presiona Enter para continuar..."
 }
+
     
 
     
