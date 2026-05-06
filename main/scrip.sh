@@ -1877,8 +1877,7 @@ crear_multiples_usuarios() {
 
 # Función para eliminar múltiples usuarios
 
-
-    eliminar_multiples_usuarios() {
+eliminar_multiples_usuarios() {
     clear
     echo "===== 💣 ELIMINAR USUARIO: NIVEL DIABLO - SATÁN ROOT 🔥 ====="
     echo "Nº      👤 Usuario"
@@ -1899,7 +1898,7 @@ crear_multiples_usuarios() {
         ((count++))
     done < $REGISTROS
 
-    read -p "🗑️ Ingrese los números o nombres de usuarios a eliminar (separados por espacios) (0 para cancelar): " input
+    read -p "🗑️ Ingrese los números, rangos o nombres de usuarios a eliminar (separados por espacios) (0 para cancelar): " input
 
     if [[ "$input" == "0" ]]; then
         echo "❌ Eliminación cancelada."
@@ -1907,11 +1906,26 @@ crear_multiples_usuarios() {
         return
     fi
 
-    # Procesar input: puede ser números o nombres
+    # Procesar input: puede ser números, rangos o nombres
     declare -a usuarios_a_eliminar
     for item in $input; do
-        if [[ "$item" =~ ^[0-9]+$ ]]; then
-            # Es un número
+        if [[ "$item" =~ ^[0-9]+-[0-9]+$ ]]; then
+            # Es un rango tipo X-Y
+            inicio="${item%-*}"
+            fin="${item#*-}"
+            if [[ $inicio -gt $fin ]]; then
+                echo "❌ Rango inválido: $item (el inicio debe ser menor al fin)"
+            else
+                for ((i=inicio; i<=fin; i++)); do
+                    if [[ $i -ge 1 && $i -lt $count ]]; then
+                        usuarios_a_eliminar+=("${usuarios[$i]}")
+                    else
+                        echo "❌ Número fuera de rango: $i"
+                    fi
+                done
+            fi
+        elif [[ "$item" =~ ^[0-9]+$ ]]; then
+            # Es un número individual
             if [[ $item -ge 1 && $item -lt $count ]]; then
                 usuarios_a_eliminar+=("${usuarios[$item]}")
             else
@@ -2010,6 +2024,9 @@ crear_multiples_usuarios() {
     echo "Presiona Enter para continuar... ✨"
     read
 }
+    
+
+    
 
 
 
