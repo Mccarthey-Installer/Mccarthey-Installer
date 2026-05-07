@@ -973,149 +973,105 @@ Escribe *hola* para volver al menú.\" -d parse_mode=Markdown >/dev/null
 }              
 
     
-function barra_sistema() {
-    # ================= Colores =================
-    BLANCO='\033[97m'
-    AZUL='\033[94m'
-    MAGENTA='\033[95m'
-    ROJO='\033[91m'
-    AMARILLO='\033[93m'
-    VERDE='\033[92m'
-    NC='\033[0m'
-    CIAN='\033[38;5;51m'
+
+
+    
+    
+
+    function barra_sistema() {  
+    # ================= Colores =================  
+    BLANCO='\033[97m'  
+    AZUL='\033[94m'  
+    MAGENTA='\033[95m'  
+    ROJO='\033[91m'  
+    AMARILLO='\033[93m'  
+    VERDE='\033[92m'  
+    NC='\033[0m'  
+    CIAN='\033[38;5;51m'  # Para inactivos
 
     # ================= Config persistente =================
     STATE_FILE="/etc/mi_script/contador_online.conf"
-    CACHE_FILE="/etc/mi_script/system_cache.conf"
-    mkdir -p /etc/mi_script
 
-    # =================================================================
-    # DATOS CACHEADOS — IP, SO, MHz, Cores
-    # IP se refresca cada 7 días
-    # El resto hasta que se borre el cache manualmente
-    # =================================================================
-    CACHE_VALIDO=false
+    # ================= Usuarios =================  
+    TOTAL_CONEXIONES=0  
+    TOTAL_USUARIOS=0  
+    USUARIOS_EXPIRAN=()  
+    inactivos=0  
 
-    if [[ -f "$CACHE_FILE" ]]; then
-        source "$CACHE_FILE"
-        AHORA=$(date +%s)
-        if [[ -n "$IP_PUBLICA" && -n "$SO_NAME" && -n "$CPU_MHZ" && -n "$CPU_CORES" ]]; then
-            if [[ $(( AHORA - ${IP_TIMESTAMP:-0} )) -lt 604800 ]]; then
-                CACHE_VALIDO=true
-            fi
-        fi
-    fi
+    if [[ -f "$REGISTROS" ]]; then  
+        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
+            usuario=${user_data%%:*}  
+            if id "$usuario" &>/dev/null; then  
+                ((TOTAL_USUARIOS++))  
+                DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")  
+                if [[ $DIAS_RESTANTES -eq 0 ]]; then  
+                    USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")  
+                fi  
+                conexiones=$(( $(ps -u "$usuario" -o comm= | grep -cE "^(sshd|dropbear)$") ))  
+                bloqueo_file="/tmp/bloqueo_${usuario}.lock"  
+                if [[ $conexiones -eq 0 && ! -f "$bloqueo_file" ]]; then  
+                    ((inactivos++))  
+                elif [[ -f "$bloqueo_file" ]]; then  
+                    bloqueo_hasta=$(cat "$bloqueo_file")  
+                    if [[ $(date +%s) -ge $bloqueo_hasta ]]; then  
+                        rm -f "$bloqueo_file"  
+                        ((inactivos++))  
+                    fi  
+                fi  
+            fi  
+        done < "$REGISTROS"  
+    fi  
 
-    if [[ "$CACHE_VALIDO" == false ]]; then
-        IP_PUBLICA=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "No disponible")
-        IP_TIMESTAMP=$(date +%s)
-
-        if [[ -f /etc/os-release ]]; then
-            SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
-        else
-            SO_NAME=$(uname -o)
-        fi
-
-        CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
-        CPU_CORES=$(nproc)
-
-        cat > "$CACHE_FILE" <<EOF
-IP_PUBLICA="$IP_PUBLICA"
-IP_TIMESTAMP=$IP_TIMESTAMP
-SO_NAME="$SO_NAME"
-CPU_MHZ="$CPU_MHZ"
-CPU_CORES="$CPU_CORES"
-EOF
-    fi
-
-    # =================================================================
-    # DATOS EN TIEMPO REAL
-    # =================================================================
-
-    # ================= Conexiones SSH — una sola llamada global =================
-    # Solo sesiones reales: se excluye root y sshd para ignorar
-    # listeners, forks de auth y procesos internos de OpenSSH
-    TOTAL_USUARIOS=0
-    USUARIOS_EXPIRAN=()
-    inactivos=0
-
-    declare -A CONEXIONES_POR_USUARIO
-
-    while IFS=' ' read -r usuario proceso; do
-        [[ "$usuario" == "root" ]] && continue
-        [[ "$usuario" == "sshd" ]] && continue
-        [[ "$proceso" =~ ^(sshd|dropbear)$ ]] && \
-            CONEXIONES_POR_USUARIO["$usuario"]=$(( ${CONEXIONES_POR_USUARIO["$usuario"]:-0} + 1 ))
-    done < <(ps -eo user=,comm= 2>/dev/null)
-
+    # ================= Contador Online =================  
     TOTAL_CONEXIONES=0
-
-    if [[ -f "$REGISTROS" ]]; then
-        while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do
-            usuario=${user_data%%:*}
-            if id "$usuario" &>/dev/null; then
-                ((TOTAL_USUARIOS++))
-                DIAS_RESTANTES=$(calcular_dias_restantes "$fecha_expiracion")
-                if [[ $DIAS_RESTANTES -eq 0 ]]; then
-                    USUARIOS_EXPIRAN+=("${BLANCO}${usuario}${NC} ${AMARILLO}0 Días${NC}")
-                fi
-
-                conexiones=${CONEXIONES_POR_USUARIO["$usuario"]:-0}
-                bloqueo_file="/tmp/bloqueo_${usuario}.lock"
-
-                if [[ $conexiones -eq 0 && ! -f "$bloqueo_file" ]]; then
-                    ((inactivos++))
-                elif [[ -f "$bloqueo_file" ]]; then
-                    bloqueo_hasta=$(cat "$bloqueo_file")
-                    if [[ $(date +%s) -ge $bloqueo_hasta ]]; then
-                        rm -f "$bloqueo_file"
-                        ((inactivos++))
-                    fi
-                fi
-            fi
-        done < "$REGISTROS"
-    fi
-
-    # ================= Contador Online =================
     if [[ -f "$STATE_FILE" ]] && [[ "$(cat "$STATE_FILE")" == "ON" ]]; then
-        for usuario in "${!CONEXIONES_POR_USUARIO[@]}"; do
-            if grep -q "^${usuario}:" "$REGISTROS" 2>/dev/null; then
-                TOTAL_CONEXIONES=$(( TOTAL_CONEXIONES + ${CONEXIONES_POR_USUARIO[$usuario]} ))
-            fi
-        done
-        ONLINE_STATUS="${VERDE}🟢 ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"
-    else
-        ONLINE_STATUS="${ROJO}🔴 ONLINE OFF${NC}"
-        TOTAL_CONEXIONES=0
+        if [[ -f "$REGISTROS" ]]; then  
+            while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion; do  
+                usuario=${user_data%%:*}  
+                if id "$usuario" &>/dev/null; then  
+                    CONEXIONES_SSH=$(ps -u "$usuario" -o comm= | grep -c "^sshd$")  
+                    CONEXIONES_DROPBEAR=$(ps -u "$usuario" -o comm= | grep -c "^dropbear$")  
+                    CONEXIONES=$((CONEXIONES_SSH + CONEXIONES_DROPBEAR))  
+                    TOTAL_CONEXIONES=$((TOTAL_CONEXIONES + CONEXIONES))  
+                fi  
+            done < "$REGISTROS"  
+        fi  
+        ONLINE_STATUS="${VERDE}🟢 ONLINE: ${AMARILLO}${TOTAL_CONEXIONES}${NC}"  
+    else  
+        ONLINE_STATUS="${ROJO}🔴 ONLINE OFF${NC}"  
+        TOTAL_CONEXIONES=0  
     fi
 
-    # ================= RAM (tiempo real) =================
-    read MEM_TOTAL MEM_USO MEM_DISPONIBLE < <(free -m | awk '/^Mem:/ {print $2, $3, $7}')
+    # ================= Memoria =================  
+    MEM_TOTAL=$(free -m | awk '/^Mem:/ {print $2}')  
+    MEM_USO=$(free -m | awk '/^Mem:/ {print $3}')  
+    MEM_DISPONIBLE=$(free -m | awk '/^Mem:/ {print $7}')  
     MEM_PORC=$((100 * MEM_USO / MEM_TOTAL))
 
-    human() {
-        local value=$1
-        if [ "$value" -ge 1024 ]; then
-            awk "BEGIN {printf \"%.1fG\", $value/1024}"
-        else
-            echo "${value}M"
-        fi
-    }
+    human() {  
+        local value=$1  
+        if [ "$value" -ge 1024 ]; then  
+            awk "BEGIN {printf \"%.1fG\", $value/1024}"  
+        else  
+            echo "${value}M"  
+        fi  
+    }  
 
-    MEM_TOTAL_H=$(human "$MEM_TOTAL")
+    MEM_TOTAL_H=$(human "$MEM_TOTAL")  
     MEM_DISPONIBLE_H=$(human "$MEM_DISPONIBLE")
 
-    # ================= Disco (tiempo real) =================
-    read DISCO_TOTAL_H DISCO_USO_H DISCO_DISPONIBLE_H DISCO_PORC < <(df -h / | awk '/\// {gsub(/%/,"",$5); print $2, $3, $4, $5}')
-    if [ "${DISCO_PORC%.*}" -ge 80 ]; then
-        DISCO_PORC_COLOR="${ROJO}${DISCO_PORC}%${NC}"
-    elif [ "${DISCO_PORC%.*}" -ge 50 ]; then
-        DISCO_PORC_COLOR="${AMARILLO}${DISCO_PORC}%${NC}"
-    else
-        DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"
-    fi
+    # ================= Disco =================  
+    DISCO_INFO=$(df -h / | awk '/\// {print $2, $3, $4, $5}' | tr -d '%')  
+    read -r DISCO_TOTAL_H DISCO_USO_H DISCO_DISPONIBLE_H DISCO_PORC <<< "$DISCO_INFO"  
+    if [ "${DISCO_PORC%.*}" -ge 80 ]; then  
+        DISCO_PORC_COLOR="${ROJO}${DISCO_PORC}%${NC}"  
+    elif [ "${DISCO_PORC%.*}" -ge 50 ]; then  
+        DISCO_PORC_COLOR="${AMARILLO}${DISCO_PORC}%${NC}"  
+    else  
+        DISCO_PORC_COLOR="${VERDE}${DISCO_PORC}%${NC}"  
+    fi  
 
-    # ================= CPU uso (tiempo real) =================
+    # ================= CPU tipo kernel instantáneo =================
     CPU_STAT_FILE="/tmp/.cpu_stat_prev"
     read cpu a b c d e f g h i j < /proc/stat
     idle=$d
@@ -1134,112 +1090,174 @@ EOF
     fi
     echo "$total $idle" > "$CPU_STAT_FILE"
 
-    # ================= Fecha (tiempo real) =================
-    FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M")
+    CPU_MHZ=$(awk -F': ' '/^cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%.3f", sum/n; else print "Desconocido"}' /proc/cpuinfo)
+    CPU_CORES=$(nproc)   # Detecta automáticamente los núcleos
+    # ================= IP y fecha =================  
+    if command -v curl &>/dev/null; then  
+        IP_PUBLICA=$(curl -s ifconfig.me)  
+    elif command -v wget &>/dev/null; then  
+        IP_PUBLICA=$(wget -qO- ifconfig.me)  
+    else  
+        IP_PUBLICA="No disponible"  
+    fi  
+    FECHA_ACTUAL=$(date +"%Y-%m-%d %I:%M")  
 
-    # ================= Limitador =================
-    ENABLED="/tmp/limitador_enabled"
-    PIDFILE="/Abigail/mon.pid"
-    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then
-        LIMITADOR_ESTADO="${VERDE}ACTIVO 🟢${NC}"
+    # ================= Sistema =================  
+    if [[ -f /etc/os-release ]]; then  
+        SO_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"')  
+    else  
+        SO_NAME=$(uname -o)  
+    fi  
+
+    ENABLED="/tmp/limitador_enabled"  
+    PIDFILE="/Abigail/mon.pid"  
+    if [[ -f "$ENABLED" ]] && [[ -f "$PIDFILE" ]] && ps -p "$(cat "$PIDFILE" 2>/dev/null)" >/dev/null 2>&1; then  
+        LIMITADOR_ESTADO="${VERDE}ACTIVO 🟢${NC}"  
+    else  
+        LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"  
+    fi  
+
+    # ================= Uptime =================    
+ uptime_seconds=$(cut -d. -f1 /proc/uptime)
+
+if (( uptime_seconds < 3600 )); then
+    minutos=$(( uptime_seconds / 60 ))
+    [[ $minutos -lt 1 ]] && minutos=0
+
+    if (( minutos == 1 )); then
+        texto="1 minuto"
     else
-        LIMITADOR_ESTADO="${ROJO}DESACTIVADO 🔴${NC}"
+        texto="${minutos} minutos"
     fi
 
-    # ================= Uptime (tiempo real) =================
-    uptime_seconds=$(cut -d. -f1 /proc/uptime)
+elif (( uptime_seconds < 86400 )); then
+    horas=$(( uptime_seconds / 3600 ))
+    minutos_restantes=$(( (uptime_seconds % 3600) / 60 ))
 
-    if (( uptime_seconds < 3600 )); then
-        minutos=$(( uptime_seconds / 60 ))
-        [[ $minutos -lt 1 ]] && minutos=0
-        (( minutos == 1 )) && texto="1 minuto" || texto="${minutos} minutos"
-    elif (( uptime_seconds < 86400 )); then
-        horas=$(( uptime_seconds / 3600 ))
-        minutos_restantes=$(( (uptime_seconds % 3600) / 60 ))
-        hora_texto=$([[ $horas == 1 ]] && echo "1 hora" || echo "${horas} horas")
-        if (( minutos_restantes == 0 )); then texto="${hora_texto}"
-        elif (( minutos_restantes == 1 )); then texto="${hora_texto} 1 minuto"
-        else texto="${hora_texto} ${minutos_restantes} minutos"
-        fi
-    elif (( uptime_seconds < 2592000 )); then
-        dias=$(( uptime_seconds / 86400 ))
-        horas_restantes=$(( (uptime_seconds % 86400) / 3600 ))
-        dia_texto=$([[ $dias == 1 ]] && echo "1 día" || echo "${dias} días")
-        if (( horas_restantes == 0 )); then texto="${dia_texto}"
-        elif (( horas_restantes == 1 )); then texto="${dia_texto} 1 hora"
-        else texto="${dia_texto} ${horas_restantes} horas"
-        fi
+    hora_texto=$([[ $horas == 1 ]] && echo "1 hora" || echo "${horas} horas")
+
+    if (( minutos_restantes == 0 )); then
+        texto="${hora_texto}"
+    elif (( minutos_restantes == 1 )); then
+        texto="${hora_texto} 1 minuto"
     else
-        meses=$(( uptime_seconds / 2592000 ))
-        dias=$(( (uptime_seconds % 2592000) / 86400 ))
-        mes_texto=$([[ $meses == 1 ]] && echo "1 mes" || echo "${meses} meses")
-        if (( dias == 0 )); then texto="${mes_texto}"
-        elif (( dias == 1 )); then texto="${mes_texto} 1 día"
-        else texto="${mes_texto} ${dias} días"
-        fi
+        texto="${hora_texto} ${minutos_restantes} minutos"
     fi
 
-    UPTIME_COLOR="${MAGENTA} 🕓 UPTIME: ${AMARILLO}${texto}${NC}"
+elif (( uptime_seconds < 2592000 )); then
+    dias=$(( uptime_seconds / 86400 ))
+    horas_restantes=$(( (uptime_seconds % 86400) / 3600 ))
 
-    # ================= Load average (tiempo real) =================
-    read LOAD_1 LOAD_5 LOAD_15 < <(awk '{print $1, $2, $3}' /proc/loadavg)
+    dia_texto=$([[ $dias == 1 ]] && echo "1 día" || echo "${dias} días")
 
-    load_icon() {
-        local carga=$1 cores=$2
-        if [[ "$cores" -eq 1 ]]; then
-            if (( $(echo "$carga < 1.2" | bc -l) )); then echo "🟢"
-            elif (( $(echo "$carga < 2.0" | bc -l) )); then echo "🟡"
-            elif (( $(echo "$carga < 3.0" | bc -l) )); then echo "🔴"
-            else echo "💀"
-            fi
+    if (( horas_restantes == 0 )); then
+        texto="${dia_texto}"
+    elif (( horas_restantes == 1 )); then
+        texto="${dia_texto} 1 hora"
+    else
+        texto="${dia_texto} ${horas_restantes} horas"
+    fi
+
+else
+    meses=$(( uptime_seconds / 2592000 ))
+    dias=$(( (uptime_seconds % 2592000) / 86400 ))
+
+    mes_texto=$([[ $meses == 1 ]] && echo "1 mes" || echo "${meses} meses")
+
+    if (( dias == 0 )); then
+        texto="${mes_texto}"
+    elif (( dias == 1 )); then
+        texto="${mes_texto} 1 día"
+    else
+        texto="${mes_texto} ${dias} días"
+    fi
+fi
+
+UPTIME_COLOR="${MAGENTA} 🕓 UPTIME: ${AMARILLO}${texto}${NC}"
+
+
+    # ================= Load average =================
+LOAD_RAW=$(uptime | awk -F'load average:' '{print $2}' | xargs)
+read -r LOAD_1 LOAD_5 LOAD_15 <<< $(echo $LOAD_RAW | tr ',' ' ')
+
+# Colores según carga vs núcleos
+load_icon() {
+    local carga=$1
+    local cores=$2
+    local ratio=$(echo "$carga / $cores" | bc -l)
+
+    # Si solo tiene 1 núcleo, reglas especiales
+    if [[ "$cores" -eq 1 ]]; then
+        if (( $(echo "$carga < 1.2" | bc -l) )); then
+            echo "🟢"
+        elif (( $(echo "$carga < 2.0" | bc -l) )); then
+            echo "🟡"
+        elif (( $(echo "$carga < 3.0" | bc -l) )); then
+            echo "🔴"
         else
-            local ratio=$(echo "$carga / $cores" | bc -l)
-            if (( $(echo "$ratio < 0.50" | bc -l) )); then echo "🟢"
-            elif (( $(echo "$ratio < 1.00" | bc -l) )); then echo "🟡"
-            elif (( $(echo "$ratio < 1.50" | bc -l) )); then echo "🔴"
-            else echo "💀"
-            fi
+            echo "💀"
         fi
-    }
-
-    ICON_LOAD=$(load_icon $LOAD_1 $CPU_CORES)
-    LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
-
-    # ================= Transferencia (tiempo real) =================
-    TRANSFER_FILE="/tmp/vps_transfer_total"
-    LAST_FILE="/tmp/vps_transfer_last"
-
-    read RX_TOTAL TX_TOTAL < <(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2; tx+=$10} END{print rx+0, tx+0}' /proc/net/dev)
-    TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
-
-    if [[ ! -f "$LAST_FILE" ]]; then
-        TRANSFER_ACUM=0
-        echo "$TOTAL_BYTES" > "$LAST_FILE"
     else
-        LAST_TOTAL=$(cat "$LAST_FILE")
-        DIFF=$((TOTAL_BYTES - LAST_TOTAL))
-        [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
-        TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
-        echo "$TOTAL_BYTES" > "$LAST_FILE"
-        echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
+        # Multi-core (ratio normalizado)
+        if (( $(echo "$ratio < 0.50" | bc -l) )); then
+            echo "🟢"
+        elif (( $(echo "$ratio < 1.00" | bc -l) )); then
+            echo "🟡"
+        elif (( $(echo "$ratio < 1.50" | bc -l) )); then
+            echo "🔴"
+        else
+            echo "💀"
+        fi
+    fi
+}
+
+ICON_LOAD=$(load_icon $LOAD_1 $CPU_CORES)
+LOAD_AVG="${ICON_LOAD} ${LOAD_1}, ${LOAD_5}, ${LOAD_15}"
+    # ================= Transferencia =================  
+TRANSFER_FILE="/tmp/vps_transfer_total"  
+LAST_FILE="/tmp/vps_transfer_last"  
+
+RX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{rx+=$2} END{print rx}' /proc/net/dev)  
+TX_TOTAL=$(awk '/eth0|ens|enp|wlan|wifi/{tx+=$10} END{print tx}' /proc/net/dev)  
+
+TOTAL_BYTES=$((RX_TOTAL + TX_TOTAL))
+
+if [[ ! -f "$LAST_FILE" ]]; then
+    TRANSFER_ACUM=0
+    echo "$TOTAL_BYTES" > "$LAST_FILE"
+else
+    LAST_TOTAL=$(cat "$LAST_FILE")
+    DIFF=$((TOTAL_BYTES - LAST_TOTAL))
+    [[ -f "$TRANSFER_FILE" ]] && TRANSFER_ACUM=$(cat "$TRANSFER_FILE") || TRANSFER_ACUM=0
+    TRANSFER_ACUM=$((TRANSFER_ACUM + DIFF))
+    echo "$TOTAL_BYTES" > "$LAST_FILE"
+    echo "$TRANSFER_ACUM" > "$TRANSFER_FILE"
+fi
+
+human_transfer() {
+    local bytes=$1
+    local value
+    local unit
+
+    if (( bytes >= 1099511627776 )); then       # >= 1 TB
+        value=$(awk "BEGIN {printf \"%.1f\", $bytes / 1099511627776}")
+        unit="TB"
+    elif (( bytes >= 1073741824 )); then        # >= 1 GB
+        value=$(awk "BEGIN {printf \"%.1f\", $bytes / 1073741824}")
+        unit="GB"
+    else                                        # < 1 GB
+        value=$(( bytes / 1048576 ))
+        unit="MB"
     fi
 
-    human_transfer() {
-        local bytes=$1 value unit
-        if (( bytes >= 1099511627776 )); then
-            value=$(awk "BEGIN {printf \"%.1f\", $bytes / 1099511627776}"); unit="TB"
-        elif (( bytes >= 1073741824 )); then
-            value=$(awk "BEGIN {printf \"%.1f\", $bytes / 1073741824}"); unit="GB"
-        else
-            value=$(( bytes / 1048576 )); unit="MB"
-        fi
-        [[ "$value" == *".0" ]] && value="${value%.0}"
-        echo "${value} ${unit}"
-    }
+    [[ "$value" == *".0" ]] && value="${value%.0}"
 
-    TRANSFER_DISPLAY=$(human_transfer "$TRANSFER_ACUM")
+    echo "${value} ${unit}"
+}
 
-    # ================= Imprimir =================
+TRANSFER_DISPLAY=$(human_transfer "$TRANSFER_ACUM")
+
+    # ================= Imprimir todo =================  
     echo -e "${AZUL}═══════════════════════════════════════════════════${NC}"
     echo -e "${BLANCO} 💾 TOTAL:${AMARILLO} ${MEM_TOTAL_H}${NC}     ${BLANCO}∘ 💧 DISPONIBLE:${AMARILLO} ${MEM_DISPONIBLE_H}${NC} ${BLANCO}∘ 💿 HDD:${AMARILLO} ${DISCO_TOTAL_H}${NC} ${DISCO_PORC_COLOR}"
     echo -e "${BLANCO} 📊 U/RAM: ${MEM_PORC}%   🖥️ U/CPU: ${CPU_PORC}%       🔧 CPU MHz: ${CPU_MHZ}${NC}"
