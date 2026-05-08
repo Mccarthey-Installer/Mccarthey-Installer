@@ -4900,11 +4900,20 @@ _cb_start() {
     mkdir -p "$(dirname "$PID_FILE")"
     mkdir -p "$(dirname "$LOG_FILE")"
 
-    # setsid crea una sesión nueva, totalmente desvinculada de la terminal
-    setsid bash -c "
-        source /root/check_banner.sh
-        _cb_modo_daemon
-    " >> "$LOG_FILE" 2>&1 &
+    # Exportar todas las funciones internas al bash hijo
+    export -f _cb_modo_daemon \
+               _cb_log \
+               _cb_limpiar_log \
+               _cb_calcular_dias_restantes \
+               _cb_generar_banner \
+               _cb_actualizar_sshd_conf \
+               _cb_regenerar_todos
+
+    # Exportar variables de ruta
+    export LOG_FILE REGISTROS BANNERS_DIR BANNERS_CONF PID_FILE
+
+    # setsid crea sesión nueva desvinculada de la terminal
+    setsid bash -c '_cb_modo_daemon' >> "$LOG_FILE" 2>&1 &
 
     echo $! > "$PID_FILE"
     disown $!
