@@ -4666,6 +4666,489 @@ xhttp_panel() {
 
 
 
+#!/bin/bash
+# ================================================================
+# 🔥 BANNER HC — MCCARTHEY EDITION 🔥
+# Módulo puro — solo funciones, sin main, sin autoejecución
+# Se carga con: source /ruta/check_banner.sh
+# Se llama con: Check_Banner  (desde el menú principal)
+# ================================================================
+
+# ================================
+# RUTAS
+# ================================
+REGISTROS="/diana/reg.txt"
+BANNERS_DIR="/etc/ssh/banners"
+BANNERS_CONF="/etc/ssh/sshd_config.d/banners_dinamicos.conf"
+PID_FILE="/Abigail/banner_hc.pid"
+LOG_FILE="/Abigail/banner_hc.log"
+
+# ================================
+# COLORES KAWAII 💖
+# Solo se asignan si el panel principal no los definió ya
+# ================================
+ROSA_BRILLANTE=${ROSA_BRILLANTE:-'\033[38;5;206m'}
+PURPURA=${PURPURA:-'\033[38;5;177m'}
+ROSADO=${ROSADO:-'\033[38;5;213m'}
+VERDE=${VERDE:-'\033[38;5;86m'}
+ROJO=${ROJO:-'\033[38;5;204m'}
+AMARILLO=${AMARILLO:-'\033[38;5;228m'}
+CIAN=${CIAN:-'\033[38;5;159m'}
+VIOLETA=${VIOLETA:-'\033[38;5;141m'}
+NC=${NC:-'\033[0m'}
+
+# ================================================================
+# LIMPIAR LOG
+# ================================================================
+_cb_limpiar_log() {
+    local max_lineas=300
+    [[ ! -f "$LOG_FILE" ]] && return
+    local total
+    total=$(wc -l < "$LOG_FILE")
+    if [[ $total -gt $max_lineas ]]; then
+        tail -200 "$LOG_FILE" > "${LOG_FILE}.tmp"
+        mv "${LOG_FILE}.tmp" "$LOG_FILE"
+    fi
+}
+
+# ================================================================
+# LOG
+# ================================================================
+_cb_log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
+    _cb_limpiar_log
+}
+
+# ================================================================
+# CALCULAR DÍAS RESTANTES
+# ================================================================
+_cb_calcular_dias_restantes() {
+    local fecha_expiracion="$1"
+    local dia mes anio mes_num
+
+    dia=$(echo "$fecha_expiracion"  | cut -d'/' -f1)
+    mes=$(echo "$fecha_expiracion"  | cut -d'/' -f2 | tr '[:upper:]' '[:lower:]')
+    anio=$(echo "$fecha_expiracion" | cut -d'/' -f3)
+
+    case "$mes" in
+        enero)      mes_num="01" ;;
+        febrero)    mes_num="02" ;;
+        marzo)      mes_num="03" ;;
+        abril)      mes_num="04" ;;
+        mayo)       mes_num="05" ;;
+        junio)      mes_num="06" ;;
+        julio)      mes_num="07" ;;
+        agosto)     mes_num="08" ;;
+        septiembre) mes_num="09" ;;
+        octubre)    mes_num="10" ;;
+        noviembre)  mes_num="11" ;;
+        diciembre)  mes_num="12" ;;
+        *) echo 0; return ;;
+    esac
+
+    local fecha_formateada="${anio}-${mes_num}-${dia}"
+    local fecha_actual
+    fecha_actual=$(date "+%Y-%m-%d")
+
+    local exp_epoch act_epoch diff dias_restantes
+    exp_epoch=$(date -d "$fecha_formateada" "+%s" 2>/dev/null)
+    act_epoch=$(date -d "$fecha_actual"     "+%s" 2>/dev/null)
+
+    [[ -z "$exp_epoch" ]] && echo 0 && return
+
+    diff=$(( exp_epoch - act_epoch ))
+    dias_restantes=$(( diff / 86400 ))
+    [[ $dias_restantes -lt 0 ]] && dias_restantes=0
+
+    echo "$dias_restantes"
+}
+
+# ================================================================
+# GENERAR BANNER INDIVIDUAL
+# ================================================================
+_cb_generar_banner() {
+    local usuario="$1"
+    local linea
+    linea=$(grep "^${usuario}:" "$REGISTROS" 2>/dev/null)
+    [[ -z "$linea" ]] && return 1
+
+    IFS=' ' read -r user_data fecha_expiracion dias_originales moviles _ <<< "$linea"
+
+    local dias_restantes
+    dias_restantes=$(_cb_calcular_dias_restantes "$fecha_expiracion")
+
+    local estado icono color_estado
+
+    if [[ $dias_restantes -eq 0 ]]; then
+        icono="🔴"
+        color_estado="#cc3333"
+        estado='🚨 TU SERVICIO VENCE HOY.<br>Renueva ahora si deseas mantenerlo activo y evitar cortes.'
+    elif [[ $dias_restantes -eq 1 && $dias_originales -gt 3 ]]; then
+        icono="🟡"
+        color_estado="#ccaa00"
+        estado='⚠️ MAÑANA VENCE TU SERVICIO 😱<br>Renueva a tiempo para evitar interrupciones.'
+    else
+        icono="💎"
+        color_estado="#00cc99"
+        estado='💎 Servicio Premium activo y estable.'
+    fi
+
+    local texto_dias
+    [[ $dias_restantes -eq 1 ]] && texto_dias="1 día" || texto_dias="${dias_restantes} días"
+
+    mkdir -p "$BANNERS_DIR"
+
+    cat > "$BANNERS_DIR/${usuario}" << EOF
+<h2><font color="#ff0099">✨💖🔥 SERVIDORES PREMIUM 🔥💖✨</font></h2>
+<h2><font color="red">👤 Usuario : ${usuario}</font></h2>
+<h2><font color="#FF1493">⏳ Restan : ${texto_dias}</font></h2>
+<h2><font color="#FF69B4">📅 Expira : ${fecha_expiracion}</font></h2>
+<h2><font color="#FF00FF">📱 Equipos : ${moviles}</font></h2>
+<h2><font color="${color_estado}">${icono} ${estado}</font></h2>
+EOF
+
+    chmod 644 "$BANNERS_DIR/${usuario}"
+    _cb_log "Banner generado para $usuario"
+    return 0
+}
+
+# ================================================================
+# ACTUALIZAR CONFIG SSH
+# ================================================================
+_cb_actualizar_sshd_conf() {
+    mkdir -p "$(dirname "$BANNERS_CONF")"
+
+    {
+        echo "# ================================================"
+        echo "# BANNERS HC CUSTOM — generado automáticamente"
+        echo "# ================================================"
+        echo ""
+        while IFS=' ' read -r user_data _; do
+            [[ -z "$user_data" ]] && continue
+            local u="${user_data%%:*}"
+            [[ -f "$BANNERS_DIR/${u}" ]] || continue
+            echo "Match User $u"
+            echo "    Banner $BANNERS_DIR/$u"
+            echo ""
+        done < "$REGISTROS"
+    } > "$BANNERS_CONF"
+
+    systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null
+    _cb_log "sshd recargado"
+}
+
+# ================================================================
+# REGENERAR TODOS LOS BANNERS
+# ================================================================
+_cb_regenerar_todos() {
+    [[ ! -f "$REGISTROS" ]] && return
+    while IFS=' ' read -r user_data _; do
+        [[ -z "$user_data" ]] && continue
+        local u="${user_data%%:*}"
+        _cb_generar_banner "$u"
+    done < "$REGISTROS"
+    _cb_actualizar_sshd_conf
+    _cb_log "Todos los banners regenerados"
+}
+
+# ================================================================
+# DAEMON — subshell background puro
+# ✅ No usa $0   ✅ No usa exec   ✅ No depende de argumentos
+# ================================================================
+_cb_modo_daemon() {
+    mkdir -p "$(dirname "$PID_FILE")"
+    mkdir -p "$(dirname "$LOG_FILE")"
+    _cb_log "Daemon iniciado (PID $$)"
+    _cb_regenerar_todos
+
+    local last_mtime=0
+    local last_date
+    last_date=$(date '+%Y-%m-%d')
+
+    while true; do
+
+        if [[ -f "$REGISTROS" ]]; then
+            local curr_mtime
+            curr_mtime=$(stat -c %Y "$REGISTROS" 2>/dev/null || echo 0)
+            if [[ "$curr_mtime" != "$last_mtime" ]]; then
+                sleep 1
+                _cb_log "Cambio detectado en reg.txt"
+                _cb_regenerar_todos
+                last_mtime=$curr_mtime
+            fi
+        fi
+
+        local hoy
+        hoy=$(date '+%Y-%m-%d')
+        if [[ "$hoy" != "$last_date" ]]; then
+            _cb_log "Cambio de día detectado"
+            _cb_regenerar_todos
+            last_date="$hoy"
+        fi
+
+        sleep 2
+    done
+}
+
+
+_cb_start() {
+
+    if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE")" >/dev/null 2>&1; then
+
+        echo -e "${AMARILLO}⚠️ El daemon ya está activo${NC}"
+
+        return
+    fi
+
+    mkdir -p "$(dirname "$PID_FILE")"
+    mkdir -p "$(dirname "$LOG_FILE")"
+
+    (
+        _cb_modo_daemon
+    ) >> "$LOG_FILE" 2>&1 &
+
+    echo $! > "$PID_FILE"
+
+    disown
+
+    echo -e "${VERDE}✅ Daemon iniciado${NC}"
+}
+
+
+# ================================================================
+# STOP — mata el proceso y limpia archivos
+# ================================================================
+_cb_stop() {
+    echo -e "${AMARILLO}Deteniendo daemon y limpiando banners...${NC}"
+
+    if [[ -f "$PID_FILE" ]]; then
+        local pid
+        pid=$(cat "$PID_FILE" 2>/dev/null)
+        if ps -p "$pid" >/dev/null 2>&1; then
+            kill "$pid" 2>/dev/null
+            sleep 1
+        fi
+        rm -f "$PID_FILE"
+    fi
+
+    rm -rf "$BANNERS_DIR"
+    rm -f  "$BANNERS_CONF"
+    systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null
+    _cb_log "Daemon detenido y banners eliminados"
+    echo -e "${VERDE}✅ Todo limpiado correctamente${NC}"
+}
+
+# ================================================================
+# STATUS
+# ================================================================
+_cb_status() {
+    echo ""
+    echo -e "${VIOLETA}═══════════════════════════════${NC}"
+    echo -e "${VIOLETA}🔥 ESTADO BANNER HC 🔥${NC}"
+    echo -e "${VIOLETA}═══════════════════════════════${NC}"
+
+    if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE")" >/dev/null 2>&1; then
+        echo -e "Daemon  : ${VERDE}🟢 ACTIVO (PID $(cat "$PID_FILE"))${NC}"
+    else
+        echo -e "Daemon  : ${ROJO}🔴 INACTIVO${NC}"
+    fi
+
+    local total=0
+    [[ -d "$BANNERS_DIR" ]] && total=$(find "$BANNERS_DIR" -type f | wc -l)
+    echo -e "Banners : ${CIAN}${total}${NC}"
+    echo ""
+}
+
+# ================================================================
+# REFRESH
+# ================================================================
+_cb_refresh() {
+    _cb_regenerar_todos
+    echo -e "${VERDE}✅ Banners regenerados${NC}"
+}
+
+# ================================================================
+# ✅ FUNCIÓN PRINCIPAL — única entrada pública del módulo
+# Llamar desde el panel principal con:  Check_Banner
+# Opción 0 hace return limpio → regresa al loop del menú principal
+# ================================================================
+Check_Banner() {
+
+    while true; do
+        clear
+
+        echo -e "${ROSA_BRILLANTE}╔════════════════════════════════════════════╗${NC}"
+        echo -e "${ROSA_BRILLANTE}║     ✨💖🔥 BANNER HC — MCCARTHEY 🔥💖✨     ║${NC}"
+        echo -e "${ROSA_BRILLANTE}╚════════════════════════════════════════════╝${NC}"
+        echo -e "         ${PURPURA}🌸 Princess Root Edition 🌸${NC}"
+        echo ""
+
+        if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE")" >/dev/null 2>&1; then
+            echo -e "   ${VERDE}💖 Daemon : 🟢 ACTIVO ✨${NC}"
+        else
+            echo -e "   ${ROJO}💔 Daemon : 🔴 INACTIVO 💔${NC}"
+        fi
+
+        echo ""
+        echo -e "${ROSADO}────────────────────────────────────────────${NC}"
+        echo ""
+        echo -e "   ${ROSA_BRILLANTE}1${NC} ${PURPURA}💖 Iniciar daemon${NC}"
+        echo -e "   ${ROSA_BRILLANTE}2${NC} ${PURPURA}💔 Detener daemon${NC}"
+        echo -e "   ${ROSA_BRILLANTE}3${NC} ${PURPURA}🌟 Reiniciar daemon${NC}"
+        echo -e "   ${ROSA_BRILLANTE}4${NC} ${PURPURA}📊 Ver estado${NC}"
+        echo -e "   ${ROSA_BRILLANTE}5${NC} ${PURPURA}✨ Regenerar banners${NC}"
+        echo -e "   ${ROSA_BRILLANTE}6${NC} ${PURPURA}📜 Ver logs${NC}"
+        echo -e "   ${ROSA_BRILLANTE}7${NC} ${PURPURA}👑 Ver banner usuario${NC}"
+        echo -e "   ${ROJO}0${NC} ${PURPURA}🚪 Volver al menú principal${NC}"
+        echo ""
+        echo -e "${ROSADO}────────────────────────────────────────────${NC}"
+        echo -e "${PURPURA}💕 ¿Qué deseas hacer, princesa root? 💕${NC}"
+        echo ""
+
+        # Input limpio — ignora Enter vacío, solo acepta 0–7
+        local op
+        while true; do
+            read -p "   ➤ Opción: " op
+            [[ -z "$op" ]]         && { tput cuu1; tput dl1; continue; }
+            [[ "$op" =~ ^[0-7]$ ]] && break
+            tput cuu1; tput dl1
+        done
+
+        case "$op" in
+
+            1)
+                clear
+                echo -e "${PURPURA}✨ Inicializando magia kawaii... ✨${NC}"
+                _cb_start
+                echo ""
+                echo -e "${VERDE}💖 ¡Daemon activado con amor y destrucción! 🔥${NC}"
+                echo ""
+                read -p "Presiona Enter para continuar..."
+                ;;
+
+            2)
+                clear
+                echo -e "${ROJO}💔 Cerrando portal mágico del daemon...${NC}"
+                _cb_stop
+                echo ""
+                echo -e "${ROJO}✨ Eliminado con elegancia y trauma emocional~${NC}"
+                echo ""
+                read -p "Presiona Enter para continuar..."
+                ;;
+
+            3)
+                clear
+                echo -e "${AMARILLO}🌟 Reiniciando núcleo kawaii del sistema...${NC}"
+                _cb_stop
+                sleep 1
+                _cb_start
+                echo ""
+                echo -e "${VERDE}💖 Daemon renacido como diosa tecnológica ✨${NC}"
+                echo ""
+                read -p "Presiona Enter para continuar..."
+                ;;
+
+            4)
+                clear
+                echo -e "${CIAN}📊 Estado actual del sistema princesa:${NC}"
+                echo ""
+                _cb_status
+                echo ""
+                read -p "Presiona Enter para continuar..."
+                ;;
+
+            5)
+                clear
+                echo -e "${AMARILLO}✨ Regenerando banners mágicos...${NC}"
+                _cb_refresh
+                echo ""
+                echo -e "${VERDE}💖 Todos los banners fueron maquillados ✨${NC}"
+                echo ""
+                read -p "Presiona Enter para continuar..."
+                ;;
+
+            6)
+                clear
+                echo -e "${PURPURA}╔════════════════════════════════════════════╗${NC}"
+                echo -e "${PURPURA}║             📜 ÚLTIMOS LOGS 💖             ║${NC}"
+                echo -e "${PURPURA}╚════════════════════════════════════════════╝${NC}"
+                echo ""
+                if [[ -f "$LOG_FILE" ]]; then
+                    tail -20 "$LOG_FILE"
+                else
+                    echo -e "${ROJO}💔 No hay logs todavía, princesa...${NC}"
+                fi
+                echo ""
+                read -p "Presiona Enter para continuar..."
+                ;;
+
+            7)
+                clear
+                echo -e "${PURPURA}╔════════════════════════════════════════════╗${NC}"
+                echo -e "${PURPURA}║         👑 BANNER DE USUARIO 👑            ║${NC}"
+                echo -e "${PURPURA}╚════════════════════════════════════════════╝${NC}"
+                echo ""
+
+                if [[ -d "$BANNERS_DIR" ]] && \
+                   compgen -G "$BANNERS_DIR/*" >/dev/null 2>&1; then
+
+                    local i=1
+                    declare -A _umap
+
+                    for f in "$BANNERS_DIR"/*; do
+                        [[ -f "$f" ]] || continue
+                        local u
+                        u=$(basename "$f")
+                        echo -e "   ${ROSA_BRILLANTE}${i}${NC}) ${PURPURA}👑 $u${NC}"
+                        _umap[$i]="$u"
+                        (( i++ ))
+                    done
+
+                    echo ""
+                    read -p "$(echo -e "${ROSADO}💖 Nombre o número: ${NC}")" sel
+
+                    local target=""
+                    if [[ "$sel" =~ ^[0-9]+$ ]] && [[ -n "${_umap[$sel]}" ]]; then
+                        target="${_umap[$sel]}"
+                    elif [[ -f "$BANNERS_DIR/$sel" ]]; then
+                        target="$sel"
+                    fi
+
+                    if [[ -n "$target" ]]; then
+                        clear
+                        echo -e "${PURPURA}╔════════════════════════════════════════════╗${NC}"
+                        printf "${PURPURA}║       💖 BANNER DE %-24s💖 ║${NC}\n" "$target"
+                        echo -e "${PURPURA}╚════════════════════════════════════════════╝${NC}"
+                        echo ""
+                        cat "$BANNERS_DIR/$target"
+                        echo ""
+                    else
+                        echo ""
+                        echo -e "${ROJO}💔 Usuario no encontrado en el reino kawaii.${NC}"
+                    fi
+
+                    unset _umap
+                else
+                    echo ""
+                    echo -e "${ROJO}💔 No existen banners generados todavía...${NC}"
+                fi
+
+                echo ""
+                read -p "Presiona Enter para continuar..."
+                ;;
+
+            0)
+                # ✅ return limpio — devuelve control al loop del menú principal
+                return
+                ;;
+
+        esac
+
+    done
+}
+source /root/check_banner.sh
+
+
 # ==== MENU ====  
 if [[ -t 0 ]]; then  
 while true; do  
@@ -4691,6 +5174,7 @@ while true; do
     echo -e "${ROJO}➜ ${VERDE}15.${NC} ${AMARILLO_SUAVE}👁️‍🗨️ Información detallada de usuario${NC}"
     echo -e "${ROJO}➜ ${VERDE}16.${NC} ${ROJO}🐌 SLOWDNS CARACOL${NC}"
     echo -e "${ROJO}➜ ${VERDE}17.${NC} ${VIOLETA}😌 XHTTP${NC}"  
+    echo -e "${ROJO}➜ ${VERDE}18.${NC} ${ROJO}🐌 CHECK + BANNER${NC}"
     echo -e "${ROJO}➜ ${VERDE}0.${NC} ${AMARILLO_SUAVE} 🚪 Salir${NC}"
     
     echo -e "${VIOLETA}═══════════════════════════════════════════════════${NC}"
@@ -4708,8 +5192,8 @@ while true; do
             continue  
         fi  
   
-        # Solo permitir 0–16  
-        if [[ ! "$OPCION" =~ ^([0-9]|1[0-7])$ ]]; then  
+        # Solo permitir 0–18 
+        if [[ ! "$OPCION" =~ ^([0-9]|1[0-8])$ ]]; then  
             tput cuu1  
             tput dl1  
             continue  
@@ -4736,6 +5220,7 @@ while true; do
         15) usuarios_ssh ;;  
         16) slowdns_panel ;;
         17) xhttp_panel ;;
+        18) Check_Banner ;;
         0)  
             echo -e "${AMARILLO_SUAVE}🚪 Saliendo al shell...${NC}"  
             exec /bin/bash  
