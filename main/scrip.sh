@@ -1883,17 +1883,11 @@ eliminar_multiples_usuarios() {
     color_echo 219 "────────────────────────────────────────────────────────────"
     color_echo 207 " 1) Eliminar usuarios manualmente"
     color_echo 207 " 2) Eliminar usuarios que expiran hoy"
-    color_echo 211 " 0) Regresar al menú principal"
     color_echo 219 "────────────────────────────────────────────────────────────"
     read -p $'\e[38;5;213m💖 Selecciona una opción: \e[0m' modo
 
     case "$modo" in
-        0)
-            color_echo 211 "❌ La reina ha decidido regresar~ ✨"
-            read -p "Presiona Enter para continuar..."
-            return
-            ;;
-        1|2) ;;  # continúa abajo
+        1|2) ;;
         *)
             color_echo 203 "❌ Opción inválida."
             read -p "Presiona Enter para continuar..."
@@ -1916,7 +1910,7 @@ eliminar_multiples_usuarios() {
     declare -a usuarios_a_eliminar
 
     if [[ "$modo" == "1" ]]; then
-        # ── OPCIÓN 1: selección manual (flujo original intacto) ──
+        # ── OPCIÓN 1: selección manual ──
         color_echo 207 "Nº      👑 Usuario"
         color_echo 219 "────────────────────────────────────────────────────────────"
 
@@ -1994,7 +1988,7 @@ eliminar_multiples_usuarios() {
     fi
 
     # ══════════════════════════════════════════
-    # DEDUP (aplica a ambos modos)
+    # DEDUP
     # ══════════════════════════════════════════
     usuarios_a_eliminar=($(echo "${usuarios_a_eliminar[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 
@@ -2005,7 +1999,7 @@ eliminar_multiples_usuarios() {
     fi
 
     # ══════════════════════════════════════════
-    # CONFIRMACIÓN  (sin cambios)
+    # CONFIRMACIÓN
     # ══════════════════════════════════════════
     color_echo 219 "\n╔══════ USUARIOS A ELIMINAR 💖 ══════╗"
     for usuario in "${usuarios_a_eliminar[@]}"; do
@@ -2022,20 +2016,22 @@ eliminar_multiples_usuarios() {
     fi
 
     # ══════════════════════════════════════════
-    # ELIMINACIÓN  (sin cambios)
+    # ELIMINACIÓN
     # ══════════════════════════════════════════
     count=0
     failed_count=0
     fecha_eliminacion=$(date "+%Y-%m-%d %H:%M:%S")
 
     for usuario in "${usuarios_a_eliminar[@]}"; do
+        color_echo 213 "🗑️  Eliminando: $usuario..."
         pkill -KILL -u "$usuario" 2>/dev/null
-        sleep 1
+        sleep 0.2
 
         if userdel -r -f "$usuario" >/dev/null 2>&1; then
             if ! id "$usuario" &>/dev/null; then
                 sed -i "/^$usuario:/d" $REGISTROS
                 echo "Usuario eliminado: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+                color_echo 207 "✅ Eliminado correctamente: $usuario"
                 ((count++))
             else
                 rm -rf "/home/$usuario" 2>/dev/null
@@ -2049,6 +2045,7 @@ eliminar_multiples_usuarios() {
                 if ! id "$usuario" &>/dev/null; then
                     sed -i "/^$usuario:/d" $REGISTROS
                     echo "Usuario eliminado forzosamente: $usuario, Fecha: $fecha_eliminacion" >> $HISTORIAL
+                    color_echo 207 "✅ Eliminado correctamente: $usuario"
                     ((count++))
                 else
                     color_echo 203 "❌ Fallo persistente con $usuario"
@@ -2060,19 +2057,18 @@ eliminar_multiples_usuarios() {
             ((failed_count++))
         fi
     done
+    echo
 
     # ══════════════════════════════════════════
-    # RESUMEN  (sin cambios)
+    # RESUMEN
     # ══════════════════════════════════════════
-    color_echo 219 "\n╔════════════ RESUMEN 💖 ════════════╗"
+    color_echo 219 "╔════════════ RESUMEN 💖 ════════════╗"
     color_echo 207 "   ✅ Usuarios eliminados: $count"
     [[ $failed_count -gt 0 ]] && color_echo 203 "   ❌ Con fallos: $failed_count"
     color_echo 219 "╚════════════════════════════════════╝"
     color_echo 213 "✨ Operación completada con glamour ✨"
     read -p "Presiona Enter para continuar..."
 }
-    
-
     
 
 
