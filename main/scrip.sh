@@ -4805,6 +4805,7 @@ _cb_generar_banner() {
 <h2><font color="#FF69B4">📅 Expira : ${fecha_expiracion}</font></h2>
 <h2><font color="#FF00FF">📱 Equipos : ${moviles}</font></h2>
 <h2><font color="${color_estado}">${icono} ${estado}</font></h2>
+<span>　　　　　　　　　</span><font size="0" color="red"><b>👩🏻‍💻𝚂𝙸𝚂𝚃𝙴𝙼𝙰  𝙳𝙴  𝙼𝙲𝙲𝙰𝚁𝚃𝙷𝙴𝚈.</b></font>
 EOF
 
     chmod 644 "$BANNERS_DIR/${usuario}"
