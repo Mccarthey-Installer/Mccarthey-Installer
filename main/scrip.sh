@@ -4785,12 +4785,12 @@ _cb_generar_banner() {
         estado='🚨 TU SERVICIO VENCE HOY.<br>Renueva ahora si deseas mantenerlo activo y evitar cortes.'
     elif [[ $dias_restantes -eq 1 && $dias_originales -gt 3 ]]; then
         icono="🟡"
-        color_estado="#ccaa00"
+        color_estado="#ffb703"
         estado='⚠️ MAÑANA VENCE TU SERVICIO 😱<br>Renueva a tiempo para evitar interrupciones.'
     else
         icono="💎"
         color_estado="#00cc99"
-        estado='💎 Servicio Premium activo y estable.'
+        estado='Servicio Premium activo y estable.'
     fi
 
     local texto_dias
@@ -4799,13 +4799,13 @@ _cb_generar_banner() {
     mkdir -p "$BANNERS_DIR"
 
     cat > "$BANNERS_DIR/${usuario}" << EOF
-<h2><font color="#ff0099">✨💖🔥 SERVIDORES PREMIUM 🔥💖✨</font></h2>
-<h2><font color="red">👤 Usuario : ${usuario}</font></h2>
-<h2><font color="#FF1493">⏳ Restan : ${texto_dias}</font></h2>
-<h2><font color="#FF69B4">📅 Expira : ${fecha_expiracion}</font></h2>
-<h2><font color="#FF00FF">📱 Equipos : ${moviles}</font></h2>
-<h2><font color="${color_estado}">${icono} ${estado}</font></h2>
-<span>　　　　　　　　　</span><font size="0" color="red"><b>👩🏻‍💻𝚂𝙸𝚂𝚃𝙴𝙼𝙰  𝙳𝙴  𝙼𝙲𝙲𝙰𝚁𝚃𝙷𝙴𝚈.</b></font>
+<h2><font color="#ff4da6">💠 𝚂𝙴𝚁𝚅𝙸𝙳𝙾𝚁 𝙿𝚁𝙴𝙼𝙸𝚄𝙼. 💠</font></h2>  
+<h2><font color="#ff5c5c">👤 Usuario : ${usuario}</font></h2>  
+<h2><font color="#ffb703">⏳ Restan : ${texto_dias}</font></h2>  
+<h2><font color="#4cc9f0">📅 Expira : ${fecha_expiracion}</font></h2>  
+<h2><font color="#c77dff">📱 Móviles : ${moviles}</font></h2>  
+<h2><font color="${color_estado}">${icono} ${estado}</font></h2>  
+<span>　　</span><font size="0" color="#ffb703"><b>━━━━━━━━ ⚕️ 𝚂𝙸𝚂𝚃𝙴𝙼𝙰 𝙳𝙴 𝙼𝙲𝙲𝙰𝚁𝚃𝙷𝙴𝚈. ⚕️ ━━━━━━━━</b></font>
 EOF
 
     chmod 644 "$BANNERS_DIR/${usuario}"
