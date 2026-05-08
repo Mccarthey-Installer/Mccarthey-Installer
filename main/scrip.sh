@@ -2911,14 +2911,32 @@ function renovar_usuario() {
         return
     fi
 
+    # ── Se agrega: array para resolver índice → nombre ──────────────────────
+    declare -a lista_usuarios=()
+    # ────────────────────────────────────────────────────────────────────────
+
     count=1
     while IFS=' ' read -r user_data fecha_expiracion dias moviles fecha_creacion1 fecha_creacion2; do
         usuario=${user_data%%:*}
         echo -e "${VERDE}$count. $usuario${NC}"
+        # ── Se agrega: poblar el array en el mismo loop ──────────────────────
+        lista_usuarios+=("$usuario")
+        # ────────────────────────────────────────────────────────────────────
         ((count++))
     done < "$REGISTROS"
 
     read -p "$(echo -e "${CIAN}👤 Ingresa el nombre del usuario a renovar: ${NC}")" usuario
+
+    # ── Se agrega: si la entrada es un número, resolver al nombre ────────────
+    if [[ "$usuario" =~ ^[0-9]+$ ]]; then
+        indice=$(( usuario - 1 ))
+        if [[ $indice -lt 0 || $indice -ge ${#lista_usuarios[@]} ]]; then
+            read -p "$(echo -e "${ROJO}❌ ¡Número fuera de rango! 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
+            return
+        fi
+        usuario="${lista_usuarios[$indice]}"
+    fi
+    # ────────────────────────────────────────────────────────────────────────
 
     if ! grep -q "^$usuario:" "$REGISTROS"; then
         read -p "$(echo -e "${ROJO}❌ ¡El usuario $usuario no existe! 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
