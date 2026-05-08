@@ -4892,24 +4892,22 @@ _cb_modo_daemon() {
 
 
 _cb_start() {
-
     if [[ -f "$PID_FILE" ]] && ps -p "$(cat "$PID_FILE")" >/dev/null 2>&1; then
-
         echo -e "${AMARILLO}⚠️ El daemon ya está activo${NC}"
-
         return
     fi
 
     mkdir -p "$(dirname "$PID_FILE")"
     mkdir -p "$(dirname "$LOG_FILE")"
 
-    (
+    # setsid crea una sesión nueva, totalmente desvinculada de la terminal
+    setsid bash -c "
+        source /root/check_banner.sh
         _cb_modo_daemon
-    ) >> "$LOG_FILE" 2>&1 &
+    " >> "$LOG_FILE" 2>&1 &
 
     echo $! > "$PID_FILE"
-
-    disown
+    disown $!
 
     echo -e "${VERDE}✅ Daemon iniciado${NC}"
 }
