@@ -1876,75 +1876,137 @@ eliminar_multiples_usuarios() {
     color_echo 213 "╔════════════════════════════════════════════════════════════╗"
     color_echo 219 "║     💖 ELIMINAR USUARIOS ✨ NIVEL DIOSA - REINA ROOT 💖     ║"
     color_echo 213 "╚════════════════════════════════════════════════════════════╝"
-    color_echo 207 "Nº      👑 Usuario"
-    color_echo 219 "────────────────────────────────────────────────────────────"
 
+    # ══════════════════════════════════════════
+    # MENÚ DE MODO
+    # ══════════════════════════════════════════
+    color_echo 219 "────────────────────────────────────────────────────────────"
+    color_echo 207 " 1) Eliminar usuarios manualmente"
+    color_echo 207 " 2) Eliminar usuarios que expiran hoy"
+    color_echo 211 " 0) Regresar al menú principal"
+    color_echo 219 "────────────────────────────────────────────────────────────"
+    read -p $'\e[38;5;213m💖 Selecciona una opción: \e[0m' modo
+
+    case "$modo" in
+        0)
+            color_echo 211 "❌ La reina ha decidido regresar~ ✨"
+            read -p "Presiona Enter para continuar..."
+            return
+            ;;
+        1|2) ;;  # continúa abajo
+        *)
+            color_echo 203 "❌ Opción inválida."
+            read -p "Presiona Enter para continuar..."
+            return
+            ;;
+    esac
+
+    # ══════════════════════════════════════════
+    # VERIFICACIÓN COMÚN DE REGISTROS
+    # ══════════════════════════════════════════
     if [[ ! -f $REGISTROS || ! -s $REGISTROS ]]; then
         color_echo 211 "No hay registros disponibles... 💔"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    # Cargar usuarios
-    declare -a usuarios
-    count=1
-    while IFS=' ' read -r user_data _; do
-        usuario=${user_data%%:*}
-        usuarios[$count]="$usuario"
-        printf "\e[38;5;219m%-7s\e[0m \e[38;5;207m%-20s\e[0m\n" "$count" "$usuario"
-        ((count++))
-    done < $REGISTROS
+    # ══════════════════════════════════════════
+    # LLENADO DE usuarios_a_eliminar
+    # ══════════════════════════════════════════
+    declare -a usuarios_a_eliminar
 
-    echo
-    read -p $'\e[38;5;213m🗑️  Ingresa los números, rangos o nombres a eliminar (0 para cancelar): \e[0m' input
+    if [[ "$modo" == "1" ]]; then
+        # ── OPCIÓN 1: selección manual (flujo original intacto) ──
+        color_echo 207 "Nº      👑 Usuario"
+        color_echo 219 "────────────────────────────────────────────────────────────"
 
-    if [[ "$input" == "0" ]]; then
-        color_echo 211 "❌ Operación cancelada por la reina..."
-        read -p "Presiona Enter para continuar..."
-        return
+        declare -a usuarios
+        count=1
+        while IFS=' ' read -r user_data _; do
+            usuario=${user_data%%:*}
+            usuarios[$count]="$usuario"
+            printf "\e[38;5;219m%-7s\e[0m \e[38;5;207m%-20s\e[0m\n" "$count" "$usuario"
+            ((count++))
+        done < $REGISTROS
+
+        echo
+        read -p $'\e[38;5;213m🗑️  Ingresa los números, rangos o nombres a eliminar (0 para cancelar): \e[0m' input
+
+        if [[ "$input" == "0" ]]; then
+            color_echo 211 "❌ Operación cancelada por la reina..."
+            read -p "Presiona Enter para continuar..."
+            return
+        fi
+
+        for item in $input; do
+            if [[ "$item" =~ ^[0-9]+-[0-9]+$ ]]; then
+                inicio="${item%-*}"
+                fin="${item#*-}"
+                if [[ $inicio -gt $fin ]]; then
+                    color_echo 203 "❌ Rango inválido: $item"
+                else
+                    for ((i=inicio; i<=fin; i++)); do
+                        if [[ $i -ge 1 && $i -lt $count ]]; then
+                            usuarios_a_eliminar+=("${usuarios[$i]}")
+                        else
+                            color_echo 203 "❌ Número fuera de rango: $i"
+                        fi
+                    done
+                fi
+            elif [[ "$item" =~ ^[0-9]+$ ]]; then
+                if [[ $item -ge 1 && $item -lt $count ]]; then
+                    usuarios_a_eliminar+=("${usuarios[$item]}")
+                else
+                    color_echo 203 "❌ Número inválido: $item"
+                fi
+            else
+                if grep -q "^$item:" $REGISTROS; then
+                    usuarios_a_eliminar+=("$item")
+                else
+                    color_echo 203 "❌ Usuario no encontrado: $item"
+                fi
+            fi
+        done
+
+    else
+        # ── OPCIÓN 2: detección automática por expiración ──
+        color_echo 219 "🔍 Buscando usuarios que expiran hoy..."
+        echo
+
+        while IFS=' ' read -r user_data fecha_expiracion _; do
+            usuario=${user_data%%:*}
+            if id "$usuario" &>/dev/null; then
+                DIAS=$(calcular_dias_restantes "$fecha_expiracion")
+                if [[ "$DIAS" -eq 0 ]]; then
+                    usuarios_a_eliminar+=("$usuario")
+                    printf "\e[38;5;219m ⏰ \e[38;5;207m%-20s\e[38;5;203m Expira hoy\e[0m\n" "$usuario"
+                fi
+            fi
+        done < $REGISTROS
+
+        if [[ ${#usuarios_a_eliminar[@]} -eq 0 ]]; then
+            color_echo 211 "✅ No hay usuarios que expiren hoy 💕"
+            read -p "Presiona Enter para continuar..."
+            return
+        fi
+
+        echo
     fi
 
-    # Procesar input
-    declare -a usuarios_a_eliminar
-    for item in $input; do
-        if [[ "$item" =~ ^[0-9]+-[0-9]+$ ]]; then
-            inicio="${item%-*}"
-            fin="${item#*-}"
-            if [[ $inicio -gt $fin ]]; then
-                color_echo 203 "❌ Rango inválido: $item"
-            else
-                for ((i=inicio; i<=fin; i++)); do
-                    if [[ $i -ge 1 && $i -lt $count ]]; then
-                        usuarios_a_eliminar+=("${usuarios[$i]}")
-                    else
-                        color_echo 203 "❌ Número fuera de rango: $i"
-                    fi
-                done
-            fi
-        elif [[ "$item" =~ ^[0-9]+$ ]]; then
-            if [[ $item -ge 1 && $item -lt $count ]]; then
-                usuarios_a_eliminar+=("${usuarios[$item]}")
-            else
-                color_echo 203 "❌ Número inválido: $item"
-            fi
-        else
-            if grep -q "^$item:" $REGISTROS; then
-                usuarios_a_eliminar+=("$item")
-            else
-                color_echo 203 "❌ Usuario no encontrado: $item"
-            fi
-        fi
-    done
-
+    # ══════════════════════════════════════════
+    # DEDUP (aplica a ambos modos)
+    # ══════════════════════════════════════════
     usuarios_a_eliminar=($(echo "${usuarios_a_eliminar[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 
-    if [ ${#usuarios_a_eliminar[@]} -eq 0 ]; then
+    if [[ ${#usuarios_a_eliminar[@]} -eq 0 ]]; then
         color_echo 211 "❌ No seleccionaste usuarios válidos 💔"
         read -p "Presiona Enter para continuar..."
         return
     fi
 
-    # Confirmación
+    # ══════════════════════════════════════════
+    # CONFIRMACIÓN  (sin cambios)
+    # ══════════════════════════════════════════
     color_echo 219 "\n╔══════ USUARIOS A ELIMINAR 💖 ══════╗"
     for usuario in "${usuarios_a_eliminar[@]}"; do
         color_echo 207 "   👑 $usuario"
@@ -1959,7 +2021,9 @@ eliminar_multiples_usuarios() {
         return
     fi
 
-    # Eliminación
+    # ══════════════════════════════════════════
+    # ELIMINACIÓN  (sin cambios)
+    # ══════════════════════════════════════════
     count=0
     failed_count=0
     fecha_eliminacion=$(date "+%Y-%m-%d %H:%M:%S")
@@ -1997,7 +2061,9 @@ eliminar_multiples_usuarios() {
         fi
     done
 
-    # Resumen final
+    # ══════════════════════════════════════════
+    # RESUMEN  (sin cambios)
+    # ══════════════════════════════════════════
     color_echo 219 "\n╔════════════ RESUMEN 💖 ════════════╗"
     color_echo 207 "   ✅ Usuarios eliminados: $count"
     [[ $failed_count -gt 0 ]] && color_echo 203 "   ❌ Con fallos: $failed_count"
@@ -2005,7 +2071,6 @@ eliminar_multiples_usuarios() {
     color_echo 213 "✨ Operación completada con glamour ✨"
     read -p "Presiona Enter para continuar..."
 }
-
     
 
     
