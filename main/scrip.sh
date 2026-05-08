@@ -4784,8 +4784,8 @@ _cb_generar_banner() {
         color_estado="#cc3333"
         estado='🚨 TU SERVICIO VENCE HOY.<br>Renueva ahora si deseas mantenerlo activo y evitar cortes.'
     elif [[ $dias_restantes -eq 1 && $dias_originales -gt 3 ]]; then
-        icono="🟡"
-        color_estado="#ffb703"
+        icono="🟣"
+        color_estado="#B027F5"
         estado='⚠️ MAÑANA VENCE TU SERVICIO 😱<br>Renueva a tiempo para evitar interrupciones.'
     else
         icono="💎"
