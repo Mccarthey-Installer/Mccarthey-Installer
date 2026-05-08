@@ -2935,6 +2935,7 @@ function renovar_usuario() {
             return
         fi
         usuario="${lista_usuarios[$indice]}"
+        echo -e "${VERDE}✅ Usuario seleccionado: $usuario${NC}"
     fi
     # ────────────────────────────────────────────────────────────────────────
 
@@ -2953,7 +2954,7 @@ function renovar_usuario() {
     moviles=$(echo "$resto_line" | awk '{print $3}')
     fecha_creacion=$(echo "$resto_line" | awk '{print $4, $5}')
 
-    read -p "$(echo -e "${CIAN}📅 ¿Cuántos días deseas agregar? (puedes usar negativos para disminuir) ${NC}")" dias_renovar
+    read -p "$(echo -e "${CIAN}📅 ¿Cuántos días deseas agregar para ${VERDE}$usuario${CIAN}? (puedes usar negativos para disminuir) ${NC}")" dias_renovar
     if ! [[ "$dias_renovar" =~ ^-?[0-9]+$ ]]; then
         read -p "$(echo -e "${ROJO}❌ ¡Días inválidos! Debe ser un número entero (positivo o negativo). 😕\n${CIAN}⏎ Presiona Enter para continuar...${NC}")"
         return
@@ -3008,6 +3009,8 @@ function renovar_usuario() {
 
     read -p "$(echo -e "${CIAN}⏎ Presiona Enter para continuar...${NC}")"
 }
+
+
 
 # Colores y emojis
 VIOLETA='\033[38;5;141m'
