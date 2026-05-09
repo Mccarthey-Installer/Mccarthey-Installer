@@ -1977,7 +1977,7 @@ eliminar_multiples_usuarios() {
     # ══════════════════════════════════════════
     # DEDUP
     # ══════════════════════════════════════════
-    usuarios_a_eliminar=($(echo "${usuarios_a_eliminar[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+    usuarios_a_eliminar=($(echo "${usuarios_a_eliminar[@]}" | tr ' ' '\n' | sort -V -u | tr '\n' ' '))
 
     if [[ ${#usuarios_a_eliminar[@]} -eq 0 ]]; then
         echo -e "${ROJO}❌ No seleccionaste usuarios válidos.${NC}"
