@@ -2018,7 +2018,7 @@ eliminar_multiples_usuarios() {
     for usuario in "${usuarios_a_eliminar[@]}"; do
         echo -e "${AZUL}🗑️  Eliminando: ${AMARILLO}$usuario${AZUL}...${NC}"
         pkill -KILL -u "$usuario" 2>/dev/null
-        sleep 1
+        sleep 0.2
 
         if userdel -r -f "$usuario" >/dev/null 2>&1; then
             if ! id "$usuario" &>/dev/null; then
