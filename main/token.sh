@@ -1267,36 +1267,52 @@ show_menu() {
     fi
   fi
 
-  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${GRN}1)${RST} ➕  Crear / Reconfigurar instancia         ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${RED}2)${RST} 🔴  Detener instancia                      ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${GOLD}3)${RST} 🛑  Detener TODAS las instancias           ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${MAG}4)${RST} 🗑️   Eliminar instancia                     ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${CYAN}5)${RST} 🔌  Activar / Desactivar tokens            ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${GOLD}6)${RST} 📊  Dashboard global                       ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${MAG}7)${RST} 🔎  Actividad por instancia                 ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${RED}8)${RST} 🚨  IPs sospechosas (global)               ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${GRN}9)${RST} 📈  Últimos tokens usados                  ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${PINK}0)${RST} 🚪  Salir                                  ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
-  echo -ne "${PINK}  Opción: ${RST}"
-  read -r OPT
-  case "$OPT" in
-    1) do_activate ;;
-    2) do_stop_one ;;
-    3) do_stop_all ;;
-    4) do_delete_instance ;;
-    5) do_toggle_instance ;;
-    6) do_dashboard_global ;;
-    7) do_activity_instance ;;
-    8) do_suspicious_ips_global ;;
-    9) do_last_used_tokens ;;
-    0) exit 0 ;;
-    *) echo -e "${RED}Opción inválida.${RST}"; sleep 1; show_menu ;;
-  esac
-}
+echo ""
+echo -e " ${HOT}─────────────────────────────────────${RST}"
+echo ""
+
+echo -e "   ${GRN}1)${RST} ➕  Crear / Reconfigurar instancia"
+echo -e "   ${RED}2)${RST} 🔴  Detener instancia"
+echo -e "   ${GOLD}3)${RST} 🛑  Detener TODAS las instancias"
+echo -e "   ${MAG}4)${RST} 🗑️   Eliminar instancia"
+echo -e "   ${CYAN}5)${RST} 🔌  Activar / Desactivar tokens"
+
+echo ""
+echo -e " ${HOT}─────────────────────────────────────${RST}"
+echo ""
+
+echo -e "   ${GOLD}6)${RST} 📊  Dashboard global"
+echo -e "   ${MAG}7)${RST} 🔎  Actividad por instancia"
+echo -e "   ${RED}8)${RST} 🚨  IPs sospechosas"
+echo -e "   ${GRN}9)${RST} 📈  Últimos tokens usados"
+
+echo ""
+echo -e " ${HOT}─────────────────────────────────────${RST}"
+echo ""
+
+echo -e "   ${PINK}0)${RST} 🚪  Salir"
+
+echo ""
+echo -ne "${PINK} Opción:${RST} "
+read -r OPT
+
+case "$OPT" in
+  1) do_activate ;;
+  2) do_stop_one ;;
+  3) do_stop_all ;;
+  4) do_delete_instance ;;
+  5) do_toggle_instance ;;
+  6) do_dashboard_global ;;
+  7) do_activity_instance ;;
+  8) do_suspicious_ips_global ;;
+  9) do_last_used_tokens ;;
+  0) exit 0 ;;
+  *)
+    echo -e "${RED}❌ Opción inválida.${RST}"
+    sleep 1
+    show_menu
+    ;;
+esac
 
 # ── Crear / Reconfigurar instancia ────────────────────────────
 do_activate() {
