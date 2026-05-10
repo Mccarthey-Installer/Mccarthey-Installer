@@ -1,48 +1,172 @@
 #!/bin/bash
 
+# ════════════════════════════════════════════════
+#  ACTIVADOR MULTIINSTANCIA
+# ════════════════════════════════════════════════
+
 ACTIVATION_FLAG="/etc/.activated"
+
 BACKEND="http://102.129.137.139:8282/check.php"
 
+# ── Colores ───────────────────────────────────
+RED='\033[1;31m'
+GRN='\033[1;32m'
+YLW='\033[1;33m'
+BLU='\033[1;34m'
+MAG='\033[1;35m'
+CYN='\033[1;36m'
+RST='\033[0m'
+BLD='\033[1m'
+
+# ════════════════════════════════════════════════
+#  SISTEMA REAL
+# ════════════════════════════════════════════════
 main() {
+
+  clear
+
+  echo -e "${GRN}${BLD}"
   echo "🔥 Bienvenido al sistema"
-  # 👉 aquí ponés TODO tu sistema real
+  echo -e "${RST}"
+
+  # 👉 aquí va tu sistema real
 }
 
+# ════════════════════════════════════════════════
+#  ACTIVACIÓN
+# ════════════════════════════════════════════════
 check_activation() {
-  # === SI YA ESTÁ ACTIVADO ===
+
+  # ── Ya activado ─────────────────────────────
   if [[ -f "$ACTIVATION_FLAG" ]]; then
-    echo "✅ Sistema ya activado"
+
+    echo ""
+    echo -e "${GRN}${BLD}✅ Sistema ya activado${RST}"
+    echo ""
+
     return
   fi
 
-  # === PEDIR TOKEN ===
-  clear
-  echo "🔐 Activación requerida"
-  read -p "Ingresa tu token: " TOKEN
+  # ── Loop infinito hasta activar ─────────────
+  while true; do
 
-  if [[ -z "$TOKEN" ]]; then
-    echo "❌ Token vacío"
-    exit 1
-  fi
+    clear
 
-  RESP=$(curl -s --max-time 5 "$BACKEND?token=$TOKEN")
+    echo -e "${MAG}${BLD}"
+    echo "╔══════════════════════════════════════╗"
+    echo "║         🔐 ACTIVACIÓN               ║"
+    echo "╚══════════════════════════════════════╝"
+    echo -e "${RST}"
 
-  if [[ "$RESP" == "OK" ]]; then
-    touch "$ACTIVATION_FLAG"
-    chmod 600 "$ACTIVATION_FLAG"
+    echo -e "${CYN}Formato:${RST} instancia:token"
+    echo -e "${CYN}Ejemplo:${RST} manzana:Q6NAD5AQ6PT6ozdc"
+    echo ""
 
-    echo "✅ Activado"
-    sleep 1
-  else
-    echo "❌ Token inválido"
-    exit 1
-  fi
+    # ── Leer clave ───────────────────────────
+    echo -ne "${YLW}👉 Ingresa tu clave:${RST} "
+    read -r INPUT
+
+    # ── Vacío ────────────────────────────────
+    if [[ -z "$INPUT" ]]; then
+
+      echo ""
+      echo -e "${RED}${BLD}❌ Clave vacía${RST}"
+      echo ""
+
+      sleep 2
+      continue
+    fi
+
+    # ── Validar formato ──────────────────────
+    if [[ ! "$INPUT" =~ ^[a-zA-Z0-9_]+:[A-Za-z0-9]+$ ]]; then
+
+      echo ""
+      echo -e "${RED}${BLD}❌ Formato inválido${RST}"
+      echo -e "${YLW}Usa:${RST} instancia:token"
+      echo ""
+
+      sleep 2
+      continue
+    fi
+
+    # ── Separar slug/token ───────────────────
+    SLUG="${INPUT%%:*}"
+    TOKEN="${INPUT##*:}"
+
+    echo ""
+    echo -e "${BLU}🌐 Verificando activación...${RST}"
+
+    # ── Consultar backend ────────────────────
+    RESP=$(curl -s --max-time 10 \
+    "$BACKEND?token=$TOKEN&slug=$SLUG" | tr -d '\r\n')
+
+    echo -e "${MAG}DEBUG => [${RESP}]${RST}"
+
+    # ── Respuestas ───────────────────────────
+    case "$RESP" in
+
+      OK)
+
+        touch "$ACTIVATION_FLAG"
+        chmod 600 "$ACTIVATION_FLAG"
+
+        echo ""
+        echo -e "${GRN}${BLD}✅ Activado correctamente${RST}"
+        echo ""
+
+        sleep 1
+        break
+        ;;
+
+      USED)
+
+        echo ""
+        echo -e "${RED}${BLD}❌ Token ya utilizado${RST}"
+        ;;
+
+      BLOCKED)
+
+        echo ""
+        echo -e "${RED}${BLD}🚫 IP bloqueada temporalmente${RST}"
+        ;;
+
+      DISABLED)
+
+        echo ""
+        echo -e "${YLW}${BLD}🔌 Instancia desactivada${RST}"
+        ;;
+
+      SLUG_UNKNOWN)
+
+        echo ""
+        echo -e "${RED}${BLD}❌ Instancia inexistente${RST}"
+        ;;
+
+      DB_ERROR)
+
+        echo ""
+        echo -e "${RED}${BLD}💥 Error interno del servidor${RST}"
+        ;;
+
+      *)
+
+        echo ""
+        echo -e "${RED}${BLD}❌ Token inválido${RST}"
+        ;;
+
+    esac
+
+    echo ""
+    read -n 1 -s -r -p "Presiona cualquier tecla para intentar otra vez..."
+
+  done
 }
 
-# 🔥 FLUJO CORRECTO
+# ════════════════════════════════════════════════
+#  FLUJO PRINCIPAL
+# ════════════════════════════════════════════════
 check_activation
 main
-
 
 # === AQUÍ EMPIEZA TU SCRIPT NORMAL ===
 
