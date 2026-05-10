@@ -1313,7 +1313,7 @@ case "$OPT" in
     show_menu
     ;;
 esac
-
+}
 # ── Crear / Reconfigurar instancia ────────────────────────────
 do_activate() {
   echo ""
