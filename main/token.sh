@@ -956,6 +956,268 @@ SQL
 }
 
 # ══════════════════════════════════════════════════════════════
+#  OBSERVABILIDAD — Dashboard, actividad, métricas, auditoría
+# ══════════════════════════════════════════════════════════════
+
+# ── Dashboard global ─────────────────────────────────────────
+do_dashboard_global() {
+  clear
+  local slugs=(); mapfile -t slugs < <(list_slugs)
+  local now; now=$(date +%s)
+
+  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
+  echo -e "${HOT}${BLD}║${RST}          ${MAG}${BLD}📊 DASHBOARD GLOBAL${RST}              ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
+
+  if [[ ${#slugs[@]} -eq 0 ]]; then
+    echo -e "${HOT}${BLD}║${RST}  ${GOLD}Sin instancias configuradas.${RST}"
+    echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+    sleep 2; show_menu; return
+  fi
+
+  local g_total=0 g_used=0 g_free=0 g_ips=0 g_blocked=0
+
+  for slug in "${slugs[@]}"; do
+    local db_path; db_path=$(instance_db "$slug")
+    [[ ! -f "$db_path" ]] && continue
+
+    local t u f ips bl last_ts last_str st en
+    t=$(sqlite3   "$db_path" "SELECT COUNT(*) FROM tokens;" 2>/dev/null || echo 0)
+    u=$(sqlite3   "$db_path" "SELECT COUNT(*) FROM tokens WHERE used=1;" 2>/dev/null || echo 0)
+    f=$((t - u))
+    ips=$(sqlite3 "$db_path" "SELECT COUNT(DISTINCT ip) FROM tokens WHERE used=1 AND ip IS NOT NULL;" 2>/dev/null || echo 0)
+    bl=$(sqlite3  "$db_path" "SELECT COUNT(*) FROM rate_limit WHERE blocked_until > ${now};" 2>/dev/null || echo 0)
+    last_ts=$(sqlite3 "$db_path" "SELECT MAX(used_at) FROM tokens WHERE used=1 AND used_at IS NOT NULL;" 2>/dev/null || echo "")
+
+    if [[ -n "$last_ts" && "$last_ts" != "NULL" ]]; then
+      last_str=$(date -d "@${last_ts}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "—")
+    else
+      last_str="— sin uso —"
+    fi
+
+    st=$(instance_status "$slug")
+    en=$(instance_enabled "$slug")
+    local badge; badge="${GRN}●${RST}"
+    [[ "$st" != "active" ]] && badge="${RED}○${RST}"
+    [[ "$en"  == "0"     ]] && badge="${RED}⊗${RST}"
+
+    g_total=$((g_total + t))
+    g_used=$((g_used   + u))
+    g_free=$((g_free   + f))
+    g_ips=$((g_ips     + ips))
+    g_blocked=$((g_blocked + bl))
+
+    echo -e "${HOT}${BLD}║${RST} ${badge} ${BLD}${slug}${RST}"
+    echo -e "${HOT}${BLD}║${RST}   💎 Total: ${GOLD}${t}${RST}  🟢 Libres: ${GRN}${f}${RST}  🔴 Usados: ${RED}${u}${RST}"
+    echo -e "${HOT}${BLD}║${RST}   🌐 IPs únicas: ${CYAN}${ips}${RST}   🚫 Bloqueadas: ${RED}${bl}${RST}"
+    echo -e "${HOT}${BLD}║${RST}   🕐 Último uso: ${PINK}${last_str}${RST}"
+    echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
+  done
+
+  echo -e "${HOT}${BLD}║${RST}  ${MAG}${BLD}▸ TOTALES${RST}"
+  echo -e "${HOT}${BLD}║${RST}  💎 Tokens: ${GOLD}${BLD}${g_total}${RST}   🌐 IPs únicas: ${CYAN}${g_ips}${RST}"
+  echo -e "${HOT}${BLD}║${RST}  🟢 Libres: ${GRN}${BLD}${g_free}${RST}   🔴 Usados: ${RED}${BLD}${g_used}${RST}   🚫 Bloq: ${RED}${g_blocked}${RST}"
+  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo ""
+  echo -ne "${PINK}  [Enter] para volver al menú...${RST} "
+  read -r
+  show_menu
+}
+
+# ── Actividad detallada por instancia ────────────────────────
+do_activity_instance() {
+  local slugs=(); mapfile -t slugs < <(list_slugs)
+  if [[ ${#slugs[@]} -eq 0 ]]; then
+    echo -e "${GOLD}⚠️  Sin instancias configuradas.${RST}"; sleep 1; show_menu; return
+  fi
+
+  clear
+  echo -e "${HOT}${BLD}── 🔎 ACTIVIDAD POR INSTANCIA ──${RST}"
+  echo ""
+  local i=1
+  for slug in "${slugs[@]}"; do
+    local st; st=$(instance_status "$slug")
+    local badge; badge="${RED}○${RST}"
+    [[ "$st" == "active" ]] && badge="${GRN}●${RST}"
+    echo -e "  ${GOLD}${i})${RST} ${badge} ${BLD}${slug}${RST}"
+    ((i++))
+  done
+  echo -e "  ${PINK}0)${RST} Cancelar"
+  echo ""
+  echo -ne "${PINK}  Selecciona instancia: ${RST}"
+  read -r sel
+
+  if [[ "$sel" == "0" ]]; then show_menu; return; fi
+  if ! [[ "$sel" =~ ^[0-9]+$ ]] || [[ "$sel" -lt 1 || "$sel" -gt ${#slugs[@]} ]]; then
+    echo -e "${RED}❌ Inválido.${RST}"; sleep 1; do_activity_instance; return
+  fi
+
+  local slug="${slugs[$((sel-1))]}"
+  local db_path; db_path=$(instance_db "$slug")
+  [[ ! -f "$db_path" ]] && { echo -e "${RED}❌ DB no encontrada.${RST}"; sleep 1; show_menu; return; }
+
+  clear
+  local t u f
+  t=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM tokens;" 2>/dev/null || echo 0)
+  u=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM tokens WHERE used=1;" 2>/dev/null || echo 0)
+  f=$((t - u))
+
+  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
+  printf "${HOT}${BLD}║${RST}  ${MAG}${BLD}🔎 ACTIVIDAD — %-30s${HOT}${BLD}║${RST}\n" "${slug}"
+  echo -e "${HOT}${BLD}║${RST}  💎 Total: ${GOLD}${t}${RST}   🟢 Libres: ${GRN}${f}${RST}   🔴 Usados: ${RED}${u}${RST}"
+  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo ""
+
+  if [[ "$u" -gt 0 ]]; then
+    echo -e "  ${RED}${BLD}── TOKENS USADOS (últimos 30, más reciente primero) ──${RST}"
+    echo ""
+    while IFS=$'\t' read -r user tok ip used_str created_str; do
+      echo -e "  ${RED}🔴${RST} ${BLD}${user}${RST}"
+      echo -e "     Token:   ${CYAN}${tok}${RST}"
+      echo -e "     IP:      ${GOLD}${ip}${RST}"
+      echo -e "     Usado:   ${RED}${used_str}${RST}"
+      echo -e "     Creado:  ${PINK}${created_str}${RST}"
+      echo -e "     ${HOT}─────────────────────────────────────${RST}"
+    done < <(sqlite3 -separator $'\t' "$db_path" \
+      "SELECT user, token,
+       COALESCE(ip,'—'),
+       CASE WHEN used_at IS NOT NULL
+            THEN datetime(used_at,'unixepoch','localtime') ELSE '—' END,
+       CASE WHEN created_at IS NOT NULL
+            THEN datetime(created_at,'unixepoch','localtime') ELSE '—' END
+       FROM tokens WHERE used=1
+       ORDER BY used_at DESC LIMIT 30;" 2>/dev/null)
+    echo ""
+  fi
+
+  if [[ "$f" -gt 0 ]]; then
+    echo -e "  ${GRN}${BLD}── TOKENS LIBRES ──${RST}"
+    echo ""
+    while IFS=$'\t' read -r user tok created_str; do
+      echo -e "  ${GRN}🟢${RST} ${BLD}${user}${RST}   ${CYAN}${tok}${RST}   ${PINK}(${created_str})${RST}"
+    done < <(sqlite3 -separator $'\t' "$db_path" \
+      "SELECT user, token,
+       CASE WHEN created_at IS NOT NULL
+            THEN datetime(created_at,'unixepoch','localtime') ELSE '—' END
+       FROM tokens WHERE used=0
+       ORDER BY user ASC LIMIT 50;" 2>/dev/null)
+    echo ""
+  fi
+
+  [[ "$t" -eq 0 ]] && echo -e "  ${GOLD}Sin tokens registrados.${RST}"
+  echo -ne "${PINK}  [Enter] para volver...${RST} "
+  read -r
+  show_menu
+}
+
+# ── IPs sospechosas globales ──────────────────────────────────
+do_suspicious_ips_global() {
+  clear
+  local slugs=(); mapfile -t slugs < <(list_slugs)
+  local now; now=$(date +%s)
+
+  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
+  echo -e "${HOT}${BLD}║${RST}      ${RED}${BLD}🚨 IPs SOSPECHOSAS — GLOBAL${RST}           ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo ""
+
+  local found_abuse=0
+  echo -e "  ${RED}${BLD}── MULTI-TOKEN POR IP ──${RST}"
+  echo ""
+  for slug in "${slugs[@]}"; do
+    local db_path; db_path=$(instance_db "$slug")
+    [[ ! -f "$db_path" ]] && continue
+    local has_rows=0
+    while IFS=$'\t' read -r ip cnt users last_ts; do
+      [[ $has_rows -eq 0 ]] && echo -e "  ${MAG}${BLD}[${slug}]${RST}" && has_rows=1
+      local last_str; last_str=$(date -d "@${last_ts}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "—")
+      echo -e "    ${RED}⚠️  IP: ${CYAN}${ip}${RST}  —  ${RED}${BLD}${cnt} usos${RST}"
+      echo -e "       Usuarios: ${GOLD}${users}${RST}"
+      echo -e "       Último:   ${PINK}${last_str}${RST}"
+      ((found_abuse++))
+    done < <(sqlite3 -separator $'\t' "$db_path" \
+      "SELECT ip, COUNT(*) as c, GROUP_CONCAT(user,', '), MAX(used_at)
+       FROM tokens WHERE used=1 AND ip IS NOT NULL
+       GROUP BY ip HAVING c > 1 ORDER BY c DESC;" 2>/dev/null)
+  done
+  [[ $found_abuse -eq 0 ]] && echo -e "  ${GRN}✅ Sin IPs con múltiples tokens.${RST}"
+
+  echo ""
+  local found_blocked=0
+  echo -e "  ${RED}${BLD}── IPs BLOQUEADAS POR RATE LIMIT ──${RST}"
+  echo ""
+  for slug in "${slugs[@]}"; do
+    local db_path; db_path=$(instance_db "$slug")
+    [[ ! -f "$db_path" ]] && continue
+    local has_rows=0
+    while IFS=$'\t' read -r ip att until_ts; do
+      [[ $has_rows -eq 0 ]] && echo -e "  ${MAG}${BLD}[${slug}]${RST}" && has_rows=1
+      local until_str; until_str=$(date -d "@${until_ts}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "—")
+      echo -e "    ${RED}🚫 IP: ${CYAN}${ip}${RST}  —  ${RED}${att} intentos${RST}  —  hasta ${GOLD}${until_str}${RST}"
+      ((found_blocked++))
+    done < <(sqlite3 -separator $'\t' "$db_path" \
+      "SELECT ip, attempts, blocked_until FROM rate_limit
+       WHERE blocked_until > ${now} ORDER BY blocked_until DESC;" 2>/dev/null)
+  done
+  [[ $found_blocked -eq 0 ]] && echo -e "  ${GRN}✅ Sin IPs bloqueadas.${RST}"
+
+  echo ""
+  echo -ne "${PINK}  [Enter] para volver...${RST} "
+  read -r
+  show_menu
+}
+
+# ── Últimos tokens usados (feed cross-instancia) ─────────────
+do_last_used_tokens() {
+  clear
+  local slugs=(); mapfile -t slugs < <(list_slugs)
+
+  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
+  echo -e "${HOT}${BLD}║${RST}       ${GRN}${BLD}📈 ÚLTIMOS TOKENS USADOS${RST}           ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo ""
+
+  local tmpfile; tmpfile="/tmp/lastused_$(date +%s).txt"
+
+  for slug in "${slugs[@]}"; do
+    local db_path; db_path=$(instance_db "$slug")
+    [[ ! -f "$db_path" ]] && continue
+    sqlite3 -separator $'\t' "$db_path" \
+      "SELECT used_at, '${slug}', user, token, COALESCE(ip,'—')
+       FROM tokens WHERE used=1 AND used_at IS NOT NULL
+       ORDER BY used_at DESC LIMIT 20;" 2>/dev/null >> "$tmpfile"
+  done
+
+  if [[ ! -s "$tmpfile" ]]; then
+    echo -e "  ${GOLD}Sin actividad registrada en ninguna instancia.${RST}"
+    rm -f "$tmpfile"
+    echo ""
+    echo -ne "${PINK}  [Enter] para volver...${RST} "
+    read -r
+    show_menu; return
+  fi
+
+  local count=0
+  while IFS=$'\t' read -r ts slug user tok ip; do
+    ((count++))
+    local ts_str; ts_str=$(date -d "@${ts}" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || echo "—")
+    echo -e "  ${RED}🔴${RST}  ${GOLD}${BLD}[${slug}]${RST} ${BLD}${user}${RST}"
+    echo -e "       Token: ${CYAN}${tok}${RST}"
+    echo -e "       IP:    ${GOLD}${ip}${RST}"
+    echo -e "       Fecha: ${PINK}${ts_str}${RST}"
+    echo ""
+  done < <(sort -t$'\t' -k1 -rn "$tmpfile" | head -30)
+
+  rm -f "$tmpfile"
+
+  echo -e "  ${CYAN}(últimos ${count} usos en todas las instancias)${RST}"
+  echo ""
+  echo -ne "${PINK}  [Enter] para volver...${RST} "
+  read -r
+  show_menu
+}
+
+# ══════════════════════════════════════════════════════════════
 #  MENÚ PRINCIPAL — solo instancias ACTIVAS visibles
 #  Las inactivas siguen existiendo (.conf intacto) y pueden
 #  reactivarse desde opción 1 (Crear / Reconfigurar).
@@ -1011,6 +1273,12 @@ show_menu() {
   echo -e "${HOT}${BLD}║${RST}  ${GOLD}3)${RST} 🛑  Detener TODAS las instancias           ${HOT}${BLD}║${RST}"
   echo -e "${HOT}${BLD}║${RST}  ${MAG}4)${RST} 🗑️   Eliminar instancia                     ${HOT}${BLD}║${RST}"
   echo -e "${HOT}${BLD}║${RST}  ${CYAN}5)${RST} 🔌  Activar / Desactivar tokens            ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
+  echo -e "${HOT}${BLD}║${RST}  ${GOLD}6)${RST} 📊  Dashboard global                       ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}║${RST}  ${MAG}7)${RST} 🔎  Actividad por instancia                 ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}║${RST}  ${RED}8)${RST} 🚨  IPs sospechosas (global)               ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}║${RST}  ${GRN}9)${RST} 📈  Últimos tokens usados                  ${HOT}${BLD}║${RST}"
+  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
   echo -e "${HOT}${BLD}║${RST}  ${PINK}0)${RST} 🚪  Salir                                  ${HOT}${BLD}║${RST}"
   echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
   echo -ne "${PINK}  Opción: ${RST}"
@@ -1021,6 +1289,10 @@ show_menu() {
     3) do_stop_all ;;
     4) do_delete_instance ;;
     5) do_toggle_instance ;;
+    6) do_dashboard_global ;;
+    7) do_activity_instance ;;
+    8) do_suspicious_ips_global ;;
+    9) do_last_used_tokens ;;
     0) exit 0 ;;
     *) echo -e "${RED}Opción inválida.${RST}"; sleep 1; show_menu ;;
   esac
