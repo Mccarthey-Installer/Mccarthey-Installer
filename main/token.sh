@@ -965,13 +965,11 @@ do_dashboard_global() {
   local slugs=(); mapfile -t slugs < <(list_slugs)
   local now; now=$(date +%s)
 
-  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
-  echo -e "${HOT}${BLD}║${RST}          ${MAG}${BLD}📊 DASHBOARD GLOBAL${RST}              ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
+  echo -e "  ${MAG}${BLD}📊 DASHBOARD GLOBAL${RST}"
+  echo -e "  ${HOT}─────────────────────────────────────${RST}"
 
   if [[ ${#slugs[@]} -eq 0 ]]; then
-    echo -e "${HOT}${BLD}║${RST}  ${GOLD}Sin instancias configuradas.${RST}"
-    echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+    echo -e "  ${GOLD}Sin instancias configuradas.${RST}"
     sleep 2; show_menu; return
   fi
 
@@ -1007,17 +1005,16 @@ do_dashboard_global() {
     g_ips=$((g_ips     + ips))
     g_blocked=$((g_blocked + bl))
 
-    echo -e "${HOT}${BLD}║${RST} ${badge} ${BLD}${slug}${RST}"
-    echo -e "${HOT}${BLD}║${RST}   💎 Total: ${GOLD}${t}${RST}  🟢 Libres: ${GRN}${f}${RST}  🔴 Usados: ${RED}${u}${RST}"
-    echo -e "${HOT}${BLD}║${RST}   🌐 IPs únicas: ${CYAN}${ips}${RST}   🚫 Bloqueadas: ${RED}${bl}${RST}"
-    echo -e "${HOT}${BLD}║${RST}   🕐 Último uso: ${PINK}${last_str}${RST}"
-    echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
+    echo -e "  ${badge} ${BLD}${slug}${RST}"
+    echo -e "     💎 Total: ${GOLD}${t}${RST}  🟢 Libres: ${GRN}${f}${RST}  🔴 Usados: ${RED}${u}${RST}"
+    echo -e "     🌐 IPs únicas: ${CYAN}${ips}${RST}   🚫 Bloqueadas: ${RED}${bl}${RST}"
+    echo -e "     🕐 Último uso: ${PINK}${last_str}${RST}"
+    echo -e "  ${HOT}─────────────────────────────────────${RST}"
   done
 
-  echo -e "${HOT}${BLD}║${RST}  ${MAG}${BLD}▸ TOTALES${RST}"
-  echo -e "${HOT}${BLD}║${RST}  💎 Tokens: ${GOLD}${BLD}${g_total}${RST}   🌐 IPs únicas: ${CYAN}${g_ips}${RST}"
-  echo -e "${HOT}${BLD}║${RST}  🟢 Libres: ${GRN}${BLD}${g_free}${RST}   🔴 Usados: ${RED}${BLD}${g_used}${RST}   🚫 Bloq: ${RED}${g_blocked}${RST}"
-  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo -e "  ${MAG}${BLD}▸ TOTALES${RST}"
+  echo -e "  💎 Tokens: ${GOLD}${BLD}${g_total}${RST}   🌐 IPs únicas: ${CYAN}${g_ips}${RST}"
+  echo -e "  🟢 Libres: ${GRN}${BLD}${g_free}${RST}   🔴 Usados: ${RED}${BLD}${g_used}${RST}   🚫 Bloq: ${RED}${g_blocked}${RST}"
   echo ""
   echo -ne "${PINK}  [Enter] para volver al menú...${RST} "
   read -r
@@ -1062,10 +1059,9 @@ do_activity_instance() {
   u=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM tokens WHERE used=1;" 2>/dev/null || echo 0)
   f=$((t - u))
 
-  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
-  printf "${HOT}${BLD}║${RST}  ${MAG}${BLD}🔎 ACTIVIDAD — %-30s${HOT}${BLD}║${RST}\n" "${slug}"
-  echo -e "${HOT}${BLD}║${RST}  💎 Total: ${GOLD}${t}${RST}   🟢 Libres: ${GRN}${f}${RST}   🔴 Usados: ${RED}${u}${RST}"
-  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo -e "  ${MAG}${BLD}🔎 ACTIVIDAD — ${slug}${RST}"
+  echo -e "  ${HOT}─────────────────────────────────────${RST}"
+  echo -e "  💎 Total: ${GOLD}${t}${RST}   🟢 Libres: ${GRN}${f}${RST}   🔴 Usados: ${RED}${u}${RST}"
   echo ""
 
   if [[ "$u" -gt 0 ]]; then
@@ -1116,9 +1112,8 @@ do_suspicious_ips_global() {
   local slugs=(); mapfile -t slugs < <(list_slugs)
   local now; now=$(date +%s)
 
-  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
-  echo -e "${HOT}${BLD}║${RST}      ${RED}${BLD}🚨 IPs SOSPECHOSAS — GLOBAL${RST}           ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo -e "  ${RED}${BLD}🚨 IPs SOSPECHOSAS — GLOBAL${RST}"
+  echo -e "  ${HOT}─────────────────────────────────────${RST}"
   echo ""
 
   local found_abuse=0
@@ -1172,9 +1167,8 @@ do_last_used_tokens() {
   clear
   local slugs=(); mapfile -t slugs < <(list_slugs)
 
-  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
-  echo -e "${HOT}${BLD}║${RST}       ${GRN}${BLD}📈 ÚLTIMOS TOKENS USADOS${RST}           ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}╚══════════════════════════════════════════════╝${RST}"
+  echo -e "  ${GRN}${BLD}📈 ÚLTIMOS TOKENS USADOS${RST}"
+  echo -e "  ${HOT}─────────────────────────────────────${RST}"
   echo ""
 
   local tmpfile; tmpfile="/tmp/lastused_$(date +%s).txt"
@@ -1226,9 +1220,8 @@ show_menu() {
   clear
   mkdir -p "$INSTANCES_DIR"
 
-  echo -e "${HOT}${BLD}╔══════════════════════════════════════════════╗${RST}"
-  echo -e "${HOT}${BLD}║${RST}  ${MAG}${BLD}🤖 TOKENS BOT — TELEGRAM v2.1 MULTI${RST}        ${HOT}${BLD}║${RST}"
-  echo -e "${HOT}${BLD}╠══════════════════════════════════════════════╣${RST}"
+  echo -e "  ${MAG}${BLD}🤖 TOKENS BOT — TELEGRAM v2.1 MULTI${RST}"
+  echo -e "  ${HOT}─────────────────────────────────────${RST}"
 
   local slugs=(); mapfile -t slugs < <(list_slugs)
   local active_count=0 inactive_count=0
@@ -1243,15 +1236,15 @@ show_menu() {
   done
 
   if [[ ${#slugs[@]} -eq 0 ]]; then
-    echo -e "${HOT}${BLD}║${RST}  ${GOLD}Sin instancias configuradas.${RST}"
+    echo -e "  ${GOLD}Sin instancias configuradas.${RST}"
   elif [[ $active_count -eq 0 ]]; then
-    echo -e "${HOT}${BLD}║${RST}  ${GOLD}No hay instancias activas en este momento.${RST}"
+    echo -e "  ${GOLD}No hay instancias activas en este momento.${RST}"
     if [[ $inactive_count -gt 0 ]]; then
-      echo -e "${HOT}${BLD}║${RST}  ${CYAN}(${inactive_count} detenida(s) — usa opción 1 para reactivar)${RST}"
+      echo -e "  ${CYAN}(${inactive_count} detenida(s) — usa opción 1 para reactivar)${RST}"
     fi
   else
     # ── Solo mostrar las ACTIVAS ──
-    echo -e "${HOT}${BLD}║${RST}  ${GRN}${BLD}▸ INSTANCIAS ACTIVAS${RST}"
+    echo -e "  ${GRN}${BLD}▸ INSTANCIAS ACTIVAS${RST}"
     for slug in "${slugs[@]}"; do
       [[ $(instance_status "$slug") == "active" ]] || continue
       local pidfile; pidfile=$(instance_pid "$slug")
@@ -1259,11 +1252,11 @@ show_menu() {
       local en; en=$(instance_enabled "$slug")
       local en_badge=""
       [[ "$en" == "0" ]] && en_badge="  ${RED}[TOKENS OFF]${RST}"
-      echo -e "${HOT}${BLD}║${RST}    ${GRN}●${RST} ${BLD}${slug}${RST}${GRN}${pid_str}${RST}${en_badge}"
+      echo -e "    ${GRN}●${RST} ${BLD}${slug}${RST}${GRN}${pid_str}${RST}${en_badge}"
     done
     # ── Hint discreto si hay inactivas ──
     if [[ $inactive_count -gt 0 ]]; then
-      echo -e "${HOT}${BLD}║${RST}  ${CYAN}(${inactive_count} instancia(s) detenida(s) — opción 1 para reactivar)${RST}"
+      echo -e "  ${CYAN}(${inactive_count} instancia(s) detenida(s) — opción 1 para reactivar)${RST}"
     fi
   fi
 
