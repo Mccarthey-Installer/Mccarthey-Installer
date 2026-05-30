@@ -727,6 +727,38 @@ z-index: 1;
   }
 }
 
+/* ── CART TOAST (esquina superior izquierda) ── */
+#cartToast {
+  position: fixed;
+  top: 70px;
+  left: 16px;
+  background: #0f172a;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 13px;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: opacity .25s ease, transform .25s ease;
+  pointer-events: none;
+  max-width: calc(100vw - 32px);
+}
+#cartToast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (min-width: 1024px) {
+  #cartToast {
+    left: calc(var(--sidebar-w) + 16px);
+  }
+}
+
 .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; }
 .badge-red { background: #fee2e2; color: #dc2626; }
 .badge-green { background: #dcfce7; color: #16a34a; }
@@ -886,6 +918,9 @@ z-index: 1;
 
 <!-- TOAST -->
 <div id="toast"></div>
+
+<!-- CART TOAST (esquina superior izquierda) -->
+<div id="cartToast"></div>
 
 <!-- MODAL PRODUCTO -->
 <div id="modal">
@@ -1481,6 +1516,22 @@ function showToast(msg, type = "default") {
   else if(type === "ok") t.classList.add("toast-ok")
   t.classList.add("show")
   setTimeout(() => t.classList.remove("show"), 2800)
+}
+
+// ── CART TOAST — retroalimentación al agregar al carrito ──
+// Reutiliza el mismo elemento si el usuario agrega repetidamente,
+// evitando saturar la interfaz con notificaciones apiladas.
+let _cartToastTimer = null
+function showCartToast(productName) {
+  const t = document.getElementById("cartToast")
+  if(!t) return
+  if(_cartToastTimer) clearTimeout(_cartToastTimer)
+  t.textContent = "✅ Producto agregado al carrito"
+  t.classList.add("show")
+  _cartToastTimer = setTimeout(() => {
+    t.classList.remove("show")
+    _cartToastTimer = null
+  }, 2000)
 }
 
 // =========== FORMATEAR FECHA ===========
@@ -2379,6 +2430,7 @@ function addToCart(id, btn) {
     })
   }
 
+  showCartToast(p.name)
   markDirty("cart", "products")
   flushRender()
   saveCart()
